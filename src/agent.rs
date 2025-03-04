@@ -237,15 +237,27 @@ impl Agent {
             .map_err(|e| AgentError::JsonError(e))?;
 
         if stream_response.done {
-            if let Some(conversation) = self.conversations.get_mut(conversation_id) {
-                conversation.add_message("assistant", &stream_response.message.content);
-            }
+            //TODO: Add the final message to the conversation:
+            // this is wrong as final message here is just empty
+            // temporary solution is to add the content to the buffer -on main.rs
+            // but that is just ... not right!!
+            // have no time at them moment to fix this
+            // TODO: fix this
+            // if let Some(conversation) = self.conversations.get_mut(conversation_id) {
+            //     conversation.add_message("assistant", &stream_response.message.content);
+            // }
             return Ok(None);
-        } else {
-            //TODO: Handle the stream response - should go to some kind of buffer!
         }
 
+        // For streaming responses, we only return the new content
+        // The final message will be added when done is true
         Ok(Some(stream_response.message.content))
+    }
+
+    pub async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {
+        if let Some(conversation) = self.conversations.get_mut(conversation_id) {
+            conversation.add_message(role, content);
+        }
     }
 
     pub async fn chat(&self, model: &str, messages: Vec<Message>) -> Result<ChatResponse, AgentError> {

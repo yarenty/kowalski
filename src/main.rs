@@ -45,13 +45,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut buffer = String::new();
 
     while let Some(chunk) = response.chunk().await? {
-        if let Ok(Some(content)) = agent.process_stream_response(&conversation_id, &chunk).await {
-            print!("{}", content);
-            io::stdout().flush()?;
-            buffer.push_str(&content);
+        match agent.process_stream_response(&conversation_id, &chunk).await {
+            Ok(Some(content)) => {
+                print!("{}", content);
+                io::stdout().flush()?;
+                buffer.push_str(&content);
+            }
+            Ok(None) => {
+                 // Stream is complete, final message has been added to conversation
+                agent.add_message(&conversation_id, "assistant", &buffer).await;
+                println!("\n");
+                break;
+            }
+            Err(e) => {
+                eprintln!("\nError processing stream: {}", e);
+                break;
+            }
         }
     }
-    println!("\n");
 
     // Get conversation history
     if let Some(conversation) = agent.get_conversation(&conversation_id) {
