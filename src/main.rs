@@ -7,7 +7,8 @@ use serde_json::Value;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let agent = Agent::new()?;
+    let mut agent = Agent::new()?;
+    let model_name = agent.get_default_model().to_string();
 
     // List available models
     println!("Listing available models...");
@@ -18,10 +19,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Check if default model exists and pull it if needed
-    let model_name = agent.get_default_model();
-    if !agent.model_exists(model_name).await? {
+    if !agent.model_exists(&model_name).await? {
         println!("Pulling model {}...", model_name);
-        let mut stream = agent.pull_model(model_name).await?;
+        let mut stream = agent.pull_model(&model_name).await?;
         while let Some(chunk) = stream.chunk().await? {
             if let Ok(text) = String::from_utf8(chunk.to_vec()) {
                 let v: Value = serde_json::from_str(&text)?;
@@ -34,17 +34,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\nModel pulled successfully!");
     }
 
-    // Chat example
-    let messages = vec![Message {
-        role: "user".to_string(),
-        content: "why is the sky blue?".to_string(),
-    }];
+    // Start a new conversation
+    println!("\nStarting a new conversation...");
+    let conversation_id = agent.start_conversation(&model_name);
+    println!("Conversation ID: {}", conversation_id);
 
-    println!("\nStarting chat with {}...", model_name);
-    let mut stream = agent.stream_chat(model_name, messages).await?;
+    // Chat with history
+    let mut response = agent.stream_chat_with_history(&conversation_id, "Hello!").await?;
     let mut buffer = String::new();
     
-    while let Some(chunk) = stream.chunk().await? {
+
+    while let Some(chunk) = response.chunk().await? {
         if let Ok(text) = String::from_utf8(chunk.to_vec()) {
             let v: Value = serde_json::from_str(&text)?;
             if let Some(content) = v["message"]["content"].as_str() {
@@ -54,7 +54,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    println!("\nChat complete!");
+
+
+    // println!("Assistant: {:?}", response);
+
+    // Get conversation history
+    if let Some(conversation) = agent.get_conversation(&conversation_id) {
+        println!("\nConversation History:");
+        for message in &conversation.messages {
+            println!("{}: {}", message.role, message.content);
+        }
+    }
+
+    
 
     Ok(())
 }

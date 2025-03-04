@@ -66,9 +66,9 @@ cargo run
 
 ## Future Improvements
 
-- [ ] Add support for more Ollama API endpoints
-- [ ] Implement conversation history
-- [ ] Add configuration file support
+- [x] Add support for more Ollama API endpoints
+- [x] Implement conversation history
+- [x] Add configuration file support
 - [ ] Implement proper streaming response parsing
 - [ ] Add more error handling cases
 - [ ] Add unit tests and integration tests

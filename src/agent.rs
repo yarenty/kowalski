@@ -3,6 +3,8 @@ use reqwest::{Client, ClientBuilder};
 use std::error::Error;
 use std::fmt;
 use crate::config::Config;
+use std::collections::HashMap;
+use chrono::{DateTime, Utc};
 
 pub const DEFAULT_MODEL: &str = "mistral-small";
 
@@ -10,6 +12,32 @@ pub const DEFAULT_MODEL: &str = "mistral-small";
 pub struct Message {
     pub role: String,
     pub content: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Conversation {
+    pub id: String,
+    pub messages: Vec<Message>,
+    pub model: String,
+    pub created_at: DateTime<Utc>,
+}
+
+impl Conversation {
+    pub fn new(model: &str) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            messages: Vec::new(),
+            model: model.to_string(),
+            created_at: Utc::now(),
+        }
+    }
+
+    pub fn add_message(&mut self, role: &str, content: &str) {
+        self.messages.push(Message {
+            role: role.to_string(),
+            content: content.to_string(),
+        });
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -99,6 +127,7 @@ impl From<std::io::Error> for AgentError {
 pub struct Agent {
     client: Client,
     config: Config,
+    conversations: HashMap<String, Conversation>,
 }
 
 impl Agent {
@@ -109,7 +138,88 @@ impl Agent {
             .build()
             .map_err(AgentError::RequestError)?;
 
-        Ok(Self { client, config })
+        Ok(Self { 
+            client, 
+            config,
+            conversations: HashMap::new(),
+        })
+    }
+
+    pub fn start_conversation(&mut self, model: &str) -> String {
+        let conversation = Conversation::new(model);
+        let id = conversation.id.clone();
+        self.conversations.insert(id.clone(), conversation);
+        id
+    }
+
+    pub fn get_conversation(&self, id: &str) -> Option<&Conversation> {
+        self.conversations.get(id)
+    }
+
+    pub fn list_conversations(&self) -> Vec<&Conversation> {
+        self.conversations.values().collect()
+    }
+
+    pub fn delete_conversation(&mut self, id: &str) -> bool {
+        self.conversations.remove(id).is_some()
+    }
+
+    pub async fn chat_with_history(&mut self, conversation_id: &str, content: &str) -> Result<ChatResponse, AgentError> {
+        let conversation = self.conversations.get_mut(conversation_id)
+            .ok_or_else(|| AgentError::ServerError("Conversation not found".to_string()))?;
+
+        conversation.add_message("user", content);
+
+        let request = ChatRequest {
+            model: conversation.model.clone(),
+            messages: conversation.messages.clone(),
+            stream: false,
+            temperature: self.config.chat.temperature,
+            max_tokens: self.config.chat.max_tokens,
+        };
+
+        let response = self.client
+            .post(format!("{}/api/chat", self.config.ollama.base_url))
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await?;
+            return Err(AgentError::ServerError(error_text));
+        }
+
+        let chat_response: ChatResponse = response.json().await?;
+        conversation.add_message("assistant", &chat_response.response);
+        Ok(chat_response)
+    }
+
+    pub async fn stream_chat_with_history(&mut self, conversation_id: &str, content: &str) -> Result<reqwest::Response, AgentError> {
+        let conversation = self.conversations.get_mut(conversation_id)
+            .ok_or_else(|| AgentError::ServerError("Conversation not found".to_string()))?;
+
+        conversation.add_message("user", content);
+
+        let request = ChatRequest {
+            model: conversation.model.clone(),
+            messages: conversation.messages.clone(),
+            stream: true,
+            temperature: self.config.chat.temperature,
+            max_tokens: self.config.chat.max_tokens,
+        };
+
+        let response = self.client
+            .post(format!("{}/api/chat", self.config.ollama.base_url))
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await?;
+            return Err(AgentError::ServerError(error_text));
+        }
+
+        Ok(response)
     }
 
     pub async fn chat(&self, model: &str, messages: Vec<Message>) -> Result<ChatResponse, AgentError> {
