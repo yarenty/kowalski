@@ -57,6 +57,13 @@ pub struct ChatResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct StreamResponse {
+    pub model: String,
+    pub message: Message,
+    pub done: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ModelInfo {
     pub name: String,
     pub size: u64,
@@ -220,6 +227,25 @@ impl Agent {
         }
 
         Ok(response)
+    }
+
+    pub async fn process_stream_response(&mut self, conversation_id: &str, chunk: &[u8]) -> Result<Option<String>, AgentError> {
+        let text = String::from_utf8(chunk.to_vec())
+            .map_err(|e| AgentError::ServerError(format!("Invalid UTF-8: {}", e)))?;
+
+        let stream_response: StreamResponse = serde_json::from_str(&text)
+            .map_err(|e| AgentError::JsonError(e))?;
+
+        if stream_response.done {
+            if let Some(conversation) = self.conversations.get_mut(conversation_id) {
+                conversation.add_message("assistant", &stream_response.message.content);
+            }
+            return Ok(None);
+        } else {
+            //TODO: Handle the stream response - should go to some kind of buffer!
+        }
+
+        Ok(Some(stream_response.message.content))
     }
 
     pub async fn chat(&self, model: &str, messages: Vec<Message>) -> Result<ChatResponse, AgentError> {

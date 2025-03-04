@@ -40,23 +40,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Conversation ID: {}", conversation_id);
 
     // Chat with history
+    println!("\nChatting with history...");
     let mut response = agent.stream_chat_with_history(&conversation_id, "Hello!").await?;
     let mut buffer = String::new();
-    
 
     while let Some(chunk) = response.chunk().await? {
-        if let Ok(text) = String::from_utf8(chunk.to_vec()) {
-            let v: Value = serde_json::from_str(&text)?;
-            if let Some(content) = v["message"]["content"].as_str() {
-                print!("{}", content);
-                io::stdout().flush()?;
-                buffer.push_str(content);
-            }
+        if let Ok(Some(content)) = agent.process_stream_response(&conversation_id, &chunk).await {
+            print!("{}", content);
+            io::stdout().flush()?;
+            buffer.push_str(&content);
         }
     }
-
-
-    // println!("Assistant: {:?}", response);
+    println!("\n");
 
     // Get conversation history
     if let Some(conversation) = agent.get_conversation(&conversation_id) {
@@ -65,8 +60,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("{}: {}", message.role, message.content);
         }
     }
-
-    
 
     Ok(())
 }
