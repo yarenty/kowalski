@@ -3,6 +3,8 @@ use reqwest::{Client, ClientBuilder};
 use std::error::Error;
 use std::fmt;
 
+pub const DEFAULT_MODEL: &str = "mistral-small";
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Message {
     pub role: String,
@@ -21,6 +23,27 @@ pub struct ChatResponse {
     pub model: String,
     pub response: String,
     pub done: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ModelInfo {
+    pub name: String,
+    pub size: u64,
+    pub digest: String,
+    pub modified_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ModelsResponse {
+    pub models: Vec<ModelInfo>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PullResponse {
+    pub status: String,
+    pub digest: Option<String>,
+    pub total: Option<u64>,
+    pub completed: Option<u64>,
 }
 
 #[derive(Debug)]
@@ -115,6 +138,60 @@ impl Agent {
 
         Ok(response)
     }
+
+    pub async fn list_models(&self) -> Result<ModelsResponse, AgentError> {
+        let response = self.client
+            .get(format!("{}/api/tags", self.base_url))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await?;
+            return Err(AgentError::ServerError(error_text));
+        }
+
+        let models_response: ModelsResponse = response.json().await?;
+        Ok(models_response)
+    }
+
+    pub async fn pull_model(&self, model: &str) -> Result<reqwest::Response, AgentError> {
+        let response = self.client
+            .post(format!("{}/api/pull", self.base_url))
+            .json(&serde_json::json!({
+                "name": model
+            }))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await?;
+            return Err(AgentError::ServerError(error_text));
+        }
+
+        Ok(response)
+    }
+
+    pub async fn delete_model(&self, model: &str) -> Result<(), AgentError> {
+        let response = self.client
+            .delete(format!("{}/api/delete", self.base_url))
+            .json(&serde_json::json!({
+                "name": model
+            }))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await?;
+            return Err(AgentError::ServerError(error_text));
+        }
+
+        Ok(())
+    }
+
+    pub async fn model_exists(&self, model: &str) -> Result<bool, AgentError> {
+        let models = self.list_models().await?;
+        Ok(models.models.iter().any(|m| m.name == model))
+    }
 }
 
 #[cfg(test)]
@@ -131,7 +208,7 @@ mod tests {
             },
         ];
 
-        let response = agent.chat("llama2", messages).await;
+        let response = agent.chat(DEFAULT_MODEL, messages).await;
         assert!(response.is_ok());
     }
 } 

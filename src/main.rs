@@ -1,6 +1,6 @@
 mod agent;
 
-use agent::{Agent, Message};
+use agent::{Agent, Message, DEFAULT_MODEL};
 use std::io::{self, Write};
 use serde_json::Value;
 
@@ -8,36 +8,51 @@ use serde_json::Value;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::new(None)?;
 
+    // List available models
+    println!("Listing available models...");
+    let models = agent.list_models().await?;
+    for model in models.models {
+        println!("Model: {}, Size: {} bytes, Modified: {}", 
+            model.name, model.size, model.modified_at);
+    }
+
+    // Check if llama2:3.2 exists and pull it if needed
+    if !agent.model_exists(DEFAULT_MODEL).await? {
+        println!("Pulling model {}...", DEFAULT_MODEL);
+        let mut stream = agent.pull_model(DEFAULT_MODEL).await?;
+        while let Some(chunk) = stream.chunk().await? {
+            if let Ok(text) = String::from_utf8(chunk.to_vec()) {
+                let v: Value = serde_json::from_str(&text)?;
+                if let Some(status) = v["status"].as_str() {
+                    print!("Status: {}\r", status);
+                    io::stdout().flush()?;
+                }
+            }
+        }
+        println!("\nModel pulled successfully!");
+    }
+
+    // Chat example
     let messages = vec![Message {
         role: "user".to_string(),
         content: "why is the sky blue?".to_string(),
     }];
 
-    
-    // Regular chat
-
-    // let response = agent.chat("llama2", messages.clone()).await?;
-    // println!("Regular chat response: {}", response.response);
-
-
-
-    // Streaming chat
-    let mut stream = agent.stream_chat("llama2", messages).await?;
+    println!("\nStarting chat with {}...", DEFAULT_MODEL);
+    let mut stream = agent.stream_chat(DEFAULT_MODEL, messages).await?;
     let mut buffer = String::new();
     
-    println!("Streaming chat started...");
-
     while let Some(chunk) = stream.chunk().await? {
-        // println!("Chunk: {:?}", chunk);
         if let Ok(text) = String::from_utf8(chunk.to_vec()) {
-            // print!("data: {}", text);
-            let v: Value = serde_json::from_str(&text).unwrap();
-            print!("{}", v["message"]["content"].as_str().unwrap());
-            io::stdout().flush()?;
-            buffer.push_str(&text);
+            let v: Value = serde_json::from_str(&text)?;
+            if let Some(content) = v["message"]["content"].as_str() {
+                print!("{}", content);
+                io::stdout().flush()?;
+                buffer.push_str(content);
+            }
         }
     }
-    println!("\nStreaming chat complete!");
+    println!("\nChat complete!");
 
     Ok(())
 }
