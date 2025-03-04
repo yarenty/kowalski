@@ -1,12 +1,13 @@
 mod agent;
+mod config;
 
-use agent::{Agent, Message, DEFAULT_MODEL};
+use agent::{Agent, Message};
 use std::io::{self, Write};
 use serde_json::Value;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let agent = Agent::new(None)?;
+    let agent = Agent::new()?;
 
     // List available models
     println!("Listing available models...");
@@ -16,10 +17,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             model.name, model.size, model.modified_at);
     }
 
-    // Check if llama2:3.2 exists and pull it if needed
-    if !agent.model_exists(DEFAULT_MODEL).await? {
-        println!("Pulling model {}...", DEFAULT_MODEL);
-        let mut stream = agent.pull_model(DEFAULT_MODEL).await?;
+    // Check if default model exists and pull it if needed
+    let model_name = agent.get_default_model();
+    if !agent.model_exists(model_name).await? {
+        println!("Pulling model {}...", model_name);
+        let mut stream = agent.pull_model(model_name).await?;
         while let Some(chunk) = stream.chunk().await? {
             if let Ok(text) = String::from_utf8(chunk.to_vec()) {
                 let v: Value = serde_json::from_str(&text)?;
@@ -38,8 +40,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         content: "why is the sky blue?".to_string(),
     }];
 
-    println!("\nStarting chat with {}...", DEFAULT_MODEL);
-    let mut stream = agent.stream_chat(DEFAULT_MODEL, messages).await?;
+    println!("\nStarting chat with {}...", model_name);
+    let mut stream = agent.stream_chat(model_name, messages).await?;
     let mut buffer = String::new();
     
     while let Some(chunk) = stream.chunk().await? {

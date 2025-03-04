@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use reqwest::{Client, ClientBuilder};
 use std::error::Error;
 use std::fmt;
+use crate::config::Config;
 
 pub const DEFAULT_MODEL: &str = "mistral-small";
 
@@ -16,6 +17,8 @@ pub struct ChatRequest {
     pub model: String,
     pub messages: Vec<Message>,
     pub stream: bool,
+    pub temperature: Option<f32>,
+    pub max_tokens: Option<i32>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -51,6 +54,8 @@ pub enum AgentError {
     RequestError(reqwest::Error),
     JsonError(serde_json::Error),
     ServerError(String),
+    ConfigError(config::ConfigError),
+    IoError(std::io::Error),
 }
 
 impl fmt::Display for AgentError {
@@ -59,6 +64,8 @@ impl fmt::Display for AgentError {
             AgentError::RequestError(e) => write!(f, "Request error: {}", e),
             AgentError::JsonError(e) => write!(f, "JSON error: {}", e),
             AgentError::ServerError(e) => write!(f, "Server error: {}", e),
+            AgentError::ConfigError(e) => write!(f, "Config error: {}", e),
+            AgentError::IoError(e) => write!(f, "IO error: {}", e),
         }
     }
 }
@@ -77,21 +84,32 @@ impl From<serde_json::Error> for AgentError {
     }
 }
 
+impl From<config::ConfigError> for AgentError {
+    fn from(err: config::ConfigError) -> Self {
+        AgentError::ConfigError(err)
+    }
+}
+
+impl From<std::io::Error> for AgentError {
+    fn from(err: std::io::Error) -> Self {
+        AgentError::IoError(err)
+    }
+}
+
 pub struct Agent {
     client: Client,
-    base_url: String,
+    config: Config,
 }
 
 impl Agent {
-    pub fn new(base_url: Option<String>) -> Result<Self, AgentError> {
+    pub fn new() -> Result<Self, AgentError> {
+        let config = Config::load()?;
         let client = ClientBuilder::new()
             .pool_max_idle_per_host(0)
             .build()
             .map_err(AgentError::RequestError)?;
 
-        let base_url = base_url.unwrap_or_else(|| "http://127.0.0.1:11434".to_string());
-
-        Ok(Self { client, base_url })
+        Ok(Self { client, config })
     }
 
     pub async fn chat(&self, model: &str, messages: Vec<Message>) -> Result<ChatResponse, AgentError> {
@@ -99,10 +117,12 @@ impl Agent {
             model: model.to_string(),
             messages,
             stream: false,
+            temperature: self.config.chat.temperature,
+            max_tokens: self.config.chat.max_tokens,
         };
 
         let response = self.client
-            .post(format!("{}/api/chat", self.base_url))
+            .post(format!("{}/api/chat", self.config.ollama.base_url))
             .json(&request)
             .send()
             .await?;
@@ -121,16 +141,16 @@ impl Agent {
             model: model.to_string(),
             messages,
             stream: true,
+            temperature: self.config.chat.temperature,
+            max_tokens: self.config.chat.max_tokens,
         };
 
         let response = self.client
-            .post(format!("{}/api/chat", self.base_url))
+            .post(format!("{}/api/chat", self.config.ollama.base_url))
             .json(&request)
             .send()
             .await?;
 
-        dbg!(&response);
-        
         if !response.status().is_success() {
             let error_text = response.text().await?;
             return Err(AgentError::ServerError(error_text));
@@ -141,7 +161,7 @@ impl Agent {
 
     pub async fn list_models(&self) -> Result<ModelsResponse, AgentError> {
         let response = self.client
-            .get(format!("{}/api/tags", self.base_url))
+            .get(format!("{}/api/tags", self.config.ollama.base_url))
             .send()
             .await?;
 
@@ -156,7 +176,7 @@ impl Agent {
 
     pub async fn pull_model(&self, model: &str) -> Result<reqwest::Response, AgentError> {
         let response = self.client
-            .post(format!("{}/api/pull", self.base_url))
+            .post(format!("{}/api/pull", self.config.ollama.base_url))
             .json(&serde_json::json!({
                 "name": model
             }))
@@ -173,7 +193,7 @@ impl Agent {
 
     pub async fn delete_model(&self, model: &str) -> Result<(), AgentError> {
         let response = self.client
-            .delete(format!("{}/api/delete", self.base_url))
+            .delete(format!("{}/api/delete", self.config.ollama.base_url))
             .json(&serde_json::json!({
                 "name": model
             }))
@@ -192,6 +212,10 @@ impl Agent {
         let models = self.list_models().await?;
         Ok(models.models.iter().any(|m| m.name == model))
     }
+
+    pub fn get_default_model(&self) -> &str {
+        &self.config.ollama.default_model
+    }
 }
 
 #[cfg(test)]
@@ -200,7 +224,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_chat() {
-        let agent = Agent::new(None).unwrap();
+        let agent = Agent::new().unwrap();
         let messages = vec![
             Message {
                 role: "user".to_string(),
@@ -208,7 +232,7 @@ mod tests {
             },
         ];
 
-        let response = agent.chat(DEFAULT_MODEL, messages).await;
+        let response = agent.chat(agent.get_default_model(), messages).await;
         assert!(response.is_ok());
     }
 } 
