@@ -7,36 +7,36 @@ mod style;
 mod conversation;
 mod model;
 
-use agent::{Agent, Message};
+use agent::Agent;
 use std::io::{self, Write};
 use serde_json::Value;
 use audience::Audience;
 use preset::Preset;
 use role::Role;
 use style::Style;
-use model::DEFAULT_MODEL;
-
-
-
-
+use model::{DEFAULT_MODEL, ModelManager};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut agent = Agent::new()?;
+    // Load configuration
+    let config = config::Config::load()?;
+    
+    // Initialize model manager
+    let model_manager = ModelManager::new(config.ollama.base_url.clone())?;
     let model_name = DEFAULT_MODEL.to_string();
 
     // List available models
     println!("Listing available models...");
-    let models = agent.list_models().await?;
+    let models = model_manager.list_models().await?;
     for model in models.models {
         println!("Model: {}, Size: {} bytes, Modified: {}", 
             model.name, model.size, model.modified_at);
     }
 
     // Check if default model exists and pull it if needed
-    if !agent.model_exists(&model_name).await? {
+    if !model_manager.model_exists(&model_name).await? {
         println!("Pulling model {}...", model_name);
-        let mut stream = agent.pull_model(&model_name).await?;
+        let mut stream = model_manager.pull_model(&model_name).await?;
         while let Some(chunk) = stream.chunk().await? {
             if let Ok(text) = String::from_utf8(chunk.to_vec()) {
                 let v: Value = serde_json::from_str(&text)?;
@@ -48,6 +48,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         println!("\nModel pulled successfully!");
     }
+
+    // Initialize agent with config
+    let mut agent = Agent::new(config)?;
 
     // Start a new conversation
     println!("\nStarting a new conversation...");

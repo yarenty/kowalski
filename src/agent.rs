@@ -65,7 +65,6 @@ pub enum AgentError {
     ServerError(String),
     ConfigError(config::ConfigError),
     IoError(std::io::Error),
-    ModelError(ModelError),
 }
 
 impl fmt::Display for AgentError {
@@ -76,7 +75,6 @@ impl fmt::Display for AgentError {
             AgentError::ServerError(e) => write!(f, "Server error: {}", e),
             AgentError::ConfigError(e) => write!(f, "Config error: {}", e),
             AgentError::IoError(e) => write!(f, "IO error: {}", e),
-            AgentError::ModelError(e) => write!(f, "Model error: {}", e),
         }
     }
 }
@@ -107,34 +105,23 @@ impl From<std::io::Error> for AgentError {
     }
 }
 
-impl From<ModelError> for AgentError {
-    fn from(err: ModelError) -> Self {
-        AgentError::ModelError(err)
-    }
-}
-
 pub struct Agent {
     client: Client,
     config: Config,
     conversations: HashMap<String, Conversation>,
-    model_manager: ModelManager,
 }
 
 impl Agent {
-    pub fn new() -> Result<Self, AgentError> {
-        let config = Config::load()?;
+    pub fn new(config: Config) -> Result<Self, AgentError> {
         let client = ClientBuilder::new()
             .pool_max_idle_per_host(0)
             .build()
             .map_err(AgentError::RequestError)?;
-        
-        let model_manager = ModelManager::new(config.ollama.base_url.clone())?;
 
         Ok(Self { 
             client, 
             config,
             conversations: HashMap::new(),
-            model_manager,
         })
     }
 
@@ -257,20 +244,9 @@ impl Agent {
             .map_err(|e| AgentError::JsonError(e))?;
 
         if stream_response.done {
-            //TODO: Add the final message to the conversation:
-            // this is wrong as final message here is just empty
-            // temporary solution is to add the content to the buffer -on main.rs
-            // but that is just ... not right!!
-            // have no time at them moment to fix this
-            // TODO: fix this
-            // if let Some(conversation) = self.conversations.get_mut(conversation_id) {
-            //     conversation.add_message("assistant", &stream_response.message.content);
-            // }
             return Ok(None);
         }
 
-        // For streaming responses, we only return the new content
-        // The final message will be added when done is true
         Ok(Some(stream_response.message.content))
     }
 
@@ -354,7 +330,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_chat() {
-        let agent = Agent::new().unwrap();
+        let config = Config::load().unwrap();
+        let agent = Agent::new(config).unwrap();
         let messages = vec![
             Message {
                 role: "user".to_string(),
@@ -362,7 +339,7 @@ mod tests {
             },
         ];
 
-        let response = agent.chat(agent.get_default_model(), messages).await;
+        let response = agent.chat("test-model", messages).await;
         assert!(response.is_ok());
     }
 } 
