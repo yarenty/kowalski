@@ -69,8 +69,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Conversation ID: {}", conversation_id);
 
     // Read input from file (supports both PDF and text files)
-    let msg = read_input_file("input.pdf")?;
+    let msg = read_input_file("/opt/research/2025/coddllm_2502.00329v1.pdf")?;
 
+    println!("{}", &msg);
     // Chat with history
     println!("\nChatting with history...");
     let role = Role::translator(Some(Audience::Scientist), Some(Preset::Questions));

@@ -49,11 +49,8 @@ impl PdfReader {
             return Err(PdfReaderError::InvalidPath("File must be a PDF".to_string()));
         }
 
-        // Read the PDF file
-        let bytes = fs::read(file_path)?;
-
-        // Extract text from PDF
-        match extract_text(&bytes) {
+        // Extract text directly from the PDF file
+        match extract_text(file_path) {
             Ok(text) => Ok(text),
             Err(e) => Err(PdfReaderError::PdfError(e.to_string())),
         }
