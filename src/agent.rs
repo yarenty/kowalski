@@ -4,15 +4,14 @@ use std::error::Error;
 use std::fmt;
 use crate::config::Config;
 use std::collections::HashMap;
-use chrono::{DateTime, Utc};
-use crate::audience::Audience;
-use crate::preset::Preset;
+// use chrono::{DateTime, Utc};
+// use crate::audience::Audience;
+// use crate::preset::Preset;
 use crate::role::Role;
-use crate::style::Style;
+// use crate::style::Style;
 use crate::conversation::{Conversation, Message};
-use crate::model::{ModelManager, ModelError, DEFAULT_MODEL};
+// use crate::model::{ModelManager, ModelError, DEFAULT_MODEL};
 
-pub const DEFAULT_MODEL: &str = "mistral-small";
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChatRequest {
@@ -303,25 +302,7 @@ impl Agent {
         Ok(response)
     }
 
-    pub async fn list_models(&self) -> Result<ModelsResponse, AgentError> {
-        Ok(self.model_manager.list_models().await?)
-    }
-
-    pub async fn pull_model(&self, model: &str) -> Result<reqwest::Response, AgentError> {
-        Ok(self.model_manager.pull_model(model).await?)
-    }
-
-    pub async fn delete_model(&self, model: &str) -> Result<(), AgentError> {
-        Ok(self.model_manager.delete_model(model).await?)
-    }
-
-    pub async fn model_exists(&self, model: &str) -> Result<bool, AgentError> {
-        Ok(self.model_manager.model_exists(model).await?)
-    }
-
-    pub fn get_default_model(&self) -> &str {
-        DEFAULT_MODEL
-    }
+  
 }
 
 #[cfg(test)]
@@ -339,7 +320,7 @@ mod tests {
             },
         ];
 
-        let response = agent.chat("test-model", messages).await;
+        let response = agent.chat("llama2", messages).await;
         assert!(response.is_ok());
     }
 } 
