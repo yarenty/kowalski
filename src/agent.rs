@@ -10,6 +10,7 @@ use crate::preset::Preset;
 use crate::role::Role;
 use crate::style::Style;
 use crate::conversation::{Conversation, Message};
+use crate::model::{ModelManager, ModelError, DEFAULT_MODEL};
 
 pub const DEFAULT_MODEL: &str = "mistral-small";
 
@@ -64,6 +65,7 @@ pub enum AgentError {
     ServerError(String),
     ConfigError(config::ConfigError),
     IoError(std::io::Error),
+    ModelError(ModelError),
 }
 
 impl fmt::Display for AgentError {
@@ -74,6 +76,7 @@ impl fmt::Display for AgentError {
             AgentError::ServerError(e) => write!(f, "Server error: {}", e),
             AgentError::ConfigError(e) => write!(f, "Config error: {}", e),
             AgentError::IoError(e) => write!(f, "IO error: {}", e),
+            AgentError::ModelError(e) => write!(f, "Model error: {}", e),
         }
     }
 }
@@ -104,10 +107,17 @@ impl From<std::io::Error> for AgentError {
     }
 }
 
+impl From<ModelError> for AgentError {
+    fn from(err: ModelError) -> Self {
+        AgentError::ModelError(err)
+    }
+}
+
 pub struct Agent {
     client: Client,
     config: Config,
     conversations: HashMap<String, Conversation>,
+    model_manager: ModelManager,
 }
 
 impl Agent {
@@ -117,11 +127,14 @@ impl Agent {
             .pool_max_idle_per_host(0)
             .build()
             .map_err(AgentError::RequestError)?;
+        
+        let model_manager = ModelManager::new(config.ollama.base_url.clone())?;
 
         Ok(Self { 
             client, 
             config,
             conversations: HashMap::new(),
+            model_manager,
         })
     }
 
@@ -315,61 +328,23 @@ impl Agent {
     }
 
     pub async fn list_models(&self) -> Result<ModelsResponse, AgentError> {
-        let response = self.client
-            .get(format!("{}/api/tags", self.config.ollama.base_url))
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            let error_text = response.text().await?;
-            return Err(AgentError::ServerError(error_text));
-        }
-
-        let models_response: ModelsResponse = response.json().await?;
-        Ok(models_response)
+        Ok(self.model_manager.list_models().await?)
     }
 
     pub async fn pull_model(&self, model: &str) -> Result<reqwest::Response, AgentError> {
-        let response = self.client
-            .post(format!("{}/api/pull", self.config.ollama.base_url))
-            .json(&serde_json::json!({
-                "name": model
-            }))
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            let error_text = response.text().await?;
-            return Err(AgentError::ServerError(error_text));
-        }
-
-        Ok(response)
+        Ok(self.model_manager.pull_model(model).await?)
     }
 
     pub async fn delete_model(&self, model: &str) -> Result<(), AgentError> {
-        let response = self.client
-            .delete(format!("{}/api/delete", self.config.ollama.base_url))
-            .json(&serde_json::json!({
-                "name": model
-            }))
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            let error_text = response.text().await?;
-            return Err(AgentError::ServerError(error_text));
-        }
-
-        Ok(())
+        Ok(self.model_manager.delete_model(model).await?)
     }
 
     pub async fn model_exists(&self, model: &str) -> Result<bool, AgentError> {
-        let models = self.list_models().await?;
-        Ok(models.models.iter().any(|m| m.name == model))
+        Ok(self.model_manager.model_exists(model).await?)
     }
 
     pub fn get_default_model(&self) -> &str {
-        &self.config.ollama.default_model
+        DEFAULT_MODEL
     }
 }
 

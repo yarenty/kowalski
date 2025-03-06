@@ -5,6 +5,7 @@ mod preset;
 mod role;
 mod style;
 mod conversation;
+mod model;
 
 use agent::{Agent, Message};
 use std::io::{self, Write};
@@ -13,6 +14,7 @@ use audience::Audience;
 use preset::Preset;
 use role::Role;
 use style::Style;
+use model::DEFAULT_MODEL;
 
 
 
@@ -21,7 +23,7 @@ use style::Style;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut agent = Agent::new()?;
-    let model_name = agent.get_default_model().to_string();
+    let model_name = DEFAULT_MODEL.to_string();
 
     // List available models
     println!("Listing available models...");
