@@ -3,6 +3,7 @@ mod config;
 mod audience;
 mod preset;
 mod role;
+mod style;
 
 use agent::{Agent, Message};
 use std::io::{self, Write};
@@ -10,6 +11,7 @@ use serde_json::Value;
 use audience::Audience;
 use preset::Preset;
 use role::Role;
+use style::Style;
 
 
 

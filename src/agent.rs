@@ -8,6 +8,7 @@ use chrono::{DateTime, Utc};
 use crate::audience::Audience;
 use crate::preset::Preset;
 use crate::role::Role;
+use crate::style::Style;
 
 pub const DEFAULT_MODEL: &str = "mistral-small";
 
@@ -189,6 +190,10 @@ impl Agent {
             if let Some(preset) = role.get_preset() {
                 conversation.add_message("system", preset.get_prompt());
             }
+            // Add style message if it's part of the illustrator role
+            if let Some(style) = role.get_style() {
+                conversation.add_message("system", style.get_prompt());
+            }
         }
 
         conversation.add_message("user", content);
@@ -231,6 +236,10 @@ impl Agent {
             }
             if let Some(preset) = role.get_preset() {
                 conversation.add_message("system", preset.get_prompt());
+            }
+            // Add style message if it's part of the illustrator role
+            if let Some(style) = role.get_style() {
+                conversation.add_message("system", style.get_prompt());
             }
         }
 
