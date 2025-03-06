@@ -2,12 +2,14 @@ mod agent;
 mod config;
 mod audience;
 mod preset;
+mod role;
 
 use agent::{Agent, Message};
 use std::io::{self, Write};
 use serde_json::Value;
 use audience::Audience;
 use preset::Preset;
+use role::Role;
 
 
 
@@ -51,9 +53,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Chat with history
     println!("\nChatting with history...");
-    let audience = Audience::Scientist; // You can change this to any other audience type
-    let preset = Preset::Questions; // You can change this to any other preset type
-    let mut response = agent.stream_chat_with_history(&conversation_id, msg, Some(audience), Some(preset)).await?;
+    let role = Role::translator(Some(Audience::Scientist), Some(Preset::Questions));
+    let mut response = agent.stream_chat_with_history(&conversation_id, msg, Some(role)).await?;
     let mut buffer = String::new();
 
     while let Some(chunk) = response.chunk().await? {

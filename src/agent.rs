@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use crate::audience::Audience;
 use crate::preset::Preset;
+use crate::role::Role;
 
 pub const DEFAULT_MODEL: &str = "mistral-small";
 
@@ -173,16 +174,21 @@ impl Agent {
         self.conversations.remove(id).is_some()
     }
 
-    pub async fn chat_with_history(&mut self, conversation_id: &str, content: &str, audience: Option<Audience>, preset: Option<Preset>) -> Result<ChatResponse, AgentError> {
+    pub async fn chat_with_history(&mut self, conversation_id: &str, content: &str, role: Option<Role>) -> Result<ChatResponse, AgentError> {
         let conversation = self.conversations.get_mut(conversation_id)
             .ok_or_else(|| AgentError::ServerError("Conversation not found".to_string()))?;
 
-        // Add system messages based on audience and preset if provided
-        if let Some(audience) = audience {
-            conversation.add_message("system", audience.get_prompt());
-        }
-        if let Some(preset) = preset {
-            conversation.add_message("system", preset.get_prompt());
+        // Add system messages based on role if provided
+        if let Some(role) = role {
+            conversation.add_message("system", role.get_prompt());
+            
+            // Add audience and preset messages if they are part of the translator role
+            if let Some(audience) = role.get_audience() {
+                conversation.add_message("system", audience.get_prompt());
+            }
+            if let Some(preset) = role.get_preset() {
+                conversation.add_message("system", preset.get_prompt());
+            }
         }
 
         conversation.add_message("user", content);
@@ -211,16 +217,21 @@ impl Agent {
         Ok(chat_response)
     }
 
-    pub async fn stream_chat_with_history(&mut self, conversation_id: &str, content: &str, audience: Option<Audience>, preset: Option<Preset>) -> Result<reqwest::Response, AgentError> {
+    pub async fn stream_chat_with_history(&mut self, conversation_id: &str, content: &str, role: Option<Role>) -> Result<reqwest::Response, AgentError> {
         let conversation = self.conversations.get_mut(conversation_id)
             .ok_or_else(|| AgentError::ServerError("Conversation not found".to_string()))?;
 
-        // Add system messages based on audience and preset if provided
-        if let Some(audience) = audience {
-            conversation.add_message("system", audience.get_prompt());
-        }
-        if let Some(preset) = preset {
-            conversation.add_message("system", preset.get_prompt());
+        // Add system messages based on role if provided
+        if let Some(role) = role {
+            conversation.add_message("system", role.get_prompt());
+            
+            // Add audience and preset messages if they are part of the translator role
+            if let Some(audience) = role.get_audience() {
+                conversation.add_message("system", audience.get_prompt());
+            }
+            if let Some(preset) = role.get_preset() {
+                conversation.add_message("system", preset.get_prompt());
+            }
         }
 
         conversation.add_message("user", content);
