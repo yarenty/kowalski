@@ -1,9 +1,17 @@
 mod agent;
 mod config;
+mod audience;
+mod preset;
 
 use agent::{Agent, Message};
 use std::io::{self, Write};
 use serde_json::Value;
+use audience::Audience;
+use preset::Preset;
+
+
+
+
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -39,9 +47,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let conversation_id = agent.start_conversation(&model_name);
     println!("Conversation ID: {}", conversation_id);
 
+    let msg = r#" Large Language Models (LLMs) have the potential to revolutionize data analytics  by simplifying tasks such as data discovery and SQL query synthesis through natural language interactions. This work serves as a pivotal first step toward the development of foundation models explicitly designed for data analytics applications. To propel this vision forward, we unveil a new data recipe for post-training LLMs, enhancing their comprehension of data management and empowering them to tackle complex real-world analytics tasks. Specifically, our innovative approach includes a scalable synthetic data generation method that enables the creation of a broad spectrum of topics centered on data representation and manipulation. Furthermore, we introduce two new tasks that seamlessly bridge tables and text. We show that such tasks can enhance models' understanding of schema creation and the nuanced translation between natural language and tabular data. Leveraging this data recipe, we post-train a new foundation model, named CoddLLM, based on Mistral-NeMo-12B. To assess the language understanding and reasoning capabilities of LLMs in the realm of data analytics, we contribute AnalyticsMMLU, a benchmark containing thousands of multiple-choice questions on databases, data analysis, and machine learning. Our focus on data discovery, has resulted in the contribution of three comprehensive benchmarks that address both database and data lake scenarios. CoddLLM not only excels in performance but also sets a new standard, achieving the highest average accuracy across eight datasets. It outperforms GPT-3.5-Turbo on AnalyticsMMLU, exceeding GPT-4o by 12.1% in table selection and showing an average improvement of 24.9% in Text-to-SQL compared to the base model."#;
+
     // Chat with history
     println!("\nChatting with history...");
-    let mut response = agent.stream_chat_with_history(&conversation_id, "Hello!").await?;
+    let audience = Audience::Scientist; // You can change this to any other audience type
+    let preset = Preset::Questions; // You can change this to any other preset type
+    let mut response = agent.stream_chat_with_history(&conversation_id, msg, Some(audience), Some(preset)).await?;
     let mut buffer = String::new();
 
     while let Some(chunk) = response.chunk().await? {
@@ -52,7 +64,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 buffer.push_str(&content);
             }
             Ok(None) => {
-                 // Stream is complete, final message has been added to conversation
+                // Stream is complete, final message has been added to conversation
                 agent.add_message(&conversation_id, "assistant", &buffer).await;
                 println!("\n");
                 break;
