@@ -9,40 +9,9 @@ use crate::audience::Audience;
 use crate::preset::Preset;
 use crate::role::Role;
 use crate::style::Style;
+use crate::conversation::{Conversation, Message};
 
 pub const DEFAULT_MODEL: &str = "mistral-small";
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Message {
-    pub role: String,
-    pub content: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Conversation {
-    pub id: String,
-    pub messages: Vec<Message>,
-    pub model: String,
-    pub created_at: DateTime<Utc>,
-}
-
-impl Conversation {
-    pub fn new(model: &str) -> Self {
-        Self {
-            id: uuid::Uuid::new_v4().to_string(),
-            messages: Vec::new(),
-            model: model.to_string(),
-            created_at: Utc::now(),
-        }
-    }
-
-    pub fn add_message(&mut self, role: &str, content: &str) {
-        self.messages.push(Message {
-            role: role.to_string(),
-            content: content.to_string(),
-        });
-    }
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChatRequest {

@@ -4,6 +4,7 @@ mod audience;
 mod preset;
 mod role;
 mod style;
+mod conversation;
 
 use agent::{Agent, Message};
 use std::io::{self, Write};
