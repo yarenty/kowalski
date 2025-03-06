@@ -6,6 +6,7 @@ mod role;
 mod style;
 mod conversation;
 mod model;
+mod pdf_reader;
 
 use agent::Agent;
 use std::io::{self, Write};
@@ -16,10 +17,14 @@ use role::Role;
 use style::Style;
 use model::{DEFAULT_MODEL, ModelManager};
 use std::fs;
+use pdf_reader::PdfReader;
 
 fn read_input_file(file_path: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let content = fs::read_to_string(file_path)?;
-    Ok(content)
+    if file_path.to_lowercase().ends_with(".pdf") {
+        Ok(PdfReader::read_pdf(file_path)?)
+    } else {
+        Ok(fs::read_to_string(file_path)?)
+    }
 }
 
 #[tokio::main]
@@ -63,8 +68,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let conversation_id = agent.start_conversation(&model_name);
     println!("Conversation ID: {}", conversation_id);
 
-    // Read input from file
-    let msg = read_input_file("input.txt")?;
+    // Read input from file (supports both PDF and text files)
+    let msg = read_input_file("input.pdf")?;
 
     // Chat with history
     println!("\nChatting with history...");
