@@ -1,16 +1,16 @@
+use reqwest::Client;
 /// Model: The AI's brain, because apparently we need to give it something to think with.
 /// "Models are like students - they learn things but don't always understand them."
-/// 
+///
 /// This module provides functionality for managing AI models and their interactions.
 /// Think of it as a teacher for your AI, but without the tenure.
-
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt;
-use reqwest::Client;
 
 /// The default model to use when nobody knows what they're doing.
 /// "Default models are like default settings - they work until you try to customize them."
+#[allow(dead_code)]
 pub const DEFAULT_MODEL: &str = "mistral-small";
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -38,9 +38,9 @@ pub struct PullResponse {
 /// "Model errors are like math errors - they're everywhere and they're always your fault."
 #[derive(Debug)]
 pub enum ModelError {
-    RequestError(reqwest::Error),
-    JsonError(serde_json::Error),
-    ServerError(String),
+    Request(reqwest::Error),
+    Json(serde_json::Error),
+    Server(String),
 }
 
 /// Makes the model error printable, because apparently we need to see what went wrong.
@@ -48,9 +48,9 @@ pub enum ModelError {
 impl fmt::Display for ModelError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ModelError::RequestError(e) => write!(f, "Request error: {}", e),
-            ModelError::JsonError(e) => write!(f, "JSON error: {}", e),
-            ModelError::ServerError(e) => write!(f, "Server error: {}", e),
+            ModelError::Request(e) => write!(f, "Request error: {}", e),
+            ModelError::Json(e) => write!(f, "JSON error: {}", e),
+            ModelError::Server(e) => write!(f, "Server error: {}", e),
         }
     }
 }
@@ -61,13 +61,13 @@ impl Error for ModelError {}
 
 impl From<reqwest::Error> for ModelError {
     fn from(err: reqwest::Error) -> Self {
-        ModelError::RequestError(err)
+        ModelError::Request(err)
     }
 }
 
 impl From<serde_json::Error> for ModelError {
     fn from(err: serde_json::Error) -> Self {
-        ModelError::JsonError(err)
+        ModelError::Json(err)
     }
 }
 
@@ -85,7 +85,7 @@ impl ModelManager {
         let client = reqwest::ClientBuilder::new()
             .pool_max_idle_per_host(0)
             .build()
-            .map_err(ModelError::RequestError)?;
+            .map_err(ModelError::Request)?;
 
         Ok(Self { client, base_url })
     }
@@ -93,14 +93,15 @@ impl ModelManager {
     /// Lists available models, because apparently we need to know what we're working with.
     /// "Listing models is like listing your exes - it's longer than you'd like to admit."
     pub async fn list_models(&self) -> Result<ModelsResponse, ModelError> {
-        let response = self.client
+        let response = self
+            .client
             .get(format!("{}/api/tags", self.base_url))
             .send()
             .await?;
 
         if !response.status().is_success() {
             let error_text = response.text().await?;
-            return Err(ModelError::ServerError(error_text));
+            return Err(ModelError::Server(error_text));
         }
 
         let models_response: ModelsResponse = response.json().await?;
@@ -117,7 +118,8 @@ impl ModelManager {
     /// Pulls a model, because apparently we need to download things.
     /// "Pulling models is like pulling teeth - it's painful but necessary."
     pub async fn pull_model(&self, model: &str) -> Result<reqwest::Response, ModelError> {
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/api/pull", self.base_url))
             .json(&serde_json::json!({
                 "name": model
@@ -127,14 +129,18 @@ impl ModelManager {
 
         if !response.status().is_success() {
             let error_text = response.text().await?;
-            return Err(ModelError::ServerError(error_text));
+            return Err(ModelError::Server(error_text));
         }
 
         Ok(response)
     }
 
+    /// Deletes a model, because apparently we need to forget things.
+    /// "Deleting models is like deleting your browser history - it's a relief until you need it again."
+    #[allow(dead_code)]
     pub async fn delete_model(&self, model: &str) -> Result<(), ModelError> {
-        let response = self.client
+        let response = self
+            .client
             .delete(format!("{}/api/delete", self.base_url))
             .json(&serde_json::json!({
                 "name": model
@@ -144,7 +150,7 @@ impl ModelManager {
 
         if !response.status().is_success() {
             let error_text = response.text().await?;
-            return Err(ModelError::ServerError(error_text));
+            return Err(ModelError::Server(error_text));
         }
 
         Ok(())
@@ -172,4 +178,4 @@ mod tests {
         let result = manager.list_models().await;
         assert!(result.is_ok());
     }
-} 
+}

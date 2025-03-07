@@ -1,6 +1,6 @@
 /// Preset: Because every AI needs a script, even if it's improvising.
 /// "Presets are like microwave settings - they work, but nobody knows why."
-/// 
+///
 /// This enum defines different preset behaviors that the AI should follow.
 /// Think of it as giving your AI a personality, but without the expensive therapy sessions.
 use serde::{Deserialize, Serialize};
@@ -78,6 +78,7 @@ impl Preset {
 
     /// Creates a preset from a string, because apparently we can't trust users to use enums directly.
     /// "String parsing is like fortune telling - it works until it doesn't."
+    #[allow(dead_code)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_uppercase().as_str() {
             "SIMPLIFY" => Some(Preset::Simplify),
@@ -133,4 +134,4 @@ mod tests {
         assert_eq!(Preset::from_str("simplify"), Some(Preset::Simplify));
         assert_eq!(Preset::from_str("UNKNOWN"), None);
     }
-} 
+}

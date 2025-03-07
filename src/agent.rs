@@ -1,23 +1,22 @@
 /// Agent: The AI's alter ego, because apparently we need to give it a personality.
 /// "Agents are like actors - they pretend to be something they're not, but we love them anyway."
-/// 
+///
 /// This module provides functionality for managing AI agents and their conversations.
 /// Think of it as a therapist for your AI, but without the expensive sessions.
+use crate::config::Config;
+use crate::conversation::{Conversation, Message};
+// use crate::model::{ModelError, ModelManager};
+use crate::role::Role;
+use reqwest::{Client, ClientBuilder};
 
 use serde::{Deserialize, Serialize};
-use reqwest::{Client, ClientBuilder};
+// use serde_json::Value;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
-use crate::config::Config;
-use std::collections::HashMap;
-use crate::role::{Role, Audience, Preset, Style};
-use crate::conversation::{Conversation, Message};
-use crate::model::{ModelManager, ModelError};
-use serde_json::Value;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use uuid::Uuid;
-
+// use std::sync::Arc;
+// use tokio::sync::Mutex;
+// use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChatRequest {
@@ -67,11 +66,11 @@ pub struct PullResponse {
 /// "Errors are like exes - they're everywhere and they're always your fault."
 #[derive(Debug)]
 pub enum AgentError {
-    RequestError(reqwest::Error),
-    JsonError(serde_json::Error),
-    ServerError(String),
-    ConfigError(config::ConfigError),
-    IoError(std::io::Error),
+    Request(reqwest::Error),
+    Json(serde_json::Error),
+    Server(String),
+    Config(config::ConfigError),
+    Io(std::io::Error),
 }
 
 /// Makes the agent error printable, because apparently we need to see what went wrong.
@@ -79,11 +78,11 @@ pub enum AgentError {
 impl fmt::Display for AgentError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AgentError::RequestError(e) => write!(f, "Request error: {}", e),
-            AgentError::JsonError(e) => write!(f, "JSON error: {}", e),
-            AgentError::ServerError(e) => write!(f, "Server error: {}", e),
-            AgentError::ConfigError(e) => write!(f, "Config error: {}", e),
-            AgentError::IoError(e) => write!(f, "IO error: {}", e),
+            AgentError::Request(e) => write!(f, "Request error: {}", e),
+            AgentError::Json(e) => write!(f, "JSON error: {}", e),
+            AgentError::Server(e) => write!(f, "Server error: {}", e),
+            AgentError::Config(e) => write!(f, "Config error: {}", e),
+            AgentError::Io(e) => write!(f, "IO error: {}", e),
         }
     }
 }
@@ -94,25 +93,25 @@ impl Error for AgentError {}
 
 impl From<reqwest::Error> for AgentError {
     fn from(err: reqwest::Error) -> Self {
-        AgentError::RequestError(err)
+        AgentError::Request(err)
     }
 }
 
 impl From<serde_json::Error> for AgentError {
     fn from(err: serde_json::Error) -> Self {
-        AgentError::JsonError(err)
+        AgentError::Json(err)
     }
 }
 
 impl From<config::ConfigError> for AgentError {
     fn from(err: config::ConfigError) -> Self {
-        AgentError::ConfigError(err)
+        AgentError::Config(err)
     }
 }
 
 impl From<std::io::Error> for AgentError {
     fn from(err: std::io::Error) -> Self {
-        AgentError::IoError(err)
+        AgentError::Io(err)
     }
 }
 
@@ -131,10 +130,10 @@ impl Agent {
         let client = ClientBuilder::new()
             .pool_max_idle_per_host(0)
             .build()
-            .map_err(AgentError::RequestError)?;
+            .map_err(AgentError::Request)?;
 
-        Ok(Self { 
-            client, 
+        Ok(Self {
+            client,
             config,
             conversations: HashMap::new(),
         })
@@ -155,22 +154,38 @@ impl Agent {
         self.conversations.get(id)
     }
 
+    /// Lists all conversations, because apparently we need to see them all.
+    /// "Listing conversations is like looking at your photo album - it's a trip down memory lane."
+    #[allow(dead_code)]
     pub fn list_conversations(&self) -> Vec<&Conversation> {
         self.conversations.values().collect()
     }
 
+    /// Deletes a conversation by ID, because apparently we need to forget things.
+    /// "Deleting conversations is like deleting your browser history - it's a relief until you need it again."
+    #[allow(dead_code)]
     pub fn delete_conversation(&mut self, id: &str) -> bool {
         self.conversations.remove(id).is_some()
     }
 
-    pub async fn chat_with_history(&mut self, conversation_id: &str, content: &str, role: Option<Role>) -> Result<ChatResponse, AgentError> {
-        let conversation = self.conversations.get_mut(conversation_id)
-            .ok_or_else(|| AgentError::ServerError("Conversation not found".to_string()))?;
+    /// Chats with history, because apparently we need to talk to things.
+    /// "Chatting with history is like talking to your old friend - it's a trip down memory lane."
+    #[allow(dead_code)]
+    pub async fn chat_with_history(
+        &mut self,
+        conversation_id: &str,
+        content: &str,
+        role: Option<Role>,
+    ) -> Result<ChatResponse, AgentError> {
+        let conversation = self
+            .conversations
+            .get_mut(conversation_id)
+            .ok_or_else(|| AgentError::Server("Conversation not found".to_string()))?;
 
         // Add system messages based on role if provided
         if let Some(role) = role {
             conversation.add_message("system", role.get_prompt());
-            
+
             // Add audience and preset messages if they are part of the translator role
             if let Some(audience) = role.get_audience() {
                 conversation.add_message("system", audience.get_prompt());
@@ -194,7 +209,8 @@ impl Agent {
             max_tokens: self.config.chat.max_tokens,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/api/chat", self.config.ollama.base_url))
             .json(&request)
             .send()
@@ -202,7 +218,7 @@ impl Agent {
 
         if !response.status().is_success() {
             let error_text = response.text().await?;
-            return Err(AgentError::ServerError(error_text));
+            return Err(AgentError::Server(error_text));
         }
 
         let chat_response: ChatResponse = response.json().await?;
@@ -212,14 +228,21 @@ impl Agent {
 
     /// Streams a chat response with history, because apparently we need to be fancy.
     /// "Streaming responses is like watching a movie - it's better when it's not buffering."
-    pub async fn stream_chat_with_history(&mut self, conversation_id: &str, content: &str, role: Option<Role>) -> Result<reqwest::Response, AgentError> {
-        let conversation = self.conversations.get_mut(conversation_id)
-            .ok_or_else(|| AgentError::ServerError("Conversation not found".to_string()))?;
+    pub async fn stream_chat_with_history(
+        &mut self,
+        conversation_id: &str,
+        content: &str,
+        role: Option<Role>,
+    ) -> Result<reqwest::Response, AgentError> {
+        let conversation = self
+            .conversations
+            .get_mut(conversation_id)
+            .ok_or_else(|| AgentError::Server("Conversation not found".to_string()))?;
 
         // Add system messages based on role if provided
         if let Some(role) = role {
             conversation.add_message("system", role.get_prompt());
-            
+
             // Add audience and preset messages if they are part of the translator role
             if let Some(audience) = role.get_audience() {
                 conversation.add_message("system", audience.get_prompt());
@@ -243,7 +266,8 @@ impl Agent {
             max_tokens: self.config.chat.max_tokens,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/api/chat", self.config.ollama.base_url))
             .json(&request)
             .send()
@@ -251,7 +275,7 @@ impl Agent {
 
         if !response.status().is_success() {
             let error_text = response.text().await?;
-            return Err(AgentError::ServerError(error_text));
+            return Err(AgentError::Server(error_text));
         }
 
         Ok(response)
@@ -259,12 +283,16 @@ impl Agent {
 
     /// Processes a stream response, because apparently we need to handle things.
     /// "Processing responses is like processing emotions - it's messy but necessary."
-    pub async fn process_stream_response(&mut self, conversation_id: &str, chunk: &[u8]) -> Result<Option<String>, AgentError> {
+    pub async fn process_stream_response(
+        &mut self,
+        _conversation_id: &str,
+        chunk: &[u8],
+    ) -> Result<Option<String>, AgentError> {
         let text = String::from_utf8(chunk.to_vec())
-            .map_err(|e| AgentError::ServerError(format!("Invalid UTF-8: {}", e)))?;
+            .map_err(|e| AgentError::Server(format!("Invalid UTF-8: {}", e)))?;
 
-        let stream_response: StreamResponse = serde_json::from_str(&text)
-            .map_err(|e| AgentError::JsonError(e))?;
+        let stream_response: StreamResponse =
+            serde_json::from_str(&text).map_err(AgentError::Json)?;
 
         if stream_response.done {
             return Ok(None);
@@ -281,7 +309,29 @@ impl Agent {
         }
     }
 
-    pub async fn chat(&self, model: &str, messages: Vec<Message>) -> Result<ChatResponse, AgentError> {
+    /// Chats with a model, because apparently we need to talk to things.
+    /// "Chatting with models is like talking to your old friend - it's a trip down memory lane."
+    ///
+    /// # Arguments
+    /// * `model` - The model to chat with
+    /// * `messages` - The messages to send to the model
+    ///
+    /// # Returns
+    /// * `Result<ChatResponse, AgentError>` - The response from the model
+    ///   
+    /// Example:
+    /// ```rust
+    /// let agent = Agent::new(config).unwrap();
+    /// let messages = vec![Message {
+    ///     role: "user".to_string(),
+    ///     content: "Hello, how are you?".to_string(),
+    /// }];
+    #[allow(dead_code)]
+    pub async fn chat(
+        &self,
+        model: &str,
+        messages: Vec<Message>,
+    ) -> Result<ChatResponse, AgentError> {
         let request = ChatRequest {
             model: model.to_string(),
             messages,
@@ -290,7 +340,8 @@ impl Agent {
             max_tokens: self.config.chat.max_tokens,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/api/chat", self.config.ollama.base_url))
             .json(&request)
             .send()
@@ -298,14 +349,28 @@ impl Agent {
 
         if !response.status().is_success() {
             let error_text = response.text().await?;
-            return Err(AgentError::ServerError(error_text));
+            return Err(AgentError::Server(error_text));
         }
 
         let chat_response: ChatResponse = response.json().await?;
         Ok(chat_response)
     }
 
-    pub async fn stream_chat(&self, model: &str, messages: Vec<Message>) -> Result<reqwest::Response, AgentError> {
+    /// Streams a chat response, because apparently we need to be fancy.
+    /// "Streaming responses is like watching a movie - it's better when it's not buffering."
+    ///
+    /// # Arguments
+    /// * `model` - The model to chat with
+    /// * `messages` - The messages to send to the model
+    ///
+    /// # Returns
+    /// * `Result<reqwest::Response, AgentError>` - The response from the model
+    #[allow(dead_code)]
+    pub async fn stream_chat(
+        &self,
+        model: &str,
+        messages: Vec<Message>,
+    ) -> Result<reqwest::Response, AgentError> {
         let request = ChatRequest {
             model: model.to_string(),
             messages,
@@ -314,7 +379,8 @@ impl Agent {
             max_tokens: self.config.chat.max_tokens,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/api/chat", self.config.ollama.base_url))
             .json(&request)
             .send()
@@ -322,13 +388,11 @@ impl Agent {
 
         if !response.status().is_success() {
             let error_text = response.text().await?;
-            return Err(AgentError::ServerError(error_text));
+            return Err(AgentError::Server(error_text));
         }
 
         Ok(response)
     }
-
-  
 }
 
 #[cfg(test)]
@@ -341,12 +405,10 @@ mod tests {
     async fn test_agent_creation() {
         let config = Config::load().unwrap();
         let agent = Agent::new(config).unwrap();
-        let messages = vec![
-            Message {
-                role: "user".to_string(),
-                content: "Hello, how are you?".to_string(),
-            },
-        ];
+        let messages = vec![Message {
+            role: "user".to_string(),
+            content: "Hello, how are you?".to_string(),
+        }];
 
         let response = agent.chat("llama2", messages).await;
         assert!(response.is_ok());
@@ -358,4 +420,4 @@ mod tests {
     fn test_conversation_management() {
         // ... existing code ...
     }
-} 
+}

@@ -1,9 +1,8 @@
 /// Config: The AI's settings, because apparently we need to customize everything.
 /// "Configurations are like preferences - they're personal until they're wrong."
-/// 
+///
 /// This module provides functionality for managing configuration settings.
 /// Think of it as a settings menu for your AI, but without the annoying popups.
-
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -47,7 +46,7 @@ impl Default for Config {
 impl Config {
     pub fn load() -> Result<Self, config::ConfigError> {
         let config_path = Self::get_config_path();
-        let mut settings = config::Config::builder()
+        let settings = config::Config::builder()
             .add_source(config::File::from(config_path.clone()).required(false))
             .add_source(config::Environment::with_prefix("OLLAMA_AGENT"));
 
@@ -87,4 +86,4 @@ impl Config {
 
         std::fs::write(config_path, toml)
     }
-} 
+}

@@ -1,6 +1,6 @@
 /// Role: Because every AI needs a personality, even if it's as dry as a desert.
 /// "Roles are like costumes - they make you look different, but you're still the same person underneath."
-/// 
+///
 /// This struct defines how the AI should behave in conversations.
 /// Think of it as giving your AI a personality makeover, but without the expensive therapy.
 use serde::{Deserialize, Serialize};
@@ -21,9 +21,7 @@ pub enum Role {
     },
     /// For when you want the AI to draw things
     /// "Illustration is like cooking - it's all fun until someone asks for a refund."
-    Illustrator {
-        style: Option<Style>,
-    },
+    Illustrator { style: Option<Style> },
 }
 
 impl Role {
@@ -79,15 +77,20 @@ impl Role {
 
     /// Creates an illustrator role that's ready to draw like Picasso (or at least try).
     /// "Illustrators are like artists - they see the world differently, usually through a haze of coffee."
+    #[allow(dead_code)]
     pub fn illustrator(style: Option<Style>) -> Self {
         Role::Illustrator { style }
     }
 
     /// Creates a role from a string, because apparently we can't trust users to use enums directly.
     /// "String parsing is like fortune telling - it works until it doesn't."
+    #[allow(dead_code)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_uppercase().as_str() {
-            "TRANSLATOR" => Some(Role::Translator { audience: None, preset: None }),
+            "TRANSLATOR" => Some(Role::Translator {
+                audience: None,
+                preset: None,
+            }),
             "ILLUSTRATOR" => Some(Role::Illustrator { style: None }),
             _ => None,
         }
@@ -116,16 +119,39 @@ mod tests {
     /// "Testing prompts is like testing jokes - if you have to explain them, they're not working."
     #[test]
     fn test_role_prompts() {
-        assert!(Role::Translator { audience: None, preset: None }.get_prompt().contains("simplify"));
-        assert!(Role::Illustrator { style: None }.get_prompt().contains("illustration"));
+        assert!(
+            Role::Translator {
+                audience: None,
+                preset: None
+            }
+            .get_prompt()
+            .contains("simplify")
+        );
+        assert!(
+            Role::Illustrator { style: None }
+                .get_prompt()
+                .contains("illustration")
+        );
     }
 
     /// Tests the role string parsing
     /// "Testing string parsing is like testing fortune cookies - it's mostly guesswork."
     #[test]
     fn test_role_from_str() {
-        assert_eq!(Role::from_str("TRANSLATOR"), Some(Role::Translator { audience: None, preset: None }));
-        assert_eq!(Role::from_str("translator"), Some(Role::Translator { audience: None, preset: None }));
+        assert_eq!(
+            Role::from_str("TRANSLATOR"),
+            Some(Role::Translator {
+                audience: None,
+                preset: None
+            })
+        );
+        assert_eq!(
+            Role::from_str("translator"),
+            Some(Role::Translator {
+                audience: None,
+                preset: None
+            })
+        );
         assert_eq!(Role::from_str("UNKNOWN"), None);
     }
 
@@ -145,4 +171,4 @@ mod tests {
         let role = Role::illustrator(Some(Style::Vector));
         assert_eq!(role.get_style(), Some(Style::Vector));
     }
-} 
+}

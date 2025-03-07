@@ -1,6 +1,6 @@
 /// Style: Because every AI needs a fashion sense, even if it's questionable.
 /// "Styles are like fashion trends - they come and go, but the cringe remains."
-/// 
+///
 /// This enum defines different artistic styles that the AI should use when creating illustrations.
 /// Think of it as giving your AI an art degree, but without the student debt.
 use serde::{Deserialize, Serialize};
@@ -40,6 +40,7 @@ impl Style {
 
     /// Creates a style from a string, because apparently we can't trust users to use enums directly.
     /// "String parsing is like fortune telling - it works until it doesn't."
+    #[allow(dead_code)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_uppercase().as_str() {
             "VECTOR" => Some(Style::Vector),
@@ -71,7 +72,11 @@ mod tests {
     #[test]
     fn test_style_prompts() {
         assert!(Style::Vector.get_prompt().contains("vector art style"));
-        assert!(Style::Realistic.get_prompt().contains("realistic art style"));
+        assert!(
+            Style::Realistic
+                .get_prompt()
+                .contains("realistic art style")
+        );
         assert!(Style::Artistic.get_prompt().contains("artistic style"));
     }
 
@@ -84,4 +89,4 @@ mod tests {
         assert_eq!(Style::from_str("ARTISTIC"), Some(Style::Artistic));
         assert_eq!(Style::from_str("UNKNOWN"), None);
     }
-} 
+}

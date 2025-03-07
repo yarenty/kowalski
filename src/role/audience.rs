@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// Audience: Because every AI needs to know who it's talking to, even if they're not listening.
 /// "Audiences are like target markets - they're all unique, but they all want something impossible."
-/// 
+///
 /// This enum defines different types of audiences that the AI should adapt its communication style for.
 /// Think of it as teaching your AI to speak different languages, but without the Rosetta Stone subscription.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -72,6 +72,9 @@ impl Audience {
         }
     }
 
+    /// Converts a string to an audience.
+    /// "Converting strings to audiences is like converting a URL to a website - it's all about the redirect."
+    #[allow(dead_code)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_uppercase().as_str() {
             "FAMILY" => Some(Audience::Family),
@@ -108,9 +111,17 @@ mod tests {
     fn test_audience_prompts() {
         assert!(Audience::Family.get_prompt().contains("family member"));
         assert!(Audience::Scientist.get_prompt().contains("scientist"));
-        assert!(Audience::Industry.get_prompt().contains("industry professional"));
+        assert!(
+            Audience::Industry
+                .get_prompt()
+                .contains("industry professional")
+        );
         assert!(Audience::Donor.get_prompt().contains("investor"));
-        assert!(Audience::Wikipedia.get_prompt().contains("Wikipedia article"));
+        assert!(
+            Audience::Wikipedia
+                .get_prompt()
+                .contains("Wikipedia article")
+        );
         assert!(Audience::Socials.get_prompt().contains("caption"));
     }
 
@@ -120,4 +131,4 @@ mod tests {
         assert_eq!(Audience::from_str("family"), Some(Audience::Family));
         assert_eq!(Audience::from_str("UNKNOWN"), None);
     }
-} 
+}

@@ -4,6 +4,7 @@ use std::fmt;
 #[derive(Debug)]
 pub enum PaperCleanerError {
     InvalidInput(String),
+    #[allow(dead_code)]
     ProcessingError(String),
 }
 
@@ -22,20 +23,22 @@ pub struct PaperCleaner;
 
 impl PaperCleaner {
     /// Cleans academic paper text by removing references and fixing line breaks
-    /// 
+    ///
     /// # Arguments
     /// * `text` - The input text to clean
-    /// 
+    ///
     /// # Returns
     /// * `Result<String, PaperCleanerError>` - The cleaned text or an error
     pub fn clean(text: &str) -> Result<String, PaperCleanerError> {
         if text.is_empty() {
-            return Err(PaperCleanerError::InvalidInput("Input text cannot be empty".to_string()));
+            return Err(PaperCleanerError::InvalidInput(
+                "Input text cannot be empty".to_string(),
+            ));
         }
 
         // Remove references section
         let text = Self::remove_references_section(text)?;
-        
+
         // Fix line breaks with hyphens
         let text = Self::fix_hyphenated_line_breaks(&text)?;
 
@@ -43,10 +46,10 @@ impl PaperCleaner {
     }
 
     /// Removes the references section and everything after it
-    /// 
+    ///
     /// # Arguments
     /// * `text` - The input text
-    /// 
+    ///
     /// # Returns
     /// * `Result<String, PaperCleanerError>` - The text without references or an error
     fn remove_references_section(text: &str) -> Result<String, PaperCleanerError> {
@@ -77,10 +80,10 @@ impl PaperCleaner {
     }
 
     /// Fixes line breaks that occur in the middle of hyphenated words
-    /// 
+    ///
     /// # Arguments
     /// * `text` - The input text
-    /// 
+    ///
     /// # Returns
     /// * `Result<String, PaperCleanerError>` - The text with fixed line breaks or an error
     fn fix_hyphenated_line_breaks(text: &str) -> Result<String, PaperCleanerError> {
@@ -91,7 +94,7 @@ impl PaperCleaner {
 
         while i < lines.len() {
             let current_line = lines[i].trim();
-            
+
             // Check if current line ends with a hyphen
             if current_line.ends_with('-') {
                 // Look ahead for the next line
@@ -105,7 +108,7 @@ impl PaperCleaner {
                     continue;
                 }
             }
-            
+
             result.push_str(current_line);
             result.push('\n');
             i += 1;
@@ -138,4 +141,4 @@ mod tests {
         let result = PaperCleaner::clean("");
         assert!(matches!(result, Err(PaperCleanerError::InvalidInput(_))));
     }
-} 
+}

@@ -1,11 +1,10 @@
+use chrono::{DateTime, Utc};
 /// Conversation: The AI's memory, because apparently we need to remember things.
 /// "Conversations are like diaries - they're personal but they're usually boring."
-/// 
+///
 /// This module provides functionality for managing conversations with the AI.
 /// Think of it as a diary for your AI, but without the teenage angst.
-
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc};
 
 /// A message in a conversation, because apparently we need to track everything.
 /// "Messages are like memories - they're better when they're not embarrassing."
@@ -69,4 +68,4 @@ mod tests {
         assert_eq!(conversation.messages[0].role, "user");
         assert_eq!(conversation.messages[0].content, "Hello");
     }
-} 
+}
