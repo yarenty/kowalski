@@ -1,6 +1,14 @@
+/// Config: The AI's settings, because apparently we need to customize everything.
+/// "Configurations are like preferences - they're personal until they're wrong."
+/// 
+/// This module provides functionality for managing configuration settings.
+/// Think of it as a settings menu for your AI, but without the annoying popups.
+
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// The main configuration struct that makes our AI feel special.
+/// "Configs are like recipes - they work until you try to follow them."
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
     pub ollama: OllamaConfig,

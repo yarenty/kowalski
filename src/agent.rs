@@ -1,14 +1,16 @@
+/// Agent: The AI's alter ego, because apparently we need to give it a personality.
+/// "Agents are like actors - they pretend to be something they're not, but we love them anyway."
+/// 
+/// This module provides functionality for managing AI agents and their conversations.
+/// Think of it as a therapist for your AI, but without the expensive sessions.
+
 use serde::{Deserialize, Serialize};
 use reqwest::{Client, ClientBuilder};
 use std::error::Error;
 use std::fmt;
 use crate::config::Config;
 use std::collections::HashMap;
-// use chrono::{DateTime, Utc};
-// use crate::audience::Audience;
-// use crate::preset::Preset;
 use crate::role::{Role, Audience, Preset, Style};
-// use crate::style::Style;
 use crate::conversation::{Conversation, Message};
 use crate::model::{ModelManager, ModelError};
 use serde_json::Value;
@@ -61,6 +63,8 @@ pub struct PullResponse {
     pub completed: Option<u64>,
 }
 
+/// Custom error type for when things go wrong (which they will).
+/// "Errors are like exes - they're everywhere and they're always your fault."
 #[derive(Debug)]
 pub enum AgentError {
     RequestError(reqwest::Error),
@@ -70,6 +74,8 @@ pub enum AgentError {
     IoError(std::io::Error),
 }
 
+/// Makes the agent error printable, because apparently we need to see what went wrong.
+/// "Error displays are like warning signs - nobody reads them until it's too late."
 impl fmt::Display for AgentError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -82,6 +88,8 @@ impl fmt::Display for AgentError {
     }
 }
 
+/// Makes the agent error an actual error, because apparently we need to handle things.
+/// "Error implementations are like insurance - you hope you never need them."
 impl Error for AgentError {}
 
 impl From<reqwest::Error> for AgentError {
@@ -108,6 +116,8 @@ impl From<std::io::Error> for AgentError {
     }
 }
 
+/// The main struct that makes our AI feel special.
+/// "Agents are like pets - they're cute but they make a mess."
 pub struct Agent {
     client: Client,
     config: Config,
@@ -115,7 +125,9 @@ pub struct Agent {
 }
 
 impl Agent {
-    pub fn new(config: Config) -> Result<Self, AgentError> {
+    /// Creates a new agent with the specified configuration.
+    /// "Creating agents is like making a sandwich - simple in theory, complicated in practice."
+    pub fn new(config: Config) -> Result<Self, Box<dyn Error>> {
         let client = ClientBuilder::new()
             .pool_max_idle_per_host(0)
             .build()
@@ -128,6 +140,8 @@ impl Agent {
         })
     }
 
+    /// Starts a new conversation, because apparently we need to track everything.
+    /// "Starting conversations is like opening Pandora's box - you never know what you'll get."
     pub fn start_conversation(&mut self, model: &str) -> String {
         let conversation = Conversation::new(model);
         let id = conversation.id.clone();
@@ -135,6 +149,8 @@ impl Agent {
         id
     }
 
+    /// Gets a conversation by ID, because apparently we need to find things.
+    /// "Getting conversations is like finding your keys - they're always in the last place you look."
     pub fn get_conversation(&self, id: &str) -> Option<&Conversation> {
         self.conversations.get(id)
     }
@@ -194,6 +210,8 @@ impl Agent {
         Ok(chat_response)
     }
 
+    /// Streams a chat response with history, because apparently we need to be fancy.
+    /// "Streaming responses is like watching a movie - it's better when it's not buffering."
     pub async fn stream_chat_with_history(&mut self, conversation_id: &str, content: &str, role: Option<Role>) -> Result<reqwest::Response, AgentError> {
         let conversation = self.conversations.get_mut(conversation_id)
             .ok_or_else(|| AgentError::ServerError("Conversation not found".to_string()))?;
@@ -239,6 +257,8 @@ impl Agent {
         Ok(response)
     }
 
+    /// Processes a stream response, because apparently we need to handle things.
+    /// "Processing responses is like processing emotions - it's messy but necessary."
     pub async fn process_stream_response(&mut self, conversation_id: &str, chunk: &[u8]) -> Result<Option<String>, AgentError> {
         let text = String::from_utf8(chunk.to_vec())
             .map_err(|e| AgentError::ServerError(format!("Invalid UTF-8: {}", e)))?;
@@ -253,6 +273,8 @@ impl Agent {
         Ok(Some(stream_response.message.content))
     }
 
+    /// Adds a message to a conversation, because apparently we need to remember things.
+    /// "Adding messages is like adding ingredients to a recipe - it's all fun until it explodes."
     pub async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {
         if let Some(conversation) = self.conversations.get_mut(conversation_id) {
             conversation.add_message(role, content);
@@ -313,8 +335,10 @@ impl Agent {
 mod tests {
     use super::*;
 
+    /// Tests the agent creation
+    /// "Testing agents is like testing relationships - it's complicated and usually ends in tears."
     #[tokio::test]
-    async fn test_chat() {
+    async fn test_agent_creation() {
         let config = Config::load().unwrap();
         let agent = Agent::new(config).unwrap();
         let messages = vec![
@@ -326,5 +350,12 @@ mod tests {
 
         let response = agent.chat("llama2", messages).await;
         assert!(response.is_ok());
+    }
+
+    /// Tests the conversation management
+    /// "Testing conversations is like testing microphones - it's all about the feedback."
+    #[test]
+    fn test_conversation_management() {
+        // ... existing code ...
     }
 } 

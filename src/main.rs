@@ -1,3 +1,9 @@
+/// Main: The entry point of our AI-powered circus.
+/// "Main functions are like orchestras - they make everything work together, but nobody notices until something goes wrong."
+/// 
+/// This is where the magic happens, or at least where we pretend it does.
+/// Think of it as the conductor of our AI symphony, but with more error handling.
+
 mod agent;
 mod config;
 mod role;
@@ -13,7 +19,14 @@ use model::{DEFAULT_MODEL, ModelManager};
 use std::fs;
 use utils::{PdfReader, PaperCleaner};
 
-
+/// Reads input from a file, because apparently typing is too mainstream.
+/// "File reading is like opening presents - you never know what you're gonna get."
+/// 
+/// # Arguments
+/// * `file_path` - The path to the file (which is probably too long and boring)
+/// 
+/// # Returns
+/// * `Result<String, Box<dyn std::error::Error>>` - Either the file contents or an error that will make you question your career choices
 fn read_input_file(file_path: &str) -> Result<String, Box<dyn std::error::Error>> {
     if file_path.to_lowercase().ends_with(".pdf") {
         Ok(PdfReader::read_pdf(file_path)?)
@@ -22,6 +35,8 @@ fn read_input_file(file_path: &str) -> Result<String, Box<dyn std::error::Error>
     }
 }
 
+/// The main function that makes everything work (or at least tries to).
+/// "Main functions are like first dates - they're exciting but usually end in disappointment."
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load configuration
