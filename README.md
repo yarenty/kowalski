@@ -1,9 +1,10 @@
-# Ollama Agent
+# Kowalski
 
 > "AI agents are like pets - they're cute but they make a mess." - Anonymous AI Developer
 > "Programming is like writing a love letter to a computer that doesn't love you back." - Unknown
 
 A Rust-based agent for interacting with Ollama models. Because apparently, we need another way to talk to AI.
+
 ## Project Overview
 
 This project implements a basic agent that can communicate with Ollama's API, supporting both regular chat and streaming responses. It's built as a learning exercise and foundation for more complex agent implementations.
@@ -48,7 +49,7 @@ This project implements a basic agent that can communicate with Ollama's API, su
 ### Basic Usage
 
 ```rust
-use smith::{Agent, Config};
+use kowalski::{Agent, Config};
 
 // Create an agent (it's like hiring an assistant, but cheaper)
 let config = Config::load()?;
@@ -80,6 +81,8 @@ let response = agent.chat_with_history(&conversation_id, "Translate this", Some(
 > "File input is like reading books - it's good for you but nobody does it." - A Librarian
 
 ```rust
+use kowalski::utils::{PdfReader, PaperCleaner};
+
 // Read from a PDF (because paper is so last century)
 let content = PdfReader::read_pdf("document.pdf")?;
 
