@@ -1,10 +1,9 @@
-# Ollama Agent in Rust
+# Ollama Agent
 
-> "The best way to predict the future is to implement it." - Alan Kay
-> "Rust is the language that makes you feel like a superhero while writing code." - Anonymous
+> "AI agents are like pets - they're cute but they make a mess." - Anonymous AI Developer
+> "Programming is like writing a love letter to a computer that doesn't love you back." - Unknown
 
-This is a first attempt at creating a simple agent in Rust that communicates with the Ollama server. It's a work in progress and more features will be added in the future.
-
+A Rust-based agent for interacting with Ollama models. Because apparently, we need another way to talk to AI.
 ## Project Overview
 
 This project implements a basic agent that can communicate with Ollama's API, supporting both regular chat and streaming responses. It's built as a learning exercise and foundation for more complex agent implementations.
@@ -13,76 +12,120 @@ This project implements a basic agent that can communicate with Ollama's API, su
 
 ## Features
 
-- Basic chat functionality with Ollama
-- Streaming response support
-- Error handling
-- Configurable base URL
-- Simple and clean API
+> "Features are like promises - they're great until you try to use them." - A Disappointed User
 
-## Project Structure
+- 🤖 **Multiple Model Support**: Because one AI model is never enough
+- 💬 **Conversation Management**: Keep track of your AI's ramblings
+- 🎭 **Role-Based Interactions**: Give your AI a personality (or at least pretend to)
+- 📝 **PDF and Text File Support**: Read files because typing is too mainstream
+- 🔄 **Streaming Responses**: Watch your AI think in real-time (it's more exciting than it sounds)
+- ⚙️ **Configurable Settings**: Customize everything until it breaks
 
+## Installation
+
+> "Installation is like cooking - it's easy until you burn something." - A Frustrated Developer
+
+1. Clone the repository (because copying files manually is so last year):
+   ```bash
+   git clone https://github.com/yarenty/kowalski.git
+   cd kowalski
+   ```
+
+2. Build the project (and pray it works):
+   ```bash
+   cargo build --release
+   ```
+
+3. Run the agent (and hope for the best):
+   ```bash
+   cargo run --release
+   ```
+
+## Usage
+
+> "Usage instructions are like recipes - nobody reads them until something goes wrong." - A Support Agent
+
+### Basic Usage
+
+```rust
+use smith::{Agent, Config};
+
+// Create an agent (it's like hiring an assistant, but cheaper)
+let config = Config::load()?;
+let agent = Agent::new(config)?;
+
+// Start a conversation (and hope it doesn't get weird)
+let conversation_id = agent.start_conversation("mistral-small");
+
+// Chat with the agent (it's like texting, but with more existential dread)
+let response = agent.chat_with_history(&conversation_id, "Hello, how are you?", None).await?;
 ```
-.
-├── src/
-│   ├── main.rs         # Main entry point and example usage
-│   └── agent.rs        # Agent implementation and types
-├── Cargo.toml          # Project dependencies and configuration
-└── README.md          # This file
+
+### Role-Based Interactions
+
+> "Roles are like costumes - they make everything more interesting until someone takes them off." - A Theater Director
+
+```rust
+use kowalski::role::{Role, Audience, Preset};
+
+// Create a translator role (because Google Translate is too mainstream)
+let role = Role::translator(Some(Audience::Scientist), Some(Preset::Questions));
+
+// Chat with the role (it's like having a conversation with someone who's pretending to be someone else)
+let response = agent.chat_with_history(&conversation_id, "Translate this", Some(role)).await?;
 ```
 
-> "The only way to do great work is to love what you do." - Steve Jobs
+### File Input
 
-## Dependencies
+> "File input is like reading books - it's good for you but nobody does it." - A Librarian
 
-- tokio: Async runtime
-- reqwest: HTTP client
-- serde: Serialization/deserialization
-- serde_json: JSON handling
+```rust
+// Read from a PDF (because paper is so last century)
+let content = PdfReader::read_pdf("document.pdf")?;
 
-## Building and Running
+// Clean the content (because AI needs clean data, just like we need clean clothes)
+let cleaned_content = PaperCleaner::clean(&content)?;
 
-1. Make sure you have Rust installed:
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+// Chat with the content (it's like having a book club, but with AI)
+let response = agent.chat_with_history(&conversation_id, &cleaned_content, None).await?;
 ```
 
-2. Clone this repository:
-```bash
-git clone <repository-url>
-cd ollama-agent
+## Configuration
+
+> "Configuration is like a relationship - it's complicated until you give up." - A System Administrator
+
+The agent can be configured using a TOML file or environment variables:
+
+```toml
+[ollama]
+base_url = "http://localhost:11434"
+default_model = "mistral-small"
+
+[chat]
+temperature = 0.7
+max_tokens = 512
+stream = true
 ```
-
-3. Build the project:
-```bash
-cargo build
-```
-
-4. Run the example:
-```bash
-cargo run
-```
-
-> "The best way to learn a new programming language is by writing programs in it." - Dennis Ritchie
-
-## Future Improvements
-
-- [x] Add support for more Ollama API endpoints
-- [x] Implement conversation history
-- [x] Add configuration file support
-- [ ] Implement proper streaming response parsing
-- [ ] Add more error handling cases
-- [ ] Add unit tests and integration tests
-- [ ] Add documentation
-- [ ] Add CLI interface
-
-> "The only limit to our realization of tomorrow will be our doubts of today." - Franklin D. Roosevelt
 
 ## Contributing
 
-Feel free to open issues or submit pull requests. This is a learning project, so any feedback or suggestions are welcome!
+> "Contributing is like dating - it's fun until someone suggests changes." - An Open Source Maintainer
+
+Contributions are welcome! Please feel free to submit a Pull Request. Just remember:
+- Keep it clean (unlike my code)
+- Add tests (because we all love writing tests)
+- Update documentation (because reading code is so last year)
 
 ## License
 
-This project is open source and available under the MIT License.
+> "Licenses are like prenuptial agreements - they're boring until you need them." - A Lawyer
 
-> "The best way to predict the future is to create it." - Peter Drucker 
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+> "Acknowledgments are like thank you notes - they're nice but nobody reads them." - A Grateful Developer
+
+- Thanks to the Ollama team for making this possible
+- Thanks to all contributors who helped make this project better
+- Thanks to my coffee machine for keeping me awake during development 
