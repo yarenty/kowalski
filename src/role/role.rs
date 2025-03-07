@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
-use crate::audience::Audience;
-use crate::preset::Preset;
-use crate::style::Style;
+use crate::role::Audience;
+use crate::role::Preset;
+use crate::role::Style;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Role {
@@ -80,9 +80,9 @@ impl std::fmt::Display for Role {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::audience::Audience;
-    use crate::preset::Preset;
-    use crate::style::Style;
+    use crate::role::Audience;
+    use crate::role::Preset;
+    use crate::role::Style;
 
     #[test]
     fn test_role_prompts() {
