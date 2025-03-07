@@ -1,12 +1,12 @@
+use crate::role::Audience;
+use crate::role::Preset;
+use crate::role::Style;
 /// Role: Because every AI needs a personality, even if it's as dry as a desert.
 /// "Roles are like costumes - they make you look different, but you're still the same person underneath."
 ///
 /// This struct defines how the AI should behave in conversations.
 /// Think of it as giving your AI a personality makeover, but without the expensive therapy.
 use serde::{Deserialize, Serialize};
-use crate::role::Audience;
-use crate::role::Preset;
-use crate::role::Style;
 
 /// The main enum that defines what kind of AI personality we're dealing with.
 /// "Translators are like bilingual dictionaries - they know the words, but not the soul."
