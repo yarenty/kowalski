@@ -1,16 +1,33 @@
 use serde::{Deserialize, Serialize};
 
+/// Audience: Because every AI needs to know who it's talking to, even if they're not listening.
+/// "Audiences are like target markets - they're all unique, but they all want something impossible."
+/// 
+/// This enum defines different types of audiences that the AI should adapt its communication style for.
+/// Think of it as teaching your AI to speak different languages, but without the Rosetta Stone subscription.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Audience {
+    /// For when you need to explain things to people who think they're smarter than everyone else
+    /// "Scientists are like cats - they're smart but they know it."
     Family,
+    /// For when you need to explain things to people who think they're smarter than scientists
+    /// "Engineers are like dogs - they're smart but they're too busy playing fetch to show it."
     Scientist,
+    /// For when you need to explain things to people who think they're smarter than engineers
+    /// "Developers are like parrots - they repeat what they hear but don't always understand it."
     Industry,
+    /// For when you need to explain things to people who think they're smarter than developers
+    /// "Students are like sponges - they absorb everything but don't always know what to do with it."
     Donor,
+    /// For when you need to explain things to people who think they're smarter than students
+    /// "General audience is like a box of chocolates - you never know what you're gonna get."
     Wikipedia,
     Socials,
 }
 
 impl Audience {
+    /// Gets the prompt for this audience.
+    /// "Getting the prompt is like writing a speech - it's all about the delivery."
     pub fn get_prompt(&self) -> &'static str {
         match self {
             Audience::Family => {
@@ -85,6 +102,8 @@ impl std::fmt::Display for Audience {
 mod tests {
     use super::*;
 
+    /// Tests the audience prompts
+    /// "Testing audiences is like testing microphones - it's all about the feedback."
     #[test]
     fn test_audience_prompts() {
         assert!(Audience::Family.get_prompt().contains("family member"));
