@@ -6,7 +6,7 @@ mod role;
 mod style;
 mod conversation;
 mod model;
-mod pdf_reader;
+mod utils;
 
 use agent::Agent;
 use std::io::{self, Write};
@@ -17,7 +17,7 @@ use role::Role;
 use style::Style;
 use model::{DEFAULT_MODEL, ModelManager};
 use std::fs;
-use pdf_reader::PdfReader;
+use utils::pdf_reader::PdfReader;
 
 fn read_input_file(file_path: &str) -> Result<String, Box<dyn std::error::Error>> {
     if file_path.to_lowercase().ends_with(".pdf") {
