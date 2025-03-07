@@ -107,7 +107,7 @@ impl PaperCleaner {
             }
             
             result.push_str(current_line);
-            result.push(' ');
+            result.push('\n');
             i += 1;
         }
 

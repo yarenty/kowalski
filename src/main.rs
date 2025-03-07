@@ -18,6 +18,7 @@ use style::Style;
 use model::{DEFAULT_MODEL, ModelManager};
 use std::fs;
 use utils::pdf_reader::PdfReader;
+use utils::paper_cleaner::PaperCleaner;
 
 fn read_input_file(file_path: &str) -> Result<String, Box<dyn std::error::Error>> {
     if file_path.to_lowercase().ends_with(".pdf") {
@@ -70,6 +71,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Read input from file (supports both PDF and text files)
     let msg = read_input_file("/opt/research/2025/coddllm_2502.00329v1.pdf")?;
+    
+    println!("{}", &msg);
+
+    println!(" Cleaning...");
+    let msg = PaperCleaner::clean(&msg)?;
 
     println!("{}", &msg);
     // Chat with history
