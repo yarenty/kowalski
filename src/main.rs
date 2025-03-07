@@ -1,9 +1,6 @@
 mod agent;
 mod config;
-mod audience;
-mod preset;
 mod role;
-mod style;
 mod conversation;
 mod model;
 mod utils;
@@ -11,14 +8,11 @@ mod utils;
 use agent::Agent;
 use std::io::{self, Write};
 use serde_json::Value;
-use audience::Audience;
-use preset::Preset;
-use role::Role;
-use style::Style;
+use role::{Audience, Preset, Role, Style};
 use model::{DEFAULT_MODEL, ModelManager};
 use std::fs;
-use utils::pdf_reader::PdfReader;
-use utils::paper_cleaner::PaperCleaner;
+use utils::{PdfReader, PaperCleaner};
+
 
 fn read_input_file(file_path: &str) -> Result<String, Box<dyn std::error::Error>> {
     if file_path.to_lowercase().ends_with(".pdf") {

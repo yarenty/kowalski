@@ -7,10 +7,14 @@ use std::collections::HashMap;
 // use chrono::{DateTime, Utc};
 // use crate::audience::Audience;
 // use crate::preset::Preset;
-use crate::role::Role;
+use crate::role::{Role, Audience, Preset, Style};
 // use crate::style::Style;
 use crate::conversation::{Conversation, Message};
-// use crate::model::{ModelManager, ModelError, DEFAULT_MODEL};
+use crate::model::{ModelManager, ModelError};
+use serde_json::Value;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use uuid::Uuid;
 
 
 #[derive(Debug, Serialize, Deserialize)]
