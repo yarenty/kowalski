@@ -8,7 +8,13 @@ authors = ["yarenty <yarenty@gmail.com>"]
 repository = "https://github.com/yarenty/kowalski"
 homepage = "https://github.com/yarenty/kowalski"
 readme = "README.md"
-categories = ["AI", "agent", "chat", "llm", "ollama"]
+categories = [
+    "api-bindings",
+    "asynchronous",
+    "network-programming",
+    "text-processing",
+    "utilities"
+]
 keywords = [
     "AI",
     "agent",
