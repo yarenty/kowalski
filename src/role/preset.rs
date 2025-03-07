@@ -1,17 +1,40 @@
+/// Preset: Because every AI needs a script, even if it's improvising.
+/// "Presets are like microwave settings - they work, but nobody knows why."
+/// 
+/// This enum defines different preset behaviors that the AI should follow.
+/// Think of it as giving your AI a personality, but without the expensive therapy sessions.
 use serde::{Deserialize, Serialize};
 
+/// The main enum that defines how the AI should behave.
+/// "Presets are like personality types - they're all different but equally annoying."
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Preset {
+    /// For when you want the AI to simplify things
+    /// "Simplification is like dieting - it's easier said than done."
     Simplify,
+    /// For when you want the AI to explain terminology
+    /// "Terminology is like a foreign language - it sounds fancy until you understand it."
     Terminology,
+    /// For when you want the AI to discuss applications
+    /// "Applications are like ideas - they're great until you try to implement them."
     Applications,
+    /// For when you want the AI to be optimistic
+    /// "Optimism is like a weather forecast - it's usually wrong but we keep checking."
     Optimistic,
+    /// For when you want the AI to analyze things
+    /// "Analysis is like detective work - it's all fun until you find the body."
     Analyzed,
+    /// For when you want the AI to list takeaways
+    /// "Takeaways are like leftovers - they're better the next day."
     Takeaways,
+    /// For when you want the AI to ask questions
+    /// "Questions are like children - they never stop coming."
     Questions,
 }
 
 impl Preset {
+    /// Gets the prompt for this preset.
+    /// "Getting the prompt is like getting directions - they make sense until you try to follow them."
     pub fn get_prompt(&self) -> &'static str {
         match self {
             Preset::Simplify => {
@@ -53,6 +76,8 @@ impl Preset {
         }
     }
 
+    /// Creates a preset from a string, because apparently we can't trust users to use enums directly.
+    /// "String parsing is like fortune telling - it works until it doesn't."
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_uppercase().as_str() {
             "SIMPLIFY" => Some(Preset::Simplify),
@@ -67,6 +92,8 @@ impl Preset {
     }
 }
 
+/// Makes the preset printable, because apparently we need to see what we're dealing with.
+/// "Display implementations are like mirrors - they show us what we want to see."
 impl std::fmt::Display for Preset {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -85,6 +112,8 @@ impl std::fmt::Display for Preset {
 mod tests {
     use super::*;
 
+    /// Tests the preset prompts
+    /// "Testing presets is like testing recipes - it's all about the taste."
     #[test]
     fn test_preset_prompts() {
         assert!(Preset::Simplify.get_prompt().contains("newcomer"));
@@ -96,6 +125,8 @@ mod tests {
         assert!(Preset::Questions.get_prompt().contains("questions"));
     }
 
+    /// Tests the preset string parsing
+    /// "Testing string parsing is like testing fortune cookies - it's mostly guesswork."
     #[test]
     fn test_preset_from_str() {
         assert_eq!(Preset::from_str("SIMPLIFY"), Some(Preset::Simplify));
