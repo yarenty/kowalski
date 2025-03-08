@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file, because app
 
 > "Version numbers are like birthdays - they keep increasing but nothing really changes." - A Cynical Developer
 
-## [0.1.0] - 2024-03-14
+## [0.1.0] - 2024-03-17
 
 > "The first version is like your first love - exciting but probably not the best." - A Romantic Programmer  
 > "If debugging is the process of removing bugs, then programming must be the process of adding them." - Edsger W. Dijkstra
