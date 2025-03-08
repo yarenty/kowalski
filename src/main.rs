@@ -12,6 +12,7 @@ mod utils;
 mod tools;
 
 use agent::{Agent, AcademicAgent, ToolingAgent};
+use chrono::format;
 use model::ModelManager;
 use role::{Audience, Preset, Role};
 use serde_json::Value;
@@ -50,7 +51,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize model manager
     let model_manager = ModelManager::new(config.ollama.base_url.clone())?;
-    let model_name = "michaelneale/deepseek-r1-goose";
+    // let model_name = "michaelneale/deepseek-r1-goose";
+    let model_name = "llama2"; // quickest model
 
     // List available models
     info!("Listing available models...");
@@ -117,27 +119,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // }
 
     // Example: Web search and processing
-    info!("\nPerforming web search...");
+    info!("Performing web search...");
     let conversation_id = tooling_agent.start_conversation(&model_name);
     info!("Tooling Agent Conversation ID: {}", conversation_id);
 
-    let search_results = tooling_agent.search("Latest developments in Rust programming").await?;
-    info!("Search results: {:?}", &search_results);
+    let query = "Latest developments in Rust programming";
+    let search_results = tooling_agent.search(query).await?;
+  
     for result in &search_results {
+        tooling_agent.add_message(&conversation_id, "search", format!("{} : {}", result.title, result.snippet).as_str()).await;
         println!("Title: {}", result.title);
         println!("URL: {}", result.url);
         println!("Snippet: {}", result.snippet);
         println!();
     }
 
+    tooling_agent.add_message(&conversation_id, "user", format!("Search for {} and summary", query).as_str()).await;
+
+
     // Process the first search result
     if let Some(first_result) = search_results.first() {
         info!("\nProcessing first search result...");
         let page = tooling_agent.fetch_page(&first_result.url).await?;
+
+        tooling_agent.add_message(&conversation_id, "search", format!(" Full page:{} : {}", page.title, page.content).as_str()).await;
+
+        // if let more_results = &search_result[1] {
+        //     let page = tooling_agent.fetch_page(&more_results.url).await?;
+        //     tooling_agent.add_message(&conversation_id, "search", format!("Page 2: {}", page.content).as_str()).await;
+        // }
+        
+        // if let Some(more_results) = &search_results[2] {
+        //     let page = tooling_agent.fetch_page(&more_results.url).await?;
+        //     tooling_agent.add_message(&conversation_id, "search", format!("Page 3: {}", page.content).as_str()).await;
+        // }
         
         let role = Role::translator(Some(Audience::Family), Some(Preset::Simplify));
         let mut response = tooling_agent
-            .chat_with_history(&conversation_id, &page.content, Some(role))
+            .chat_with_history(&conversation_id, "Provide simple summary", Some(role))
             .await?;
 
         let mut buffer = String::new();

@@ -166,13 +166,13 @@ impl ToolingAgent {
 
         let document = scraper::Html::parse_document(&output.content);
         debug!("Parsed HTML document");
-        info!("HTML document: {}", &document.html());
+        info!("HTML document: {:.100}", &document.html());
         document.select(&scraper::Selector::parse("link").unwrap_or_else(|_| {
             scraper::Selector::parse("a").unwrap_or_else(|_| {
                 scraper::Selector::parse("a").expect("Failed to create link selector")
             })
         })).for_each(|el| {
-            info!("Link: {:?}", el.value().attr("href"));
+            debug!("Link: {:?}", el.value().attr("href"));
         });
 
 
@@ -259,6 +259,8 @@ impl ToolingAgent {
             .map(|el| el.text().collect::<String>())
             .unwrap_or_default();
 
+        info!("[{}:{}] Title extracted: {}", file!(), line!(), &title);
+
         // Extract main content, prioritizing main content areas
         let content_selector = scraper::Selector::parse("article, main, .content, .main-content, body").expect("Failed to create content selector");
         let content = document
@@ -268,6 +270,8 @@ impl ToolingAgent {
             .join("\n")
             .trim()
             .to_string();
+
+        debug!("[{}:{}] Content length: {} bytes", file!(), line!(), content.len());
 
         // Extract metadata from meta tags
         let meta_selector = scraper::Selector::parse("meta[name][content], meta[property][content]").expect("Failed to create meta selector");
@@ -281,8 +285,9 @@ impl ToolingAgent {
             }
         }
 
-        info!("Metadata: {:?}", &metadata);
-        info!("Content: {}", &content);
+        info!("[{}:{}] Metadata entries: {}", file!(), line!(), metadata.len());
+        debug!("[{}:{}] Content preview: {:.100}...", file!(), line!(), content);
+
         Ok(ProcessedPage {
             url: url.to_string(),
             title,
