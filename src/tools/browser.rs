@@ -2,18 +2,22 @@
 /// "Web browsers are like cats - they do what they want and ignore your preferences." - A Web Developer
 
 use async_trait::async_trait;
-use fantoccini::{Client, ClientBuilder};
+// use fantoccini::{Client, ClientBuilder};
 use scraper::{Html, Selector};
 use super::{Tool, ToolInput, ToolOutput, ToolError};
 use std::time::Duration;
-use serde_json::{json, Value};
+// use serde_json::{json, Value};
 use log::{debug, info};
 
+/// WebBrowser: Because sometimes we need to pretend we're human.
+#[allow(dead_code)]
 pub struct WebBrowser {
     client: reqwest::Client,
     user_agent: String,
 }
 
+
+#[allow(dead_code)]
 impl WebBrowser {
     pub fn new(_config: crate::config::Config) -> Self {
         let client = reqwest::Client::builder()

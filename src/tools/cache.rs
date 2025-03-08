@@ -1,23 +1,25 @@
 /// Cache module: Because nobody likes waiting.
 /// "Caching is like having a good memory - it's great until you forget to invalidate it." - A Memory Expert
 
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 use cached::TimedCache;
-use serde::{Serialize, Deserialize};
-use super::{ToolInput, ToolOutput, ToolError};
+use super::{ToolInput, ToolOutput };
 use cached::Cached;
 
 /// Storage types for cache, because one size doesn't fit all.
 #[derive(Debug, Clone)]
 pub enum Storage {
     Memory,
+    #[allow(dead_code)]
     Local(String),
-    Redis(String),
+    // Redis(String),
+    #[allow(dead_code)]
     None,
 }
 
 /// Cache configuration, because even caches need rules.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct CacheConfig {
     pub ttl: Duration,
     pub storage: Storage,
@@ -54,6 +56,7 @@ impl ToolCache {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_ttl(mut self, ttl: Duration) -> Self {
         self.config.ttl = ttl;
         self.memory_cache = TimedCache::with_lifespan_and_capacity(
@@ -63,6 +66,7 @@ impl ToolCache {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_storage(mut self, storage: Storage) -> Self {
         self.storage = storage;
         self
@@ -72,7 +76,7 @@ impl ToolCache {
         match &mut self.storage {
             Storage::Memory => self.memory_cache.cache_get(&key.to_string()).cloned(),
             Storage::Local(_) => None, // TODO: Implement local storage
-            Storage::Redis(_) => None, // TODO: Implement Redis storage
+            // Storage::Redis(_) => None, // TODO: Implement Redis storage
             Storage::None => None,
         }
     }
@@ -83,11 +87,12 @@ impl ToolCache {
                 self.memory_cache.cache_set(key.to_string(), output.clone());
             }
             Storage::Local(_) => {}, // TODO: Implement local storage
-            Storage::Redis(_) => {}, // TODO: Implement Redis storage
+            // Storage::Redis(_) => {}, // TODO: Implement Redis storage
             Storage::None => {},
         }
     }
 
+    #[allow(dead_code)]
     fn create_cache_key(&self, input: &ToolInput) -> String {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};

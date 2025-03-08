@@ -7,6 +7,7 @@ use crate::utils::{PdfReaderError, PaperCleanerError};
 use reqwest;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum AgentError {
     RequestError(reqwest::Error),
     JsonError(serde_json::Error),

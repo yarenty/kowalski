@@ -7,21 +7,21 @@ mod scraper;
 mod cache;
 mod error;
 
-pub use browser::WebBrowser;
+// pub use browser::WebBrowser;
 pub use search::SearchTool;
-pub use scraper::WebScraper;
-pub use cache::{ToolCache, Storage};
+// pub use scraper::WebScraper;
+pub use cache::ToolCache;
 pub use error::ToolError;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::time::Duration;
 use std::fmt;
 use log::{debug, info};
 
 /// The core trait for all tools, because every tool needs a purpose.
 #[async_trait]
+#[allow(dead_code)]
 pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
@@ -71,6 +71,7 @@ pub struct ToolChain {
     cache: ToolCache,
 }
 
+#[allow(dead_code)]
 impl ToolChain {
     pub fn new() -> Self {
         Self {

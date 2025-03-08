@@ -12,7 +12,6 @@ mod utils;
 mod tools;
 
 use agent::{Agent, AcademicAgent, ToolingAgent};
-use chrono::format;
 use model::ModelManager;
 use role::{Audience, Preset, Role};
 use serde_json::Value;
@@ -80,43 +79,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\nModel pulled successfully!");
     }
 
+
+    //  TODO: this is just temporary testing code
+    //  TODO: remove this once we have a proper CLI interface
+    //  TODO: and create examples of how to use the agents instead!
     // Initialize agents
-    // let mut academic_agent = AcademicAgent::new(config.clone())?;
+    let mut academic_agent = AcademicAgent::new(config.clone())?;
     let mut tooling_agent = ToolingAgent::new(config)?;
 
-    // // Example: Process a research paper
-    // println!("\nProcessing research paper...");
-    // let conversation_id = academic_agent.start_conversation(&model_name);
-    // println!("Academic Agent Conversation ID: {}", conversation_id);
+    // Example: Process a research paper
+    println!("\nProcessing research paper...");
+    let conversation_id = academic_agent.start_conversation(&model_name);
+    println!("Academic Agent Conversation ID: {}", conversation_id);
 
-    // let role = Role::translator(Some(Audience::Scientist), Some(Preset::Questions));
-    // let mut response = academic_agent
-    //     .chat_with_history(
-    //         &conversation_id,
-    //         "/opt/research/2025/coddllm_2502.00329v1.pdf",
-    //         Some(role),
-    //     )
-    //     .await?;
+    let role = Role::translator(Some(Audience::Scientist), Some(Preset::Questions));
+    let mut response = academic_agent
+        .chat_with_history(
+            &conversation_id,
+            "/opt/research/2025/coddllm_2502.00329v1.pdf",
+            Some(role),
+        )
+        .await?;
 
-    // let mut buffer = String::new();
-    // while let Some(chunk) = response.chunk().await? {
-    //     match academic_agent.process_stream_response(&conversation_id, &chunk).await {
-    //         Ok(Some(content)) => {
-    //             print!("{}", content);
-    //             io::stdout().flush()?;
-    //             buffer.push_str(&content);
-    //         }
-    //         Ok(None) => {
-    //             academic_agent.add_message(&conversation_id, "assistant", &buffer).await;
-    //             println!("\n");
-    //             break;
-    //         }
-    //         Err(e) => {
-    //             eprintln!("\nError processing stream: {}", e);
-    //             break;
-    //         }
-    //     }
-    // }
+    let mut buffer = String::new();
+    while let Some(chunk) = response.chunk().await? {
+        match academic_agent.process_stream_response(&conversation_id, &chunk).await {
+            Ok(Some(content)) => {
+                print!("{}", content);
+                io::stdout().flush()?;
+                buffer.push_str(&content);
+            }
+            Ok(None) => {
+                academic_agent.add_message(&conversation_id, "assistant", &buffer).await;
+                println!("\n");
+                break;
+            }
+            Err(e) => {
+                eprintln!("\nError processing stream: {}", e);
+                break;
+            }
+        }
+    }
 
     // Example: Web search and processing
     info!("Performing web search...");

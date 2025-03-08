@@ -9,8 +9,6 @@ mod types;
 pub use academic::AcademicAgent;
 pub use tooling::ToolingAgent;
 pub use error::AgentError;
-pub use types::{ChatRequest, StreamResponse, Message};
-
 use async_trait::async_trait;
 use crate::config::Config;
 use crate::conversation::Conversation;
@@ -23,6 +21,7 @@ use serde_json;
 /// The core agent trait that all our specialized agents must implement.
 /// "Traits are like contracts - they're meant to be broken." - A Rust Philosopher
 #[async_trait]
+#[allow(dead_code)]
 pub trait Agent: Send + Sync {
     /// Creates a new agent with the specified configuration.
     /// "Creation is like cooking - sometimes you follow the recipe, sometimes you wing it."

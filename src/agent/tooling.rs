@@ -5,17 +5,17 @@ use async_trait::async_trait;
 use reqwest::Response;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::time::Duration;
 use crate::config::Config;
-use crate::conversation::{Conversation, Message};
+use crate::conversation::Conversation;
 use crate::role::Role;
 use super::{Agent, AgentError, BaseAgent};
 use super::types::{ChatRequest, StreamResponse};
-use crate::tools::{Tool, ToolChain, WebBrowser, SearchTool, WebScraper, ToolCache, Storage, ToolInput, ToolOutput};
+use crate::tools::{ ToolChain,  SearchTool,  ToolCache,  ToolInput};
 use crate::tools::search::SearchProvider;
 use log::{debug, info};
 
 /// ToolingAgent: Your personal web crawler with a sense of humor.
+#[allow(dead_code)]
 pub struct ToolingAgent {
     base: BaseAgent,
     chain: ToolChain,

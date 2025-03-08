@@ -1,15 +1,13 @@
 /// Search module: Because Google is too mainstream.
 /// "Search engines are like fortune tellers - they give you what you ask for, not what you want." - A Search Expert
 
-/// Search Providers: Because one search engine is never enough
-/// "In the grand scheme of things, all search engines are equally useless." - A Frustrated Developer
-
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use super::{Tool, ToolInput, ToolOutput, ToolError};
 use log::debug;
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum SearchProvider {
     DuckDuckGo,
     Bing,
@@ -47,12 +45,15 @@ impl SearchProvider {
     }
 }
 
+
+#[allow(dead_code)]
 pub struct SearchTool {
     provider: SearchProvider,
     api_key: String,
     client: reqwest::Client,
 }
 
+#[allow(dead_code)]
 impl SearchTool {
     pub fn new(provider: SearchProvider, api_key: String) -> Self {
         let client = reqwest::Client::builder()
@@ -161,16 +162,4 @@ pub struct SearchResult {
     pub title: String,
     pub url: String,
     pub snippet: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct DuckDuckGoResponse {
-    results: Vec<DuckDuckGoResult>,
-}
-
-#[derive(Debug, Deserialize)]
-struct DuckDuckGoResult {
-    title: String,
-    url: String,
-    snippet: String,
 }

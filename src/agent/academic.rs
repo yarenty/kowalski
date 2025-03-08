@@ -4,7 +4,7 @@
 use async_trait::async_trait;
 use reqwest::Response;
 use crate::config::Config;
-use crate::conversation::{Conversation, Message};
+use crate::conversation::Conversation;
 use crate::role::Role;
 use super::{Agent, AgentError, BaseAgent};
 use super::types::{ChatRequest, StreamResponse};
@@ -138,6 +138,7 @@ impl Agent for AcademicAgent {
     }
 }
 
+#[allow(dead_code)]
 impl AcademicAgent {
     /// Processes an academic paper, because apparently reading it normally is too mainstream.
     pub async fn process_paper(&self, path: &str) -> Result<String, AgentError> {
@@ -160,6 +161,7 @@ impl AcademicAgent {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct PaperMetadata {
     pub title: String,
     pub authors: Vec<String>,

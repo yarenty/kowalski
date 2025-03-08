@@ -16,6 +16,7 @@ use super::{Tool, ToolInput, ToolOutput, ToolError};
 pub struct WebScraper {
     client: reqwest::Client,
     rate_limiter: Arc<RateLimiter<NotKeyed, InMemoryState, DefaultClock, NoOpMiddleware>>,
+    #[allow(dead_code)]
     user_agent: String,
 }
 
@@ -32,6 +33,7 @@ impl WebScraper {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_rate_limit(mut self, duration: Duration) -> Self {
         let requests_per_second = NonZeroU32::new(
             (1.0 / duration.as_secs_f32()).ceil() as u32
@@ -42,6 +44,7 @@ impl WebScraper {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_user_agent(mut self, user_agent: &str) -> Self {
         self.user_agent = user_agent.to_string();
         self.client = reqwest::Client::builder()
