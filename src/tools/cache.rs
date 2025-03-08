@@ -1,0 +1,85 @@
+/// Cache module: Because nobody likes waiting.
+/// "Caching is like having a good memory - it's great until you forget to invalidate it." - A Memory Expert
+
+use std::time::{Duration, SystemTime};
+use cached::TimedCache;
+use serde::{Serialize, Deserialize};
+use super::{ToolInput, ToolOutput, ToolError};
+
+/// Storage types for cache, because one size doesn't fit all.
+#[derive(Debug, Clone)]
+pub enum Storage {
+    Memory,
+    Local(String),
+    Redis(String),
+}
+
+/// Cache configuration, because even caches need rules.
+#[derive(Debug, Clone)]
+pub struct CacheConfig {
+    pub ttl: Duration,
+    pub storage: Storage,
+    pub max_size: usize,
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        Self {
+            ttl: Duration::from_secs(3600), // 1 hour
+            storage: Storage::Memory,
+            max_size: 1000,
+        }
+    }
+}
+
+/// Tool cache, because recalculating is overrated.
+pub struct ToolCache {
+    config: CacheConfig,
+    memory_cache: TimedCache<String, ToolOutput>,
+}
+
+impl ToolCache {
+    pub fn new() -> Self {
+        let config = CacheConfig::default();
+        Self {
+            memory_cache: TimedCache::with_lifespan_and_capacity(
+                config.ttl.as_secs() as u64,
+                config.max_size,
+            ),
+            config,
+        }
+    }
+
+    pub fn with_ttl(mut self, ttl: Duration) -> Self {
+        self.config.ttl = ttl;
+        self.memory_cache = TimedCache::with_lifespan_and_capacity(
+            ttl.as_secs() as u64,
+            self.config.max_size,
+        );
+        self
+    }
+
+    pub fn with_storage(mut self, storage: Storage) -> Self {
+        self.config.storage = storage;
+        self
+    }
+
+    pub fn get(&self, input: &ToolInput) -> Option<ToolOutput> {
+        let key = self.create_cache_key(input);
+        self.memory_cache.cache_get(&key).cloned()
+    }
+
+    pub fn set(&self, input: &ToolInput, output: &ToolOutput) {
+        let key = self.create_cache_key(input);
+        self.memory_cache.cache_set(key, output.clone());
+    }
+
+    fn create_cache_key(&self, input: &ToolInput) -> String {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = DefaultHasher::new();
+        input.hash(&mut hasher);
+        format!("tool_cache_{}", hasher.finish())
+    }
+} 

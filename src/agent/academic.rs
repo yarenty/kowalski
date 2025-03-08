@@ -3,8 +3,9 @@
 
 use async_trait::async_trait;
 use reqwest::Response;
+use serde_json::json;
 use crate::config::Config;
-use crate::conversation::Message;
+use crate::conversation::{Conversation, Message};
 use crate::role::Role;
 use super::{Agent, AgentError, BaseAgent};
 use crate::utils::{PdfReader, PaperCleaner};

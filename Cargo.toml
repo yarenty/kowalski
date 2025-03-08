@@ -23,44 +23,49 @@ keywords = [
     "ollama"
 ]
 
-
-
-
 [dependencies]
-reqwest = { version = "0.12", features = ["json"] }
+# HTTP and async
+reqwest = { version = "0.12", features = ["json", "stream"] }
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# Serialization and data formats
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "1", features = ["full"] }
+toml = "0.8"
+
+# Configuration and system
 config = "0.15"
 dirs = "6.0"
-toml = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.7", features = ["v4", "serde"] }
+
+# Document processing
 pdf-extract = "0.8"
 
 # Web browsing and scraping
 scraper = "0.23"           # HTML parsing and scraping
 url = "2.5"               # URL parsing and manipulation
-headless_chrome = "1.0"   # JavaScript rendering support
-select = "0.6"           # CSS selector based scraping
+fantoccini = "0.19"       # Headless browser automation (replaces headless_chrome)
+select = "0.6"            # CSS selector based scraping
 
 # Search engines
-google-apis = "5.0"      # Google Custom Search API
-duckduckgo-rs = "1.0"   # DuckDuckGo API client
+# google-apis = "5.0"       # Google Custom Search API
+# async-google-apis-common = "0.4.0"
+duckduckgo_rs = "0.0.1"     # Fixed package name for DuckDuckGo API client
 
 # Data processing
-html2md = "0.2"         # HTML to Markdown conversion
-cached = "0.55"         # Result caching
-regex = "1.10"          # Pattern matching
-quick-xml = "0.37"      # XML processing
-encoding_rs = "0.8"     # Character encoding support
+html2md = "0.2"          # HTML to Markdown conversion
+cached = "0.55"          # Result caching
+regex = "1.10"           # Pattern matching
+quick-xml = "0.37"       # XML processing
+encoding_rs = "0.8"      # Character encoding support
 
 # Storage
-sled = "0.34"           # Embedded database for caching
-rusqlite = "0.34"       # SQLite for local storage
-flate2 = "1.0"         # Compression for cached data
+sled = "0.34"            # Embedded database for caching
+rusqlite = { version = "0.34", features = ["bundled"] }  # SQLite for local storage
+flate2 = "1.0"          # Compression for cached data
 
-# Rate limiting and async utilities
-governor = "0.8"        # Rate limiting
-futures = "0.3"         # Async utilities
-async-trait = "0.1"     # Async trait support
+# Rate limiting and utilities
+governor = "0.8"         # Rate limiting

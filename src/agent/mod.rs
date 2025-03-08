@@ -15,6 +15,8 @@ use crate::conversation::Conversation;
 use crate::role::Role;
 use reqwest::Response;
 use std::collections::HashMap;
+use crate::tools::ToolError;
+use serde_json;
 
 /// The core agent trait that all our specialized agents must implement.
 /// "Traits are like contracts - they're meant to be broken." - A Rust Philosopher
@@ -113,5 +115,17 @@ impl BaseAgent {
         if let Some(conversation) = self.conversations.get_mut(conversation_id) {
             conversation.add_message(role, content);
         }
+    }
+}
+
+impl From<ToolError> for AgentError {
+    fn from(error: ToolError) -> Self {
+        AgentError::ToolError(error.to_string())
+    }
+}
+
+impl From<serde_json::Error> for AgentError {
+    fn from(error: serde_json::Error) -> Self {
+        AgentError::SerializationError(error.to_string())
     }
 } 

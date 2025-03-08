@@ -4,17 +4,19 @@
 use async_trait::async_trait;
 use reqwest::Response;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::time::Duration;
 use crate::config::Config;
-use crate::conversation::Message;
+use crate::conversation::{Conversation, Message};
 use crate::role::Role;
 use super::{Agent, AgentError, BaseAgent};
-use crate::tools::{Tool, ToolChain, WebBrowser, SearchTool, WebScraper};
+use super::types::{ChatRequest, StreamResponse};
+use crate::tools::{Tool, ToolChain, WebBrowser, SearchTool, WebScraper, ToolCache, Storage, ToolInput, ToolOutput};
 
 /// ToolingAgent: Your personal web crawler with a sense of humor.
 pub struct ToolingAgent {
     base: BaseAgent,
-    tool_chain: ToolChain,
+    chain: ToolChain,
     cache: ToolCache,
 }
 
@@ -27,23 +29,17 @@ impl Agent for ToolingAgent {
             "A web-savvy agent that thinks it's better than Google",
         )?;
 
-        let tool_chain = ToolChain::new()
-            .add(WebBrowser::new(config.clone()))
-            .add(SearchTool::new(
-                SearchProvider::Google,
-                std::env::var("GOOGLE_API_KEY").unwrap_or_default(),
-            ))
-            .add(WebScraper::new()
-                .with_rate_limit(Duration::from_secs(1))
-                .with_user_agent("Kowalski/1.0"));
+        let chain = ToolChain::new(vec![
+            Box::new(WebBrowser::new()),
+            Box::new(SearchTool::new(SearchProvider::DuckDuckGo)),
+            Box::new(WebScraper::new(String::from("Kowalski Research Assistant")))
+        ]);
 
-        let cache = ToolCache::new()
-            .with_ttl(Duration::from_hours(24))
-            .with_storage(Storage::Local("./cache"));
+        let cache = ToolCache::new(Storage::Memory);
 
         Ok(Self {
             base,
-            tool_chain,
+            chain,
             cache,
         })
     }
@@ -95,7 +91,7 @@ impl Agent for ToolingAgent {
                 parameters: Default::default(),
             };
 
-            let tool_output = self.tool_chain.execute(tool_input).await?;
+            let tool_output = self.chain.execute(tool_input).await?;
             tool_output.content
         } else {
             content.to_string()
@@ -164,7 +160,7 @@ impl ToolingAgent {
             parameters: Default::default(),
         };
 
-        let output = self.tool_chain.execute(tool_input).await?;
+        let output = self.chain.execute(tool_input).await?;
         let results: Vec<SearchResult> = serde_json::from_str(&output.content)?;
         Ok(results)
     }
@@ -176,7 +172,7 @@ impl ToolingAgent {
             parameters: Default::default(),
         };
 
-        let output = self.tool_chain.execute(tool_input).await?;
+        let output = self.chain.execute(tool_input).await?;
         let page: ProcessedPage = serde_json::from_str(&output.content)?;
         Ok(page)
     }
