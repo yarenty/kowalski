@@ -5,6 +5,7 @@ use std::time::{Duration, SystemTime};
 use cached::TimedCache;
 use serde::{Serialize, Deserialize};
 use super::{ToolInput, ToolOutput, ToolError};
+use cached::Cached;
 
 /// Storage types for cache, because one size doesn't fit all.
 #[derive(Debug, Clone)]
@@ -12,6 +13,7 @@ pub enum Storage {
     Memory,
     Local(String),
     Redis(String),
+    None,
 }
 
 /// Cache configuration, because even caches need rules.
@@ -36,6 +38,7 @@ impl Default for CacheConfig {
 pub struct ToolCache {
     config: CacheConfig,
     memory_cache: TimedCache<String, ToolOutput>,
+    storage: Storage,
 }
 
 impl ToolCache {
@@ -47,6 +50,7 @@ impl ToolCache {
                 config.max_size,
             ),
             config,
+            storage: Storage::Memory,
         }
     }
 
@@ -60,18 +64,28 @@ impl ToolCache {
     }
 
     pub fn with_storage(mut self, storage: Storage) -> Self {
-        self.config.storage = storage;
+        self.storage = storage;
         self
     }
 
-    pub fn get(&self, input: &ToolInput) -> Option<ToolOutput> {
-        let key = self.create_cache_key(input);
-        self.memory_cache.cache_get(&key).cloned()
+    pub fn get(&mut self, key: &ToolInput) -> Option<ToolOutput> {
+        match &mut self.storage {
+            Storage::Memory => self.memory_cache.cache_get(&key.to_string()).cloned(),
+            Storage::Local(_) => None, // TODO: Implement local storage
+            Storage::Redis(_) => None, // TODO: Implement Redis storage
+            Storage::None => None,
+        }
     }
 
-    pub fn set(&self, input: &ToolInput, output: &ToolOutput) {
-        let key = self.create_cache_key(input);
-        self.memory_cache.cache_set(key, output.clone());
+    pub fn set(&mut self, key: &ToolInput, output: &ToolOutput) {
+        match &mut self.storage {
+            Storage::Memory => {
+                self.memory_cache.cache_set(key.to_string(), output.clone());
+            }
+            Storage::Local(_) => {}, // TODO: Implement local storage
+            Storage::Redis(_) => {}, // TODO: Implement Redis storage
+            Storage::None => {},
+        }
     }
 
     fn create_cache_key(&self, input: &ToolInput) -> String {

@@ -3,6 +3,8 @@
 
 use std::fmt;
 use std::error::Error;
+use crate::utils::{PdfReaderError, PaperCleanerError};
+use reqwest;
 
 #[derive(Debug)]
 pub enum AgentError {
@@ -12,6 +14,7 @@ pub enum AgentError {
     ConfigError(config::ConfigError),
     IoError(std::io::Error),
     ToolError(String),
+    SerializationError(String),
 }
 
 impl fmt::Display for AgentError {
@@ -23,8 +26,27 @@ impl fmt::Display for AgentError {
             AgentError::ConfigError(e) => write!(f, "Config error: {}", e),
             AgentError::IoError(e) => write!(f, "IO error: {}", e),
             AgentError::ToolError(e) => write!(f, "Tool error: {}", e),
+            AgentError::SerializationError(e) => write!(f, "Serialization error: {}", e),
         }
     }
 }
 
-impl Error for AgentError {} 
+impl Error for AgentError {}
+
+impl From<PdfReaderError> for AgentError {
+    fn from(err: PdfReaderError) -> Self {
+        AgentError::ToolError(err.to_string())
+    }
+}
+
+impl From<PaperCleanerError> for AgentError {
+    fn from(err: PaperCleanerError) -> Self {
+        AgentError::ToolError(err.to_string())
+    }
+}
+
+impl From<reqwest::Error> for AgentError {
+    fn from(err: reqwest::Error) -> Self {
+        AgentError::ServerError(err.to_string())
+    }
+} 

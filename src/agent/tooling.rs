@@ -12,6 +12,8 @@ use crate::role::Role;
 use super::{Agent, AgentError, BaseAgent};
 use super::types::{ChatRequest, StreamResponse};
 use crate::tools::{Tool, ToolChain, WebBrowser, SearchTool, WebScraper, ToolCache, Storage, ToolInput, ToolOutput};
+use crate::tools::search::SearchProvider;
+
 
 /// ToolingAgent: Your personal web crawler with a sense of humor.
 pub struct ToolingAgent {
@@ -26,16 +28,18 @@ impl Agent for ToolingAgent {
         let base = BaseAgent::new(
             config.clone(),
             "Tooling Agent",
-            "A web-savvy agent that thinks it's better than Google",
+            "A versatile agent that uses various tools to process information",
         )?;
 
-        let chain = ToolChain::new(vec![
-            Box::new(WebBrowser::new()),
-            Box::new(SearchTool::new(SearchProvider::DuckDuckGo)),
-            Box::new(WebScraper::new(String::from("Kowalski Research Assistant")))
-        ]);
+        let mut chain = ToolChain::new();
+        chain.add_tool(Box::new(WebBrowser::new(config.clone())));
+        chain.add_tool(Box::new(SearchTool::new(
+            SearchProvider::DuckDuckGo,
+            config.search.api_key.clone().unwrap_or_default(),
+        )));
+        chain.add_tool(Box::new(WebScraper::new()));
 
-        let cache = ToolCache::new(Storage::Memory);
+        let cache = ToolCache::new();
 
         Ok(Self {
             base,
@@ -86,11 +90,7 @@ impl Agent for ToolingAgent {
 
         // Process content through tool chain if it looks like a web request
         let processed_content = if content.starts_with("http") || content.contains("search:") {
-            let tool_input = ToolInput {
-                query: content.to_string(),
-                parameters: Default::default(),
-            };
-
+            let tool_input = ToolInput::new(content.to_string());
             let tool_output = self.chain.execute(tool_input).await?;
             tool_output.content
         } else {
@@ -101,10 +101,12 @@ impl Agent for ToolingAgent {
 
         let request = ChatRequest {
             model: conversation.model.clone(),
-            messages: conversation.messages.clone(),
+            messages: conversation.messages.iter()
+                .map(|m| super::types::Message::from(m.clone()))
+                .collect(),
             stream: true,
-            temperature: self.base.config.chat.temperature,
-            max_tokens: self.base.config.chat.max_tokens,
+            temperature: self.base.config.chat.temperature.unwrap_or(0.7),
+            max_tokens: self.base.config.chat.max_tokens.unwrap_or(2048) as usize,
         };
 
         let response = self.base.client
@@ -154,31 +156,23 @@ impl Agent for ToolingAgent {
 
 impl ToolingAgent {
     /// Searches the web, because Google is too mainstream.
-    pub async fn search(&self, query: &str) -> Result<Vec<SearchResult>, AgentError> {
-        let tool_input = ToolInput {
-            query: format!("search:{}", query),
-            parameters: Default::default(),
-        };
-
+    pub async fn search(&mut self, query: &str) -> Result<Vec<SearchResult>, AgentError> {
+        let tool_input = ToolInput::new(query.to_string());
         let output = self.chain.execute(tool_input).await?;
         let results: Vec<SearchResult> = serde_json::from_str(&output.content)?;
         Ok(results)
     }
 
     /// Fetches and processes a webpage, because raw HTML is for machines.
-    pub async fn fetch_page(&self, url: &str) -> Result<ProcessedPage, AgentError> {
-        let tool_input = ToolInput {
-            query: url.to_string(),
-            parameters: Default::default(),
-        };
-
+    pub async fn fetch_page(&mut self, url: &str) -> Result<ProcessedPage, AgentError> {
+        let tool_input = ToolInput::new(url.to_string());
         let output = self.chain.execute(tool_input).await?;
         let page: ProcessedPage = serde_json::from_str(&output.content)?;
         Ok(page)
     }
 
     /// Collects data from multiple pages, because one page is never enough.
-    pub async fn collect_data(&self, urls: Vec<String>) -> Result<Vec<ProcessedPage>, AgentError> {
+    pub async fn collect_data(&mut self, urls: Vec<String>) -> Result<Vec<ProcessedPage>, AgentError> {
         let mut results = Vec::new();
         for url in urls {
             if let Ok(page) = self.fetch_page(&url).await {

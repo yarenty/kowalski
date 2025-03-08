@@ -2,7 +2,7 @@
 /// "Tools are like toys for grown-up developers." - A Tool Enthusiast
 
 mod browser;
-mod search;
+pub mod search;
 mod scraper;
 mod cache;
 mod error;
@@ -17,6 +17,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
+use std::fmt;
 
 /// The core trait for all tools, because every tool needs a purpose.
 #[async_trait]
@@ -27,10 +28,32 @@ pub trait Tool: Send + Sync {
 }
 
 /// Input for tools, because tools need something to work with.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Hash, Serialize, Deserialize)]
 pub struct ToolInput {
     pub query: String,
-    pub parameters: HashMap<String, serde_json::Value>,
+    pub context: Option<String>,
+}
+
+impl fmt::Display for ToolInput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.query, self.context.as_deref().unwrap_or(""))
+    }
+}
+
+impl ToolInput {
+    pub fn new(query: String) -> Self {
+        Self {
+            query,
+            context: None,
+        }
+    }
+
+    pub fn with_context(query: String, context: String) -> Self {
+        Self {
+            query,
+            context: Some(context),
+        }
+    }
 }
 
 /// Output from tools, because tools need to show off their work.
@@ -55,28 +78,28 @@ impl ToolChain {
         }
     }
 
+    pub fn add_tool<T: Tool + 'static>(&mut self, tool: Box<T>) {
+        self.tools.push(tool);
+    }
+
     pub fn add<T: Tool + 'static>(mut self, tool: T) -> Self {
         self.tools.push(Box::new(tool));
         self
     }
 
-    pub async fn execute(&self, input: ToolInput) -> Result<ToolOutput, ToolError> {
+    pub async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, ToolError> {
         if let Some(cached) = self.cache.get(&input) {
             return Ok(cached);
         }
 
-        let mut current_input = input;
+        let mut current_input = input.clone();
         let mut final_output = None;
 
         for tool in &self.tools {
             let output = tool.execute(current_input).await?;
-            self.cache.set(&current_input, &output);
+            self.cache.set(&input, &output);
             
-            current_input = ToolInput {
-                query: output.content.clone(),
-                parameters: output.metadata.clone(),
-            };
-            
+            current_input = ToolInput::new(output.content.clone());
             final_output = Some(output);
         }
 

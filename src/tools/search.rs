@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use super::{Tool, ToolInput, ToolOutput, ToolError};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum SearchProvider {
     DuckDuckGo,
     Custom(String),
@@ -16,77 +16,43 @@ pub enum SearchProvider {
 
 pub struct SearchTool {
     provider: SearchProvider,
-    client: reqwest::Client,
+    api_key: String,
 }
 
 impl SearchTool {
     pub fn new(provider: SearchProvider, api_key: String) -> Self {
-        let client = reqwest::Client::builder()
-            .user_agent("Kowalski/1.0")
-            .build()
-            .unwrap_or_default();
-
-        Self { provider, client }
-    }
-
-    async fn search_duckduckgo(&self, query: &str) -> Result<Vec<SearchResult>, ToolError> {
-        let url = format!("https://api.duckduckgo.com/?q={}&format=json", urlencoding::encode(query));
-        
-        let response = self.client
-            .get(&url)
-            .send()
-            .await
-            .map_err(ToolError::RequestError)?;
-
-        let data: DuckDuckGoResponse = response
-            .json()
-            .await
-            .map_err(ToolError::JsonError)?;
-
-        Ok(data.results.into_iter().map(|r| SearchResult {
-            title: r.title,
-            url: r.url,
-            snippet: r.snippet,
-        }).collect())
+        Self {
+            provider,
+            api_key,
+        }
     }
 }
 
 #[async_trait]
 impl Tool for SearchTool {
     fn name(&self) -> &str {
-        "search_tool"
+        "search"
     }
 
     fn description(&self) -> &str {
-        "Searches the web using various providers, because one search engine is never enough"
+        "Searches the web using various search providers"
     }
 
     async fn execute(&self, input: ToolInput) -> Result<ToolOutput, ToolError> {
         let query = input.query;
-        
-        let results = match self.provider {
-            SearchProvider::DuckDuckGo => self.search_duckduckgo(&query).await?,
-            SearchProvider::Custom(ref url) => {
-                let response = self.client
-                    .get(url)
-                    .query(&[("q", &query)])
-                    .send()
-                    .await
-                    .map_err(ToolError::RequestError)?;
+        let url = format!("https://api.duckduckgo.com/?q={}&format=json", urlencoding::encode(&query));
 
-                let data: Vec<SearchResult> = response
-                    .json()
-                    .await
-                    .map_err(ToolError::JsonError)?;
-
-                data
-            }
-        };
+        let response = reqwest::get(&url)
+            .await
+            .map_err(ToolError::RequestError)?
+            .text()
+            .await
+            .map_err(ToolError::RequestError)?;
 
         Ok(ToolOutput {
-            content: serde_json::to_string(&results).map_err(ToolError::JsonError)?,
+            content: response,
             metadata: Default::default(),
-            source: Some(format!("search:{:?}", self.provider)),
+            source: Some(url),
         })
     }
 }

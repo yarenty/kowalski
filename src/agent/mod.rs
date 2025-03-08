@@ -4,10 +4,12 @@
 mod academic;
 mod tooling;
 mod error;
+mod types;
 
 pub use academic::AcademicAgent;
 pub use tooling::ToolingAgent;
 pub use error::AgentError;
+pub use types::{ChatRequest, StreamResponse, Message};
 
 use async_trait::async_trait;
 use crate::config::Config;

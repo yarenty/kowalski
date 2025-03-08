@@ -5,12 +5,30 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChatRequest {
-    pub messages: Vec<String>,
+    pub model: String,
+    pub messages: Vec<Message>,
     pub stream: bool,
+    pub temperature: f32,
+    pub max_tokens: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StreamResponse {
-    pub content: String,
     pub done: bool,
+    pub message: Message,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Message {
+    pub role: String,
+    pub content: String,
+}
+
+impl From<crate::conversation::Message> for Message {
+    fn from(msg: crate::conversation::Message) -> Self {
+        Self {
+            role: msg.role,
+            content: msg.content,
+        }
+    }
 } 

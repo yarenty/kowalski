@@ -29,7 +29,7 @@ use utils::{PaperCleaner, PdfReader};
 /// * `Result<String, Box<dyn std::error::Error>>` - Either the file contents or an error that will make you question your career choices
 fn read_input_file(file_path: &str) -> Result<String, Box<dyn std::error::Error>> {
     if file_path.to_lowercase().ends_with(".pdf") {
-        Ok(PdfReader::read_pdf(file_path)?)
+        Ok(PdfReader::read_pdf_file(file_path)?)
     } else {
         Ok(fs::read_to_string(file_path)?)
     }
@@ -41,6 +41,7 @@ fn read_input_file(file_path: &str) -> Result<String, Box<dyn std::error::Error>
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load configuration
     let config = config::Config::load()?;
+    println!("Loaded configuration with search provider: {}", config.search.provider);
 
     // Initialize model manager
     let model_manager = ModelManager::new(config.ollama.base_url.clone())?;
@@ -73,42 +74,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Initialize agents
-    let mut academic_agent = AcademicAgent::new(config.clone())?;
+    // let mut academic_agent = AcademicAgent::new(config.clone())?;
     let mut tooling_agent = ToolingAgent::new(config)?;
 
-    // Example: Process a research paper
-    println!("\nProcessing research paper...");
-    let conversation_id = academic_agent.start_conversation(&model_name);
-    println!("Academic Agent Conversation ID: {}", conversation_id);
+    // // Example: Process a research paper
+    // println!("\nProcessing research paper...");
+    // let conversation_id = academic_agent.start_conversation(&model_name);
+    // println!("Academic Agent Conversation ID: {}", conversation_id);
 
-    let role = Role::translator(Some(Audience::Scientist), Some(Preset::Questions));
-    let mut response = academic_agent
-        .chat_with_history(
-            &conversation_id,
-            "/opt/research/2025/coddllm_2502.00329v1.pdf",
-            Some(role),
-        )
-        .await?;
+    // let role = Role::translator(Some(Audience::Scientist), Some(Preset::Questions));
+    // let mut response = academic_agent
+    //     .chat_with_history(
+    //         &conversation_id,
+    //         "/opt/research/2025/coddllm_2502.00329v1.pdf",
+    //         Some(role),
+    //     )
+    //     .await?;
 
-    let mut buffer = String::new();
-    while let Some(chunk) = response.chunk().await? {
-        match academic_agent.process_stream_response(&conversation_id, &chunk).await {
-            Ok(Some(content)) => {
-                print!("{}", content);
-                io::stdout().flush()?;
-                buffer.push_str(&content);
-            }
-            Ok(None) => {
-                academic_agent.add_message(&conversation_id, "assistant", &buffer).await;
-                println!("\n");
-                break;
-            }
-            Err(e) => {
-                eprintln!("\nError processing stream: {}", e);
-                break;
-            }
-        }
-    }
+    // let mut buffer = String::new();
+    // while let Some(chunk) = response.chunk().await? {
+    //     match academic_agent.process_stream_response(&conversation_id, &chunk).await {
+    //         Ok(Some(content)) => {
+    //             print!("{}", content);
+    //             io::stdout().flush()?;
+    //             buffer.push_str(&content);
+    //         }
+    //         Ok(None) => {
+    //             academic_agent.add_message(&conversation_id, "assistant", &buffer).await;
+    //             println!("\n");
+    //             break;
+    //         }
+    //         Err(e) => {
+    //             eprintln!("\nError processing stream: {}", e);
+    //             break;
+    //         }
+    //     }
+    // }
 
     // Example: Web search and processing
     println!("\nPerforming web search...");
@@ -128,7 +129,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\nProcessing first search result...");
         let page = tooling_agent.fetch_page(&first_result.url).await?;
         
-        let role = Role::translator(Some(Audience::Developer), Some(Preset::Summarize));
+        let role = Role::translator(Some(Audience::Family), Some(Preset::Simplify));
         let mut response = tooling_agent
             .chat_with_history(&conversation_id, &page.content, Some(role))
             .await?;

@@ -6,6 +6,7 @@ use fantoccini::{Client, ClientBuilder};
 use scraper::{Html, Selector};
 use super::{Tool, ToolInput, ToolOutput, ToolError};
 use std::time::Duration;
+use serde_json::{json, Value};
 
 pub struct WebBrowser {
     client: reqwest::Client,
@@ -29,12 +30,11 @@ impl WebBrowser {
     }
 
     pub async fn init_headless(&mut self) -> Result<(), ToolError> {
-        let caps = serde_json::json!({
-            "browserName": "firefox",
-            "moz:firefoxOptions": {
-                "args": ["--headless"]
-            }
-        });
+        let mut caps = serde_json::Map::new();
+        caps.insert("browserName".to_string(), json!("firefox"));
+        caps.insert("moz:firefoxOptions".to_string(), json!({
+            "args": ["--headless"]
+        }));
 
         self.headless = Some(
             ClientBuilder::native()

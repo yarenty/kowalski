@@ -3,6 +3,10 @@
 
 use async_trait::async_trait;
 use governor::{Quota, RateLimiter};
+use governor::clock::DefaultClock;
+use governor::middleware::NoOpMiddleware;
+use governor::state::direct::NotKeyed;
+use governor::state::InMemoryState;
 use scraper::{Html, Selector};
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -11,25 +15,20 @@ use super::{Tool, ToolInput, ToolOutput, ToolError};
 
 pub struct WebScraper {
     client: reqwest::Client,
-    rate_limiter: Arc<RateLimiter>,
+    rate_limiter: Arc<RateLimiter<NotKeyed, InMemoryState, DefaultClock, NoOpMiddleware>>,
     user_agent: String,
 }
 
 impl WebScraper {
     pub fn new() -> Self {
-        let client = reqwest::Client::builder()
-            .user_agent("Kowalski/1.0")
-            .build()
-            .unwrap_or_default();
-
-        let rate_limiter = Arc::new(RateLimiter::direct(Quota::per_second(
-            NonZeroU32::new(1).unwrap(),
-        )));
-
+        let client = reqwest::Client::new();
+        let quota = Quota::per_second(NonZeroU32::new(2).unwrap());
+        let rate_limiter = Arc::new(RateLimiter::direct(quota));
+        
         Self {
             client,
             rate_limiter,
-            user_agent: "Kowalski/1.0".to_string(),
+            user_agent: String::from("Kowalski Research Assistant"),
         }
     }
 
@@ -38,7 +37,8 @@ impl WebScraper {
             (1.0 / duration.as_secs_f32()).ceil() as u32
         ).unwrap_or(NonZeroU32::new(1).unwrap());
 
-        self.rate_limiter = Arc::new(RateLimiter::direct(Quota::per_second(requests_per_second)));
+        let quota = Quota::per_second(requests_per_second);
+        self.rate_limiter = Arc::new(RateLimiter::direct(quota));
         self
     }
 

@@ -3,11 +3,11 @@
 
 use async_trait::async_trait;
 use reqwest::Response;
-use serde_json::json;
 use crate::config::Config;
 use crate::conversation::{Conversation, Message};
 use crate::role::Role;
 use super::{Agent, AgentError, BaseAgent};
+use super::types::{ChatRequest, StreamResponse};
 use crate::utils::{PdfReader, PaperCleaner};
 
 /// AcademicAgent: Your personal research assistant with a PhD in sarcasm.
@@ -85,10 +85,12 @@ impl Agent for AcademicAgent {
 
         let request = ChatRequest {
             model: conversation.model.clone(),
-            messages: conversation.messages.clone(),
+            messages: conversation.messages.iter()
+                .map(|m| super::types::Message::from(m.clone()))
+                .collect(),
             stream: true,
-            temperature: self.base.config.chat.temperature,
-            max_tokens: self.base.config.chat.max_tokens,
+            temperature: self.base.config.chat.temperature.unwrap_or(0.7),
+            max_tokens: self.base.config.chat.max_tokens.unwrap_or(2048) as usize,
         };
 
         let response = self.base.client
