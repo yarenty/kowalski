@@ -1,6 +1,6 @@
 [package]
 name = "kowalski"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "A Rust-based agent for interacting with Ollama models"
 license = "MIT"
@@ -37,3 +37,30 @@ toml = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.7", features = ["v4", "serde"] }
 pdf-extract = "0.8"
+
+# Web browsing and scraping
+scraper = "0.23"           # HTML parsing and scraping
+url = "2.5"               # URL parsing and manipulation
+headless_chrome = "1.0"   # JavaScript rendering support
+select = "0.6"           # CSS selector based scraping
+
+# Search engines
+google-apis = "5.0"      # Google Custom Search API
+duckduckgo-rs = "1.0"   # DuckDuckGo API client
+
+# Data processing
+html2md = "0.2"         # HTML to Markdown conversion
+cached = "0.55"         # Result caching
+regex = "1.10"          # Pattern matching
+quick-xml = "0.37"      # XML processing
+encoding_rs = "0.8"     # Character encoding support
+
+# Storage
+sled = "0.34"           # Embedded database for caching
+rusqlite = "0.34"       # SQLite for local storage
+flate2 = "1.0"         # Compression for cached data
+
+# Rate limiting and async utilities
+governor = "0.8"        # Rate limiting
+futures = "0.3"         # Async utilities
+async-trait = "0.1"     # Async trait support

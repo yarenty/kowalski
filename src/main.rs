@@ -9,8 +9,9 @@ mod conversation;
 mod model;
 mod role;
 mod utils;
+mod tools;
 
-use agent::Agent;
+use agent::{Agent, AcademicAgent, ToolingAgent};
 use model::ModelManager;
 use role::{Audience, Preset, Role};
 use serde_json::Value;
@@ -56,9 +57,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Check if default model exists and pull it if needed
-    if !model_manager.model_exists(model_name).await? {
+    if !model_manager.model_exists(&model_name).await? {
         println!("Pulling model {}...", model_name);
-        let mut stream = model_manager.pull_model(model_name).await?;
+        let mut stream = model_manager.pull_model(&model_name).await?;
         while let Some(chunk) = stream.chunk().await? {
             if let Ok(text) = String::from_utf8(chunk.to_vec()) {
                 let v: Value = serde_json::from_str(&text)?;
@@ -71,46 +72,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\nModel pulled successfully!");
     }
 
-    // Initialize agent with config
-    let mut agent = Agent::new(config)?;
+    // Initialize agents
+    let mut academic_agent = AcademicAgent::new(config.clone())?;
+    let mut tooling_agent = ToolingAgent::new(config)?;
 
-    // Start a new conversation
-    println!("\nStarting a new conversation...");
-    let conversation_id = agent.start_conversation(model_name);
-    println!("Conversation ID: {}", conversation_id);
+    // Example: Process a research paper
+    println!("\nProcessing research paper...");
+    let conversation_id = academic_agent.start_conversation(&model_name);
+    println!("Academic Agent Conversation ID: {}", conversation_id);
 
-    // Read input from file (supports both PDF and text files)
-    let msg = read_input_file("/opt/research/2025/coddllm_2502.00329v1.pdf")?;
-
-    println!("{}", &msg);
-
-    println!(" Cleaning...");
-    let msg = PaperCleaner::clean(&msg)?;
-
-    println!("{}", &msg);
-    // Chat with history
-    println!("\nChatting with history...");
     let role = Role::translator(Some(Audience::Scientist), Some(Preset::Questions));
-    let mut response = agent
-        .stream_chat_with_history(&conversation_id, &msg, Some(role))
+    let mut response = academic_agent
+        .chat_with_history(
+            &conversation_id,
+            "/opt/research/2025/coddllm_2502.00329v1.pdf",
+            Some(role),
+        )
         .await?;
-    let mut buffer = String::new();
 
+    let mut buffer = String::new();
     while let Some(chunk) = response.chunk().await? {
-        match agent
-            .process_stream_response(&conversation_id, &chunk)
-            .await
-        {
+        match academic_agent.process_stream_response(&conversation_id, &chunk).await {
             Ok(Some(content)) => {
                 print!("{}", content);
                 io::stdout().flush()?;
                 buffer.push_str(&content);
             }
             Ok(None) => {
-                // Stream is complete, final message has been added to conversation
-                agent
-                    .add_message(&conversation_id, "assistant", &buffer)
-                    .await;
+                academic_agent.add_message(&conversation_id, "assistant", &buffer).await;
                 println!("\n");
                 break;
             }
@@ -121,11 +110,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Get conversation history
-    if let Some(conversation) = agent.get_conversation(&conversation_id) {
-        println!("\nConversation History:");
-        for message in &conversation.messages {
-            println!("{}: {}", message.role, message.content);
+    // Example: Web search and processing
+    println!("\nPerforming web search...");
+    let conversation_id = tooling_agent.start_conversation(&model_name);
+    println!("Tooling Agent Conversation ID: {}", conversation_id);
+
+    let search_results = tooling_agent.search("Latest developments in Rust programming").await?;
+    for result in &search_results {
+        println!("Title: {}", result.title);
+        println!("URL: {}", result.url);
+        println!("Snippet: {}", result.snippet);
+        println!();
+    }
+
+    // Process the first search result
+    if let Some(first_result) = search_results.first() {
+        println!("\nProcessing first search result...");
+        let page = tooling_agent.fetch_page(&first_result.url).await?;
+        
+        let role = Role::translator(Some(Audience::Developer), Some(Preset::Summarize));
+        let mut response = tooling_agent
+            .chat_with_history(&conversation_id, &page.content, Some(role))
+            .await?;
+
+        let mut buffer = String::new();
+        while let Some(chunk) = response.chunk().await? {
+            match tooling_agent.process_stream_response(&conversation_id, &chunk).await {
+                Ok(Some(content)) => {
+                    print!("{}", content);
+                    io::stdout().flush()?;
+                    buffer.push_str(&content);
+                }
+                Ok(None) => {
+                    tooling_agent.add_message(&conversation_id, "assistant", &buffer).await;
+                    println!("\n");
+                    break;
+                }
+                Err(e) => {
+                    eprintln!("\nError processing stream: {}", e);
+                    break;
+                }
+            }
         }
     }
 
