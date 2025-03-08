@@ -70,3 +70,7 @@ flate2 = "1.0"          # Compression for cached data
 # Rate limiting and utilities
 governor = "0.8"         # Rate limiting
 urlencoding = "2.1.0"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"

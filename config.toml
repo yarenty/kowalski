@@ -9,5 +9,5 @@ stream = true
 
 
 [search]
-provider = "duckduckgo"
+provider = "bing"
 api_key = ""  # DuckDuckGo doesn't require an API key

@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
 use std::fmt;
+use log::{debug, info};
 
 /// The core trait for all tools, because every tool needs a purpose.
 #[async_trait]
@@ -88,21 +89,24 @@ impl ToolChain {
     }
 
     pub async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, ToolError> {
-        println!("Executing tool chain with input: {}", input);
+        debug!("Executing tool chain with input: {}", input);
         if let Some(cached) = self.cache.get(&input) {
-            println!("Cache hit for input: {}", input);
+            debug!("Cache hit for input: {}", input);
             return Ok(cached);
         }
 
         let mut current_input = input.clone();
         let mut final_output = None;
 
-        println!("Tools in chain: {}", self.tools.iter().map(|t| t.name()).collect::<Vec<_>>().join(", "));
+        info!("Tools in chain: {}", self.tools.iter().map(|t| t.name()).collect::<Vec<_>>().join(", "));
 
         for tool in &self.tools {
-            println!("Executing tool: {}", tool.name());
+            debug!("Executing tool: {}", tool.name());
             let output = tool.execute(current_input).await?;
+            debug!("Tool output: {:?}", output);
             self.cache.set(&input, &output);
+
+            debug!("Cache set for input: {}", input);
             
             current_input = ToolInput::new(output.content.clone());
             final_output = Some(output);

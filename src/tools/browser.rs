@@ -7,6 +7,7 @@ use scraper::{Html, Selector};
 use super::{Tool, ToolInput, ToolOutput, ToolError};
 use std::time::Duration;
 use serde_json::{json, Value};
+use log::{debug, info};
 
 pub struct WebBrowser {
     client: reqwest::Client,
@@ -21,7 +22,7 @@ impl WebBrowser {
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
 
-        println!("Client: {:?}", &client);
+        info!("Client: {:?}", &client);
 
         Self {
             client,
@@ -73,22 +74,24 @@ impl Tool for WebBrowser {
     async fn execute(&self, input: ToolInput) -> Result<ToolOutput, ToolError> {
         let url = input.query;
         
-        println!("Executing web browser tool with URL: {}", url);
+        debug!("Executing web browser tool with URL: {}", url);
         // Try simple GET request first
         let response = self.client
             .get(&url)
             .send()
             .await
             .map_err(ToolError::RequestError)?;
-        println!("Response: {:?}", &response);
+        debug!("Response: {:?}", &response);
 
         let html = response
             .text()
             .await
             .map_err(ToolError::RequestError)?;
-        println!("HTML: {:?}", &html);
+        debug!("HTML: {:?}", &html);
+        
         let content = self.extract_content(&html).await?;
-        println!("Content: {:?}", &content);
+        debug!("Content: {:?}", &content);
+
         Ok(ToolOutput {
             content,
             metadata: Default::default(),

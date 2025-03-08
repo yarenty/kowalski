@@ -5,6 +5,7 @@
 /// Think of it as a settings menu for your AI, but without the annoying popups.
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use log::{info, warn, error};
 
 /// The main configuration struct that makes our AI feel special.
 /// "Configs are like recipes - they work until you try to follow them."
@@ -61,16 +62,16 @@ impl Config {
         // 1. Try local config.toml first
         let local_config = std::path::Path::new("config.toml");
         if local_config.exists() {
-            println!("Using local config.toml");
+            info!("Using local config.toml");
             builder = builder.add_source(config::File::from(local_config));
         } else {
             // 2. Try system config path
             let config_path = Self::get_config_path();
             if config_path.exists() {
-                println!("Using system config at: {}", config_path.display());
+                info!("Using system config at: {}", config_path.display());
                 builder = builder.add_source(config::File::from(config_path));
             } else {
-                println!("No config file found, using defaults with environment overrides");
+                warn!("No config file found, using defaults with environment overrides");
             }
         }
 
@@ -86,7 +87,7 @@ impl Config {
             Err(_) => {
                 let default_config = Config::default();
                 if let Err(e) = default_config.save() {
-                    eprintln!("Warning: Could not save default config: {}", e);
+                    error!("Warning: Could not save default config: {}", e);
                 }
                 Ok(default_config)
             }

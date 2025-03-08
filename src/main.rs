@@ -18,6 +18,8 @@ use serde_json::Value;
 use std::fs;
 use std::io::{self, Write};
 use utils::{PaperCleaner, PdfReader};
+use env_logger;
+use log::{info, warn, error};
 
 /// Reads input from a file, because apparently typing is too mainstream.
 /// "File reading is like opening presents - you never know what you're gonna get."
@@ -39,16 +41,19 @@ fn read_input_file(file_path: &str) -> Result<String, Box<dyn std::error::Error>
 /// "Main functions are like first dates - they're exciting but usually end in disappointment."
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize logging
+    env_logger::init();
+
     // Load configuration
     let config = config::Config::load()?;
-    println!("Loaded configuration with search provider: {}", config.search.provider);
+    info!("Loaded configuration with search provider: {}", config.search.provider);
 
     // Initialize model manager
     let model_manager = ModelManager::new(config.ollama.base_url.clone())?;
     let model_name = "michaelneale/deepseek-r1-goose";
 
     // List available models
-    println!("Listing available models...");
+    info!("Listing available models...");
     let models = model_manager.list_models().await?;
     for model in models.models {
         println!(
@@ -112,12 +117,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // }
 
     // Example: Web search and processing
-    println!("\nPerforming web search...");
+    info!("\nPerforming web search...");
     let conversation_id = tooling_agent.start_conversation(&model_name);
-    println!("Tooling Agent Conversation ID: {}", conversation_id);
+    info!("Tooling Agent Conversation ID: {}", conversation_id);
 
     let search_results = tooling_agent.search("Latest developments in Rust programming").await?;
-    println!("Search results: {:?}", &search_results);
+    info!("Search results: {:?}", &search_results);
     for result in &search_results {
         println!("Title: {}", result.title);
         println!("URL: {}", result.url);
@@ -127,7 +132,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Process the first search result
     if let Some(first_result) = search_results.first() {
-        println!("\nProcessing first search result...");
+        info!("\nProcessing first search result...");
         let page = tooling_agent.fetch_page(&first_result.url).await?;
         
         let role = Role::translator(Some(Audience::Family), Some(Preset::Simplify));

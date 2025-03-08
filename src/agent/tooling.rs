@@ -13,7 +13,7 @@ use super::{Agent, AgentError, BaseAgent};
 use super::types::{ChatRequest, StreamResponse};
 use crate::tools::{Tool, ToolChain, WebBrowser, SearchTool, WebScraper, ToolCache, Storage, ToolInput, ToolOutput};
 use crate::tools::search::SearchProvider;
-
+use log::{debug, info};
 
 /// ToolingAgent: Your personal web crawler with a sense of humor.
 pub struct ToolingAgent {
@@ -38,6 +38,8 @@ impl Agent for ToolingAgent {
             config.search.api_key.clone().unwrap_or_default(),
         )));
         // chain.add_tool(Box::new(WebScraper::new()));
+
+
 
         let cache = ToolCache::new();
 
@@ -158,10 +160,88 @@ impl ToolingAgent {
     /// Searches the web, because Google is too mainstream.
     pub async fn search(&mut self, query: &str) -> Result<Vec<SearchResult>, AgentError> {
         let tool_input = ToolInput::new(query.to_string());
-        println!("Searching for: {}", query);
+        debug!("Searching for: {}", query);
         let output = self.chain.execute(tool_input).await?;
-        println!("Search results: {:?}", &output.content);
-        let results: Vec<SearchResult> = serde_json::from_str(&output.content)?;
+        debug!("Raw HTML output received");
+
+        let document = scraper::Html::parse_document(&output.content);
+        debug!("Parsed HTML document");
+        info!("HTML document: {}", &document.html());
+        document.select(&scraper::Selector::parse("link").unwrap_or_else(|_| {
+            scraper::Selector::parse("a").unwrap_or_else(|_| {
+                scraper::Selector::parse("a").expect("Failed to create link selector")
+            })
+        })).for_each(|el| {
+            info!("Link: {:?}", el.value().attr("href"));
+        });
+
+
+        let mut results = Vec::new();
+
+        // DuckDuckGo specific selectors
+        let result_selector = scraper::Selector::parse(".result__body").unwrap_or_else(|_| {
+            scraper::Selector::parse(".nrn-react-div").unwrap_or_else(|_| {
+                scraper::Selector::parse(".web-result").expect("Failed to create result selector")
+            })
+        });
+
+        let title_selector = scraper::Selector::parse(".result__title, .result__a").expect("Failed to create title selector");
+        let url_selector = scraper::Selector::parse(".result__url").expect("Failed to create url selector");
+        let snippet_selector = scraper::Selector::parse(".result__snippet").expect("Failed to create snippet selector");
+
+        for element in document.select(&result_selector) {
+            let title = element.select(&title_selector)
+                .next()
+                .map(|el| el.text().collect::<String>())
+                .unwrap_or_default();
+
+            let url = element.select(&url_selector)
+                .next()
+                .map(|el| el.text().collect::<String>())
+                .unwrap_or_else(|| {
+                    element.select(&title_selector)
+                        .next()
+                        .and_then(|el| el.value().attr("href"))
+                        .unwrap_or_default()
+                        .to_string()
+                });
+
+            let snippet = element.select(&snippet_selector)
+                .next()
+                .map(|el| el.text().collect::<String>())
+                .unwrap_or_default();
+
+            if !title.is_empty() {
+                results.push(SearchResult {
+                    title: title.trim().to_string(),
+                    url: url.trim().to_string(),
+                    snippet: snippet.trim().to_string(),
+                });
+            }
+        }
+
+        // If no results found, try alternative selectors
+        if results.is_empty() {
+            info!("No results found with primary selectors, trying alternatives");
+            let link_selector = scraper::Selector::parse("link").expect("Failed to create link selector");
+            let links: Vec<_> = document.select(&link_selector).collect();
+            info!("Found {} links", links.len());
+            
+            for link in links {
+                if let (Some(href), Some(text)) = (link.value().attr("href"), Some(link.text().collect::<String>())) {
+                    info!("Link: {:?}", href);
+                    if (href.starts_with("http") || href.starts_with("https")) && !text.trim().is_empty() {
+                        results.push(SearchResult {
+                            title: text.trim().to_string(),
+                            url: href.to_string(),
+                            snippet: String::new(),
+                        });
+                    }
+                }
+            }
+        }
+
+        debug!("Parsed {} search results", results.len());
         Ok(results)
     }
 
@@ -169,8 +249,46 @@ impl ToolingAgent {
     pub async fn fetch_page(&mut self, url: &str) -> Result<ProcessedPage, AgentError> {
         let tool_input = ToolInput::new(url.to_string());
         let output = self.chain.execute(tool_input).await?;
-        let page: ProcessedPage = serde_json::from_str(&output.content)?;
-        Ok(page)
+        
+        let document = scraper::Html::parse_document(&output.content);
+        
+        // Extract title from meta tags or title tag
+        let title = document
+            .select(&scraper::Selector::parse("title").expect("Failed to create title selector"))
+            .next()
+            .map(|el| el.text().collect::<String>())
+            .unwrap_or_default();
+
+        // Extract main content, prioritizing main content areas
+        let content_selector = scraper::Selector::parse("article, main, .content, .main-content, body").expect("Failed to create content selector");
+        let content = document
+            .select(&content_selector)
+            .map(|el| el.text().collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+            .trim()
+            .to_string();
+
+        // Extract metadata from meta tags
+        let meta_selector = scraper::Selector::parse("meta[name][content], meta[property][content]").expect("Failed to create meta selector");
+        let mut metadata = HashMap::new();
+        for meta in document.select(&meta_selector) {
+            if let (Some(name), Some(content)) = (
+                meta.value().attr("name").or(meta.value().attr("property")),
+                meta.value().attr("content")
+            ) {
+                metadata.insert(name.to_string(), content.to_string());
+            }
+        }
+
+        info!("Metadata: {:?}", &metadata);
+        info!("Content: {}", &content);
+        Ok(ProcessedPage {
+            url: url.to_string(),
+            title,
+            content,
+            metadata,
+        })
     }
 
     /// Collects data from multiple pages, because one page is never enough.
