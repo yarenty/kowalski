@@ -1,84 +1,127 @@
-# High Level Features
+# ROADMAP
 
-## Model Management & Integration
+## Phase 0:  First Blood
 
-- Model performance metrics tracking (because we need more graphs to ignore)
-- Model comparison tools (for when you can't decide which AI is less wrong)
-- Support for multiple model providers (Ollama, OpenAI, Anthropic) (because vendor lock-in is so last year)
-- Model fine-tuning interface (teach old AIs new tricks)
-- Model caching system (because waiting for responses is like watching grass grow)
+focus on managable but fully functional agent that could give obvious benefits: 
+- [x] connecting to local ollama server
+- [x] processing user request - respond in streaming manner
+- [x] simple roles
+- [x] Rust interface
+- [x] initial release 
 
-## Advanced Document Processing
 
-- Support for more document formats (DOCX, EPUB, HTML) (because PDFs aren't frustrating enough)
-- Image processing and OCR capabilities (let's make the AI squint at pictures)
-- Markdown rendering and processing (because plain text is too mainstream)
-- Table extraction and processing (Excel's worst nightmare)
-- Academic paper specific processing:
-    - Citation extraction and management
-    - Figure and table extraction
-    - LaTeX support (because some people enjoy pain)
+## Phase 1: Talk to me
 
-## Conversation & Memory Management
+> "Low-hanging fruit is still fruit, even if it's bruised." - A Pragmatic Gardener
 
-- Long-term conversation storage (because AIs need therapy too)
--  Conversation search and indexing (find that one useful response among thousands of "I don't know"s)
-- Conversation templates for specific tasks (because copy-pasting is hard)
-- Export conversations to various formats (PDF, HTML, Markdown) (for posterity)
-- Context window management (because memory isn't infinite, despite what Chrome thinks)
+Goals:
+   - Set up basic architecture for future features
+   - Focus on CLI and document support
 
-## Advanced Role System
+Tasks:
 
-- Role templates and custom role creation (play dress-up with your AI)
-- Role chaining (make AIs argue with themselves)
-- Role-specific memory and context (because personalities need baggage)
-- Dynamic role switching based on context (AI with multiple personality features™)
-- Role performance analytics (measure how well your AI plays pretend)
+- [ ] CLI Interface
+   -  Rich formatting and interactive mode
+   -  Command history and auto-completion
+      ```rust
+      // Example CLI structure
+      kowalski chat "What's the meaning of life?"
+      kowalski pdf analyze research-paper.pdf
+      kowalski model list
+      ```
 
-## User Interface & Interaction
+- [ ] Document Format Support 
+   - DOCX, Markdown, HTML support
+   - Table extraction
+ 
+- [ ] Conversation Management 
+   - Search and indexing
+   - Export to various formats
 
-- CLI interface with rich formatting (because GUIs are overrated)
-- Web interface (for those who fear the terminal)
-- REST API (because everything needs to be a service)
-- WebSocket support for real-time interactions (because HTTP polling is so 2010)
-- Interactive mode with command history (like a shell, but more pretentious)
 
-## Integration & Automation
+## Phase 2: Perform
 
-- Git integration (let AI review your code and judge your life choices)
-- CI/CD pipeline integration (automate everything, break things faster)
-- Slack/Discord/Teams integration (because AIs need social media too)
-- Webhook support (for when you need to trigger AI existential crises automatically)
-- Task automation and scheduling (let AI handle your boring tasks)
+> "Medium complexity is like a teenager - awkward but manageable." - A Patient Developer
 
-## Security & Privacy
+Goals:
+   - Improve existing functionality
+   - Start working on provider integrations
 
-- End-to-end encryption (because paranoia is a feature)
-- Role-based access control (keep the AI on a need-to-know basis)
-- Conversation anonymization (because even AIs deserve privacy)
-- Audit logging (track who made the AI say what)
-- Content filtering (keep the AI family-friendly)
+Tasks: 
 
-## Analytics & Monitoring
+- [ ] Multiple Model Providers
+   - OpenAI, Anthropic integration
+   - Model switching
+   ```rust 
+   let openai = Provider::OpenAI::new(config);
+   let anthropic = Provider::Anthropic::new(config);
+   ```
 
-- Usage statistics and analytics (because managers love graphs)
-- Performance monitoring (watch your CPU cry in real-time)
-- Cost tracking (monitor your AI's expensive habits)
-- Response quality metrics (measure how often the AI is actually helpful)
-- Error analytics and reporting (because someone needs to read those stack traces)
+- [ ] Advanced Role System 
+   - Custom role creation
+   - Role templates
+   - Role chaining
+   ```rust
+   let custom_role = Role::builder()
+       .with_personality("sarcastic")
+       .with_expertise("rust")
+       .build()?;
+   ```
 
-## Advanced Features
+- [ ] Performance Monitoring
+    - Response times
+    - Token usage
+    - Cost tracking
+    ```rust
+   agent.metrics.track_response_time(start, end);
+   agent.metrics.log_token_usage(tokens_used);
+   ```
 
-- Multi-language support (make the AI confused in multiple languages)
-- Custom prompt templates (because writing prompts is an art form)
-- Chain-of-thought visualization (watch the AI think it's thinking)
-- Semantic search across conversations (find that needle in the AI haystack)
-- Auto-summarization of long conversations (TL;DR as a service)
+## Phase 3: Show must go on
 
-## Developer Tools
+> "Complex features are like relationships - high maintenance but sometimes worth it." - A Wise Architect
 
-- Plugin system (because every project needs plugins nobody will use)
-- Custom model training tools (teach AI your bad habits)
-- Debug mode with detailed logging (see exactly where things went wrong)
-- Testing utilities (pretend we write tests)
-- Documentation generator (that nobody will read)
+Goals:
+   - Set up web interface
+   - Add basic security
+
+Tasks:
+
+
+- [ ] Web Interface
+   - Basic dashboard
+   - Real-time updates
+   - Conversation management
+
+- [ ] Integration APIs
+   - REST API
+   - WebSocket support
+    -Webhook system
+
+- [ ] Security Features
+   - End-to-end encryption
+   - Role-based access
+   - Audit logging
+
+## Phase 4:  Nice to Have (Future Considerations)
+
+> "These features are like dessert - nice to have but not essential for survival." - A Feature Philosopher
+
+Goals:
+   - Maintain and improve existing features
+   - Respond to user feedback
+
+Tasks:
+
+
+- [ ] Plugin System
+- [ ] Advanced Analytics 
+   ```rust
+   agent.analytics.generate_quality_report()?;
+   agent.analytics.export_usage_metrics()?;
+   ```
+
+- [ ] Auto-summarization 
+
+
+> "Strategy is like a GPS - it tells you where to go, but not how to avoid traffic." - A Project Manager

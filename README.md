@@ -132,3 +132,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Thanks to the Ollama team for making this possible
 - Thanks to all contributors who helped make this project better
 - Thanks to my coffee machine for keeping me awake during development 
+
+## VISION
+
+@see [features](FEATURES.md)
+
+## ROADMAP
+
+@see [roadmap](ROADMAP.md)
