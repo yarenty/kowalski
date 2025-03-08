@@ -32,12 +32,12 @@ impl Agent for ToolingAgent {
         )?;
 
         let mut chain = ToolChain::new();
-        chain.add_tool(Box::new(WebBrowser::new(config.clone())));
+        // chain.add_tool(Box::new(WebBrowser::new(config.clone())));
         chain.add_tool(Box::new(SearchTool::new(
             SearchProvider::DuckDuckGo,
             config.search.api_key.clone().unwrap_or_default(),
         )));
-        chain.add_tool(Box::new(WebScraper::new()));
+        // chain.add_tool(Box::new(WebScraper::new()));
 
         let cache = ToolCache::new();
 
@@ -158,7 +158,9 @@ impl ToolingAgent {
     /// Searches the web, because Google is too mainstream.
     pub async fn search(&mut self, query: &str) -> Result<Vec<SearchResult>, AgentError> {
         let tool_input = ToolInput::new(query.to_string());
+        println!("Searching for: {}", query);
         let output = self.chain.execute(tool_input).await?;
+        println!("Search results: {:?}", &output.content);
         let results: Vec<SearchResult> = serde_json::from_str(&output.content)?;
         Ok(results)
     }

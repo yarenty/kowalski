@@ -117,6 +117,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Tooling Agent Conversation ID: {}", conversation_id);
 
     let search_results = tooling_agent.search("Latest developments in Rust programming").await?;
+    println!("Search results: {:?}", &search_results);
     for result in &search_results {
         println!("Title: {}", result.title);
         println!("URL: {}", result.url);

@@ -40,15 +40,16 @@ impl Tool for SearchTool {
 
     async fn execute(&self, input: ToolInput) -> Result<ToolOutput, ToolError> {
         let query = input.query;
-        let url = format!("https://api.duckduckgo.com/?q={}&format=json", urlencoding::encode(&query));
-
+        let url = format!("https://api.duckduckgo.com/?q={}", //&format=json", 
+            urlencoding::encode(&query));
+        println!("URL: {:?}", &url);
         let response = reqwest::get(&url)
             .await
             .map_err(ToolError::RequestError)?
             .text()
             .await
             .map_err(ToolError::RequestError)?;
-
+        println!("Response: {:?}", &response);
         Ok(ToolOutput {
             content: response,
             metadata: Default::default(),

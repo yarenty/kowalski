@@ -10,41 +10,23 @@ use serde_json::{json, Value};
 
 pub struct WebBrowser {
     client: reqwest::Client,
-    headless: Option<Client>,
     user_agent: String,
 }
 
 impl WebBrowser {
-    pub fn new(config: crate::config::Config) -> Self {
+    pub fn new(_config: crate::config::Config) -> Self {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .user_agent("Kowalski/1.0")
             .build()
-            .unwrap_or_default();
+            .unwrap_or_else(|_| reqwest::Client::new());
+
+        println!("Client: {:?}", &client);
 
         Self {
             client,
-            headless: None,
             user_agent: "Kowalski/1.0".to_string(),
         }
-    }
-
-    pub async fn init_headless(&mut self) -> Result<(), ToolError> {
-        let mut caps = serde_json::Map::new();
-        caps.insert("browserName".to_string(), json!("firefox"));
-        caps.insert("moz:firefoxOptions".to_string(), json!({
-            "args": ["--headless"]
-        }));
-
-        self.headless = Some(
-            ClientBuilder::native()
-                .capabilities(caps)
-                .connect("http://localhost:4444")
-                .await
-                .map_err(|e| ToolError::BrowserError(e.to_string()))?,
-        );
-
-        Ok(())
     }
 
     async fn extract_content(&self, html: &str) -> Result<String, ToolError> {
@@ -91,20 +73,22 @@ impl Tool for WebBrowser {
     async fn execute(&self, input: ToolInput) -> Result<ToolOutput, ToolError> {
         let url = input.query;
         
+        println!("Executing web browser tool with URL: {}", url);
         // Try simple GET request first
         let response = self.client
             .get(&url)
             .send()
             .await
             .map_err(ToolError::RequestError)?;
+        println!("Response: {:?}", &response);
 
         let html = response
             .text()
             .await
             .map_err(ToolError::RequestError)?;
-
+        println!("HTML: {:?}", &html);
         let content = self.extract_content(&html).await?;
-
+        println!("Content: {:?}", &content);
         Ok(ToolOutput {
             content,
             metadata: Default::default(),
