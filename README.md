@@ -49,48 +49,81 @@ This project implements a basic agent that can communicate with Ollama's API, su
 ### Basic Usage
 
 ```rust
-use kowalski::{Agent, Config};
+use kowalski::{agent::{AcademicAgent, ToolingAgent}, config::Config};
 
-// Create an agent (it's like hiring an assistant, but cheaper)
+// Load configuration
 let config = Config::load()?;
-let agent = Agent::new(config)?;
 
-// Start a conversation (and hope it doesn't get weird)
-let conversation_id = agent.start_conversation("mistral-small");
+// Create agents (because one agent is never enough)
+let academic_agent = AcademicAgent::new(config.clone())?;
+let tooling_agent = ToolingAgent::new(config)?;
 
-// Chat with the agent (it's like texting, but with more existential dread)
-let response = agent.chat_with_history(&conversation_id, "Hello, how are you?", None).await?;
+// Start conversations (double the fun, double the existential crisis)
+let model_name = "llama2";
+let academic_conv_id = academic_agent.start_conversation(model_name);
+let tooling_conv_id = tooling_agent.start_conversation(model_name);
 ```
 
-### Role-Based Interactions
-
-> "Roles are like costumes - they make everything more interesting until someone takes them off." - A Theater Director
+### Academic Research
 
 ```rust
 use kowalski::role::{Role, Audience, Preset};
 
-// Create a translator role (because Google Translate is too mainstream)
+// Create a role for academic translation
 let role = Role::translator(Some(Audience::Scientist), Some(Preset::Questions));
 
-// Chat with the role (it's like having a conversation with someone who's pretending to be someone else)
-let response = agent.chat_with_history(&conversation_id, "Translate this", Some(role)).await?;
+// Process a research paper
+let mut response = academic_agent
+    .chat_with_history(
+        &academic_conv_id,
+        "path/to/research.pdf",
+        Some(role)
+    )
+    .await?;
+
+// Process streaming response
+while let Some(chunk) = response.chunk().await? {
+    match academic_agent.process_stream_response(&academic_conv_id, &chunk).await {
+        Ok(Some(content)) => print!("{}", content),
+        Ok(None) => break,
+        Err(e) => eprintln!("Error: {}", e),
+    }
+}
 ```
 
-### File Input
-
-> "File input is like reading books - it's good for you but nobody does it." - A Librarian
+### Web Research
 
 ```rust
-use kowalski::utils::{PdfReader, PaperCleaner};
+// Perform web search
+let query = "Latest developments in Rust programming";
+let search_results = tooling_agent.search(query).await?;
 
-// Read from a PDF (because paper is so last century)
-let content = PdfReader::read_pdf("document.pdf")?;
+// Process search results
+for result in &search_results {
+    println!("Title: {}", result.title);
+    println!("URL: {}", result.url);
+    println!("Snippet: {}", result.snippet);
+}
 
-// Clean the content (because AI needs clean data, just like we need clean clothes)
-let cleaned_content = PaperCleaner::clean(&content)?;
-
-// Chat with the content (it's like having a book club, but with AI)
-let response = agent.chat_with_history(&conversation_id, &cleaned_content, None).await?;
+// Fetch and analyze a webpage
+if let Some(first_result) = search_results.first() {
+    let page = tooling_agent.fetch_page(&first_result.url).await?;
+    
+    // Get a simplified summary
+    let role = Role::translator(Some(Audience::Family), Some(Preset::Simplify));
+    let mut response = tooling_agent
+        .chat_with_history(&tooling_conv_id, "Provide simple summary", Some(role))
+        .await?;
+        
+    // Process streaming response
+    while let Some(chunk) = response.chunk().await? {
+        match tooling_agent.process_stream_response(&tooling_conv_id, &chunk).await {
+            Ok(Some(content)) => print!("{}", content),
+            Ok(None) => break,
+            Err(e) => eprintln!("Error: {}", e),
+        }
+    }
+}
 ```
 
 ## Configuration
