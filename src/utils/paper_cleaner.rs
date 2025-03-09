@@ -19,9 +19,13 @@ impl fmt::Display for PaperCleanerError {
 
 impl Error for PaperCleanerError {}
 
-pub struct PaperCleaner;
+pub struct PaperCleaner {}
 
 impl PaperCleaner {
+    pub fn new() -> Self {
+        Self {}
+    }
+
     /// Cleans academic paper text by removing references and fixing line breaks
     ///
     /// # Arguments
@@ -29,7 +33,7 @@ impl PaperCleaner {
     ///
     /// # Returns
     /// * `Result<String, PaperCleanerError>` - The cleaned text or an error
-    pub fn clean(text: &str) -> Result<String, PaperCleanerError> {
+    pub fn clean(&self, text: &str) -> Result<String, PaperCleanerError> {
         if text.is_empty() {
             return Err(PaperCleanerError::InvalidInput(
                 "Input text cannot be empty".to_string(),

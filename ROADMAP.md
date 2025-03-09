@@ -1,6 +1,6 @@
 # ROADMAP
 
-## Phase 0:  First Blood
+## Phase 0: First Blood
 
 focus on managable but fully functional agent that could give obvious benefits: 
 - [x] connecting to local ollama server
@@ -9,8 +9,91 @@ focus on managable but fully functional agent that could give obvious benefits:
 - [x] Rust interface
 - [x] initial release 
 
+## Phase 1: Tool Time
 
-## Phase 1: Talk to me
+> "Tools are like friends - they help you when you need them, but sometimes they crash when you need them most." - A Toolsmith
+> "The internet is like a library where all the books are scattered on the floor." - A Web Crawler
+
+Goals:
+   - Add internet browsing capabilities
+   - Implement data collection and processing
+   - Create a flexible tool system
+
+Tasks:
+
+- [ ] Web Browsing Tools
+   - URL fetching and parsing
+   - HTML content extraction
+   - JavaScript rendering support
+   ```rust
+   let browser = WebBrowser::new(config);
+   let content = browser.fetch("https://example.com").await?;
+   let text = content.extract_main_content()?;
+   ```
+
+- [ ] Search Engine Integration
+   - Google Search API
+   - DuckDuckGo API
+   - Custom search providers
+   ```rust
+   let search = SearchTool::new()
+       .with_provider(Provider::Google)
+       .with_api_key(key);
+   let results = search.query("Rust programming").await?;
+   ```
+
+- [ ] Data Collection Tools
+   - Web scraping with polite rate limiting
+   - Data extraction patterns
+   - Content summarization
+   ```rust
+   let scraper = WebScraper::new()
+       .with_rate_limit(Duration::from_secs(1))
+       .with_user_agent("Kowalski/1.0");
+   
+   let data = scraper.collect_data(urls, DataPattern::Article)?;
+   ```
+
+- [ ] Tool Management System
+   - Tool registration and discovery
+   - Tool chaining and pipelines
+   - Result caching
+   ```rust
+   #[derive(Tool)]
+   struct WebSearchTool {
+       name: &'static str,
+       description: &'static str,
+       parameters: Vec<ToolParameter>,
+   }
+   
+   let tool_chain = ToolChain::new()
+       .add(WebSearchTool::new())
+       .add(ContentExtractorTool::new())
+       .add(SummarizerTool::new());
+   ```
+
+- [ ] Data Processing Pipeline
+   - Content filtering
+   - Metadata extraction
+   - Format conversion
+   ```rust
+   let pipeline = DataPipeline::new()
+       .filter(|content| content.is_relevant())
+       .extract_metadata()
+       .convert_to(Format::Markdown);
+   ```
+
+- [ ] Caching and Storage
+   - Local cache for search results
+   - Content versioning
+   - Efficient storage strategies
+   ```rust
+   let cache = ToolCache::new()
+       .with_ttl(Duration::from_hours(24))
+       .with_storage(Storage::Local("./cache"));
+   ```
+
+## Phase 2: Talk to me
 
 > "Low-hanging fruit is still fruit, even if it's bruised." - A Pragmatic Gardener
 
@@ -38,8 +121,7 @@ Tasks:
    - Search and indexing
    - Export to various formats
 
-
-## Phase 2: Perform
+## Phase 3: Perform
 
 > "Medium complexity is like a teenager - awkward but manageable." - A Patient Developer
 
@@ -77,7 +159,7 @@ Tasks:
    agent.metrics.log_token_usage(tokens_used);
    ```
 
-## Phase 3: Show must go on
+## Phase 4: Show must go on
 
 > "Complex features are like relationships - high maintenance but sometimes worth it." - A Wise Architect
 
@@ -87,7 +169,6 @@ Goals:
 
 Tasks:
 
-
 - [ ] Web Interface
    - Basic dashboard
    - Real-time updates
@@ -96,14 +177,14 @@ Tasks:
 - [ ] Integration APIs
    - REST API
    - WebSocket support
-    -Webhook system
+   - Webhook system
 
 - [ ] Security Features
    - End-to-end encryption
    - Role-based access
    - Audit logging
 
-## Phase 4:  Nice to Have (Future Considerations)
+## Phase 5: Nice to Have (Future Considerations)
 
 > "These features are like dessert - nice to have but not essential for survival." - A Feature Philosopher
 
@@ -113,15 +194,12 @@ Goals:
 
 Tasks:
 
-
 - [ ] Plugin System
 - [ ] Advanced Analytics 
    ```rust
    agent.analytics.generate_quality_report()?;
    agent.analytics.export_usage_metrics()?;
    ```
-
 - [ ] Auto-summarization 
-
 
 > "Strategy is like a GPS - it tells you where to go, but not how to avoid traffic." - A Project Manager

@@ -29,9 +29,13 @@ impl From<std::io::Error> for PdfReaderError {
     }
 }
 
-pub struct PdfReader;
+pub struct PdfReader {}
 
 impl PdfReader {
+    pub fn new() -> Self {
+        Self {}
+    }
+
     /// Reads text content from a PDF file
     ///
     /// # Arguments
@@ -39,7 +43,7 @@ impl PdfReader {
     ///
     /// # Returns
     /// * `Result<String, PdfReaderError>` - The extracted text content or an error
-    pub fn read_pdf(file_path: &str) -> Result<String, PdfReaderError> {
+    pub fn read_pdf(&self, file_path: &str) -> Result<String, PdfReaderError> {
         // Verify file exists and is a PDF
         if !Path::new(file_path).exists() {
             return Err(PdfReaderError::InvalidPath(format!(
@@ -71,9 +75,16 @@ impl PdfReader {
     /// * `Result<(), PdfReaderError>` - Success or error
     #[allow(dead_code)]
     pub fn pdf_to_text(pdf_path: &str, output_path: &str) -> Result<(), PdfReaderError> {
-        let text = Self::read_pdf(pdf_path)?;
+        let reader = Self::new();
+        let text = reader.read_pdf(pdf_path)?;
         fs::write(output_path, text)?;
         Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub fn read_pdf_file(pdf_path: &str) -> Result<String, PdfReaderError> {
+        let reader = Self::new();
+        reader.read_pdf(pdf_path)
     }
 }
 
@@ -83,13 +94,15 @@ mod tests {
 
     #[test]
     fn test_invalid_file() {
-        let result = PdfReader::read_pdf("nonexistent.pdf");
+        let reader = PdfReader::new();
+        let result = reader.read_pdf("nonexistent.pdf");
         assert!(matches!(result, Err(PdfReaderError::InvalidPath(_))));
     }
 
     #[test]
     fn test_invalid_extension() {
-        let result = PdfReader::read_pdf("test.txt");
+        let reader = PdfReader::new();
+        let result = reader.read_pdf("test.txt");
         assert!(matches!(result, Err(PdfReaderError::InvalidPath(_))));
     }
 }
