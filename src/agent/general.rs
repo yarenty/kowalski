@@ -1,7 +1,7 @@
 use crate::agent::{Agent, AgentError, BaseAgent};
 use crate::config::Config;
+use super::types::StreamResponse;
 use crate::role::Role;
-use log::debug;
 use reqwest::Response;
 
 /// GeneralAgent: A simple agent for basic chat interactions
@@ -100,6 +100,7 @@ impl Agent for GeneralAgent {
             "max_tokens": self.base.config.chat.max_tokens,
         });
 
+        dbg!(&chat_request);
         // Send the request
         let response = self.base.client
             .post(format!("{}/api/chat", self.base.config.ollama.base_url))
@@ -108,28 +109,48 @@ impl Agent for GeneralAgent {
             .await
             .map_err(AgentError::RequestError)?;
 
+        dbg!(&response);
+
         Ok(response)
     }
 
+    // async fn process_stream_response(
+    //     &mut self,
+    //     conversation_id: &str,
+    //     chunk: &[u8],
+    // ) -> Result<Option<String>, AgentError> {
+    //     debug!("Processing stream response for conversation {}", conversation_id);
+        
+    //     // Parse the chunk as a JSON response
+    //     if let Ok(text) = String::from_utf8(chunk.to_vec()) {
+    //         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+    //             if let Some(response) = json["response"].as_str() {
+    //                 // Add the assistant's response to the conversation
+    //                 self.add_message(conversation_id, "assistant", response).await;
+    //                 return Ok(Some(response.to_string()));
+    //             }
+    //         }
+    //     }
+        
+    //     Ok(None)
+    // }
+
     async fn process_stream_response(
         &mut self,
-        conversation_id: &str,
+        _conversation_id: &str,
         chunk: &[u8],
     ) -> Result<Option<String>, AgentError> {
-        debug!("Processing stream response for conversation {}", conversation_id);
-        
-        // Parse the chunk as a JSON response
-        if let Ok(text) = String::from_utf8(chunk.to_vec()) {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
-                if let Some(response) = json["response"].as_str() {
-                    // Add the assistant's response to the conversation
-                    self.add_message(conversation_id, "assistant", response).await;
-                    return Ok(Some(response.to_string()));
-                }
-            }
+        let text = String::from_utf8(chunk.to_vec())
+            .map_err(|e| AgentError::ServerError(format!("Invalid UTF-8: {}", e)))?;
+
+        let stream_response: StreamResponse = serde_json::from_str(&text)
+            .map_err(|e| AgentError::JsonError(e))?;
+
+        if stream_response.done {
+            return Ok(None);
         }
-        
-        Ok(None)
+
+        Ok(Some(stream_response.message.content))
     }
 
     async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {

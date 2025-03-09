@@ -98,3 +98,7 @@ path = "examples/web_dynamic.rs"
 [[example]]
 name = "web_static"
 path = "examples/web_static.rs"
+
+[[example]]
+name = "general_chat"
+path = "examples/general_chat.rs"
