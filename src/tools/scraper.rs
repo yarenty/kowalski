@@ -16,8 +16,17 @@ use super::{Tool, ToolInput, ToolOutput, ToolError};
 pub struct WebScraper {
     client: reqwest::Client,
     rate_limiter: Arc<RateLimiter<NotKeyed, InMemoryState, DefaultClock, NoOpMiddleware>>,
-    #[allow(dead_code)]
     user_agent: String,
+}
+
+impl Clone for WebScraper {
+    fn clone(&self) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            rate_limiter: self.rate_limiter.clone(),
+            user_agent: self.user_agent.clone(),
+        }
+    }
 }
 
 impl WebScraper {

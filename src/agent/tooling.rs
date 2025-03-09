@@ -10,9 +10,12 @@ use crate::conversation::Conversation;
 use crate::role::Role;
 use super::{Agent, AgentError, BaseAgent};
 use super::types::{ChatRequest, StreamResponse};
-use crate::tools::{ ToolChain,  SearchTool,  ToolCache,  ToolInput};
+use crate::tools::{ ToolChain,  SearchTool,  ToolCache,  ToolInput, ToolType};
 use crate::tools::search::SearchProvider;
 use log::{debug, info};
+use crate::tools::TaskType;
+use crate::tools::browser::WebBrowser;
+use crate::tools::scraper::WebScraper;
 
 /// ToolingAgent: Your personal web crawler with a sense of humor.
 #[allow(dead_code)]
@@ -32,14 +35,27 @@ impl Agent for ToolingAgent {
         )?;
 
         let mut chain = ToolChain::new();
-        // chain.add_tool(Box::new(WebBrowser::new(config.clone())));
-        chain.add_tool(Box::new(SearchTool::new(
-            SearchProvider::DuckDuckGo,
-            config.search.api_key.clone().unwrap_or_default(),
-        )));
-        // chain.add_tool(Box::new(WebScraper::new()));
-
-
+        
+        // Register WebBrowser for dynamic content
+        chain.add_tool(
+            ToolType::Browser(WebBrowser::new(config.clone())),
+            vec![TaskType::BrowseDynamic]
+        );
+        
+        // Register SearchTool for search queries
+        chain.add_tool(
+            ToolType::Search(SearchTool::new(
+                SearchProvider::DuckDuckGo,
+                config.search.api_key.clone().unwrap_or_default(),
+            )),
+            vec![TaskType::Search]
+        );
+        
+        // Register WebScraper for static content
+        chain.add_tool(
+            ToolType::Scraper(WebScraper::new()),
+            vec![TaskType::ScrapStatic]
+        );
 
         let cache = ToolCache::new();
 

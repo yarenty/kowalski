@@ -74,3 +74,27 @@ urlencoding = "2.1.0"
 # Logging
 log = "0.4"
 env_logger = "0.11"
+
+[[example]]
+name = "model_manager"
+path = "examples/model_manager.rs"
+
+[[example]]
+name = "academic_research"
+path = "examples/academic_research.rs"
+
+[[example]]
+name = "web_research"
+path = "examples/web_research.rs"
+
+[[example]]
+name = "web_search"
+path = "examples/web_search.rs"
+
+[[example]]
+name = "web_dynamic"
+path = "examples/web_dynamic.rs"
+
+[[example]]
+name = "web_static"
+path = "examples/web_static.rs"

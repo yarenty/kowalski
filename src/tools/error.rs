@@ -14,6 +14,7 @@ pub enum ToolError {
     ScrapingError(String),
     BrowserError(String),
     SearchError(String),
+    NoSuitableToolError(String),
 }
 
 impl fmt::Display for ToolError {
@@ -27,6 +28,7 @@ impl fmt::Display for ToolError {
             ToolError::ScrapingError(e) => write!(f, "Scraping error: {}", e),
             ToolError::BrowserError(e) => write!(f, "Browser error: {}", e),
             ToolError::SearchError(e) => write!(f, "Search error: {}", e),
+            ToolError::NoSuitableToolError(e) => write!(f, "No suitable tool found: {}", e),
         }
     }
 }

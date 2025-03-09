@@ -7,7 +7,6 @@ use super::{Tool, ToolInput, ToolOutput, ToolError};
 use log::debug;
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum SearchProvider {
     DuckDuckGo,
     Bing,
@@ -45,8 +44,7 @@ impl SearchProvider {
     }
 }
 
-
-#[allow(dead_code)]
+#[derive(Clone)]
 pub struct SearchTool {
     provider: SearchProvider,
     api_key: String,

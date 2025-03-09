@@ -1,9 +1,9 @@
 /// Tools module: Because every AI needs its gadgets.
 /// "Tools are like toys for grown-up developers." - A Tool Enthusiast
 
-mod browser;
+pub mod browser;
 pub mod search;
-mod scraper;
+pub mod scraper;
 mod cache;
 mod error;
 
@@ -21,7 +21,6 @@ use log::{debug, info};
 
 /// The core trait for all tools, because every tool needs a purpose.
 #[async_trait]
-#[allow(dead_code)]
 pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
@@ -65,54 +64,119 @@ pub struct ToolOutput {
     pub source: Option<String>,
 }
 
-/// Chain of tools, because one tool is never enough.
-pub struct ToolChain {
-    tools: Vec<Box<dyn Tool>>,
-    cache: ToolCache,
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub enum TaskType {
+    Search,           // General web search
+    BrowseDynamic,   // JavaScript-heavy sites needing browser
+    ScrapStatic,     // Static HTML content
+    Unknown,
 }
 
-#[allow(dead_code)]
+pub struct TaskRouter {
+    patterns: HashMap<String, TaskType>,
+}
+
+impl TaskRouter {
+    pub fn new() -> Self {
+        let mut patterns = HashMap::new();
+        
+        // Search patterns
+        patterns.insert("search:".to_string(), TaskType::Search);
+        patterns.insert("find:".to_string(), TaskType::Search);
+        patterns.insert("lookup:".to_string(), TaskType::Search);
+        
+        // Dynamic content patterns
+        patterns.insert("twitter.com".to_string(), TaskType::BrowseDynamic);
+        patterns.insert("linkedin.com".to_string(), TaskType::BrowseDynamic);
+        patterns.insert("facebook.com".to_string(), TaskType::BrowseDynamic);
+        
+        // Static content patterns (default for most URLs)
+        patterns.insert("github.com".to_string(), TaskType::ScrapStatic);
+        patterns.insert("docs.rs".to_string(), TaskType::ScrapStatic);
+        
+        Self { patterns }
+    }
+
+    pub fn determine_task_type(&self, input: &str) -> TaskType {
+        // Check for explicit search queries
+        if input.starts_with("search:") || input.starts_with("find:") || input.starts_with("lookup:") {
+            return TaskType::Search;
+        }
+
+        // Check URL patterns
+        if input.starts_with("http") || input.starts_with("https") {
+            for (pattern, task_type) in &self.patterns {
+                if input.contains(pattern) {
+                    return task_type.clone();
+                }
+            }
+            // Default to static scraping for unknown URLs
+            return TaskType::ScrapStatic;
+        }
+
+        TaskType::Unknown
+    }
+}
+
+#[derive(Clone)]
+pub enum ToolType {
+    Browser(browser::WebBrowser),
+    Search(search::SearchTool),
+    Scraper(scraper::WebScraper),
+}
+
+impl ToolType {
+    fn name(&self) -> &str {
+        match self {
+            ToolType::Browser(b) => b.name(),
+            ToolType::Search(s) => s.name(),
+            ToolType::Scraper(s) => s.name(),
+        }
+    }
+
+    async fn execute(&self, input: ToolInput) -> Result<ToolOutput, ToolError> {
+        match self {
+            ToolType::Browser(b) => b.execute(input).await,
+            ToolType::Search(s) => s.execute(input).await,
+            ToolType::Scraper(s) => s.execute(input).await,
+        }
+    }
+}
+
+pub struct ToolChain {
+    tools: HashMap<TaskType, Vec<ToolType>>,
+    router: TaskRouter,
+}
+
 impl ToolChain {
     pub fn new() -> Self {
         Self {
-            tools: Vec::new(),
-            cache: ToolCache::new(),
+            tools: HashMap::new(),
+            router: TaskRouter::new(),
         }
     }
 
-    pub fn add_tool<T: Tool + 'static>(&mut self, tool: Box<T>) {
-        self.tools.push(tool);
+    pub fn add_tool(&mut self, tool: ToolType, task_types: Vec<TaskType>) {
+        for task_type in task_types {
+            self.tools.entry(task_type)
+                .or_insert_with(Vec::new)
+                .push(tool.clone());
+        }
     }
 
-    pub fn add<T: Tool + 'static>(mut self, tool: T) -> Self {
-        self.tools.push(Box::new(tool));
-        self
-    }
-
-    pub async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, ToolError> {
-        debug!("Executing tool chain with input: {}", input);
-        if let Some(cached) = self.cache.get(&input) {
-            debug!("Cache hit for input: {}", input);
-            return Ok(cached);
+    pub async fn execute(&self, input: ToolInput) -> Result<ToolOutput, ToolError> {
+        let task_type = self.router.determine_task_type(&input.query);
+        
+        if let Some(tools) = self.tools.get(&task_type) {
+            if let Some(tool) = tools.first() {
+                debug!("[{}:{}] Using tool {} for task type {:?}", 
+                    file!(), line!(), tool.name(), task_type);
+                return tool.execute(input).await;
+            }
         }
-
-        let mut current_input = input.clone();
-        let mut final_output = None;
-
-        info!("Tools in chain: {}", self.tools.iter().map(|t| t.name()).collect::<Vec<_>>().join(", "));
-
-        for tool in &self.tools {
-            debug!("Executing tool: {}", tool.name());
-            let output = tool.execute(current_input).await?;
-            debug!("Tool output: {:?}", output);
-            self.cache.set(&input, &output);
-
-            debug!("Cache set for input: {}", input);
-            
-            current_input = ToolInput::new(output.content.clone());
-            final_output = Some(output);
-        }
-
-        final_output.ok_or(ToolError::NoOutput)
+        
+        Err(ToolError::NoSuitableToolError(format!(
+            "No suitable tool found for task type {:?}", task_type
+        )))
     }
 }

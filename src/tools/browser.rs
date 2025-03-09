@@ -10,14 +10,22 @@ use std::time::Duration;
 use log::{debug, info};
 
 /// WebBrowser: Because sometimes we need to pretend we're human.
-#[allow(dead_code)]
 pub struct WebBrowser {
     client: reqwest::Client,
     user_agent: String,
+    config: crate::config::Config,
 }
 
+impl Clone for WebBrowser {
+    fn clone(&self) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            user_agent: self.user_agent.clone(),
+            config: self.config.clone(),
+        }
+    }
+}
 
-#[allow(dead_code)]
 impl WebBrowser {
     pub fn new(_config: crate::config::Config) -> Self {
         let client = reqwest::Client::builder()
@@ -31,6 +39,7 @@ impl WebBrowser {
         Self {
             client,
             user_agent: "Kowalski/1.0".to_string(),
+            config: _config,
         }
     }
 
