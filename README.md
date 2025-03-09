@@ -1,7 +1,6 @@
 # Kowalski
 
 > "AI agents are like pets - they're cute but they make a mess." - Anonymous AI Developer
-> "Programming is like writing a love letter to a computer that doesn't love you back." - Unknown
 
 A Rust-based agent for interacting with Ollama models. Because apparently, we need another way to talk to AI.
 
