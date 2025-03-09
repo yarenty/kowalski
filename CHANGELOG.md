@@ -121,4 +121,7 @@ All notable changes to this project will be documented in this file, or at least
 > "Documentation is like true love - it exists, but it's hard to find." - A Documentation Writer
 > "The only thing worse than no documentation is wrong documentation." - A Frustrated Developer
 
+
+
+[0.2.0]: https://github.com/yarenty/kowalski/releases/tag/v0.2.0 
 [0.1.0]: https://github.com/yarenty/kowalski/releases/tag/v0.1.0 
