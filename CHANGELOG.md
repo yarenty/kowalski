@@ -1,15 +1,77 @@
 # Changelog
 
+> "History is written by the victors, changelogs are written by developers who broke something." - Winston Churchill (probably)
+
+All notable changes to this project will be documented in this file, or at least we'll try to remember to do so.
+
+## [0.2.0] - 2024-03-09
+
+> "The best time to write a changelog is when you make the changes. The second best time is right before a release when you've forgotten everything you did." - Ancient Developer Proverb
+
+
+### 🎭 Added
+- **New Agents** (because one AI personality wasn't enough):
+  - `GeneralAgent`: Your friendly neighborhood AI with a dash of sass
+  - `ToolingAgent`: The Swiss Army knife of web research
+  - `AcademicAgent`: The one that actually reads the papers
+
+- **Tool System** (like Batman's utility belt, but for AI):
+  - Web browsing capabilities (because opening Chrome is too mainstream)
+  - DuckDuckGo integration (Google who?)
+  - HTML parsing with multiple fallback strategies
+  - Dynamic content handling (JavaScript can't hide from us anymore)
+  - Rate limiting (to avoid angry emails from server admins)
+
+- **Examples** (because documentation is better with code):
+  - `model_manager`: Herding your AI models like cats
+  - `academic_research`: Making research papers readable again
+  - `web_research`: Like having a very fast research assistant
+  - `web_search`: For when typing in a browser is too much work
+  - `web_dynamic`: Handling modern web apps like a pro
+  - `web_static`: Old-school HTML scraping
+  - `general_chat`: When you just want to chat with a sarcastic AI
+
+### 🔧 Changed
+- Completely revamped agent architecture (it's not spaghetti code anymore, we promise)
+- Improved conversation management (your AI won't forget things... as often)
+- Enhanced streaming responses (watch your AI think in real-time)
+- Better error handling (because things will go wrong, we just handle it better now)
+
+### 🐛 Fixed
+- Memory leaks in conversation handling (your RAM can thank us later)
+- Race conditions in async operations (time is now properly wibbly-wobbly)
+- Various "it works on my machine" issues
+- That one bug that nobody could reproduce but everyone complained about
+
+### 📚 Documentation
+- Added sarcastic comments throughout the codebase
+- Created actually useful examples (a rare achievement)
+- Updated README with proper setup instructions
+- Added this CHANGELOG (because git log was getting boring)
+
+### 🔬 Technical Debt
+- Replaced quick hacks with slightly more sophisticated hacks
+- Moved TODOs to actual GitHub issues
+- Pretended to understand async/await better
+
+### 🎯 Dependencies
+- Updated all the things (except the ones that would break everything)
+- Added more crates (because why solve problems yourself?)
+- Removed deprecated dependencies (they served us well)
+
+## [0.1.0] - 2024-03-07
+
+### Added
+- Initial release
+- Basic Ollama integration
+- Proof that we could make it work
+- A lot of hopes and dreams
+
+
+
 > "Change is inevitable, except from a vending machine." - Robert C. Gallagher
 
-All notable changes to this project will be documented in this file, because apparently, we need to keep track of our mistakes.
-
 > "Version numbers are like birthdays - they keep increasing but nothing really changes." - A Cynical Developer
-
-## [0.1.0] - 2024-03-17
-
-> "The first version is like your first love - exciting but probably not the best." - A Romantic Programmer  
-> "If debugging is the process of removing bugs, then programming must be the process of adding them." - Edsger W. Dijkstra
 
 ### Added
 - Basic agent functionality (because talking to machines wasn't complicated enough)
