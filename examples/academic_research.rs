@@ -4,7 +4,6 @@ use kowalski::{
     role::{Audience, Preset, Role},
 };
 use std::io::{self, Write};
-use log::info;
 use env_logger;
 
 #[tokio::main]

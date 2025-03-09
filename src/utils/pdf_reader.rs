@@ -81,6 +81,7 @@ impl PdfReader {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn read_pdf_file(pdf_path: &str) -> Result<String, PdfReaderError> {
         let reader = Self::new();
         reader.read_pdf(pdf_path)

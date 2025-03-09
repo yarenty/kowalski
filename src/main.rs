@@ -17,9 +17,9 @@ use role::{Audience, Preset, Role};
 use serde_json::Value;
 use std::fs;
 use std::io::{self, Write};
-use utils::{PaperCleaner, PdfReader};
+use utils::PdfReader;
 use env_logger;
-use log::{info, warn, error};
+use log::info;
 
 /// Reads input from a file, because apparently typing is too mainstream.
 /// "File reading is like opening presents - you never know what you're gonna get."
@@ -29,6 +29,7 @@ use log::{info, warn, error};
 ///
 /// # Returns
 /// * `Result<String, Box<dyn std::error::Error>>` - Either the file contents or an error that will make you question your career choices
+#[allow(dead_code)]
 fn read_input_file(file_path: &str) -> Result<String, Box<dyn std::error::Error>> {
     if file_path.to_lowercase().ends_with(".pdf") {
         Ok(PdfReader::read_pdf_file(file_path)?)

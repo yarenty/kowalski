@@ -5,6 +5,7 @@ use std::fmt;
 use std::error::Error;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum ToolError {
     RequestError(reqwest::Error),
     JsonError(serde_json::Error),

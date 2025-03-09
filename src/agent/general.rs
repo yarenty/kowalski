@@ -14,7 +14,9 @@ pub struct GeneralAgent {
 }
 
 impl GeneralAgent {
+
     /// Sets a custom system prompt for the agent
+    #[allow(dead_code)]
     pub fn with_system_prompt(mut self, prompt: &str) -> Self {
         self.base_system_prompt = prompt.to_string();
         self
@@ -58,12 +60,27 @@ impl Agent for GeneralAgent {
         content: &str,
         role: Option<Role>,
     ) -> Result<Response, AgentError> {
+
+        // Still could use some role-based system messages
+        if let Some(role) = role {
+            self.add_message(conversation_id,"system", role.get_prompt()).await;
+            
+            if let Some(audience) = role.get_audience() {
+                self.add_message(conversation_id,"system", audience.get_prompt()).await;
+            }
+            if let Some(preset) = role.get_preset() {
+               self.add_message(conversation_id,"system", preset.get_prompt()).await;
+            }
+        }
+
         // Add the user's message to the conversation
         self.add_message(conversation_id, "user", content).await;
+
 
         // Get the conversation
         let conversation = self.base.get_conversation(conversation_id)
             .ok_or_else(|| AgentError::ConversationNotFound(conversation_id.to_string()))?;
+
 
         // Prepare the chat request
         let chat_request = serde_json::json!({

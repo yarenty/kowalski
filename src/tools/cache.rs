@@ -72,6 +72,7 @@ impl ToolCache {
         self
     }
 
+    #[allow(dead_code)]
     pub fn get(&mut self, key: &ToolInput) -> Option<ToolOutput> {
         match &mut self.storage {
             Storage::Memory => self.memory_cache.cache_get(&key.to_string()).cloned(),
@@ -81,6 +82,7 @@ impl ToolCache {
         }
     }
 
+    #[allow(dead_code)]
     pub fn set(&mut self, key: &ToolInput, output: &ToolOutput) {
         match &mut self.storage {
             Storage::Memory => {

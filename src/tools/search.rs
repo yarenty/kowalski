@@ -7,6 +7,8 @@ use super::{Tool, ToolInput, ToolOutput, ToolError};
 use log::debug;
 
 #[derive(Debug, Clone)]
+#[allow(non_camel_case_types)]  
+#[allow(dead_code)]
 pub enum SearchProvider {
     DuckDuckGo,
     Bing,

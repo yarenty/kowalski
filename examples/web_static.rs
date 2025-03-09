@@ -2,8 +2,6 @@ use kowalski::{
     agent::{Agent, ToolingAgent},
     config::Config,
 };
-use std::io::Write;
-use log::info;
 use env_logger;
 
 #[tokio::main]

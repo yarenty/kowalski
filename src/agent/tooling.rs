@@ -143,7 +143,7 @@ impl Agent for ToolingAgent {
 
     async fn process_stream_response(
         &mut self,
-        conversation_id: &str,
+        _conversation_id: &str,
         chunk: &[u8],
     ) -> Result<Option<String>, AgentError> {
         let text = String::from_utf8(chunk.to_vec())
@@ -313,6 +313,7 @@ impl ToolingAgent {
     }
 
     /// Collects data from multiple pages, because one page is never enough.
+    #[allow(dead_code)]
     pub async fn collect_data(&mut self, urls: Vec<String>) -> Result<Vec<ProcessedPage>, AgentError> {
         let mut results = Vec::new();
         for url in urls {

@@ -109,7 +109,7 @@ impl Agent for AcademicAgent {
 
     async fn process_stream_response(
         &mut self,
-        conversation_id: &str,
+        _conversation_id: &str,
         chunk: &[u8],
     ) -> Result<Option<String>, AgentError> {
         let text = String::from_utf8(chunk.to_vec())
@@ -150,11 +150,12 @@ impl AcademicAgent {
     /// Extracts paper metadata, because titles and abstracts are too obvious.
     pub async fn extract_metadata(&self, path: &str) -> Result<PaperMetadata, AgentError> {
         let content = self.pdf_reader.read_pdf(path)?;
-        // Add your metadata extraction logic here
+        
+        // TODO:Add your metadata extraction logic here
         Ok(PaperMetadata {
             title: String::new(),
             authors: Vec::new(),
-            abstract_text: String::new(),
+            abstract_text: content,
             keywords: Vec::new(),
         })
     }
