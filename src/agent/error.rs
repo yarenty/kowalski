@@ -16,6 +16,7 @@ pub enum AgentError {
     IoError(std::io::Error),
     ToolError(String),
     SerializationError(String),
+    ConversationNotFound(String),
 }
 
 impl fmt::Display for AgentError {
@@ -28,6 +29,7 @@ impl fmt::Display for AgentError {
             AgentError::IoError(e) => write!(f, "IO error: {}", e),
             AgentError::ToolError(e) => write!(f, "Tool error: {}", e),
             AgentError::SerializationError(e) => write!(f, "Serialization error: {}", e),
+            AgentError::ConversationNotFound(e) => write!(f, "Conversation not found: {}", e),
         }
     }
 }

@@ -64,6 +64,42 @@ let academic_conv_id = academic_agent.start_conversation(model_name);
 let tooling_conv_id = tooling_agent.start_conversation(model_name);
 ```
 
+### General Chat
+
+```rust
+use kowalski::agent::GeneralAgent;
+
+// Create a general-purpose chat agent
+let general_agent = GeneralAgent::new(config.clone())?;
+
+// Optionally customize the system prompt
+let general_agent = general_agent.with_system_prompt(
+    "You are a friendly and knowledgeable assistant. Help users with their questions."
+);
+
+// Start a conversation
+let conv_id = general_agent.start_conversation("llama2");
+
+// Simple chat interaction
+let mut response = general_agent
+    .chat_with_history(&conv_id, "What is the meaning of life?", None)
+    .await?;
+
+// Process streaming response
+while let Some(chunk) = response.chunk().await? {
+    match general_agent.process_stream_response(&conv_id, &chunk).await {
+        Ok(Some(content)) => print!("{}", content),
+        Ok(None) => break,
+        Err(e) => eprintln!("Error: {}", e),
+    }
+}
+
+// Continue the conversation with context
+let mut response = general_agent
+    .chat_with_history(&conv_id, "Can you elaborate on that?", None)
+    .await?;
+```
+
 ### Academic Research
 
 ```rust

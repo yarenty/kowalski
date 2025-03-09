@@ -2,11 +2,13 @@
 /// "Agents are like cats - they do what they want, when they want." - A Cat Person
 
 mod academic;
+mod general;
 mod tooling;
 mod error;
 mod types;
 
 pub use academic::AcademicAgent;
+pub use general::GeneralAgent;
 pub use tooling::ToolingAgent;
 pub use error::AgentError;
 use async_trait::async_trait;
