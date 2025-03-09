@@ -33,8 +33,18 @@ Works auite well.
 Created "big vision" plan.
 And start working on tooling - ie: how to ask outside world for more accurate data to process.
 
+## 2025-03-09
 
+Fixing toolings and adding examples. The progression now flows more logically:
 
+- First Blood (Basic functionality) ✓
+- Tool Time (Core tools and integrations)
+- Talk to me (CLI and document handling)
+- Perform (Provider integrations and performance)
+- Show must go on (Web interface and security)
+- Nice to Have (Future improvements)
+
+[...]
 
 
 > "In the end, it's not the years of development in your life that count. It's the number of TODO comments in your code."
