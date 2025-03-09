@@ -209,3 +209,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## ROADMAP
 
 @see [roadmap](ROADMAP.md)
+
+
+## Activity
+
+![Alt](https://repobeats.axiom.co/api/embed/7ac42f1d632566d6dbc38b23cbdcd8c1881b3856.svg "Repobeats analytics image")
