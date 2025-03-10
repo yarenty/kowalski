@@ -3,7 +3,7 @@ use crate::config::Config;
 use super::types::StreamResponse;
 use crate::role::Role;
 use reqwest::Response;
-
+use crate::agent::types::Message;
 /// GeneralAgent: A simple agent for basic chat interactions
 /// 
 /// This agent provides straightforward chat functionality without specialized features,
@@ -139,7 +139,7 @@ impl Agent for GeneralAgent {
         &mut self,
         _conversation_id: &str,
         chunk: &[u8],
-    ) -> Result<Option<String>, AgentError> {
+    ) -> Result<Option<Message>, AgentError> {
         let text = String::from_utf8(chunk.to_vec())
             .map_err(|e| AgentError::ServerError(format!("Invalid UTF-8: {}", e)))?;
 
@@ -150,7 +150,7 @@ impl Agent for GeneralAgent {
             return Ok(None);
         }
 
-        Ok(Some(stream_response.message.content))
+        Ok(Some(stream_response.message))
     }
 
     async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {

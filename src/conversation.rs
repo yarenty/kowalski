@@ -5,14 +5,8 @@ use chrono::{DateTime, Utc};
 /// This module provides functionality for managing conversations with the AI.
 /// Think of it as a diary for your AI, but without the teenage angst.
 use serde::{Deserialize, Serialize};
+use crate::agent::types::Message;
 
-/// A message in a conversation, because apparently we need to track everything.
-/// "Messages are like memories - they're better when they're not embarrassing."
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Message {
-    pub role: String,
-    pub content: String,
-}
 
 /// A conversation between the user and the AI, because apparently we need to be organized.
 /// "Conversations are like relationships - they start simple but get complicated quickly."
@@ -42,6 +36,7 @@ impl Conversation {
         self.messages.push(Message {
             role: role.to_string(),
             content: content.to_string(),
+            tool_calls: None,
         });
     }
 }

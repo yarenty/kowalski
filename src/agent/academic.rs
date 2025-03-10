@@ -7,7 +7,7 @@ use crate::config::Config;
 use crate::conversation::Conversation;
 use crate::role::Role;
 use super::{Agent, AgentError, BaseAgent};
-use super::types::{ChatRequest, StreamResponse};
+use super::types::{ChatRequest, StreamResponse, Message};
 use crate::utils::{PdfReader, PaperCleaner};
 
 /// AcademicAgent: Your personal research assistant with a PhD in sarcasm.
@@ -114,7 +114,7 @@ impl Agent for AcademicAgent {
         &mut self,
         _conversation_id: &str,
         chunk: &[u8],
-    ) -> Result<Option<String>, AgentError> {
+    ) -> Result<Option<Message>, AgentError> {
         let text = String::from_utf8(chunk.to_vec())
             .map_err(|e| AgentError::ServerError(format!("Invalid UTF-8: {}", e)))?;
 
@@ -125,7 +125,7 @@ impl Agent for AcademicAgent {
             return Ok(None);
         }
 
-        Ok(Some(stream_response.message.content))
+        Ok(Some(stream_response.message))
     }
 
     async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {

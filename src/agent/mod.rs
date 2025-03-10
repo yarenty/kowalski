@@ -4,14 +4,16 @@
 mod academic;
 mod general;
 mod tooling;
+mod unified;
 mod error;
-mod types;
+pub mod types;
 
 pub use academic::AcademicAgent;
 pub use general::GeneralAgent;
 pub use tooling::ToolingAgent;
 pub use unified::UnifiedAgent;
 pub use error::AgentError;
+use crate::agent::types::Message;
 use async_trait::async_trait;
 use crate::config::Config;
 use crate::conversation::Conversation;
@@ -20,7 +22,7 @@ use reqwest::Response;
 use std::collections::HashMap;
 use crate::tools::ToolError;
 use serde_json;
-
+use log::info;
 /// The core agent trait that all our specialized agents must implement.
 /// "Traits are like contracts - they're meant to be broken." - A Rust Philosopher
 #[async_trait]
@@ -55,7 +57,7 @@ pub trait Agent: Send + Sync {
         &mut self,
         conversation_id: &str,
         chunk: &[u8],
-    ) -> Result<Option<String>, AgentError>;
+    ) -> Result<Option<Message>, AgentError>;
 
     /// Adds a message to a conversation, because monologues are boring.
     async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str);
@@ -84,6 +86,8 @@ impl BaseAgent {
             .build()
             .map_err(AgentError::RequestError)?;
 
+        info!("BaseAgent created with name: {}", name);
+
         Ok(Self {
             client,
             config,
@@ -101,6 +105,7 @@ impl Agent for BaseAgent {
     }
 
     fn start_conversation(&mut self, model: &str) -> String {
+        info!("Starting conversation with model: {}", model);
         let conversation = Conversation::new(model);
         let id = conversation.id.clone();
         self.conversations.insert(id.clone(), conversation);
@@ -147,9 +152,7 @@ impl Agent for BaseAgent {
 
         let request = super::agent::types::ChatRequest {
             model: conversation.model.clone(),
-            messages: conversation.messages.iter()
-                .map(|m| super::agent::types::Message::from(m.clone()))
-                .collect(),
+            messages: conversation.messages.clone(),
             stream: true,
             temperature: self.config.chat.temperature.unwrap_or(0.7),
             max_tokens: self.config.chat.max_tokens.unwrap_or(2048) as usize,
@@ -174,7 +177,7 @@ impl Agent for BaseAgent {
         &mut self,
         _conversation_id: &str,
         chunk: &[u8],
-    ) -> Result<Option<String>, AgentError> {
+    ) -> Result<Option<Message>, AgentError> {
         let text = String::from_utf8(chunk.to_vec())
             .map_err(|e| AgentError::ServerError(format!("Invalid UTF-8: {}", e)))?;
 
@@ -185,7 +188,8 @@ impl Agent for BaseAgent {
             return Ok(None);
         }
 
-        Ok(Some(stream_response.message.content))
+
+        Ok(Some(stream_response.message))
     }
 
     async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {

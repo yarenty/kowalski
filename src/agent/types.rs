@@ -2,6 +2,8 @@
 /// "Type systems are like relationship counselors - they prevent a lot of mistakes before they happen." - A Type Theorist
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChatRequest {
@@ -17,19 +19,23 @@ pub struct ChatRequest {
 pub struct StreamResponse {
     pub done: bool,
     pub message: Message,
+    pub tool_calls: Option<Vec<ToolCall>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub function: Function,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Function {
+    pub name: String,
+    pub arguments: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub role: String,
     pub content: String,
+    pub tool_calls: Option<Vec<ToolCall>>,
 }
-
-impl From<crate::conversation::Message> for Message {
-    fn from(msg: crate::conversation::Message) -> Self {
-        Self {
-            role: msg.role,
-            content: msg.content,
-        }
-    }
-} 
