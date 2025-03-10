@@ -3,8 +3,9 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use super::{Tool, ToolInput, ToolOutput, ToolError};
+use super::{Tool, ToolInput, ToolOutput};
 use log::debug;
+use crate::utils::KowalskiError;
 
 #[derive(Debug, Clone)]
 #[allow(non_camel_case_types)]  
@@ -99,7 +100,7 @@ impl SearchTool {
         }
     }
 
-    async fn search(&self, query: &str) -> Result<String, Box<dyn std::error::Error>> {
+    async fn search(&self, query: &str) -> Result<String, KowalskiError> {
         let base_url = self.provider.get_base_url();
         let query_param = self.provider.get_query_param();
         
@@ -133,7 +134,7 @@ impl Tool for SearchTool {
         "Searches the web using various search providers"
     }
 
-    async fn execute(&self, input: ToolInput) -> Result<ToolOutput, ToolError> {
+    async fn execute(&self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
         let query = input.query;
         let url = format!("{}/?{}={}",
             self.provider.get_base_url(),
@@ -143,10 +144,10 @@ impl Tool for SearchTool {
         debug!("URL: {:?}", &url);
         let response = reqwest::get(&url)
             .await
-            .map_err(ToolError::RequestError)?
+            .map_err(KowalskiError::Request)?
             .text()
             .await
-            .map_err(ToolError::RequestError)?;
+            .map_err(KowalskiError::Request)?;
         debug!("Response: {:?}", &response);
 
         Ok(ToolOutput {

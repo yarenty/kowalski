@@ -5,14 +5,13 @@ mod academic;
 mod general;
 mod tooling;
 mod unified;
-mod error;
 pub mod types;
 
 pub use academic::AcademicAgent;
 pub use general::GeneralAgent;
 pub use tooling::ToolingAgent;
 pub use unified::UnifiedAgent;
-pub use error::AgentError;
+pub use crate::utils::KowalskiError;
 use crate::agent::types::Message;
 use async_trait::async_trait;
 use crate::config::Config;
@@ -20,7 +19,6 @@ use crate::conversation::Conversation;
 use crate::role::Role;
 use reqwest::Response;
 use std::collections::HashMap;
-use crate::tools::ToolError;
 use serde_json;
 use log::info;
 /// The core agent trait that all our specialized agents must implement.
@@ -30,7 +28,7 @@ use log::info;
 pub trait Agent: Send + Sync {
     /// Creates a new agent with the specified configuration.
     /// "Creation is like cooking - sometimes you follow the recipe, sometimes you wing it."
-    fn new(config: Config) -> Result<Self, AgentError> where Self: Sized;
+    fn new(config: Config) -> Result<Self, KowalskiError> where Self: Sized;
 
     /// Starts a new conversation, because silence is overrated.
     fn start_conversation(&mut self, model: &str) -> String;
@@ -50,14 +48,14 @@ pub trait Agent: Send + Sync {
         conversation_id: &str,
         content: &str,
         role: Option<Role>,
-    ) -> Result<Response, AgentError>;
+    ) -> Result<Response, KowalskiError>;
 
     /// Processes a stream response, because we like to watch the AI think.
     async fn process_stream_response(
         &mut self,
         conversation_id: &str,
         chunk: &[u8],
-    ) -> Result<Option<Message>, AgentError>;
+    ) -> Result<Option<Message>, KowalskiError>;
 
     /// Adds a message to a conversation, because monologues are boring.
     async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str);
@@ -80,11 +78,11 @@ pub struct BaseAgent {
 }
 
 impl BaseAgent {
-    pub fn new(config: Config, name: &str, description: &str) -> Result<Self, AgentError> {
+    pub fn new(config: Config, name: &str, description: &str) -> Result<Self, KowalskiError> {
         let client = reqwest::ClientBuilder::new()
             .pool_max_idle_per_host(0)
             .build()
-            .map_err(AgentError::Request)?;
+            .map_err(KowalskiError::Request)?;
 
         info!("BaseAgent created with name: {}", name);
 
@@ -100,7 +98,7 @@ impl BaseAgent {
 
 #[async_trait]
 impl Agent for BaseAgent {
-    fn new(config: Config) -> Result<Self, AgentError> {
+    fn new(config: Config) -> Result<Self, KowalskiError> {
         Self::new(config, "Base Agent", "A basic agent implementation")
     }
 
@@ -129,9 +127,9 @@ impl Agent for BaseAgent {
         conversation_id: &str,
         content: &str,
         role: Option<Role>,
-    ) -> Result<Response, AgentError> {
+    ) -> Result<Response, KowalskiError> {
         let conversation = self.conversations.get_mut(conversation_id)
-            .ok_or_else(|| AgentError::Server("Conversation not found".to_string()))?;
+            .ok_or_else(|| KowalskiError::Server("Conversation not found".to_string()))?;
 
         // Add system messages based on role if provided
         if let Some(role) = role {
@@ -167,7 +165,7 @@ impl Agent for BaseAgent {
 
         if !response.status().is_success() {
             let error_text = response.text().await?;
-            return Err(AgentError::Server(error_text));
+            return Err(KowalskiError::Server(error_text));
         }
 
         Ok(response)
@@ -177,12 +175,12 @@ impl Agent for BaseAgent {
         &mut self,
         _conversation_id: &str,
         chunk: &[u8],
-    ) -> Result<Option<Message>, AgentError> {
+    ) -> Result<Option<Message>, KowalskiError> {
         let text = String::from_utf8(chunk.to_vec())
-            .map_err(|e| AgentError::Server(format!("Invalid UTF-8: {}", e)))?;
+            .map_err(|e| KowalskiError::Server(format!("Invalid UTF-8: {}", e)))?;
 
         let stream_response: super::agent::types::StreamResponse = serde_json::from_str(&text)
-            .map_err(|e| AgentError::Json(e))?;
+            .map_err(|e| KowalskiError::Json(e))?;
 
         if stream_response.done {
             return Ok(None);
@@ -204,17 +202,5 @@ impl Agent for BaseAgent {
 
     fn description(&self) -> &str {
         &self.description
-    }
-}
-
-impl From<ToolError> for AgentError {
-    fn from(error: ToolError) -> Self {
-        AgentError::Tool(error.to_string())
-    }
-}
-
-impl From<serde_json::Error> for AgentError {
-    fn from(error: serde_json::Error) -> Self {
-        AgentError::Serialization(error.to_string())
     }
 } 

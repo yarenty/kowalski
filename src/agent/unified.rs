@@ -3,15 +3,16 @@ use reqwest::Response;
 use crate::config::Config;
 use crate::conversation::Conversation;
 use crate::role::Role;
-use super::{Agent, AgentError, BaseAgent};
+use super::{Agent, BaseAgent};
 use crate::tools::{ToolChain, ToolType, SearchTool, TaskType};
-use crate::tools::search::SearchProvider;
-use crate::tools::browser::WebBrowser;
-use crate::tools::scraper::WebScraper;
+use crate::tools::SearchProvider;
+use crate::tools::WebBrowser;
+use crate::tools::WebScraper;
 use log::{debug, info};
 use std::collections::HashMap;
 use serde_json;
 use crate::agent::types::Message;
+use crate::utils::KowalskiError;
 
 /// UnifiedAgent: A versatile agent that combines chat capabilities with tool usage
 pub struct UnifiedAgent {
@@ -21,7 +22,7 @@ pub struct UnifiedAgent {
 
 #[async_trait]
 impl Agent for UnifiedAgent {
-    fn new(config: Config) -> Result<Self, AgentError> {
+    fn new(config: Config) -> Result<Self, KowalskiError> {
         let base = BaseAgent::new(
             config.clone(),
             "UnifiedAgent",
@@ -73,7 +74,7 @@ impl Agent for UnifiedAgent {
         conversation_id: &str,
         content: &str,
         role: Option<Role>,
-    ) -> Result<Response, AgentError> {
+    ) -> Result<Response, KowalskiError> {
         debug!("Processing chat request: {}", content);
 
         // Process content through tool chain if needed
@@ -87,7 +88,7 @@ impl Agent for UnifiedAgent {
         };
 
         let conversation = self.base.conversations.get_mut(conversation_id)
-            .ok_or_else(|| AgentError::ConversationNotFound(conversation_id.to_string()))?;
+            .ok_or_else(|| KowalskiError::ConversationNotFound(conversation_id.to_string()))?;
 
         // Add system messages based on role if provided
         if let Some(role) = role {
@@ -179,7 +180,7 @@ impl Agent for UnifiedAgent {
         dbg!(&response);
         if !response.status().is_success() {
             let error_text = response.text().await?;
-            return Err(AgentError::Server(error_text));
+            return Err(KowalskiError::Server(error_text));
         }
 
         Ok(response)
@@ -189,7 +190,7 @@ impl Agent for UnifiedAgent {
         &mut self,
         conversation_id: &str,
         chunk: &[u8],
-    ) -> Result<Option<Message>, AgentError> {
+    ) -> Result<Option<Message>, KowalskiError> {
         self.base.process_stream_response(conversation_id, chunk).await
     }
 
@@ -216,7 +217,7 @@ impl UnifiedAgent {
     }
 
     /// Execute a specific tool directly
-    pub async fn execute_tool(&self, tool_type: TaskType, query: &str) -> Result<String, AgentError> {
+    pub async fn execute_tool(&self, tool_type: TaskType, query: &str) -> Result<String, KowalskiError> {
         let tool_input = crate::tools::ToolInput::new(query.to_string());
         let tool_output = self.tool_chain.execute(tool_input).await?;
         Ok(tool_output.content)
