@@ -56,7 +56,7 @@ impl Agent for AcademicAgent {
         role: Option<Role>,
     ) -> Result<Response, AgentError> {
         let conversation = self.base.conversations.get_mut(conversation_id)
-            .ok_or_else(|| AgentError::ServerError("Conversation not found".to_string()))?;
+            .ok_or_else(|| AgentError::Server("Conversation not found".to_string()))?;
 
         // Add system messages based on role if provided
         if let Some(role) = role {
@@ -116,10 +116,10 @@ impl Agent for AcademicAgent {
         chunk: &[u8],
     ) -> Result<Option<Message>, AgentError> {
         let text = String::from_utf8(chunk.to_vec())
-            .map_err(|e| AgentError::ServerError(format!("Invalid UTF-8: {}", e)))?;
+            .map_err(|e| AgentError::Server(format!("Invalid UTF-8: {}", e)))?;
 
         let stream_response: StreamResponse = serde_json::from_str(&text)
-            .map_err(|e| AgentError::JsonError(e))?;
+            .map_err(|e| AgentError::Json(e))?;
 
         if stream_response.done {
             return Ok(None);

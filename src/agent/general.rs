@@ -107,7 +107,7 @@ impl Agent for GeneralAgent {
             .json(&chat_request)
             .send()
             .await
-            .map_err(AgentError::RequestError)?;
+            .map_err(AgentError::Request)?;
 
         dbg!(&response);
 
@@ -141,10 +141,10 @@ impl Agent for GeneralAgent {
         chunk: &[u8],
     ) -> Result<Option<Message>, AgentError> {
         let text = String::from_utf8(chunk.to_vec())
-            .map_err(|e| AgentError::ServerError(format!("Invalid UTF-8: {}", e)))?;
+            .map_err(|e| AgentError::Server(format!("Invalid UTF-8: {}", e)))?;
 
         let stream_response: StreamResponse = serde_json::from_str(&text)
-            .map_err(|e| AgentError::JsonError(e))?;
+            .map_err(|e| AgentError::Json(e))?;
 
         if stream_response.done {
             return Ok(None);
