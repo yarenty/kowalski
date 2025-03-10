@@ -6,10 +6,10 @@ use reqwest::Response;
 use crate::config::Config;
 use crate::conversation::Conversation;
 use crate::role::Role;
-use super::{Agent, AgentError, BaseAgent};
-use super::types::{ChatRequest, StreamResponse, Message};
+use super::{Agent, BaseAgent};
+use super::types::{StreamResponse, Message};
 use crate::utils::{PdfReader, PaperCleaner};
-
+use crate::utils::KowalskiError;
 /// AcademicAgent: Your personal research assistant with a PhD in sarcasm.
 pub struct AcademicAgent {
     base: BaseAgent,
@@ -19,7 +19,7 @@ pub struct AcademicAgent {
 
 #[async_trait]
 impl Agent for AcademicAgent {
-    fn new(config: Config) -> Result<Self, AgentError> {
+    fn new(config: Config) -> Result<Self, KowalskiError> {
         let base = BaseAgent::new(
             config,
             "Academic Agent",
@@ -54,9 +54,9 @@ impl Agent for AcademicAgent {
         conversation_id: &str,
         content: &str,
         role: Option<Role>,
-    ) -> Result<Response, AgentError> {
+    ) -> Result<Response, KowalskiError> {
         let conversation = self.base.conversations.get_mut(conversation_id)
-            .ok_or_else(|| AgentError::Server("Conversation not found".to_string()))?;
+            .ok_or_else(|| KowalskiError::Server("Conversation not found".to_string()))?;
 
         // Add system messages based on role if provided
         if let Some(role) = role {
@@ -114,12 +114,12 @@ impl Agent for AcademicAgent {
         &mut self,
         _conversation_id: &str,
         chunk: &[u8],
-    ) -> Result<Option<Message>, AgentError> {
+    ) -> Result<Option<Message>, KowalskiError> {
         let text = String::from_utf8(chunk.to_vec())
-            .map_err(|e| AgentError::Server(format!("Invalid UTF-8: {}", e)))?;
+            .map_err(|e| KowalskiError::Server(format!("Invalid UTF-8: {}", e)))?;
 
         let stream_response: StreamResponse = serde_json::from_str(&text)
-            .map_err(|e| AgentError::Json(e))?;
+            .map_err(|e| KowalskiError::Json(e))?;
 
         if stream_response.done {
             return Ok(None);
@@ -144,14 +144,14 @@ impl Agent for AcademicAgent {
 #[allow(dead_code)]
 impl AcademicAgent {
     /// Processes an academic paper, because apparently reading it normally is too mainstream.
-    pub async fn process_paper(&self, path: &str) -> Result<String, AgentError> {
+    pub async fn process_paper(&self, path: &str) -> Result<String, KowalskiError> {
         let content = self.pdf_reader.read_pdf(path)?;
         let cleaned = self.paper_cleaner.clean(&content)?;
         Ok(cleaned)
     }
 
     /// Extracts paper metadata, because titles and abstracts are too obvious.
-    pub async fn extract_metadata(&self, path: &str) -> Result<PaperMetadata, AgentError> {
+    pub async fn extract_metadata(&self, path: &str) -> Result<PaperMetadata, KowalskiError> {
         let content = self.pdf_reader.read_pdf(path)?;
         
         // TODO:Add your metadata extraction logic here

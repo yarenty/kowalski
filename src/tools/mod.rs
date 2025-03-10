@@ -1,15 +1,16 @@
 /// Tools module: Because every AI needs its gadgets.
 /// "Tools are like toys for grown-up developers." - A Tool Enthusiast
 
-pub mod browser;
-pub mod search;
-pub mod scraper;
+mod browser;
+mod scraper;
+mod search;
 mod cache;
-mod error;
 
-pub use search::SearchTool;
+pub use browser::WebBrowser;
+pub use scraper::WebScraper;
+pub use search::{SearchTool, SearchProvider};
 pub use cache::ToolCache;
-pub use error::ToolError;
+pub use crate::utils::KowalskiError;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -23,7 +24,7 @@ pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     #[allow(dead_code)]
     fn description(&self) -> &str;
-    async fn execute(&self, input: ToolInput) -> Result<ToolOutput, ToolError>;
+    async fn execute(&self, input: ToolInput) -> Result<ToolOutput, KowalskiError>;
 }
 
 /// Input for tools, because tools need something to work with.
@@ -134,7 +135,7 @@ impl ToolType {
         }
     }
 
-    async fn execute(&self, input: ToolInput) -> Result<ToolOutput, ToolError> {
+    async fn execute(&self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
         match self {
             ToolType::Browser(b) => b.execute(input).await,
             ToolType::Search(s) => s.execute(input).await,
@@ -164,7 +165,7 @@ impl ToolChain {
         }
     }
 
-    pub async fn execute(&self, input: ToolInput) -> Result<ToolOutput, ToolError> {
+    pub async fn execute(&self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
         let task_type = self.router.determine_task_type(&input.query);
         
         if let Some(tools) = self.tools.get(&task_type) {
@@ -175,7 +176,7 @@ impl ToolChain {
             }
         }
         
-        Err(ToolError::NoSuitableToolError(format!(
+        Err(KowalskiError::NoSuitableTool(format!(
             "No suitable tool found for task type {:?}", task_type
         )))
     }

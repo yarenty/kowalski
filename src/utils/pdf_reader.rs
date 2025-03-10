@@ -3,6 +3,7 @@ use std::error::Error;
 use std::fmt;
 use std::fs;
 use std::path::Path;
+use crate::utils::KowalskiError;
 
 #[derive(Debug)]
 pub enum PdfReaderError {
@@ -42,18 +43,18 @@ impl PdfReader {
     /// * `file_path` - Path to the PDF file
     ///
     /// # Returns
-    /// * `Result<String, PdfReaderError>` - The extracted text content or an error
-    pub fn read_pdf(&self, file_path: &str) -> Result<String, PdfReaderError> {
+    /// * `Result<String, KowalskiError>` - The extracted text content or an error
+    pub fn read_pdf(&self, file_path: &str) -> Result<String, KowalskiError> {
         // Verify file exists and is a PDF
         if !Path::new(file_path).exists() {
-            return Err(PdfReaderError::InvalidPath(format!(
+            return Err(KowalskiError::InvalidPath(format!(
                 "File not found: {}",
                 file_path
             )));
         }
 
         if !file_path.to_lowercase().ends_with(".pdf") {
-            return Err(PdfReaderError::InvalidPath(
+            return Err(KowalskiError::InvalidPath(
                 "File must be a PDF".to_string(),
             ));
         }
@@ -61,7 +62,7 @@ impl PdfReader {
         // Extract text directly from the PDF file
         match extract_text(file_path) {
             Ok(text) => Ok(text),
-            Err(e) => Err(PdfReaderError::PdfError(e.to_string())),
+            Err(e) => Err(KowalskiError::PdfError(e.to_string())),
         }
     }
 
@@ -72,9 +73,9 @@ impl PdfReader {
     /// * `output_path` - Path where the text file should be saved
     ///
     /// # Returns
-    /// * `Result<(), PdfReaderError>` - Success or error
+    /// * `Result<(), KowalskiError>` - Success or error
     #[allow(dead_code)]
-    pub fn pdf_to_text(pdf_path: &str, output_path: &str) -> Result<(), PdfReaderError> {
+    pub fn pdf_to_text(pdf_path: &str, output_path: &str) -> Result<(), KowalskiError> {
         let reader = Self::new();
         let text = reader.read_pdf(pdf_path)?;
         fs::write(output_path, text)?;
@@ -82,7 +83,7 @@ impl PdfReader {
     }
 
     #[allow(dead_code)]
-    pub fn read_pdf_file(pdf_path: &str) -> Result<String, PdfReaderError> {
+    pub fn read_pdf_file(pdf_path: &str) -> Result<String, KowalskiError> {
         let reader = Self::new();
         reader.read_pdf(pdf_path)
     }

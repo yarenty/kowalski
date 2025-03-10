@@ -11,7 +11,8 @@ use scraper::{Html, Selector};
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Duration;
-use super::{Tool, ToolInput, ToolOutput, ToolError};
+use super::{Tool, ToolInput, ToolOutput};
+use crate::utils::KowalskiError;
 
 pub struct WebScraper {
     client: reqwest::Client,
@@ -63,7 +64,7 @@ impl WebScraper {
         self
     }
 
-    async fn scrape_url(&self, url: &str) -> Result<String, ToolError> {
+    async fn scrape_url(&self, url: &str) -> Result<String, KowalskiError> {
         // Wait for rate limiter
         self.rate_limiter
             .until_ready()
@@ -73,12 +74,12 @@ impl WebScraper {
             .get(url)
             .send()
             .await
-            .map_err(ToolError::RequestError)?;
+            .map_err(KowalskiError::Request)?;
 
         let html = response
             .text()
             .await
-            .map_err(ToolError::RequestError)?;
+            .map_err(KowalskiError::Request)?;
 
         let document = Html::parse_document(&html);
         
@@ -118,7 +119,7 @@ impl Tool for WebScraper {
         "Scrapes web content with rate limiting and polite behavior, because manners matter"
     }
 
-    async fn execute(&self, input: ToolInput) -> Result<ToolOutput, ToolError> {
+    async fn execute(&self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
         let url = input.query;
         let content = self.scrape_url(&url).await?;
 

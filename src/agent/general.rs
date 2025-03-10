@@ -1,9 +1,10 @@
-use crate::agent::{Agent, AgentError, BaseAgent};
+use crate::agent::{Agent, BaseAgent};
 use crate::config::Config;
 use super::types::StreamResponse;
 use crate::role::Role;
 use reqwest::Response;
 use crate::agent::types::Message;
+use crate::utils::KowalskiError;
 /// GeneralAgent: A simple agent for basic chat interactions
 /// 
 /// This agent provides straightforward chat functionality without specialized features,
@@ -25,7 +26,7 @@ impl GeneralAgent {
 
 #[async_trait::async_trait]
 impl Agent for GeneralAgent {
-    fn new(config: Config) -> Result<Self, AgentError> {
+    fn new(config: Config) -> Result<Self, KowalskiError> {
         Ok(Self {
             base: BaseAgent::new(
                 config,
@@ -59,7 +60,7 @@ impl Agent for GeneralAgent {
         conversation_id: &str,
         content: &str,
         role: Option<Role>,
-    ) -> Result<Response, AgentError> {
+    ) -> Result<Response, KowalskiError> {
 
         // Still could use some role-based system messages
         if let Some(role) = role {
@@ -79,7 +80,7 @@ impl Agent for GeneralAgent {
 
         // Get the conversation
         let conversation = self.base.get_conversation(conversation_id)
-            .ok_or_else(|| AgentError::ConversationNotFound(conversation_id.to_string()))?;
+            .ok_or_else(|| KowalskiError::ConversationNotFound(conversation_id.to_string()))?;
 
 
         // Prepare the chat request
@@ -107,7 +108,7 @@ impl Agent for GeneralAgent {
             .json(&chat_request)
             .send()
             .await
-            .map_err(AgentError::Request)?;
+            .map_err(KowalskiError::Request)?;
 
         dbg!(&response);
 
@@ -118,7 +119,7 @@ impl Agent for GeneralAgent {
     //     &mut self,
     //     conversation_id: &str,
     //     chunk: &[u8],
-    // ) -> Result<Option<String>, AgentError> {
+    // ) -> Result<Option<String>, KowalskiError> {
     //     debug!("Processing stream response for conversation {}", conversation_id);
         
     //     // Parse the chunk as a JSON response
@@ -139,12 +140,12 @@ impl Agent for GeneralAgent {
         &mut self,
         _conversation_id: &str,
         chunk: &[u8],
-    ) -> Result<Option<Message>, AgentError> {
+    ) -> Result<Option<Message>, KowalskiError> {
         let text = String::from_utf8(chunk.to_vec())
-            .map_err(|e| AgentError::Server(format!("Invalid UTF-8: {}", e)))?;
+            .map_err(|e| KowalskiError::Server(format!("Invalid UTF-8: {}", e)))?;
 
         let stream_response: StreamResponse = serde_json::from_str(&text)
-            .map_err(|e| AgentError::Json(e))?;
+            .map_err(|e| KowalskiError::Json(e))?;
 
         if stream_response.done {
             return Ok(None);

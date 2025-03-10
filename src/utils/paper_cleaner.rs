@@ -1,23 +1,4 @@
-use std::error::Error;
-use std::fmt;
-
-#[derive(Debug)]
-pub enum PaperCleanerError {
-    InvalidInput(String),
-    #[allow(dead_code)]
-    ProcessingError(String),
-}
-
-impl fmt::Display for PaperCleanerError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            PaperCleanerError::InvalidInput(e) => write!(f, "Invalid input: {}", e),
-            PaperCleanerError::ProcessingError(e) => write!(f, "Processing error: {}", e),
-        }
-    }
-}
-
-impl Error for PaperCleanerError {}
+use crate::utils::KowalskiError;
 
 pub struct PaperCleaner {}
 
@@ -32,10 +13,10 @@ impl PaperCleaner {
     /// * `text` - The input text to clean
     ///
     /// # Returns
-    /// * `Result<String, PaperCleanerError>` - The cleaned text or an error
-    pub fn clean(&self, text: &str) -> Result<String, PaperCleanerError> {
+    /// * `Result<String, KowalskiError>` - The cleaned text or an error
+    pub fn clean(&self, text: &str) -> Result<String, KowalskiError> {
         if text.is_empty() {
-            return Err(PaperCleanerError::InvalidInput(
+            return Err(KowalskiError::InvalidInput(
                 "Input text cannot be empty".to_string(),
             ));
         }
@@ -55,8 +36,8 @@ impl PaperCleaner {
     /// * `text` - The input text
     ///
     /// # Returns
-    /// * `Result<String, PaperCleanerError>` - The text without references or an error
-    fn remove_references_section(text: &str) -> Result<String, PaperCleanerError> {
+    /// * `Result<String, KowalskiError>` - The text without references or an error
+    fn remove_references_section(text: &str) -> Result<String, KowalskiError> {
         // Common variations of the references section header
         let reference_headers = [
             "References",
@@ -89,8 +70,8 @@ impl PaperCleaner {
     /// * `text` - The input text
     ///
     /// # Returns
-    /// * `Result<String, PaperCleanerError>` - The text with fixed line breaks or an error
-    fn fix_hyphenated_line_breaks(text: &str) -> Result<String, PaperCleanerError> {
+    /// * `Result<String, KowalskiError>` - The text with fixed line breaks or an error
+    fn fix_hyphenated_line_breaks(text: &str) -> Result<String, KowalskiError> {
         // Split text into lines
         let lines: Vec<&str> = text.lines().collect();
         let mut result = String::new();
@@ -143,6 +124,6 @@ mod tests {
     #[test]
     fn test_empty_input() {
         let result = PaperCleaner::clean("");
-        assert!(matches!(result, Err(PaperCleanerError::InvalidInput(_))));
+        assert!(matches!(result, Err(KowalskiError::InvalidInput(_))));
     }
 }

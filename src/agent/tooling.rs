@@ -8,15 +8,15 @@ use std::collections::HashMap;
 use crate::config::Config;
 use crate::conversation::Conversation;
 use crate::role::Role;
-use super::{Agent, AgentError, BaseAgent};
+use super::{Agent, BaseAgent};
 use crate::tools::{ ToolChain,  SearchTool,  ToolCache,  ToolInput, ToolType};
-use crate::tools::search::SearchProvider;
+use crate::tools::SearchProvider;
 use log::{debug, info};
 use crate::tools::TaskType;
-use crate::tools::browser::WebBrowser;
-use crate::tools::scraper::WebScraper;
+use crate::tools::WebBrowser;
+use crate::tools::WebScraper;
 use crate::agent::types::Message;
-
+use crate::utils::KowalskiError;
 /// ToolingAgent: Your personal web crawler with a sense of humor.
 #[allow(dead_code)]
 pub struct ToolingAgent {
@@ -31,7 +31,7 @@ pub struct ToolingAgent {
 
 impl ToolingAgent {
     /// Creates a new tooling agent
-    pub fn new(config: Config) -> Result<Self, AgentError> {
+    pub fn new(config: Config) -> Result<Self, KowalskiError> {
         let base = BaseAgent::new(
             config.clone(),
             "Tooling Agent",
@@ -93,7 +93,7 @@ impl ToolingAgent {
 
 #[async_trait]
 impl Agent for ToolingAgent {
-    fn new(config: Config) -> Result<Self, AgentError> {
+    fn new(config: Config) -> Result<Self, KowalskiError> {
         Self::new(config)
     }
 
@@ -118,7 +118,7 @@ impl Agent for ToolingAgent {
         conversation_id: &str,
         content: &str,
         role: Option<Role>,
-    ) -> Result<Response, AgentError> {
+    ) -> Result<Response, KowalskiError> {
         // Process content through tool chain if it looks like a web request
         let processed_content = if content.starts_with("http") || content.contains("search:") {
             let tool_input = ToolInput::new(content.to_string());
@@ -135,7 +135,7 @@ impl Agent for ToolingAgent {
         &mut self,
         conversation_id: &str,
         chunk: &[u8],
-    ) -> Result<Option<Message>, AgentError> {
+    ) -> Result<Option<Message>, KowalskiError> {
         self.base.process_stream_response(conversation_id, chunk).await
     }
 
@@ -154,7 +154,7 @@ impl Agent for ToolingAgent {
 
 impl ToolingAgent {
     /// Searches the web, because Google is too mainstream.
-    pub async fn search(&mut self, query: &str) -> Result<Vec<SearchResult>, AgentError> {
+    pub async fn search(&mut self, query: &str) -> Result<Vec<SearchResult>, KowalskiError> {
         let tool_input = ToolInput::new(query.to_string());
         debug!("Searching for: {}", query);
         let output = self.chain.execute(tool_input).await?;
@@ -242,7 +242,7 @@ impl ToolingAgent {
     }
 
     /// Fetches and processes a webpage, because raw HTML is for machines.
-    pub async fn fetch_page(&mut self, url: &str) -> Result<ProcessedPage, AgentError> {
+    pub async fn fetch_page(&mut self, url: &str) -> Result<ProcessedPage, KowalskiError> {
         let tool_input = ToolInput::new(url.to_string());
         let output = self.chain.execute(tool_input).await?;
         
@@ -294,7 +294,7 @@ impl ToolingAgent {
 
     /// Collects data from multiple pages, because one page is never enough.
     #[allow(dead_code)]
-    pub async fn collect_data(&mut self, urls: Vec<String>) -> Result<Vec<ProcessedPage>, AgentError> {
+    pub async fn collect_data(&mut self, urls: Vec<String>) -> Result<Vec<ProcessedPage>, KowalskiError> {
         let mut results = Vec::new();
         for url in urls {
             if let Ok(page) = self.fetch_page(&url).await {
