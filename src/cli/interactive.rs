@@ -31,17 +31,20 @@ async fn interaction_loop<A: Agent>(
             .chat_with_history(conv_id, input, role.clone())
             .await?;
 
-        print!("Assistant: ");
+        print!("Kowalski: ");
         io::stdout().flush()?;
+        let mut buffer = String::new();
 
         while let Some(chunk) = response.chunk().await? {
             match agent.process_stream_response(conv_id, &chunk).await {
                 Ok(Some(content)) => {
                     print!("{}", content);
                     io::stdout().flush()?;
+                    buffer.push_str(&content);
                 }
                 Ok(None) => {
                     println!("\n");
+                    agent.add_message(conv_id, "assistant", &buffer).await;
                     break;
                 }
                 Err(e) => {
@@ -72,15 +75,18 @@ pub async fn tooling_loop(
         let mut response = agent
             .chat_with_history(&conv_id, initial_query, None)
             .await?;
-
+        print!("Kowalski: ");
+        let mut buffer = String::new();
         while let Some(chunk) = response.chunk().await? {
             match agent.process_stream_response(&conv_id, &chunk).await {
                 Ok(Some(content)) => {
-                    print!("Assistant: {}", content);
+                    print!("{}", content);
                     io::stdout().flush()?;
+                    buffer.push_str(&content);
                 }
                 Ok(None) => {
                     println!("\n");
+                    agent.add_message(&conv_id, "assistant", &buffer).await;
                     break;
                 }
                 Err(e) => {
@@ -93,9 +99,9 @@ pub async fn tooling_loop(
 
     // Use the common interaction loop with tool-specific prompt
     let prompt = match tool_type {
-        "Search" => "Enter your search query (or type '/bye' to exit): ",
-        "Scrape" => "Enter a URL to analyze (or type '/bye' to exit): ",
-        "Code" => "Enter a code-related question (or type '/bye' to exit): ",
+        "Search" => "Ask about your search query (type '/bye' to exit): ",
+        "Scrape" => "What do you want to know more about your URL (type '/bye' to exit): ",
+        "Code" => "Any a code-related question (type '/bye' to exit): ",
         _ => "Enter your query (or type '/bye' to exit): ",
     };
 
@@ -119,14 +125,18 @@ pub async fn chat_loop(
             .chat_with_history(&conv_id, initial_message, None)
             .await?;
 
+            let mut buffer = String::new();  
+            print!("Kowalski: ");
         while let Some(chunk) = response.chunk().await? {
             match agent.process_stream_response(&conv_id, &chunk).await {
                 Ok(Some(content)) => {
-                    print!("Assistant: {}", content);
+                    print!("{}", content);
                     io::stdout().flush()?;
+                    buffer.push_str(&content);
                 }
                 Ok(None) => {
                     println!("\n");
+                    agent.add_message(&conv_id, "assistant", &buffer).await;
                     break;
                 }
                 Err(e) => {
@@ -151,31 +161,36 @@ pub async fn academic_loop(
     println!("Academic analysis started with model: {} (type '/bye' to exit)", model);
     println!("----------------------------------------");
 
-    // Read the file content
-    let content = if file.extension().map_or(false, |ext| ext == "pdf") {
-        PdfReader::read_pdf_file(&file.to_string_lossy())?
-    } else {
-        std::fs::read_to_string(file)?
-    };
-
-    // Initial analysis of the file
-    println!("Analyzing file: {}", file.display());
     let role = Role::translator(Some(Audience::Scientist), Some(Preset::Questions));
+
+    agent.add_role(&conv_id, Some(role));
+
+    agent.add_paper(&conv_id, file.as_path().to_str().unwrap());
+
+
+    
+    // dbg!(&content);
+
     let mut response = agent
-        .chat_with_history(&conv_id, &content, Some(role.clone()))
+        .chat_with_history(&conv_id, "provide me with a summary of the paper", Some(role.clone()))
         .await?;
 
-    print!("Assistant: ");
+        print!("Kowalski: ");
+
+        let mut buffer = String::new();    
     io::stdout().flush()?;
+
 
     while let Some(chunk) = response.chunk().await? {
         match agent.process_stream_response(&conv_id, &chunk).await {
             Ok(Some(content)) => {
                 print!("{}", content);
                 io::stdout().flush()?;
+                buffer.push_str(&content);
             }
             Ok(None) => {
                 println!("\n");
+                agent.add_message(&conv_id, "assistant", &buffer).await;
                 break;
             }
             Err(e) => {
