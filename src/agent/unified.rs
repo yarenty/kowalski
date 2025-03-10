@@ -179,7 +179,7 @@ impl Agent for UnifiedAgent {
         dbg!(&response);
         if !response.status().is_success() {
             let error_text = response.text().await?;
-            return Err(AgentError::ServerError(error_text));
+            return Err(AgentError::Server(error_text));
         }
 
         Ok(response)

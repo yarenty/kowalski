@@ -84,7 +84,7 @@ impl BaseAgent {
         let client = reqwest::ClientBuilder::new()
             .pool_max_idle_per_host(0)
             .build()
-            .map_err(AgentError::RequestError)?;
+            .map_err(AgentError::Request)?;
 
         info!("BaseAgent created with name: {}", name);
 
@@ -131,7 +131,7 @@ impl Agent for BaseAgent {
         role: Option<Role>,
     ) -> Result<Response, AgentError> {
         let conversation = self.conversations.get_mut(conversation_id)
-            .ok_or_else(|| AgentError::ServerError("Conversation not found".to_string()))?;
+            .ok_or_else(|| AgentError::Server("Conversation not found".to_string()))?;
 
         // Add system messages based on role if provided
         if let Some(role) = role {
@@ -167,7 +167,7 @@ impl Agent for BaseAgent {
 
         if !response.status().is_success() {
             let error_text = response.text().await?;
-            return Err(AgentError::ServerError(error_text));
+            return Err(AgentError::Server(error_text));
         }
 
         Ok(response)
@@ -179,10 +179,10 @@ impl Agent for BaseAgent {
         chunk: &[u8],
     ) -> Result<Option<Message>, AgentError> {
         let text = String::from_utf8(chunk.to_vec())
-            .map_err(|e| AgentError::ServerError(format!("Invalid UTF-8: {}", e)))?;
+            .map_err(|e| AgentError::Server(format!("Invalid UTF-8: {}", e)))?;
 
         let stream_response: super::agent::types::StreamResponse = serde_json::from_str(&text)
-            .map_err(|e| AgentError::JsonError(e))?;
+            .map_err(|e| AgentError::Json(e))?;
 
         if stream_response.done {
             return Ok(None);
@@ -209,12 +209,12 @@ impl Agent for BaseAgent {
 
 impl From<ToolError> for AgentError {
     fn from(error: ToolError) -> Self {
-        AgentError::ToolError(error.to_string())
+        AgentError::Tool(error.to_string())
     }
 }
 
 impl From<serde_json::Error> for AgentError {
     fn from(error: serde_json::Error) -> Self {
-        AgentError::SerializationError(error.to_string())
+        AgentError::Serialization(error.to_string())
     }
 } 
