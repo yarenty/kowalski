@@ -163,12 +163,12 @@ pub async fn academic_loop(
 
     let role = Role::translator(Some(Audience::Scientist), Some(Preset::Questions));
 
-    agent.add_role(&conv_id, Some(role));
+    // agent.add_role(&conv_id, Some(role));
 
-    agent.add_paper(&conv_id, file.as_path().to_str().unwrap());
+    // agent.add_paper(&conv_id, file.as_path().to_str().unwrap());
 
 
-    
+
     // dbg!(&content);
 
     let mut response = agent

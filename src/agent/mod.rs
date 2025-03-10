@@ -10,6 +10,7 @@ mod types;
 pub use academic::AcademicAgent;
 pub use general::GeneralAgent;
 pub use tooling::ToolingAgent;
+pub use unified::UnifiedAgent;
 pub use error::AgentError;
 use async_trait::async_trait;
 use crate::config::Config;
@@ -152,6 +153,7 @@ impl Agent for BaseAgent {
             stream: true,
             temperature: self.config.chat.temperature.unwrap_or(0.7),
             max_tokens: self.config.chat.max_tokens.unwrap_or(2048) as usize,
+            tools: None,
         };
 
         let response = self.client

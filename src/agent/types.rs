@@ -10,6 +10,7 @@ pub struct ChatRequest {
     pub stream: bool,
     pub temperature: f32,
     pub max_tokens: usize,
+    pub tools: Option<Vec<serde_json::Value>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
