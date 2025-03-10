@@ -4,6 +4,46 @@
 
 All notable changes to this project will be documented in this file, or at least we'll try to remember to do so.
 
+## [0.3.0] - 2024-03-10
+
+> "Version 0.3.0: Because 0.2.0 wasn't confusing enough." - A Version Control Enthusiast
+
+### 🎭 Added
+- **CLI Interface** (because typing commands is more fun than clicking buttons):
+  - `kowalski chat`: Talk to your AI without all the fancy UI
+  - `kowalski academic`: Analyze papers without actually reading them
+  - `kowalski model`: Manage your AI models like a pro
+  - Command-line arguments that make sense (for once)
+  - Helpful error messages (they're still errors, but at least they're helpful)
+
+### 🔧 Changed
+- Completely revamped command-line interface (it's not just a bunch of flags anymore)
+- Improved model management commands (your AI models are now properly domesticated)
+- Enhanced error handling in CLI (because users deserve to know what they did wrong)
+- Better streaming response handling (watch your AI think in real-time, now with better formatting)
+
+### 🐛 Fixed
+- CLI argument parsing issues (now it actually understands what you're trying to say)
+- Model management command errors (your models won't disappear into the void anymore)
+- Response streaming formatting (no more broken lines or missing characters)
+- Various "it works on my machine" issues (it still might not work on yours, but at least we tried)
+
+### 📚 Documentation
+- Added CLI usage examples (because reading the code is so last year)
+- Updated README with command-line instructions (they're actually useful this time)
+- Added command help messages (they're sarcastic, but they work)
+- Improved error messages (they're still errors, but at least they're funny)
+
+### 🔬 Technical Debt
+- Replaced quick CLI hacks with slightly more sophisticated CLI hacks
+- Moved CLI-related TODOs to actual GitHub issues
+- Pretended to understand command-line argument parsing better
+
+### 🎯 Dependencies
+- Added `clap` for proper CLI argument parsing (because parsing strings manually is so 2010)
+- Updated other dependencies (because old code is like old milk - it smells bad)
+- Removed deprecated dependencies (they served us well, but it's time to move on)
+
 ## [0.2.0] - 2024-03-09
 
 > "The best time to write a changelog is when you make the changes. The second best time is right before a release when you've forgotten everything you did." - Ancient Developer Proverb
