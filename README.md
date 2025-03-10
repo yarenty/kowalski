@@ -21,6 +21,110 @@ This project implements a basic agent that can communicate with Ollama's API, su
 - 🔄 **Streaming Responses**: Watch your AI think in real-time (it's more exciting than it sounds)
 - ⚙️ **Configurable Settings**: Customize everything until it breaks
 
+## CLI Usage
+
+Kowalski provides a powerful command-line interface for interacting with AI models and tools. Here's how to use it:
+
+### Basic Commands
+
+#### Chat with AI
+Start a conversation with the AI model:
+```bash
+# Basic chat
+kowalski chat "What's the best way to learn Rust?"
+
+# Chat with a specific model
+kowalski chat "Explain async/await" --model llama2
+```
+
+#### Analyze Academic Papers
+Upload and analyze research papers:
+```bash
+# Analyze a PDF paper
+kowalski academic --file research.pdf
+
+# Analyze with specific model and output format
+kowalski academic --file paper.txt --model llama2 --format markdown
+```
+
+#### Manage AI Models
+List, download, or remove AI models:
+```bash
+# List available models
+kowalski model list
+
+# Download a new model
+kowalski model pull llama2
+
+# Remove a model
+kowalski model remove llama2
+
+# Show model details
+kowalski model show llama2
+```
+
+### AI-Powered Tools
+
+#### Web Search
+Search the web with AI-powered results processing:
+```bash
+# Basic search
+kowalski tool search "rust async programming"
+
+# Search with custom limit
+kowalski tool search "best practices for error handling" --limit 10
+```
+
+#### Web Scraping
+Scrape and analyze web content:
+```bash
+# Basic scraping
+kowalski tool scrape "https://example.com"
+
+# Scrape with link following
+kowalski tool scrape "https://docs.rs" --follow-links --max-depth 2
+```
+
+#### Code Analysis
+Analyze code files or directories:
+```bash
+# Analyze a single file
+kowalski tool code ./src/main.rs
+
+# Analyze a directory with specific language
+kowalski tool code ./src --language rust
+```
+
+### Interactive Mode
+
+Both chat and academic analysis modes support interactive sessions that continue until you type `/bye`:
+
+```bash
+# Start interactive chat
+kowalski chat "Let's discuss Rust programming"
+
+# Start interactive academic analysis
+kowalski academic --file research.pdf
+```
+
+### Getting Help
+
+Get help on any command or subcommand:
+```bash
+# General help
+kowalski --help
+
+# Command-specific help
+kowalski chat --help
+kowalski academic --help
+kowalski model --help
+kowalski tool --help
+
+# Subcommand help
+kowalski model list --help
+kowalski tool search --help
+```
+
 ## Installation
 
 > "Installation is like cooking - it's easy until you burn something." - A Frustrated Developer
