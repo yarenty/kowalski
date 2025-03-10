@@ -83,28 +83,31 @@ impl Agent for AcademicAgent {
 
         conversation.add_message("user", &processed_content);
 
-        let request = ChatRequest {
-            model: conversation.model.clone(),
-            messages: conversation.messages.iter()
-                .map(|m| super::types::Message::from(m.clone()))
-                .collect(),
-            stream: true,
-            temperature: self.base.config.chat.temperature.unwrap_or(0.7),
-            max_tokens: self.base.config.chat.max_tokens.unwrap_or(2048) as usize,
-        };
+        // let request = ChatRequest {
+        //     model: conversation.model.clone(),
+        //     messages: conversation.messages.iter()
+        //         .map(|m| super::types::Message::from(m.clone()))
+        //         .collect(),
+        //     stream: true,
+        //     temperature: self.base.config.chat.temperature.unwrap_or(0.7),
+        //     max_tokens: self.base.config.chat.max_tokens.unwrap_or(2048) as usize,
+        // };
 
-        let response = self.base.client
-            .post(format!("{}/api/chat", self.base.config.ollama.base_url))
-            .json(&request)
-            .send()
-            .await?;
+        // let response = self.base.client
+        //     .post(format!("{}/api/chat", self.base.config.ollama.base_url))
+        //     .json(&request)
+        //     .send()
+        //     .await?;
 
-        if !response.status().is_success() {
-            let error_text = response.text().await?;
-            return Err(AgentError::ServerError(error_text));
-        }
+        // if !response.status().is_success() {
+        //     let error_text = response.text().await?;
+        //     return Err(AgentError::ServerError(error_text));
+        // }
 
-        Ok(response)
+        // Ok(response)
+
+        self.base.chat_with_history(conversation_id, &processed_content, role).await
+
     }
 
     async fn process_stream_response(
