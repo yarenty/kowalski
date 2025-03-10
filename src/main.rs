@@ -10,8 +10,9 @@ mod model;
 mod role;
 mod utils;
 mod tools;
+mod cli;
 
-use agent::{Agent, AcademicAgent, ToolingAgent};
+use agent::{Agent, AcademicAgent, GeneralAgent, ToolingAgent};
 use model::ModelManager;
 use role::{Audience, Preset, Role};
 use serde_json::Value;
@@ -20,6 +21,7 @@ use std::io::{self, Write};
 use utils::PdfReader;
 use env_logger;
 use log::info;
+use cli::{Cli, Commands, ModelCommands};
 
 /// Reads input from a file, because apparently typing is too mainstream.
 /// "File reading is like opening presents - you never know what you're gonna get."
@@ -45,140 +47,123 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
     env_logger::init();
 
+    // Parse CLI arguments
+    let cli = Cli::parse();
+
     // Load configuration
     let config = config::Config::load()?;
     info!("Loaded configuration with search provider: {}", config.search.provider);
 
     // Initialize model manager
     let model_manager = ModelManager::new(config.ollama.base_url.clone())?;
-    // let model_name = "michaelneale/deepseek-r1-goose";
-    let model_name = "llama2"; // quickest model
 
-    // List available models
-    info!("Listing available models...");
-    let models = model_manager.list_models().await?;
-    for model in models.models {
-        println!(
-            "Model: {}, Size: {} bytes, Modified: {}",
-            model.name, model.size, model.modified_at
-        );
-    }
+    match cli.command {
+        Commands::Chat { message, model } => {
+            // Create a general agent for chat
+            let mut agent = GeneralAgent::new(config)?;
+            let conv_id = agent.start_conversation(&model);
 
-    // Check if default model exists and pull it if needed
-    if !model_manager.model_exists(&model_name).await? {
-        println!("Pulling model {}...", model_name);
-        let mut stream = model_manager.pull_model(&model_name).await?;
-        while let Some(chunk) = stream.chunk().await? {
-            if let Ok(text) = String::from_utf8(chunk.to_vec()) {
-                let v: Value = serde_json::from_str(&text)?;
-                if let Some(status) = v["status"].as_str() {
-                    print!("Status: {}\r", status);
-                    io::stdout().flush()?;
+            // Process the chat message
+            let mut response = agent
+                .chat_with_history(&conv_id, &message, None)
+                .await?;
+
+            // Process streaming response
+            while let Some(chunk) = response.chunk().await? {
+                match agent.process_stream_response(&conv_id, &chunk).await {
+                    Ok(Some(content)) => {
+                        print!("{}", content);
+                        io::stdout().flush()?;
+                    }
+                    Ok(None) => break,
+                    Err(e) => {
+                        eprintln!("\nError: {}", e);
+                        break;
+                    }
                 }
             }
+            println!();
         }
-        println!("\nModel pulled successfully!");
-    }
 
+        Commands::Academic { file, model, format } => {
+            // Create an academic agent
+            let mut agent = AcademicAgent::new(config)?;
+            let conv_id = agent.start_conversation(&model);
 
-    //  TODO: this is just temporary testing code
-    //  TODO: remove this once we have a proper CLI interface
-    //  TODO: and create examples of how to use the agents instead!
-    // Initialize agents
-    let mut academic_agent = AcademicAgent::new(config.clone())?;
-    let mut tooling_agent = ToolingAgent::new(config)?;
+            // Read the file content
+            let content = if file.extension().map_or(false, |ext| ext == "pdf") {
+                PdfReader::read_pdf_file(&file.to_string_lossy())?
+            } else {
+                std::fs::read_to_string(&file)?
+            };
 
-    // Example: Process a research paper
-    println!("\nProcessing research paper...");
-    let conversation_id = academic_agent.start_conversation(&model_name);
-    println!("Academic Agent Conversation ID: {}", conversation_id);
+            // Create a role for academic analysis
+            let role = Role::translator(Some(Audience::Scientist), Some(Preset::Questions));
 
-    let role = Role::translator(Some(Audience::Scientist), Some(Preset::Questions));
-    let mut response = academic_agent
-        .chat_with_history(
-            &conversation_id,
-            "/opt/research/2025/coddllm_2502.00329v1.pdf",
-            Some(role),
-        )
-        .await?;
+            // Process the content
+            let mut response = agent
+                .chat_with_history(&conv_id, &content, Some(role))
+                .await?;
 
-    let mut buffer = String::new();
-    while let Some(chunk) = response.chunk().await? {
-        match academic_agent.process_stream_response(&conversation_id, &chunk).await {
-            Ok(Some(content)) => {
-                print!("{}", content);
-                io::stdout().flush()?;
-                buffer.push_str(&content);
+            // Process streaming response
+            while let Some(chunk) = response.chunk().await? {
+                match agent.process_stream_response(&conv_id, &chunk).await {
+                    Ok(Some(content)) => {
+                        print!("{}", content);
+                        io::stdout().flush()?;
+                    }
+                    Ok(None) => break,
+                    Err(e) => {
+                        eprintln!("\nError: {}", e);
+                        break;
+                    }
+                }
             }
-            Ok(None) => {
-                academic_agent.add_message(&conversation_id, "assistant", &buffer).await;
-                println!("\n");
-                break;
-            }
-            Err(e) => {
-                eprintln!("\nError processing stream: {}", e);
-                break;
-            }
+            println!();
         }
-    }
 
-    // Example: Web search and processing
-    info!("Performing web search...");
-    let conversation_id = tooling_agent.start_conversation(&model_name);
-    info!("Tooling Agent Conversation ID: {}", conversation_id);
-
-    let query = "Latest developments in Rust programming";
-    let search_results = tooling_agent.search(query).await?;
-  
-    for result in &search_results {
-        tooling_agent.add_message(&conversation_id, "search", format!("{} : {}", result.title, result.snippet).as_str()).await;
-        println!("Title: {}", result.title);
-        println!("URL: {}", result.url);
-        println!("Snippet: {}", result.snippet);
-        println!();
-    }
-
-    tooling_agent.add_message(&conversation_id, "user", format!("Search for {} and summary", query).as_str()).await;
-
-
-    // Process the first search result
-    if let Some(first_result) = search_results.first() {
-        info!("\nProcessing first search result...");
-        let page = tooling_agent.fetch_page(&first_result.url).await?;
-
-        tooling_agent.add_message(&conversation_id, "search", format!(" Full page:{} : {}", page.title, page.content).as_str()).await;
-
-        // if let more_results = &search_result[1] {
-        //     let page = tooling_agent.fetch_page(&more_results.url).await?;
-        //     tooling_agent.add_message(&conversation_id, "search", format!("Page 2: {}", page.content).as_str()).await;
-        // }
-        
-        // if let Some(more_results) = &search_results[2] {
-        //     let page = tooling_agent.fetch_page(&more_results.url).await?;
-        //     tooling_agent.add_message(&conversation_id, "search", format!("Page 3: {}", page.content).as_str()).await;
-        // }
-        
-        let role = Role::translator(Some(Audience::Family), Some(Preset::Simplify));
-        let mut response = tooling_agent
-            .chat_with_history(&conversation_id, "Provide simple summary", Some(role))
-            .await?;
-
-        let mut buffer = String::new();
-        while let Some(chunk) = response.chunk().await? {
-            match tooling_agent.process_stream_response(&conversation_id, &chunk).await {
-                Ok(Some(content)) => {
-                    print!("{}", content);
-                    io::stdout().flush()?;
-                    buffer.push_str(&content);
+        Commands::Model { command } => {
+            match command {
+                ModelCommands::List => {
+                    let models = model_manager.list_models().await?;
+                    for model in models.models {
+                        println!(
+                            "Model: {}, Size: {} bytes, Modified: {}",
+                            model.name, model.size, model.modified_at
+                        );
+                    }
                 }
-                Ok(None) => {
-                    tooling_agent.add_message(&conversation_id, "assistant", &buffer).await;
-                    println!("\n");
-                    break;
+
+                ModelCommands::Pull { name } => {
+                    println!("Pulling model {}...", name);
+                    let mut stream = model_manager.pull_model(&name).await?;
+                    while let Some(chunk) = stream.chunk().await? {
+                        if let Ok(text) = String::from_utf8(chunk.to_vec()) {
+                            let v: Value = serde_json::from_str(&text)?;
+                            if let Some(status) = v["status"].as_str() {
+                                print!("Status: {}\r", status);
+                                io::stdout().flush()?;
+                            }
+                        }
+                    }
+                    println!("\nModel pulled successfully!");
                 }
-                Err(e) => {
-                    eprintln!("\nError processing stream: {}", e);
-                    break;
+
+                ModelCommands::Remove { name } => {
+                    println!("Removing model {}...", name);
+                    model_manager.delete_model(&name).await?;
+                    println!("Model removed successfully!");
+                }
+
+                ModelCommands::Show { name } => {
+                    let models = model_manager.list_models().await?;
+                    if let Some(model) = models.models.iter().find(|m| m.name == name) {
+                        println!("Model: {}", model.name);
+                        println!("Size: {} bytes", model.size);
+                        println!("Modified: {}", model.modified_at);
+                    } else {
+                        println!("Model not found: {}", name);
+                    }
                 }
             }
         }

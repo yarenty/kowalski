@@ -1,6 +1,6 @@
 [package]
 name = "kowalski"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "A Rust-based agent for interacting with Ollama models"
 license = "MIT"
@@ -74,6 +74,8 @@ urlencoding = "2.1.0"
 # Logging
 log = "0.4"
 env_logger = "0.11"
+
+clap = { version = "4.5", features = ["derive"] }
 
 [[example]]
 name = "model_manager"
