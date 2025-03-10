@@ -93,31 +93,111 @@ impl BaseAgent {
     }
 }
 
-// Common implementations that can be reused by concrete agents
-impl BaseAgent {
-    pub fn start_conversation(&mut self, model: &str) -> String {
+#[async_trait]
+impl Agent for BaseAgent {
+    fn new(config: Config) -> Result<Self, AgentError> {
+        Self::new(config, "Base Agent", "A basic agent implementation")
+    }
+
+    fn start_conversation(&mut self, model: &str) -> String {
         let conversation = Conversation::new(model);
         let id = conversation.id.clone();
         self.conversations.insert(id.clone(), conversation);
         id
     }
 
-    pub fn get_conversation(&self, id: &str) -> Option<&Conversation> {
+    fn get_conversation(&self, id: &str) -> Option<&Conversation> {
         self.conversations.get(id)
     }
 
-    pub fn list_conversations(&self) -> Vec<&Conversation> {
+    fn list_conversations(&self) -> Vec<&Conversation> {
         self.conversations.values().collect()
     }
 
-    pub fn delete_conversation(&mut self, id: &str) -> bool {
+    fn delete_conversation(&mut self, id: &str) -> bool {
         self.conversations.remove(id).is_some()
     }
 
-    pub async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {
+    async fn chat_with_history(
+        &mut self,
+        conversation_id: &str,
+        content: &str,
+        role: Option<Role>,
+    ) -> Result<Response, AgentError> {
+        let conversation = self.conversations.get_mut(conversation_id)
+            .ok_or_else(|| AgentError::ServerError("Conversation not found".to_string()))?;
+
+        // Add system messages based on role if provided
+        if let Some(role) = role {
+            conversation.add_message("system", role.get_prompt());
+            
+            if let Some(audience) = role.get_audience() {
+                conversation.add_message("system", audience.get_prompt());
+            }
+            if let Some(preset) = role.get_preset() {
+                conversation.add_message("system", preset.get_prompt());
+            }
+            if let Some(style) = role.get_style() {
+                conversation.add_message("system", style.get_prompt());
+            }
+        }
+
+        conversation.add_message("user", content);
+
+        let request = super::agent::types::ChatRequest {
+            model: conversation.model.clone(),
+            messages: conversation.messages.iter()
+                .map(|m| super::agent::types::Message::from(m.clone()))
+                .collect(),
+            stream: true,
+            temperature: self.config.chat.temperature.unwrap_or(0.7),
+            max_tokens: self.config.chat.max_tokens.unwrap_or(2048) as usize,
+        };
+
+        let response = self.client
+            .post(format!("{}/api/chat", self.config.ollama.base_url))
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await?;
+            return Err(AgentError::ServerError(error_text));
+        }
+
+        Ok(response)
+    }
+
+    async fn process_stream_response(
+        &mut self,
+        _conversation_id: &str,
+        chunk: &[u8],
+    ) -> Result<Option<String>, AgentError> {
+        let text = String::from_utf8(chunk.to_vec())
+            .map_err(|e| AgentError::ServerError(format!("Invalid UTF-8: {}", e)))?;
+
+        let stream_response: super::agent::types::StreamResponse = serde_json::from_str(&text)
+            .map_err(|e| AgentError::JsonError(e))?;
+
+        if stream_response.done {
+            return Ok(None);
+        }
+
+        Ok(Some(stream_response.message.content))
+    }
+
+    async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {
         if let Some(conversation) = self.conversations.get_mut(conversation_id) {
             conversation.add_message(role, content);
         }
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn description(&self) -> &str {
+        &self.description
     }
 }
 

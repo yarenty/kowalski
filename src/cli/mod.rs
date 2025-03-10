@@ -1,12 +1,12 @@
 mod commands;
 mod interactive;
 
-pub use commands::{Cli, Commands, ModelCommands};
-pub use interactive::{chat_loop, academic_loop};
+pub use commands::{Cli, Commands, ModelCommands, ToolCommands};
+pub use interactive::{chat_loop, academic_loop, tooling_loop};
 
 use crate::config::Config;
 use crate::model::ModelManager;
-use crate::agent::{Agent, AcademicAgent, GeneralAgent};
+use crate::agent::{Agent, AcademicAgent, GeneralAgent, ToolingAgent};
 use std::io::{self, Write};
 use log::info;
 
@@ -74,6 +74,33 @@ pub async fn execute(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     } else {
                         println!("Model not found: {}", name);
                     }
+                }
+            }
+        }
+
+        Commands::Tool { command } => {
+            let mut agent = ToolingAgent::new(config)?;
+            let conv_id = agent.start_conversation(&command.model());
+
+            match command {
+                ToolCommands::Search { query, model, limit } => {
+                    // Configure search parameters
+                    agent.set_search_limit(limit);
+                    tooling_loop(agent, conv_id, &model, &query, "Search").await?;
+                }
+
+                ToolCommands::Scrape { url, model, follow_links, max_depth } => {
+                    // Configure scraping parameters
+                    agent.set_scrape_options(follow_links, max_depth);
+                    tooling_loop(agent, conv_id, &model, &url, "Scrape").await?;
+                }
+
+                ToolCommands::Code { path, model, language } => {
+                    // Configure code analysis parameters
+                    if let Some(lang) = language {
+                        agent.set_code_language(&lang);
+                    }
+                    tooling_loop(agent, conv_id, &model, &path.to_string_lossy(), "Code").await?;
                 }
             }
         }

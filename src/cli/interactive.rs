@@ -1,4 +1,4 @@
-use crate::agent::{Agent, AcademicAgent, GeneralAgent};
+use crate::agent::{Agent, AcademicAgent, GeneralAgent, ToolingAgent};
 use crate::role::{Audience, Preset, Role};
 use crate::utils::PdfReader;
 use std::io::{self, Write};
@@ -53,6 +53,53 @@ async fn interaction_loop<A: Agent>(
     }
 
     Ok(())
+}
+
+/// Handles tool-based interaction with the AI
+pub async fn tooling_loop(
+    mut agent: ToolingAgent,
+    conv_id: String,
+    model: &str,
+    initial_query: &str,
+    tool_type: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!("{} started with model: {} (type '/bye' to exit)", tool_type, model);
+    println!("----------------------------------------");
+
+    // Initial query if provided
+    if !initial_query.is_empty() {
+        println!("Query: {}", initial_query);
+        let mut response = agent
+            .chat_with_history(&conv_id, initial_query, None)
+            .await?;
+
+        while let Some(chunk) = response.chunk().await? {
+            match agent.process_stream_response(&conv_id, &chunk).await {
+                Ok(Some(content)) => {
+                    print!("Assistant: {}", content);
+                    io::stdout().flush()?;
+                }
+                Ok(None) => {
+                    println!("\n");
+                    break;
+                }
+                Err(e) => {
+                    eprintln!("\nError: {}", e);
+                    break;
+                }
+            }
+        }
+    }
+
+    // Use the common interaction loop with tool-specific prompt
+    let prompt = match tool_type {
+        "Search" => "Enter your search query (or type '/bye' to exit): ",
+        "Scrape" => "Enter a URL to analyze (or type '/bye' to exit): ",
+        "Code" => "Enter a code-related question (or type '/bye' to exit): ",
+        _ => "Enter your query (or type '/bye' to exit): ",
+    };
+
+    interaction_loop(agent, &conv_id, prompt, None).await
 }
 
 /// Handles continuous chat interaction with the AI

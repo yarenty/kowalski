@@ -9,7 +9,6 @@ use crate::config::Config;
 use crate::conversation::Conversation;
 use crate::role::Role;
 use super::{Agent, AgentError, BaseAgent};
-use super::types::{ChatRequest, StreamResponse};
 use crate::tools::{ ToolChain,  SearchTool,  ToolCache,  ToolInput, ToolType};
 use crate::tools::search::SearchProvider;
 use log::{debug, info};
@@ -23,11 +22,15 @@ pub struct ToolingAgent {
     base: BaseAgent,
     chain: ToolChain,
     cache: ToolCache,
+    search_limit: usize,
+    follow_links: bool,
+    max_depth: u32,
+    code_language: Option<String>,
 }
 
-#[async_trait]
-impl Agent for ToolingAgent {
-    fn new(config: Config) -> Result<Self, AgentError> {
+impl ToolingAgent {
+    /// Creates a new tooling agent
+    pub fn new(config: Config) -> Result<Self, AgentError> {
         let base = BaseAgent::new(
             config.clone(),
             "Tooling Agent",
@@ -63,7 +66,34 @@ impl Agent for ToolingAgent {
             base,
             chain,
             cache,
+            search_limit: 5,
+            follow_links: false,
+            max_depth: 1,
+            code_language: None,
         })
+    }
+
+    /// Set the search result limit
+    pub fn set_search_limit(&mut self, limit: usize) {
+        self.search_limit = limit;
+    }
+
+    /// Set scraping options
+    pub fn set_scrape_options(&mut self, follow_links: bool, max_depth: u32) {
+        self.follow_links = follow_links;
+        self.max_depth = max_depth;
+    }
+
+    /// Set the code language for analysis
+    pub fn set_code_language(&mut self, language: &str) {
+        self.code_language = Some(language.to_string());
+    }
+}
+
+#[async_trait]
+impl Agent for ToolingAgent {
+    fn new(config: Config) -> Result<Self, AgentError> {
+        Self::new(config)
     }
 
     fn start_conversation(&mut self, model: &str) -> String {
@@ -88,24 +118,6 @@ impl Agent for ToolingAgent {
         content: &str,
         role: Option<Role>,
     ) -> Result<Response, AgentError> {
-        let conversation = self.base.conversations.get_mut(conversation_id)
-            .ok_or_else(|| AgentError::ServerError("Conversation not found".to_string()))?;
-
-        // Add system messages based on role if provided
-        if let Some(role) = role {
-            conversation.add_message("system", role.get_prompt());
-            
-            if let Some(audience) = role.get_audience() {
-                conversation.add_message("system", audience.get_prompt());
-            }
-            if let Some(preset) = role.get_preset() {
-                conversation.add_message("system", preset.get_prompt());
-            }
-            if let Some(style) = role.get_style() {
-                conversation.add_message("system", style.get_prompt());
-            }
-        }
-
         // Process content through tool chain if it looks like a web request
         let processed_content = if content.starts_with("http") || content.contains("search:") {
             let tool_input = ToolInput::new(content.to_string());
@@ -115,48 +127,15 @@ impl Agent for ToolingAgent {
             content.to_string()
         };
 
-        conversation.add_message("user", &processed_content);
-
-        let request = ChatRequest {
-            model: conversation.model.clone(),
-            messages: conversation.messages.iter()
-                .map(|m| super::types::Message::from(m.clone()))
-                .collect(),
-            stream: true,
-            temperature: self.base.config.chat.temperature.unwrap_or(0.7),
-            max_tokens: self.base.config.chat.max_tokens.unwrap_or(2048) as usize,
-        };
-
-        let response = self.base.client
-            .post(format!("{}/api/chat", self.base.config.ollama.base_url))
-            .json(&request)
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            let error_text = response.text().await?;
-            return Err(AgentError::ServerError(error_text));
-        }
-
-        Ok(response)
+        self.base.chat_with_history(conversation_id, &processed_content, role).await
     }
 
     async fn process_stream_response(
         &mut self,
-        _conversation_id: &str,
+        conversation_id: &str,
         chunk: &[u8],
     ) -> Result<Option<String>, AgentError> {
-        let text = String::from_utf8(chunk.to_vec())
-            .map_err(|e| AgentError::ServerError(format!("Invalid UTF-8: {}", e)))?;
-
-        let stream_response: StreamResponse = serde_json::from_str(&text)
-            .map_err(|e| AgentError::JsonError(e))?;
-
-        if stream_response.done {
-            return Ok(None);
-        }
-
-        Ok(Some(stream_response.message.content))
+        self.base.process_stream_response(conversation_id, chunk).await
     }
 
     async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {
@@ -164,11 +143,11 @@ impl Agent for ToolingAgent {
     }
 
     fn name(&self) -> &str {
-        &self.base.name
+        self.base.name()
     }
 
     fn description(&self) -> &str {
-        &self.base.description
+        self.base.description()
     }
 }
 
