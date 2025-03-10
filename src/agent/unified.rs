@@ -10,6 +10,8 @@ use crate::tools::browser::WebBrowser;
 use crate::tools::scraper::WebScraper;
 use log::{debug, info};
 use std::collections::HashMap;
+use serde_json;
+use crate::agent::types::Message;
 
 /// UnifiedAgent: A versatile agent that combines chat capabilities with tool usage
 pub struct UnifiedAgent {
@@ -28,12 +30,12 @@ impl Agent for UnifiedAgent {
 
         let mut tool_chain = ToolChain::new();
         
-        // Initialize tools
+        let search_tool = SearchTool::new(
+            SearchProvider::DuckDuckGo,
+            config.search.api_key.as_ref().unwrap_or(&String::new()).clone(),
+        );
         tool_chain.add_tool(
-            ToolType::Search(SearchTool::new(
-                SearchProvider::DuckDuckGo,
-                config.search.api_key.unwrap_or_default(),
-            )),
+            ToolType::Search(search_tool.clone()),
             vec![TaskType::Search]
         );
         
@@ -106,13 +108,67 @@ impl Agent for UnifiedAgent {
 
         let request = super::types::ChatRequest {
             model: conversation.model.clone(),
-            messages: conversation.messages.iter()
-                .map(|m| super::types::Message::from(m.clone()))
-                .collect(),
+            messages: conversation.messages.clone(),
             stream: true,
             temperature: self.base.config.chat.temperature.unwrap_or(0.7),
             max_tokens: self.base.config.chat.max_tokens.unwrap_or(2048) as usize,
+            tools: Some(vec![
+                serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "search",
+                        "description": "Search the web for information",
+                        "parameters": {
+                            "type": "object",
+                            "required": ["query"],
+                            "properties": {
+                                "query": {
+                                    "type": "string",
+                                    "description": "The search query"
+                                }
+                            }
+                        }
+                    }
+                }),
+                serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "browse",
+                        "description": "Browse a dynamic webpage",
+                        "parameters": {
+                            "type": "object",
+                            "required": ["url"],
+                            "properties": {
+                                "url": {
+                                    "type": "string",
+                                    "description": "The URL to browse"
+                                }
+                            }
+                        }
+                    }
+                }),
+                serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "scrape",
+                        "description": "Scrape content from a static webpage",
+                        "parameters": {
+                            "type": "object",
+                            "required": ["url"],
+                            "properties": {
+                                "url": {
+                                    "type": "string",
+                                    "description": "The URL to scrape"
+                                }
+                            }
+                        }
+                    }
+                })
+            ]),
         };
+
+
+        dbg!(&request);
 
         let response = self.base.client
             .post(format!("{}/api/chat", self.base.config.ollama.base_url))
@@ -120,6 +176,7 @@ impl Agent for UnifiedAgent {
             .send()
             .await?;
 
+        dbg!(&response);
         if !response.status().is_success() {
             let error_text = response.text().await?;
             return Err(AgentError::ServerError(error_text));
@@ -132,7 +189,7 @@ impl Agent for UnifiedAgent {
         &mut self,
         conversation_id: &str,
         chunk: &[u8],
-    ) -> Result<Option<String>, AgentError> {
+    ) -> Result<Option<Message>, AgentError> {
         self.base.process_stream_response(conversation_id, chunk).await
     }
 

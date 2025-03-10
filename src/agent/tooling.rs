@@ -15,6 +15,7 @@ use log::{debug, info};
 use crate::tools::TaskType;
 use crate::tools::browser::WebBrowser;
 use crate::tools::scraper::WebScraper;
+use crate::agent::types::Message;
 
 /// ToolingAgent: Your personal web crawler with a sense of humor.
 #[allow(dead_code)]
@@ -134,7 +135,7 @@ impl Agent for ToolingAgent {
         &mut self,
         conversation_id: &str,
         chunk: &[u8],
-    ) -> Result<Option<String>, AgentError> {
+    ) -> Result<Option<Message>, AgentError> {
         self.base.process_stream_response(conversation_id, chunk).await
     }
 
