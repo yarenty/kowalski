@@ -2,6 +2,7 @@ use kowalski::{Config, agent::UnifiedAgent, Agent};
 use std::io::{self, Write};
 use env_logger;
 use log::info;
+use serde_json;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -22,7 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The model will automatically decide when to use tools
     let mut response = agent.chat_with_history(
         &conv_id,
-        "Please search  internet: What are the latest Rust features? Could you search internet before responding?",
+        "Please search  internet: What are the latest Rust features? Could you search including latest news?",
         None
     ).await?;
 
@@ -42,17 +43,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(Some(message)) => {
                 if let Some(tool_calls) = message.tool_calls {
                     for tool_call in tool_calls {
-                        println!("Tool call: {:?}", tool_call);
+                        info!("Tool call: {:?}", tool_call);
                         let function = tool_call.function;
-                        println!("Function: {:?}", function);
+                        info!("Function: {:?}", function);
                         let function_name = function.name;
                         let function_arguments = function.arguments;
-                        println!("Function name: {:?}", &function_name);
-                        println!("Function arguments: {:?}", &function_arguments);   
+                        info!("Function name: {:?}", &function_name);
+                        info!("Function arguments: {:?}", &function_arguments);   
                         
                         if function_name == "search" {
                             let query = function_arguments.get("query").unwrap();
-                            println!("Query: {:?}", query);
+                            info!("Query: {:?}", query);
+                            let cache = function_arguments.get("use_cache").unwrap_or(&serde_json::Value::Null); 
+                            info!("Cache: {:?}", cache);
+                            let max_results = function_arguments.get("max_results").unwrap_or(&serde_json::Value::Null);
+                            info!("Max results: {:?}", max_results);
+                            let include_images = function_arguments.get("include_images").unwrap_or(&serde_json::Value::Null);
+                            info!("Include images: {:?}", include_images);
+                            let include_videos = function_arguments.get("include_videos").unwrap_or(&serde_json::Value::Null);
+                            info!("Include videos: {:?}", include_videos);
+                            let include_news = function_arguments.get("include_news").unwrap_or(&serde_json::Value::Null);
+                            info!("Include news: {:?}", include_news);
+                            let include_maps = function_arguments.get("include_maps").unwrap_or(&serde_json::Value::Null);
+                            info!("Include maps: {:?}", include_maps);
+                            let include_shopping = function_arguments.get("include_shopping").unwrap_or(&serde_json::Value::Null);
+                            info!("Include shopping: {:?}", include_shopping);
                         }
 
                     }

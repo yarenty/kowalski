@@ -182,6 +182,7 @@ impl Agent for BaseAgent {
         let stream_response: super::agent::types::StreamResponse = serde_json::from_str(&text)
             .map_err(|e| KowalskiError::Json(e))?;
 
+        //TODO: Check maybe tool call here?    
         if stream_response.done {
             return Ok(None);
         }
