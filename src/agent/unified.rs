@@ -126,7 +126,32 @@ impl Agent for UnifiedAgent {
                                 "query": {
                                     "type": "string",
                                     "description": "The search query"
+                                },
+                                "max_results": {
+                                    "type": "integer",
+                                    "description": "The maximum number of results to return"
+                                },
+                                "include_images": {
+                                    "type": "boolean",
+                                    "description": "Whether to include images in the search results"
+                                },
+                                "include_videos": {
+                                    "type": "boolean",
+                                    "description": "Whether to include videos in the search results"
+                                },
+                                "include_news": {
+                                    "type": "boolean",
+                                    "description": "Whether to include news in the search results"
+                                },
+                                "include_maps": {
+                                    "type": "boolean",
+                                    "description": "Whether to include maps in the search results"
+                                },
+                                "use_cache": {
+                                    "type": "boolean",
+                                    "description": "Shuold use results from local cache if they are available. Othervise force to use latest one."
                                 }
+                            
                             }
                         }
                     }

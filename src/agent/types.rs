@@ -1,3 +1,4 @@
+use pdf_extract::Object;
 /// Types module: Because we need more than just strings and numbers
 /// "Type systems are like relationship counselors - they prevent a lot of mistakes before they happen." - A Type Theorist
 
@@ -30,7 +31,7 @@ pub struct ToolCall {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Function {
     pub name: String,
-    pub arguments: HashMap<String, String>,
+    pub arguments: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
