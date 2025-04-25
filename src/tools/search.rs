@@ -1,14 +1,13 @@
+use super::{Tool, ToolInput, ToolOutput};
+use crate::utils::KowalskiError;
 /// Search module: Because Google is too mainstream.
 /// "Search engines are like fortune tellers - they give you what you ask for, not what you want." - A Search Expert
-
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
-use super::{Tool, ToolInput, ToolOutput};
 use log::debug;
-use crate::utils::KowalskiError;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]
-#[allow(non_camel_case_types)]  
+#[allow(non_camel_case_types)]
 #[allow(dead_code)]
 pub enum SearchProvider {
     DuckDuckGo,
@@ -27,7 +26,9 @@ impl SearchProvider {
             SearchProvider::Brave => "https://search.brave.com/search".to_string(),
             SearchProvider::Qwant => "https://www.qwant.com".to_string(),
             SearchProvider::SearX => "https://searx.be/search".to_string(),
-            SearchProvider::GoogleCustomSearch => "https://www.googleapis.com/customsearch/v1".to_string(),
+            SearchProvider::GoogleCustomSearch => {
+                "https://www.googleapis.com/customsearch/v1".to_string()
+            }
         }
     }
 
@@ -61,8 +62,12 @@ impl SearchTool {
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
             .build()
             .unwrap();
-        
-        Self { provider, api_key, client }
+
+        Self {
+            provider,
+            api_key,
+            client,
+        }
     }
 
     fn get_selectors(&self) -> (String, String, String) {
@@ -70,49 +75,46 @@ impl SearchTool {
             SearchProvider::DuckDuckGo => (
                 ".result__body,.nrn-react-div,.web-result".to_string(),
                 ".result__title,.result__a".to_string(),
-                ".result__snippet".to_string()
+                ".result__snippet".to_string(),
             ),
             SearchProvider::Bing => (
                 ".b_algo".to_string(),
                 "h2".to_string(),
-                ".b_caption p".to_string()
+                ".b_caption p".to_string(),
             ),
             SearchProvider::Brave => (
                 ".snippet".to_string(),
                 ".title".to_string(),
-                ".description".to_string()
+                ".description".to_string(),
             ),
             SearchProvider::Qwant => (
                 ".web-result".to_string(),
                 ".title".to_string(),
-                ".desc".to_string()
+                ".desc".to_string(),
             ),
             SearchProvider::SearX => (
                 ".result".to_string(),
                 ".result-title".to_string(),
-                ".result-content".to_string()
+                ".result-content".to_string(),
             ),
-            SearchProvider::GoogleCustomSearch => (
-                ".g".to_string(),
-                "h3".to_string(),
-                ".snippet".to_string()
-            ),
+            SearchProvider::GoogleCustomSearch => {
+                (".g".to_string(), "h3".to_string(), ".snippet".to_string())
+            }
         }
     }
 
     async fn search(&self, query: &str) -> Result<String, KowalskiError> {
         let base_url = self.provider.get_base_url();
         let query_param = self.provider.get_query_param();
-        
-        let mut params = vec![
-            (query_param, query)
-        ];
+
+        let mut params = vec![(query_param, query)];
 
         if self.provider.requires_api_key() {
             params.push(("key", &self.api_key));
         }
 
-        let response = self.client
+        let response = self
+            .client
             .get(&base_url)
             .query(&params)
             .send()
@@ -136,10 +138,12 @@ impl Tool for SearchTool {
 
     async fn execute(&self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
         let query = input.query;
-        let url = format!("{}/?{}={}",
+        let url = format!(
+            "{}/?{}={}",
             self.provider.get_base_url(),
             self.provider.get_query_param(),
-            urlencoding::encode(&query));
+            urlencoding::encode(&query)
+        );
 
         debug!("URL: {:?}", &url);
         let response = reqwest::get(&url)

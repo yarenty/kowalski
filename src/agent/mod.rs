@@ -1,26 +1,25 @@
 /// Agent module: Because apparently AI needs a personality.
 /// "Agents are like cats - they do what they want, when they want." - A Cat Person
-
 mod academic;
 mod general;
 mod tooling;
-mod unified;
 pub mod types;
+mod unified;
 
-pub use academic::AcademicAgent;
-pub use general::GeneralAgent;
-pub use tooling::ToolingAgent;
-pub use unified::UnifiedAgent;
-pub use crate::utils::KowalskiError;
 use crate::agent::types::Message;
-use async_trait::async_trait;
 use crate::config::Config;
 use crate::conversation::Conversation;
 use crate::role::Role;
-use reqwest::Response;
-use std::collections::HashMap;
-use serde_json;
+pub use crate::utils::KowalskiError;
+pub use academic::AcademicAgent;
+use async_trait::async_trait;
+pub use general::GeneralAgent;
 use log::info;
+use reqwest::Response;
+use serde_json;
+use std::collections::HashMap;
+pub use tooling::ToolingAgent;
+pub use unified::UnifiedAgent;
 /// The core agent trait that all our specialized agents must implement.
 /// "Traits are like contracts - they're meant to be broken." - A Rust Philosopher
 #[async_trait]
@@ -28,7 +27,9 @@ use log::info;
 pub trait Agent: Send + Sync {
     /// Creates a new agent with the specified configuration.
     /// "Creation is like cooking - sometimes you follow the recipe, sometimes you wing it."
-    fn new(config: Config) -> Result<Self, KowalskiError> where Self: Sized;
+    fn new(config: Config) -> Result<Self, KowalskiError>
+    where
+        Self: Sized;
 
     /// Starts a new conversation, because silence is overrated.
     fn start_conversation(&mut self, model: &str) -> String;
@@ -128,13 +129,15 @@ impl Agent for BaseAgent {
         content: &str,
         role: Option<Role>,
     ) -> Result<Response, KowalskiError> {
-        let conversation = self.conversations.get_mut(conversation_id)
+        let conversation = self
+            .conversations
+            .get_mut(conversation_id)
             .ok_or_else(|| KowalskiError::Server("Conversation not found".to_string()))?;
 
         // Add system messages based on role if provided
         if let Some(role) = role {
             conversation.add_message("system", role.get_prompt());
-            
+
             if let Some(audience) = role.get_audience() {
                 conversation.add_message("system", audience.get_prompt());
             }
@@ -157,7 +160,8 @@ impl Agent for BaseAgent {
             tools: None,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/api/chat", self.config.ollama.base_url))
             .json(&request)
             .send()
@@ -179,14 +183,13 @@ impl Agent for BaseAgent {
         let text = String::from_utf8(chunk.to_vec())
             .map_err(|e| KowalskiError::Server(format!("Invalid UTF-8: {}", e)))?;
 
-        let stream_response: super::agent::types::StreamResponse = serde_json::from_str(&text)
-            .map_err(|e| KowalskiError::Json(e))?;
+        let stream_response: super::agent::types::StreamResponse =
+            serde_json::from_str(&text).map_err(|e| KowalskiError::Json(e))?;
 
-        //TODO: Check maybe tool call here?    
+        //TODO: Check maybe tool call here?
         if stream_response.done {
             return Ok(None);
         }
-
 
         Ok(Some(stream_response.message))
     }
@@ -204,4 +207,4 @@ impl Agent for BaseAgent {
     fn description(&self) -> &str {
         &self.description
     }
-} 
+}

@@ -1,3 +1,4 @@
+use log::{error, info, warn};
 /// Config: The AI's settings, because apparently we need to customize everything.
 /// "Configurations are like preferences - they're personal until they're wrong."
 ///
@@ -5,7 +6,6 @@
 /// Think of it as a settings menu for your AI, but without the annoying popups.
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use log::{info, warn, error};
 
 /// The main configuration struct that makes our AI feel special.
 /// "Configs are like recipes - they work until you try to follow them."
@@ -80,7 +80,7 @@ impl Config {
 
         // Build the config
         let settings = builder.build()?;
-        
+
         // Try to deserialize the config, fall back to default if empty or invalid
         match settings.try_deserialize::<Config>() {
             Ok(config) => Ok(config),

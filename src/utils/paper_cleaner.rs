@@ -123,7 +123,8 @@ mod tests {
 
     #[test]
     fn test_empty_input() {
-        let result = PaperCleaner::clean("");
+        let cleaner = PaperCleaner::new();
+        let result = cleaner.clean("");
         assert!(matches!(result, Err(KowalskiError::InvalidInput(_))));
     }
 }

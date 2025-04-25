@@ -1,10 +1,7 @@
-use pdf_extract::Object;
 /// Types module: Because we need more than just strings and numbers
 /// "Type systems are like relationship counselors - they prevent a lot of mistakes before they happen." - A Type Theorist
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChatRequest {

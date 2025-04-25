@@ -1,8 +1,8 @@
-use kowalski::model::ModelManager;
-use std::io::{self, Write};
-use serde_json::Value;
-use log::info;
 use env_logger;
+use kowalski::model::ModelManager;
+use log::info;
+use serde_json::Value;
+use std::io::{self, Write};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !model_manager.model_exists(&model_name).await? {
         println!("🔄 Pulling model {}...", model_name);
         let mut stream = model_manager.pull_model(&model_name).await?;
-        
+
         print!("\rProgress: ");
         io::stdout().flush()?;
 
@@ -48,4 +48,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
-} 
+}

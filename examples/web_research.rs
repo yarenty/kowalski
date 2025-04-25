@@ -1,11 +1,11 @@
+use env_logger;
 use kowalski::{
     agent::{Agent, ToolingAgent},
     config::Config,
     role::{Audience, Preset, Role},
 };
-use std::io::{self, Write};
 use log::info;
-use env_logger;
+use std::io::{self, Write};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -25,15 +25,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let query = "Latest developments in Rust programming";
     println!("\n🔍 Searching: {}", query);
     let search_results = tooling_agent.search(query).await?;
-    
+
     // Process search results
     for result in &search_results {
-        tooling_agent.add_message(
-            &conversation_id,
-            "search",
-            format!("{} : {}", result.title, result.snippet).as_str()
-        ).await;
-        
+        tooling_agent
+            .add_message(
+                &conversation_id,
+                "search",
+                format!("{} : {}", result.title, result.snippet).as_str(),
+            )
+            .await;
+
         println!("\n📑 Result:");
         println!("Title: {}", result.title);
         println!("URL: {}", result.url);
@@ -41,11 +43,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Add search query to conversation
-    tooling_agent.add_message(
-        &conversation_id,
-        "user",
-        format!("Search for {} and provide a summary", query).as_str()
-    ).await;
+    tooling_agent
+        .add_message(
+            &conversation_id,
+            "user",
+            format!("Search for {} and provide a summary", query).as_str(),
+        )
+        .await;
 
     // Process the first search result in detail
     if let Some(first_result) = search_results.first() {
@@ -53,16 +57,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let page = tooling_agent.fetch_page(&first_result.url).await?;
 
         // Add page content to conversation
-        tooling_agent.add_message(
-            &conversation_id,
-            "search",
-            format!("Full page: {} : {}", page.title, page.content).as_str()
-        ).await;
+        tooling_agent
+            .add_message(
+                &conversation_id,
+                "search",
+                format!("Full page: {} : {}", page.title, page.content).as_str(),
+            )
+            .await;
 
         // Generate a simplified summary
         let role = Role::translator(Some(Audience::Family), Some(Preset::Simplify));
         println!("\n📝 Generating summary...");
-        
+
         let mut response = tooling_agent
             .chat_with_history(&conversation_id, "Provide a simple summary", Some(role))
             .await?;
@@ -70,14 +76,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Process the streaming response
         let mut buffer = String::new();
         while let Some(chunk) = response.chunk().await? {
-            match tooling_agent.process_stream_response(&conversation_id, &chunk).await {
+            match tooling_agent
+                .process_stream_response(&conversation_id, &chunk)
+                .await
+            {
                 Ok(Some(content)) => {
                     print!("{}", content);
                     io::stdout().flush()?;
                     buffer.push_str(&content);
                 }
                 Ok(None) => {
-                    tooling_agent.add_message(&conversation_id, "assistant", &buffer).await;
+                    tooling_agent
+                        .add_message(&conversation_id, "assistant", &buffer)
+                        .await;
                     println!("\n✅ Summary complete!\n");
                     break;
                 }
@@ -90,4 +101,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
-} 
+}

@@ -1,15 +1,14 @@
-/// Academic Agent: Because reading papers wasn't complicated enough.
-/// "Academia is like a maze where everyone pretends to know the way out." - A Confused Scholar
-
-use async_trait::async_trait;
-use reqwest::Response;
+use super::types::{Message, StreamResponse};
+use super::{Agent, BaseAgent};
 use crate::config::Config;
 use crate::conversation::Conversation;
 use crate::role::Role;
-use super::{Agent, BaseAgent};
-use super::types::{StreamResponse, Message};
-use crate::utils::{PdfReader, PaperCleaner};
 use crate::utils::KowalskiError;
+use crate::utils::{PaperCleaner, PdfReader};
+/// Academic Agent: Because reading papers wasn't complicated enough.
+/// "Academia is like a maze where everyone pretends to know the way out." - A Confused Scholar
+use async_trait::async_trait;
+use reqwest::Response;
 /// AcademicAgent: Your personal research assistant with a PhD in sarcasm.
 pub struct AcademicAgent {
     base: BaseAgent,
@@ -55,13 +54,16 @@ impl Agent for AcademicAgent {
         content: &str,
         role: Option<Role>,
     ) -> Result<Response, KowalskiError> {
-        let conversation = self.base.conversations.get_mut(conversation_id)
+        let conversation = self
+            .base
+            .conversations
+            .get_mut(conversation_id)
             .ok_or_else(|| KowalskiError::Server("Conversation not found".to_string()))?;
 
         // Add system messages based on role if provided
         if let Some(role) = role {
             conversation.add_message("system", role.get_prompt());
-            
+
             if let Some(audience) = role.get_audience() {
                 conversation.add_message("system", audience.get_prompt());
             }
@@ -106,8 +108,9 @@ impl Agent for AcademicAgent {
 
         // Ok(response)
 
-        self.base.chat_with_history(conversation_id, &processed_content, role).await
-
+        self.base
+            .chat_with_history(conversation_id, &processed_content, role)
+            .await
     }
 
     async fn process_stream_response(
@@ -118,8 +121,8 @@ impl Agent for AcademicAgent {
         let text = String::from_utf8(chunk.to_vec())
             .map_err(|e| KowalskiError::Server(format!("Invalid UTF-8: {}", e)))?;
 
-        let stream_response: StreamResponse = serde_json::from_str(&text)
-            .map_err(|e| KowalskiError::Json(e))?;
+        let stream_response: StreamResponse =
+            serde_json::from_str(&text).map_err(|e| KowalskiError::Json(e))?;
 
         if stream_response.done {
             return Ok(None);
@@ -153,7 +156,7 @@ impl AcademicAgent {
     /// Extracts paper metadata, because titles and abstracts are too obvious.
     pub async fn extract_metadata(&self, path: &str) -> Result<PaperMetadata, KowalskiError> {
         let content = self.pdf_reader.read_pdf(path)?;
-        
+
         // TODO:Add your metadata extraction logic here
         Ok(PaperMetadata {
             title: String::new(),
@@ -171,4 +174,4 @@ pub struct PaperMetadata {
     pub authors: Vec<String>,
     pub abstract_text: String,
     pub keywords: Vec<String>,
-} 
+}

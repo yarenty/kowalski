@@ -1,22 +1,21 @@
-/// Tooling Agent: Because browsing the web manually is so last century.
-/// "Web scraping is like archaeology - you dig through layers of HTML hoping to find treasure." - A Digital Archaeologist
-
-use async_trait::async_trait;
-use reqwest::Response;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use super::{Agent, BaseAgent};
+use crate::agent::types::Message;
 use crate::config::Config;
 use crate::conversation::Conversation;
 use crate::role::Role;
-use super::{Agent, BaseAgent};
-use crate::tools::{ ToolChain,  SearchTool,  ToolCache,  ToolInput, ToolType};
 use crate::tools::SearchProvider;
-use log::{debug, info};
 use crate::tools::TaskType;
 use crate::tools::WebBrowser;
 use crate::tools::WebScraper;
-use crate::agent::types::Message;
+use crate::tools::{SearchTool, ToolCache, ToolChain, ToolInput, ToolType};
 use crate::utils::KowalskiError;
+/// Tooling Agent: Because browsing the web manually is so last century.
+/// "Web scraping is like archaeology - you dig through layers of HTML hoping to find treasure." - A Digital Archaeologist
+use async_trait::async_trait;
+use log::{debug, info};
+use reqwest::Response;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 /// ToolingAgent: Your personal web crawler with a sense of humor.
 #[allow(dead_code)]
 pub struct ToolingAgent {
@@ -39,26 +38,26 @@ impl ToolingAgent {
         )?;
 
         let mut chain = ToolChain::new();
-        
+
         // Register WebBrowser for dynamic content
         chain.add_tool(
             ToolType::Browser(WebBrowser::new(config.clone())),
-            vec![TaskType::BrowseDynamic]
+            vec![TaskType::BrowseDynamic],
         );
-        
+
         // Register SearchTool for search queries
         chain.add_tool(
             ToolType::Search(SearchTool::new(
                 SearchProvider::DuckDuckGo,
                 config.search.api_key.clone().unwrap_or_default(),
             )),
-            vec![TaskType::Search]
+            vec![TaskType::Search],
         );
-        
+
         // Register WebScraper for static content
         chain.add_tool(
             ToolType::Scraper(WebScraper::new()),
-            vec![TaskType::ScrapStatic]
+            vec![TaskType::ScrapStatic],
         );
 
         let cache = ToolCache::new();
@@ -128,7 +127,9 @@ impl Agent for ToolingAgent {
             content.to_string()
         };
 
-        self.base.chat_with_history(conversation_id, &processed_content, role).await
+        self.base
+            .chat_with_history(conversation_id, &processed_content, role)
+            .await
     }
 
     async fn process_stream_response(
@@ -136,7 +137,9 @@ impl Agent for ToolingAgent {
         conversation_id: &str,
         chunk: &[u8],
     ) -> Result<Option<Message>, KowalskiError> {
-        self.base.process_stream_response(conversation_id, chunk).await
+        self.base
+            .process_stream_response(conversation_id, chunk)
+            .await
     }
 
     async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {
@@ -163,14 +166,15 @@ impl ToolingAgent {
         let document = scraper::Html::parse_document(&output.content);
         debug!("Parsed HTML document");
         info!("HTML document: {:.100}", &document.html());
-        document.select(&scraper::Selector::parse("link").unwrap_or_else(|_| {
-            scraper::Selector::parse("a").unwrap_or_else(|_| {
-                scraper::Selector::parse("a").expect("Failed to create link selector")
-            })
-        })).for_each(|el| {
-            debug!("Link: {:?}", el.value().attr("href"));
-        });
-
+        document
+            .select(&scraper::Selector::parse("link").unwrap_or_else(|_| {
+                scraper::Selector::parse("a").unwrap_or_else(|_| {
+                    scraper::Selector::parse("a").expect("Failed to create link selector")
+                })
+            }))
+            .for_each(|el| {
+                debug!("Link: {:?}", el.value().attr("href"));
+            });
 
         let mut results = Vec::new();
 
@@ -181,28 +185,35 @@ impl ToolingAgent {
             })
         });
 
-        let title_selector = scraper::Selector::parse(".result__title, .result__a").expect("Failed to create title selector");
-        let url_selector = scraper::Selector::parse(".result__url").expect("Failed to create url selector");
-        let snippet_selector = scraper::Selector::parse(".result__snippet").expect("Failed to create snippet selector");
+        let title_selector = scraper::Selector::parse(".result__title, .result__a")
+            .expect("Failed to create title selector");
+        let url_selector =
+            scraper::Selector::parse(".result__url").expect("Failed to create url selector");
+        let snippet_selector = scraper::Selector::parse(".result__snippet")
+            .expect("Failed to create snippet selector");
 
         for element in document.select(&result_selector) {
-            let title = element.select(&title_selector)
+            let title = element
+                .select(&title_selector)
                 .next()
                 .map(|el| el.text().collect::<String>())
                 .unwrap_or_default();
 
-            let url = element.select(&url_selector)
+            let url = element
+                .select(&url_selector)
                 .next()
                 .map(|el| el.text().collect::<String>())
                 .unwrap_or_else(|| {
-                    element.select(&title_selector)
+                    element
+                        .select(&title_selector)
                         .next()
                         .and_then(|el| el.value().attr("href"))
                         .unwrap_or_default()
                         .to_string()
                 });
 
-            let snippet = element.select(&snippet_selector)
+            let snippet = element
+                .select(&snippet_selector)
                 .next()
                 .map(|el| el.text().collect::<String>())
                 .unwrap_or_default();
@@ -219,14 +230,20 @@ impl ToolingAgent {
         // If no results found, try alternative selectors
         if results.is_empty() {
             info!("No results found with primary selectors, trying alternatives");
-            let link_selector = scraper::Selector::parse("link").expect("Failed to create link selector");
+            let link_selector =
+                scraper::Selector::parse("link").expect("Failed to create link selector");
             let links: Vec<_> = document.select(&link_selector).collect();
             info!("Found {} links", links.len());
-            
+
             for link in links {
-                if let (Some(href), Some(text)) = (link.value().attr("href"), Some(link.text().collect::<String>())) {
+                if let (Some(href), Some(text)) = (
+                    link.value().attr("href"),
+                    Some(link.text().collect::<String>()),
+                ) {
                     info!("Link: {:?}", href);
-                    if (href.starts_with("http") || href.starts_with("https")) && !text.trim().is_empty() {
+                    if (href.starts_with("http") || href.starts_with("https"))
+                        && !text.trim().is_empty()
+                    {
                         results.push(SearchResult {
                             title: text.trim().to_string(),
                             url: href.to_string(),
@@ -245,9 +262,9 @@ impl ToolingAgent {
     pub async fn fetch_page(&mut self, url: &str) -> Result<ProcessedPage, KowalskiError> {
         let tool_input = ToolInput::new(url.to_string());
         let output = self.chain.execute(tool_input).await?;
-        
+
         let document = scraper::Html::parse_document(&output.content);
-        
+
         // Extract title from meta tags or title tag
         let title = document
             .select(&scraper::Selector::parse("title").expect("Failed to create title selector"))
@@ -258,7 +275,9 @@ impl ToolingAgent {
         info!("[{}:{}] Title extracted: {}", file!(), line!(), &title);
 
         // Extract main content, prioritizing main content areas
-        let content_selector = scraper::Selector::parse("article, main, .content, .main-content, body").expect("Failed to create content selector");
+        let content_selector =
+            scraper::Selector::parse("article, main, .content, .main-content, body")
+                .expect("Failed to create content selector");
         let content = document
             .select(&content_selector)
             .map(|el| el.text().collect::<String>())
@@ -267,22 +286,39 @@ impl ToolingAgent {
             .trim()
             .to_string();
 
-        debug!("[{}:{}] Content length: {} bytes", file!(), line!(), content.len());
+        debug!(
+            "[{}:{}] Content length: {} bytes",
+            file!(),
+            line!(),
+            content.len()
+        );
 
         // Extract metadata from meta tags
-        let meta_selector = scraper::Selector::parse("meta[name][content], meta[property][content]").expect("Failed to create meta selector");
+        let meta_selector =
+            scraper::Selector::parse("meta[name][content], meta[property][content]")
+                .expect("Failed to create meta selector");
         let mut metadata = HashMap::new();
         for meta in document.select(&meta_selector) {
             if let (Some(name), Some(content)) = (
                 meta.value().attr("name").or(meta.value().attr("property")),
-                meta.value().attr("content")
+                meta.value().attr("content"),
             ) {
                 metadata.insert(name.to_string(), content.to_string());
             }
         }
 
-        info!("[{}:{}] Metadata entries: {}", file!(), line!(), metadata.len());
-        debug!("[{}:{}] Content preview: {:.100}...", file!(), line!(), content);
+        info!(
+            "[{}:{}] Metadata entries: {}",
+            file!(),
+            line!(),
+            metadata.len()
+        );
+        debug!(
+            "[{}:{}] Content preview: {:.100}...",
+            file!(),
+            line!(),
+            content
+        );
 
         Ok(ProcessedPage {
             url: url.to_string(),
@@ -294,7 +330,10 @@ impl ToolingAgent {
 
     /// Collects data from multiple pages, because one page is never enough.
     #[allow(dead_code)]
-    pub async fn collect_data(&mut self, urls: Vec<String>) -> Result<Vec<ProcessedPage>, KowalskiError> {
+    pub async fn collect_data(
+        &mut self,
+        urls: Vec<String>,
+    ) -> Result<Vec<ProcessedPage>, KowalskiError> {
         let mut results = Vec::new();
         for url in urls {
             if let Ok(page) = self.fetch_page(&url).await {
@@ -318,4 +357,4 @@ pub struct ProcessedPage {
     pub title: String,
     pub content: String,
     pub metadata: HashMap<String, String>,
-} 
+}

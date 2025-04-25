@@ -1,22 +1,21 @@
 /// Tools module: Because every AI needs its gadgets.
 /// "Tools are like toys for grown-up developers." - A Tool Enthusiast
-
 mod browser;
+mod cache;
 mod scraper;
 mod search;
-mod cache;
 
-pub use browser::WebBrowser;
-pub use scraper::WebScraper;
-pub use search::{SearchTool, SearchProvider};
-pub use cache::ToolCache;
 pub use crate::utils::KowalskiError;
+pub use browser::WebBrowser;
+pub use cache::ToolCache;
+pub use scraper::WebScraper;
+pub use search::{SearchProvider, SearchTool};
 
 use async_trait::async_trait;
+use log::debug;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
-use log::debug;
 
 /// The core trait for all tools, because every tool needs a purpose.
 #[async_trait]
@@ -36,7 +35,12 @@ pub struct ToolInput {
 
 impl fmt::Display for ToolInput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.query, self.context.as_deref().unwrap_or(""))
+        write!(
+            f,
+            "{}:{}",
+            self.query,
+            self.context.as_deref().unwrap_or("")
+        )
     }
 }
 
@@ -67,9 +71,9 @@ pub struct ToolOutput {
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum TaskType {
-    Search,           // General web search
-    BrowseDynamic,   // JavaScript-heavy sites needing browser
-    ScrapStatic,     // Static HTML content
+    Search,        // General web search
+    BrowseDynamic, // JavaScript-heavy sites needing browser
+    ScrapStatic,   // Static HTML content
     Unknown,
 }
 
@@ -80,27 +84,30 @@ pub struct TaskRouter {
 impl TaskRouter {
     pub fn new() -> Self {
         let mut patterns = HashMap::new();
-        
+
         // Search patterns
         patterns.insert("search:".to_string(), TaskType::Search);
         patterns.insert("find:".to_string(), TaskType::Search);
         patterns.insert("lookup:".to_string(), TaskType::Search);
-        
+
         // Dynamic content patterns
         patterns.insert("twitter.com".to_string(), TaskType::BrowseDynamic);
         patterns.insert("linkedin.com".to_string(), TaskType::BrowseDynamic);
         patterns.insert("facebook.com".to_string(), TaskType::BrowseDynamic);
-        
+
         // Static content patterns (default for most URLs)
         patterns.insert("github.com".to_string(), TaskType::ScrapStatic);
         patterns.insert("docs.rs".to_string(), TaskType::ScrapStatic);
-        
+
         Self { patterns }
     }
 
     pub fn determine_task_type(&self, input: &str) -> TaskType {
         // Check for explicit search queries
-        if input.starts_with("search:") || input.starts_with("find:") || input.starts_with("lookup:") {
+        if input.starts_with("search:")
+            || input.starts_with("find:")
+            || input.starts_with("lookup:")
+        {
             return TaskType::Search;
         }
 
@@ -159,7 +166,8 @@ impl ToolChain {
 
     pub fn add_tool(&mut self, tool: ToolType, task_types: Vec<TaskType>) {
         for task_type in task_types {
-            self.tools.entry(task_type)
+            self.tools
+                .entry(task_type)
                 .or_insert_with(Vec::new)
                 .push(tool.clone());
         }
@@ -167,17 +175,23 @@ impl ToolChain {
 
     pub async fn execute(&self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
         let task_type = self.router.determine_task_type(&input.query);
-        
+
         if let Some(tools) = self.tools.get(&task_type) {
             if let Some(tool) = tools.first() {
-                debug!("[{}:{}] Using tool {} for task type {:?}", 
-                    file!(), line!(), tool.name(), task_type);
+                debug!(
+                    "[{}:{}] Using tool {} for task type {:?}",
+                    file!(),
+                    line!(),
+                    tool.name(),
+                    task_type
+                );
                 return tool.execute(input).await;
             }
         }
-        
+
         Err(KowalskiError::NoSuitableTool(format!(
-            "No suitable tool found for task type {:?}", task_type
+            "No suitable tool found for task type {:?}",
+            task_type
         )))
     }
 }

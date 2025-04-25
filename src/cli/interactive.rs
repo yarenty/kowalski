@@ -1,4 +1,4 @@
-use crate::agent::{Agent, AcademicAgent, GeneralAgent, ToolingAgent};
+use crate::agent::{AcademicAgent, Agent, GeneralAgent, ToolingAgent};
 use crate::role::{Audience, Preset, Role};
 use crate::utils::PdfReader;
 use std::io::{self, Write};
@@ -37,10 +37,25 @@ async fn interaction_loop<A: Agent>(
 
         while let Some(chunk) = response.chunk().await? {
             match agent.process_stream_response(conv_id, &chunk).await {
-                Ok(Some(content)) => {
-                    print!("{}", content);
-                    io::stdout().flush()?;
-                    buffer.push_str(&content);
+                Ok(Some(message)) => {
+                    // Print the content if it exists
+                    if !message.content.is_empty() {
+                        print!("{}", message.content);
+                        io::stdout().flush()?;
+                        buffer.push_str(&message.content);
+                    }
+
+                    // Handle tool calls if they exist
+                    if let Some(tool_calls) = &message.tool_calls {
+                        for tool_call in tool_calls {
+                            print!("\n[Tool Call] {}(", tool_call.function.name);
+                            for (key, value) in &tool_call.function.arguments {
+                                print!("{}: {}, ", key, value);
+                            }
+                            print!(")\n");
+                            io::stdout().flush()?;
+                        }
+                    }
                 }
                 Ok(None) => {
                     println!("\n");
@@ -66,7 +81,10 @@ pub async fn tooling_loop(
     initial_query: &str,
     tool_type: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    println!("{} started with model: {} (type '/bye' to exit)", tool_type, model);
+    println!(
+        "{} started with model: {} (type '/bye' to exit)",
+        tool_type, model
+    );
     println!("----------------------------------------");
 
     // Initial query if provided
@@ -79,10 +97,25 @@ pub async fn tooling_loop(
         let mut buffer = String::new();
         while let Some(chunk) = response.chunk().await? {
             match agent.process_stream_response(&conv_id, &chunk).await {
-                Ok(Some(content)) => {
-                    print!("{}", content);
-                    io::stdout().flush()?;
-                    buffer.push_str(&content);
+                Ok(Some(message)) => {
+                    // Print the content if it exists
+                    if !message.content.is_empty() {
+                        print!("{}", message.content);
+                        io::stdout().flush()?;
+                        buffer.push_str(&message.content);
+                    }
+
+                    // Handle tool calls if they exist
+                    if let Some(tool_calls) = &message.tool_calls {
+                        for tool_call in tool_calls {
+                            print!("\n[Tool Call] {}(", tool_call.function.name);
+                            for (key, value) in &tool_call.function.arguments {
+                                print!("{}: {}, ", key, value);
+                            }
+                            print!(")\n");
+                            io::stdout().flush()?;
+                        }
+                    }
                 }
                 Ok(None) => {
                     println!("\n");
@@ -125,14 +158,29 @@ pub async fn chat_loop(
             .chat_with_history(&conv_id, initial_message, None)
             .await?;
 
-            let mut buffer = String::new();  
-            print!("Kowalski: ");
+        let mut buffer = String::new();
+        print!("Kowalski: ");
         while let Some(chunk) = response.chunk().await? {
             match agent.process_stream_response(&conv_id, &chunk).await {
-                Ok(Some(content)) => {
-                    print!("{}", content);
-                    io::stdout().flush()?;
-                    buffer.push_str(&content);
+                Ok(Some(message)) => {
+                    // Print the content if it exists
+                    if !message.content.is_empty() {
+                        print!("{}", message.content);
+                        io::stdout().flush()?;
+                        buffer.push_str(&message.content);
+                    }
+
+                    // Handle tool calls if they exist
+                    if let Some(tool_calls) = &message.tool_calls {
+                        for tool_call in tool_calls {
+                            print!("\n[Tool Call] {}(", tool_call.function.name);
+                            for (key, value) in &tool_call.function.arguments {
+                                print!("{}: {}, ", key, value);
+                            }
+                            print!(")\n");
+                            io::stdout().flush()?;
+                        }
+                    }
                 }
                 Ok(None) => {
                     println!("\n");
@@ -158,7 +206,10 @@ pub async fn academic_loop(
     model: &str,
     file: &PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Academic analysis started with model: {} (type '/bye' to exit)", model);
+    println!(
+        "Academic analysis started with model: {} (type '/bye' to exit)",
+        model
+    );
     println!("----------------------------------------");
 
     let role = Role::translator(Some(Audience::Scientist), Some(Preset::Questions));
@@ -167,26 +218,42 @@ pub async fn academic_loop(
 
     // agent.add_paper(&conv_id, file.as_path().to_str().unwrap());
 
-
-
     // dbg!(&content);
 
     let mut response = agent
-        .chat_with_history(&conv_id, "provide me with a summary of the paper", Some(role.clone()))
+        .chat_with_history(
+            &conv_id,
+            "provide me with a summary of the paper",
+            Some(role.clone()),
+        )
         .await?;
 
-        print!("Kowalski: ");
+    print!("Kowalski: ");
 
-        let mut buffer = String::new();    
+    let mut buffer = String::new();
     io::stdout().flush()?;
-
 
     while let Some(chunk) = response.chunk().await? {
         match agent.process_stream_response(&conv_id, &chunk).await {
-            Ok(Some(content)) => {
-                print!("{}", content);
-                io::stdout().flush()?;
-                buffer.push_str(&content);
+            Ok(Some(message)) => {
+                // Print the content if it exists
+                if !message.content.is_empty() {
+                    print!("{}", message.content);
+                    io::stdout().flush()?;
+                    buffer.push_str(&message.content);
+                }
+
+                // Handle tool calls if they exist
+                if let Some(tool_calls) = &message.tool_calls {
+                    for tool_call in tool_calls {
+                        print!("\n[Tool Call] {}(", tool_call.function.name);
+                        for (key, value) in &tool_call.function.arguments {
+                            print!("{}: {}, ", key, value);
+                        }
+                        println!(")");
+                        io::stdout().flush()?;
+                    }
+                }
             }
             Ok(None) => {
                 println!("\n");
@@ -201,5 +268,11 @@ pub async fn academic_loop(
     }
 
     // Use the common interaction loop with the academic role
-    interaction_loop(agent, &conv_id, "\nAsk a question about the paper (or type '/bye' to exit): ", Some(role)).await
-} 
+    interaction_loop(
+        agent,
+        &conv_id,
+        "\nAsk a question about the paper (or type '/bye' to exit): ",
+        Some(role),
+    )
+    .await
+}
