@@ -1,9 +1,9 @@
+use crate::utils::KowalskiError;
 use pdf_extract::extract_text;
 use std::error::Error;
 use std::fmt;
 use std::fs;
 use std::path::Path;
-use crate::utils::KowalskiError;
 
 #[derive(Debug)]
 pub enum PdfReaderError {
@@ -54,9 +54,7 @@ impl PdfReader {
         }
 
         if !file_path.to_lowercase().ends_with(".pdf") {
-            return Err(KowalskiError::InvalidPath(
-                "File must be a PDF".to_string(),
-            ));
+            return Err(KowalskiError::InvalidPath("File must be a PDF".to_string()));
         }
 
         // Extract text directly from the PDF file
@@ -97,13 +95,13 @@ mod tests {
     fn test_invalid_file() {
         let reader = PdfReader::new();
         let result = reader.read_pdf("nonexistent.pdf");
-        assert!(matches!(result, Err(PdfReaderError::InvalidPath(_))));
+        assert!(matches!(result, Err(KowalskiError::InvalidPath(_))));
     }
 
     #[test]
     fn test_invalid_extension() {
         let reader = PdfReader::new();
         let result = reader.read_pdf("test.txt");
-        assert!(matches!(result, Err(PdfReaderError::InvalidPath(_))));
+        assert!(matches!(result, Err(KowalskiError::InvalidPath(_))));
     }
 }

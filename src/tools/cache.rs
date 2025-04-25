@@ -1,10 +1,9 @@
+use super::{ToolInput, ToolOutput};
+use cached::Cached;
+use cached::TimedCache;
 /// Cache module: Because nobody likes waiting.
 /// "Caching is like having a good memory - it's great until you forget to invalidate it." - A Memory Expert
-
 use std::time::Duration;
-use cached::TimedCache;
-use super::{ToolInput, ToolOutput };
-use cached::Cached;
 
 /// Storage types for cache, because one size doesn't fit all.
 #[derive(Debug, Clone)]
@@ -59,10 +58,8 @@ impl ToolCache {
     #[allow(dead_code)]
     pub fn with_ttl(mut self, ttl: Duration) -> Self {
         self.config.ttl = ttl;
-        self.memory_cache = TimedCache::with_lifespan_and_capacity(
-            ttl.as_secs() as u64,
-            self.config.max_size,
-        );
+        self.memory_cache =
+            TimedCache::with_lifespan_and_capacity(ttl.as_secs() as u64, self.config.max_size);
         self
     }
 
@@ -88,9 +85,9 @@ impl ToolCache {
             Storage::Memory => {
                 self.memory_cache.cache_set(key.to_string(), output.clone());
             }
-            Storage::Local(_) => {}, // TODO: Implement local storage
+            Storage::Local(_) => {} // TODO: Implement local storage
             // Storage::Redis(_) => {}, // TODO: Implement Redis storage
-            Storage::None => {},
+            Storage::None => {}
         }
     }
 
@@ -103,4 +100,4 @@ impl ToolCache {
         input.hash(&mut hasher);
         format!("tool_cache_{}", hasher.finish())
     }
-} 
+}

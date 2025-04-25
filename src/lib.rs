@@ -3,11 +3,11 @@ pub mod config;
 pub mod conversation;
 pub mod model;
 pub mod role;
-pub mod utils;
 pub mod tools;
+pub mod utils;
 
 // Re-export commonly used types
-pub use agent::{Agent, AcademicAgent, ToolingAgent};
+pub use agent::{AcademicAgent, Agent, ToolingAgent};
 pub use config::Config;
 pub use model::ModelManager;
-pub use role::{Role, Audience, Preset}; 
+pub use role::{Audience, Preset, Role};

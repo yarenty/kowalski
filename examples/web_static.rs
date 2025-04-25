@@ -1,8 +1,8 @@
+use env_logger;
 use kowalski::{
     agent::{Agent, ToolingAgent},
     config::Config,
 };
-use env_logger;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     println!("🌐 Processing static content sites...\n");
-    
+
     for url in urls {
         println!("Processing: {}", url);
         match agent.fetch_page(url).await {
@@ -36,4 +36,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
-} 
+}

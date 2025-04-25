@@ -4,13 +4,13 @@
 /// This is where the magic happens, or at least where we pretend it does.
 /// Think of it as the conductor of our AI symphony, but with more error handling.
 mod agent;
+mod cli;
 mod config;
 mod conversation;
 mod model;
 mod role;
-mod utils;
 mod tools;
-mod cli;
+mod utils;
 
 use clap::Parser;
 use cli::Cli;

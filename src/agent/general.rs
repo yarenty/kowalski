@@ -1,12 +1,12 @@
+use super::types::StreamResponse;
+use crate::agent::types::Message;
 use crate::agent::{Agent, BaseAgent};
 use crate::config::Config;
-use super::types::StreamResponse;
 use crate::role::Role;
-use reqwest::Response;
-use crate::agent::types::Message;
 use crate::utils::KowalskiError;
+use reqwest::Response;
 /// GeneralAgent: A simple agent for basic chat interactions
-/// 
+///
 /// This agent provides straightforward chat functionality without specialized features,
 /// making it ideal for general conversation and simple Q&A tasks.
 pub struct GeneralAgent {
@@ -15,7 +15,6 @@ pub struct GeneralAgent {
 }
 
 impl GeneralAgent {
-
     /// Sets a custom system prompt for the agent
     #[allow(dead_code)]
     pub fn with_system_prompt(mut self, prompt: &str) -> Self {
@@ -61,27 +60,29 @@ impl Agent for GeneralAgent {
         content: &str,
         role: Option<Role>,
     ) -> Result<Response, KowalskiError> {
-
         // Still could use some role-based system messages
         if let Some(role) = role {
-            self.add_message(conversation_id,"system", role.get_prompt()).await;
-            
+            self.add_message(conversation_id, "system", role.get_prompt())
+                .await;
+
             if let Some(audience) = role.get_audience() {
-                self.add_message(conversation_id,"system", audience.get_prompt()).await;
+                self.add_message(conversation_id, "system", audience.get_prompt())
+                    .await;
             }
             if let Some(preset) = role.get_preset() {
-               self.add_message(conversation_id,"system", preset.get_prompt()).await;
+                self.add_message(conversation_id, "system", preset.get_prompt())
+                    .await;
             }
         }
 
         // Add the user's message to the conversation
         self.add_message(conversation_id, "user", content).await;
 
-
         // Get the conversation
-        let conversation = self.base.get_conversation(conversation_id)
+        let conversation = self
+            .base
+            .get_conversation(conversation_id)
             .ok_or_else(|| KowalskiError::ConversationNotFound(conversation_id.to_string()))?;
-
 
         // Prepare the chat request
         let chat_request = serde_json::json!({
@@ -103,7 +104,9 @@ impl Agent for GeneralAgent {
 
         dbg!(&chat_request);
         // Send the request
-        let response = self.base.client
+        let response = self
+            .base
+            .client
             .post(format!("{}/api/chat", self.base.config.ollama.base_url))
             .json(&chat_request)
             .send()
@@ -121,7 +124,7 @@ impl Agent for GeneralAgent {
     //     chunk: &[u8],
     // ) -> Result<Option<String>, KowalskiError> {
     //     debug!("Processing stream response for conversation {}", conversation_id);
-        
+
     //     // Parse the chunk as a JSON response
     //     if let Ok(text) = String::from_utf8(chunk.to_vec()) {
     //         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
@@ -132,7 +135,7 @@ impl Agent for GeneralAgent {
     //             }
     //         }
     //     }
-        
+
     //     Ok(None)
     // }
 
@@ -144,8 +147,8 @@ impl Agent for GeneralAgent {
         let text = String::from_utf8(chunk.to_vec())
             .map_err(|e| KowalskiError::Server(format!("Invalid UTF-8: {}", e)))?;
 
-        let stream_response: StreamResponse = serde_json::from_str(&text)
-            .map_err(|e| KowalskiError::Json(e))?;
+        let stream_response: StreamResponse =
+            serde_json::from_str(&text).map_err(|e| KowalskiError::Json(e))?;
 
         if stream_response.done {
             return Ok(None);
@@ -165,4 +168,4 @@ impl Agent for GeneralAgent {
     fn description(&self) -> &str {
         &self.base.description
     }
-} 
+}

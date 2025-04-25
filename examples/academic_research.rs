@@ -1,10 +1,10 @@
+use env_logger;
 use kowalski::{
-    agent::{Agent, AcademicAgent},
+    agent::{AcademicAgent, Agent},
     config::Config,
     role::{Audience, Preset, Role},
 };
 use std::io::{self, Write};
-use env_logger;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -22,17 +22,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Set up the role for scientific paper analysis
     let role = Role::translator(Some(Audience::Scientist), Some(Preset::Questions));
-    
+
     // Example paper path - replace with your PDF path
     let paper_path = "path/to/your/paper.pdf";
     println!("Processing paper: {}", paper_path);
 
     let mut response = academic_agent
-        .chat_with_history(
-            &conversation_id,
-            paper_path,
-            Some(role),
-        )
+        .chat_with_history(&conversation_id, paper_path, Some(role))
         .await?;
 
     println!("\n📝 Paper Analysis:");
@@ -40,14 +36,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Process the streaming response
     let mut buffer = String::new();
     while let Some(chunk) = response.chunk().await? {
-        match academic_agent.process_stream_response(&conversation_id, &chunk).await {
+        match academic_agent
+            .process_stream_response(&conversation_id, &chunk)
+            .await
+        {
             Ok(Some(content)) => {
                 print!("{}", content);
                 io::stdout().flush()?;
                 buffer.push_str(&content);
             }
             Ok(None) => {
-                academic_agent.add_message(&conversation_id, "assistant", &buffer).await;
+                academic_agent
+                    .add_message(&conversation_id, "assistant", &buffer)
+                    .await;
                 println!("\n✅ Paper processing complete!\n");
                 break;
             }
@@ -70,14 +71,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n📝 Follow-up Analysis:");
     let mut buffer = String::new();
     while let Some(chunk) = follow_up.chunk().await? {
-        match academic_agent.process_stream_response(&conversation_id, &chunk).await {
+        match academic_agent
+            .process_stream_response(&conversation_id, &chunk)
+            .await
+        {
             Ok(Some(content)) => {
                 print!("{}", content);
                 io::stdout().flush()?;
                 buffer.push_str(&content);
             }
             Ok(None) => {
-                academic_agent.add_message(&conversation_id, "assistant", &buffer).await;
+                academic_agent
+                    .add_message(&conversation_id, "assistant", &buffer)
+                    .await;
                 println!("\n");
                 break;
             }
@@ -89,4 +95,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
-} 
+}

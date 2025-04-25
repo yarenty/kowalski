@@ -1,3 +1,4 @@
+use crate::agent::types::Message;
 use chrono::{DateTime, Utc};
 /// Conversation: The AI's memory, because apparently we need to remember things.
 /// "Conversations are like diaries - they're personal but they're usually boring."
@@ -5,8 +6,6 @@ use chrono::{DateTime, Utc};
 /// This module provides functionality for managing conversations with the AI.
 /// Think of it as a diary for your AI, but without the teenage angst.
 use serde::{Deserialize, Serialize};
-use crate::agent::types::Message;
-
 
 /// A conversation between the user and the AI, because apparently we need to be organized.
 /// "Conversations are like relationships - they start simple but get complicated quickly."

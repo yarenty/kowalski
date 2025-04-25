@@ -1,18 +1,18 @@
-use async_trait::async_trait;
-use reqwest::Response;
+use super::{Agent, BaseAgent};
+use crate::agent::types::Message;
 use crate::config::Config;
 use crate::conversation::Conversation;
 use crate::role::Role;
-use super::{Agent, BaseAgent};
-use crate::tools::{ToolChain, ToolType, SearchTool, TaskType};
 use crate::tools::SearchProvider;
 use crate::tools::WebBrowser;
 use crate::tools::WebScraper;
-use log::{debug, info};
-use std::collections::HashMap;
-use serde_json;
-use crate::agent::types::Message;
+use crate::tools::{SearchTool, TaskType, ToolChain, ToolType};
 use crate::utils::KowalskiError;
+use async_trait::async_trait;
+use log::{debug, info};
+use reqwest::Response;
+use serde_json;
+use std::collections::HashMap;
 
 /// UnifiedAgent: A versatile agent that combines chat capabilities with tool usage
 pub struct UnifiedAgent {
@@ -30,24 +30,29 @@ impl Agent for UnifiedAgent {
         )?;
 
         let mut tool_chain = ToolChain::new();
-        
+
         let search_tool = SearchTool::new(
             SearchProvider::DuckDuckGo,
-            config.search.api_key.as_ref().unwrap_or(&String::new()).clone(),
+            config
+                .search
+                .api_key
+                .as_ref()
+                .unwrap_or(&String::new())
+                .clone(),
         );
         tool_chain.add_tool(
             ToolType::Search(search_tool.clone()),
-            vec![TaskType::Search]
+            vec![TaskType::Search],
         );
-        
+
         tool_chain.add_tool(
             ToolType::Browser(WebBrowser::new(config.clone())),
-            vec![TaskType::BrowseDynamic]
+            vec![TaskType::BrowseDynamic],
         );
-        
+
         tool_chain.add_tool(
             ToolType::Scraper(WebScraper::new()),
-            vec![TaskType::ScrapStatic]
+            vec![TaskType::ScrapStatic],
         );
 
         Ok(Self { base, tool_chain })
@@ -87,13 +92,16 @@ impl Agent for UnifiedAgent {
             content.to_string()
         };
 
-        let conversation = self.base.conversations.get_mut(conversation_id)
+        let conversation = self
+            .base
+            .conversations
+            .get_mut(conversation_id)
             .ok_or_else(|| KowalskiError::ConversationNotFound(conversation_id.to_string()))?;
 
         // Add system messages based on role if provided
         if let Some(role) = role {
             conversation.add_message("system", role.get_prompt());
-            
+
             if let Some(audience) = role.get_audience() {
                 conversation.add_message("system", audience.get_prompt());
             }
@@ -151,7 +159,7 @@ impl Agent for UnifiedAgent {
                                     "type": "boolean",
                                     "description": "Shuold use results from local cache if they are available. Othervise force to use latest one."
                                 }
-                            
+
                             }
                         }
                     }
@@ -189,14 +197,15 @@ impl Agent for UnifiedAgent {
                             }
                         }
                     }
-                })
+                }),
             ]),
         };
 
-
         dbg!(&request);
 
-        let response = self.base.client
+        let response = self
+            .base
+            .client
             .post(format!("{}/api/chat", self.base.config.ollama.base_url))
             .json(&request)
             .send()
@@ -216,7 +225,9 @@ impl Agent for UnifiedAgent {
         conversation_id: &str,
         chunk: &[u8],
     ) -> Result<Option<Message>, KowalskiError> {
-        self.base.process_stream_response(conversation_id, chunk).await
+        self.base
+            .process_stream_response(conversation_id, chunk)
+            .await
     }
 
     async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {
@@ -235,14 +246,18 @@ impl Agent for UnifiedAgent {
 impl UnifiedAgent {
     /// Determines if the input requires tool usage
     fn should_use_tools(&self, content: &str) -> bool {
-        content.starts_with("http") || 
-        content.contains("search:") || 
-        content.contains("browse:") || 
-        content.contains("scrape:")
+        content.starts_with("http")
+            || content.contains("search:")
+            || content.contains("browse:")
+            || content.contains("scrape:")
     }
 
     /// Execute a specific tool directly
-    pub async fn execute_tool(&self, tool_type: TaskType, query: &str) -> Result<String, KowalskiError> {
+    pub async fn execute_tool(
+        &self,
+        tool_type: TaskType,
+        query: &str,
+    ) -> Result<String, KowalskiError> {
         let tool_input = crate::tools::ToolInput::new(query.to_string());
         let tool_output = self.tool_chain.execute(tool_input).await?;
         Ok(tool_output.content)
@@ -251,6 +266,9 @@ impl UnifiedAgent {
     /// Configure tool-specific options
     pub fn configure_tool(&mut self, tool_type: TaskType, options: HashMap<String, String>) {
         // TODO: Implement tool configuration
-        debug!("Configuring tool {:?} with options: {:?}", tool_type, options);
+        debug!(
+            "Configuring tool {:?} with options: {:?}",
+            tool_type, options
+        );
     }
 }

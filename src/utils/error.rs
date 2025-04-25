@@ -1,5 +1,5 @@
-use std::fmt;
 use std::error::Error;
+use std::fmt;
 
 #[derive(Debug)]
 pub enum KowalskiError {
@@ -39,11 +39,11 @@ impl fmt::Display for KowalskiError {
             KowalskiError::Io(e) => write!(f, "IO error: {}", e),
             KowalskiError::Config(e) => write!(f, "Config error: {}", e),
             KowalskiError::Serialization(e) => write!(f, "Serialization error: {}", e),
-            
+
             // Agent specific errors
             KowalskiError::Server(e) => write!(f, "Server error: {}", e),
             KowalskiError::ConversationNotFound(e) => write!(f, "Conversation not found: {}", e),
-            
+
             // Tool specific errors
             KowalskiError::NoOutput => write!(f, "No output produced"),
             KowalskiError::Cache(e) => write!(f, "Cache error: {}", e),

@@ -1,18 +1,17 @@
+use super::{Tool, ToolInput, ToolOutput};
+use crate::utils::KowalskiError;
 /// Scraper module: Because websites are like puzzles - we need to take them apart.
 /// "Web scraping is like cooking - you follow the recipe until you realize you're missing ingredients." - A Web Chef
-
 use async_trait::async_trait;
-use governor::{Quota, RateLimiter};
 use governor::clock::DefaultClock;
 use governor::middleware::NoOpMiddleware;
-use governor::state::direct::NotKeyed;
 use governor::state::InMemoryState;
+use governor::state::direct::NotKeyed;
+use governor::{Quota, RateLimiter};
 use scraper::{Html, Selector};
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Duration;
-use super::{Tool, ToolInput, ToolOutput};
-use crate::utils::KowalskiError;
 
 pub struct WebScraper {
     client: reqwest::Client,
@@ -35,7 +34,7 @@ impl WebScraper {
         let client = reqwest::Client::new();
         let quota = Quota::per_second(NonZeroU32::new(2).unwrap());
         let rate_limiter = Arc::new(RateLimiter::direct(quota));
-        
+
         Self {
             client,
             rate_limiter,
@@ -45,9 +44,8 @@ impl WebScraper {
 
     #[allow(dead_code)]
     pub fn with_rate_limit(mut self, duration: Duration) -> Self {
-        let requests_per_second = NonZeroU32::new(
-            (1.0 / duration.as_secs_f32()).ceil() as u32
-        ).unwrap_or(NonZeroU32::new(1).unwrap());
+        let requests_per_second = NonZeroU32::new((1.0 / duration.as_secs_f32()).ceil() as u32)
+            .unwrap_or(NonZeroU32::new(1).unwrap());
 
         let quota = Quota::per_second(requests_per_second);
         self.rate_limiter = Arc::new(RateLimiter::direct(quota));
@@ -66,23 +64,19 @@ impl WebScraper {
 
     async fn scrape_url(&self, url: &str) -> Result<String, KowalskiError> {
         // Wait for rate limiter
-        self.rate_limiter
-            .until_ready()
-            .await;
+        self.rate_limiter.until_ready().await;
 
-        let response = self.client
+        let response = self
+            .client
             .get(url)
             .send()
             .await
             .map_err(KowalskiError::Request)?;
 
-        let html = response
-            .text()
-            .await
-            .map_err(KowalskiError::Request)?;
+        let html = response.text().await.map_err(KowalskiError::Request)?;
 
         let document = Html::parse_document(&html);
-        
+
         // Remove unwanted elements
         let unwanted_selectors = [
             "script",
@@ -129,4 +123,4 @@ impl Tool for WebScraper {
             source: Some(url),
         })
     }
-} 
+}
