@@ -80,10 +80,10 @@ impl Default for ChatConfig {
 pub trait ConfigExt {
     /// Get a reference to the core configuration
     fn core(&self) -> &Config;
-    
+
     /// Get a mutable reference to the core configuration
     fn core_mut(&mut self) -> &mut Config;
-    
+
     /// Get additional configuration value by key
     fn get_additional<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
         self.core()
@@ -91,11 +91,11 @@ pub trait ConfigExt {
             .get(key)
             .and_then(|v| serde_json::from_value(v.clone()).ok())
     }
-    
+
     /// Set additional configuration value
     fn set_additional<T: serde::Serialize>(&mut self, key: &str, value: T) {
         if let Ok(json) = serde_json::to_value(value) {
             self.core_mut().additional.insert(key.to_string(), json);
         }
     }
-} 
+}

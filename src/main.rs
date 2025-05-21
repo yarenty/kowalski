@@ -3,7 +3,6 @@
 ///
 /// This is where the magic happens, or at least where we pretend it does.
 /// Think of it as the conductor of our AI symphony, but with more error handling.
-
 use clap::Parser;
 use kowalski_cli::cli::{Cli, execute};
 use kowalski_core::logging;

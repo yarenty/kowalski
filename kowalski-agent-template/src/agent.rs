@@ -1,13 +1,12 @@
 use crate::config::TemplateAgentConfig;
-use kowalski_core::error::KowalskiError;
+use async_trait::async_trait;
 use kowalski_core::agent::BaseAgent;
 use kowalski_core::config::Config;
-use kowalski_core::tools::{Tool, ToolInput, ToolOutput, TaskType};
+use kowalski_core::error::KowalskiError;
+use kowalski_core::tools::{TaskType, Tool, ToolInput, ToolOutput};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use std::collections::HashMap;
-use async_trait::async_trait;
-use serde_json::Value;
 
 /// TemplateAgent: A base agent implementation that provides common functionality
 /// for specialized agents to build upon
@@ -76,7 +75,11 @@ impl TemplateAgent {
     }
 
     /// Registers a task handler with the agent
-    pub async fn register_task_handler(&self, task_type: impl TaskType, handler: Box<dyn TaskHandler>) {
+    pub async fn register_task_handler(
+        &self,
+        task_type: impl TaskType,
+        handler: Box<dyn TaskHandler>,
+    ) {
         let mut handlers = self.task_handlers.write().await;
         handlers.insert(task_type.name().to_string(), handler);
     }
@@ -99,7 +102,10 @@ impl TemplateAgent {
             return handler.handle(input).await;
         }
 
-        Err(KowalskiError::ToolExecution(format!("No handler found for task type: {}", input.task_type)))
+        Err(KowalskiError::ToolExecution(format!(
+            "No handler found for task type: {}",
+            input.task_type
+        )))
     }
 }
 
@@ -122,7 +128,7 @@ mod tests {
                         "message": "Mock tool executed successfully",
                         "input": input.content
                     }),
-                    Some(json!({ "tool": "mock" }))
+                    Some(json!({ "tool": "mock" })),
                 ))
             } else {
                 Err("Task type mismatch".to_string())
@@ -141,7 +147,7 @@ mod tests {
                     "message": "Mock handler executed successfully",
                     "input": input.content
                 }),
-                Some(json!({ "handler": "mock" }))
+                Some(json!({ "handler": "mock" })),
             ))
         }
     }
@@ -182,14 +188,12 @@ mod tests {
 
         // Register task handler
         let handler = Box::new(MockTaskHandler);
-        agent.register_task_handler(MockTaskType::Test, handler).await;
+        agent
+            .register_task_handler(MockTaskType::Test, handler)
+            .await;
 
         // Test task execution
-        let input = ToolInput::new(
-            "test".to_string(),
-            "test content".to_string(),
-            json!({})
-        );
+        let input = ToolInput::new("test".to_string(), "test content".to_string(), json!({}));
 
         let result = agent.execute_task(input).await;
         assert!(result.is_ok());
@@ -198,4 +202,4 @@ mod tests {
         assert_eq!(output.result["status"], "success");
         assert_eq!(output.metadata.unwrap()["tool"], "mock");
     }
-} 
+}

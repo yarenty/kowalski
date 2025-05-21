@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use kowalski_core::config::Config;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateAgentConfig {
@@ -52,4 +52,4 @@ impl From<Config> for TemplateAgentConfig {
         // Use only defaults for now, as config.agent.* does not exist
         TemplateAgentConfig::default()
     }
-} 
+}

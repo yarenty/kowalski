@@ -131,4 +131,3 @@ impl From<&str> for KowalskiError {
         KowalskiError::Agent(err.to_string())
     }
 }
-
