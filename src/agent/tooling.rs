@@ -1,14 +1,15 @@
+use super::types::{Message, StreamResponse};
 use super::{Agent, BaseAgent};
-use crate::agent::types::Message;
 use crate::config::Config;
 use crate::conversation::Conversation;
 use crate::role::Role;
-use crate::tools::SearchProvider;
-use crate::tools::TaskType;
-use crate::tools::WebBrowser;
-use crate::tools::WebScraper;
-use crate::tools::{SearchTool, ToolCache, ToolChain, ToolInput, ToolType};
+use crate::tools::{SearchProvider, TaskType, ToolChain, ToolInput, ToolType};
 use crate::utils::KowalskiError;
+use async_trait::async_trait;
+use log::{debug, info};
+use reqwest::Response;
+use serde_json;
+use std::collections::HashMap;
 /// Tooling Agent: Because browsing the web manually is so last century.
 /// "Web scraping is like archaeology - you dig through layers of HTML hoping to find treasure." - A Digital Archaeologist
 use async_trait::async_trait;
@@ -20,73 +21,57 @@ use std::collections::HashMap;
 #[allow(dead_code)]
 pub struct ToolingAgent {
     base: BaseAgent,
-    chain: ToolChain,
-    cache: ToolCache,
-    search_limit: usize,
-    follow_links: bool,
-    max_depth: u32,
-    code_language: Option<String>,
+    tool_chain: ToolChain,
+    active_tools: HashMap<TaskType, bool>,
 }
 
 impl ToolingAgent {
-    /// Creates a new tooling agent
+    /// Creates a new ToolingAgent with the specified configuration
     pub fn new(config: Config) -> Result<Self, KowalskiError> {
         let base = BaseAgent::new(
             config.clone(),
             "Tooling Agent",
-            "A versatile agent that uses various tools to process information",
+            "A specialized agent that excels at using tools to accomplish tasks",
         )?;
 
-        let mut chain = ToolChain::new();
-
-        // Register WebBrowser for dynamic content
-        chain.add_tool(
-            ToolType::Browser(WebBrowser::new(config.clone())),
-            vec![TaskType::BrowseDynamic],
+        let mut tool_chain = ToolChain::new();
+        
+        // Initialize default tools
+        let search_tool = SearchTool::new(
+            SearchProvider::DuckDuckGo,
+            config.search.api_key.unwrap_or_default(),
         );
-
-        // Register SearchTool for search queries
-        chain.add_tool(
-            ToolType::Search(SearchTool::new(
-                SearchProvider::DuckDuckGo,
-                config.search.api_key.clone().unwrap_or_default(),
-            )),
-            vec![TaskType::Search],
-        );
-
-        // Register WebScraper for static content
-        chain.add_tool(
-            ToolType::Scraper(WebScraper::new()),
-            vec![TaskType::ScrapStatic],
-        );
-
-        let cache = ToolCache::new();
+        tool_chain.add_tool(ToolType::Search(search_tool), vec![TaskType::Search]);
 
         Ok(Self {
             base,
-            chain,
-            cache,
-            search_limit: 5,
-            follow_links: false,
-            max_depth: 1,
-            code_language: None,
+            tool_chain,
+            active_tools: HashMap::new(),
         })
     }
 
-    /// Set the search result limit
-    pub fn set_search_limit(&mut self, limit: usize) {
-        self.search_limit = limit;
+    /// Enables or disables specific tools
+    pub fn configure_tools(&mut self, tool_type: TaskType, enabled: bool) {
+        self.active_tools.insert(tool_type, enabled);
     }
 
-    /// Set scraping options
-    pub fn set_scrape_options(&mut self, follow_links: bool, max_depth: u32) {
-        self.follow_links = follow_links;
-        self.max_depth = max_depth;
+    /// Executes a specific tool directly
+    pub async fn execute_tool(
+        &self,
+        tool_type: TaskType,
+        query: &str,
+    ) -> Result<String, KowalskiError> {
+        let tool_input = ToolInput::new(query.to_string());
+        let tool_output = self.tool_chain.execute(tool_input).await?;
+        Ok(tool_output.content)
     }
 
-    /// Set the code language for analysis
-    pub fn set_code_language(&mut self, language: &str) {
-        self.code_language = Some(language.to_string());
+    /// Determines if the input requires tool usage
+    fn should_use_tools(&self, content: &str) -> bool {
+        content.starts_with("http") || 
+        content.contains("search:") || 
+        content.contains("browse:") || 
+        content.contains("scrape:")
     }
 }
 
@@ -118,10 +103,11 @@ impl Agent for ToolingAgent {
         content: &str,
         role: Option<Role>,
     ) -> Result<Response, KowalskiError> {
-        // Process content through tool chain if it looks like a web request
-        let processed_content = if content.starts_with("http") || content.contains("search:") {
+        // Process content through tool chain if needed
+        let processed_content = if self.should_use_tools(content) {
+            info!("Using tools to process: {}", content);
             let tool_input = ToolInput::new(content.to_string());
-            let tool_output = self.chain.execute(tool_input).await?;
+            let tool_output = self.tool_chain.execute(tool_input).await?;
             tool_output.content
         } else {
             content.to_string()
@@ -137,9 +123,17 @@ impl Agent for ToolingAgent {
         conversation_id: &str,
         chunk: &[u8],
     ) -> Result<Option<Message>, KowalskiError> {
-        self.base
-            .process_stream_response(conversation_id, chunk)
-            .await
+        let text = String::from_utf8(chunk.to_vec())
+            .map_err(|e| KowalskiError::Server(format!("Invalid UTF-8: {}", e)))?;
+
+        let stream_response: StreamResponse =
+            serde_json::from_str(&text).map_err(|e| KowalskiError::Json(e))?;
+
+        if stream_response.done {
+            return Ok(None);
+        }
+
+        Ok(Some(stream_response.message))
     }
 
     async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {
@@ -147,11 +141,11 @@ impl Agent for ToolingAgent {
     }
 
     fn name(&self) -> &str {
-        self.base.name()
+        &self.base.name
     }
 
     fn description(&self) -> &str {
-        self.base.description()
+        &self.base.description
     }
 }
 
@@ -160,7 +154,7 @@ impl ToolingAgent {
     pub async fn search(&mut self, query: &str) -> Result<Vec<SearchResult>, KowalskiError> {
         let tool_input = ToolInput::new(query.to_string());
         debug!("Searching for: {}", query);
-        let output = self.chain.execute(tool_input).await?;
+        let output = self.tool_chain.execute(tool_input).await?;
         debug!("Raw HTML output received");
 
         let document = scraper::Html::parse_document(&output.content);
@@ -261,7 +255,7 @@ impl ToolingAgent {
     /// Fetches and processes a webpage, because raw HTML is for machines.
     pub async fn fetch_page(&mut self, url: &str) -> Result<ProcessedPage, KowalskiError> {
         let tool_input = ToolInput::new(url.to_string());
-        let output = self.chain.execute(tool_input).await?;
+        let output = self.tool_chain.execute(tool_input).await?;
 
         let document = scraper::Html::parse_document(&output.content);
 
@@ -357,4 +351,24 @@ pub struct ProcessedPage {
     pub title: String,
     pub content: String,
     pub metadata: HashMap<String, String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_tooling_agent_creation() {
+        let config = Config::default();
+        let agent = ToolingAgent::new(config);
+        assert!(agent.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_tool_execution() {
+        let config = Config::default();
+        let agent = ToolingAgent::new(config).unwrap();
+        let result = agent.execute_tool(TaskType::Search, "test query").await;
+        assert!(result.is_ok());
+    }
 }
