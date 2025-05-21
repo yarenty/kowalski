@@ -1,0 +1,32 @@
+[package]
+name = "kowalski-academic-agent"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT"
+
+[dependencies]
+kowalski-core = { path = "../kowalski-core" }
+kowalski-agent-template = { path = "../kowalski-agent-template" }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+futures = { workspace = true }
+bytes = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+url = { workspace = true }
+regex = { workspace = true }
+markdown = { workspace = true }
+env_logger = { workspace = true }
+
+[[example]]
+name = "research_paper_analysis"
+path = "examples/research_paper_analysis.rs" 
