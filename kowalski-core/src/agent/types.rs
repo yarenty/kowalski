@@ -14,4 +14,4 @@ pub struct ChatRequest {
 pub struct StreamResponse {
     pub done: bool,
     pub message: Message,
-} 
+}

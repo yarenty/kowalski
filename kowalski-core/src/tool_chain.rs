@@ -1,4 +1,4 @@
-use crate::tools::{Tool, ToolInput, ToolOutput, TaskType};
+use crate::tools::{TaskType, Tool, ToolInput, ToolOutput};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -29,7 +29,8 @@ impl ToolChain {
     where
         F: Fn(&str) -> bool + Send + Sync + 'static,
     {
-        self.task_handlers.insert(task_type.name().to_string(), Arc::new(handler));
+        self.task_handlers
+            .insert(task_type.name().to_string(), Arc::new(handler));
     }
 
     /// Execute the tool chain with the given input
@@ -62,7 +63,7 @@ mod tests {
         async fn execute(&self, input: ToolInput) -> Result<ToolOutput, String> {
             Ok(ToolOutput::new(
                 json!({ "result": input.content }),
-                Some(json!({ "tool": "mock" }))
+                Some(json!({ "tool": "mock" })),
             ))
         }
     }
@@ -94,10 +95,10 @@ mod tests {
         let input = ToolInput::new(
             "mock_task".to_string(),
             "test content".to_string(),
-            json!({})
+            json!({}),
         );
 
         let result = chain.execute(input).await;
         assert!(result.is_ok());
     }
-} 
+}

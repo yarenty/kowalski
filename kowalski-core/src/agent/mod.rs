@@ -1,14 +1,14 @@
+use crate::agent::types::{ChatRequest, StreamResponse};
 use crate::config::Config;
 use crate::conversation::Conversation;
+use crate::conversation::Message;
+use crate::error::KowalskiError;
 use crate::role::Role;
 use async_trait::async_trait;
 use log::info;
 use reqwest::Response;
 use serde_json;
 use std::collections::HashMap;
-use crate::conversation::Message;
-use crate::error::KowalskiError;
-use crate::agent::types::{ChatRequest, StreamResponse};
 
 pub mod types;
 
@@ -71,7 +71,7 @@ impl BaseAgent {
         let client = reqwest::ClientBuilder::new()
             .pool_max_idle_per_host(0)
             .build()
-            .map_err( KowalskiError::Request)?;
+            .map_err(KowalskiError::Request)?;
 
         info!("BaseAgent created with name: {}", name);
 
@@ -149,7 +149,10 @@ impl Agent for BaseAgent {
 
         let response = self
             .client
-            .post(format!("http://{}:{}/api/chat", self.config.ollama.host, self.config.ollama.port))
+            .post(format!(
+                "http://{}:{}/api/chat",
+                self.config.ollama.host, self.config.ollama.port
+            ))
             .json(&request)
             .send()
             .await?;
@@ -193,4 +196,4 @@ impl Agent for BaseAgent {
     fn description(&self) -> &str {
         &self.description
     }
-} 
+}

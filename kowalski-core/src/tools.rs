@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 
@@ -6,7 +5,7 @@ use std::fmt::Display;
 pub trait TaskType: Send + Sync + Display + 'static {
     /// Get the name of the task type
     fn name(&self) -> &str;
-    
+
     /// Get the description of the task type
     fn description(&self) -> &str;
 }
@@ -31,7 +30,11 @@ pub struct ToolInput {
 
 impl ToolInput {
     pub fn new(task_type: String, content: String, parameters: serde_json::Value) -> Self {
-        Self { task_type, content, parameters }
+        Self {
+            task_type,
+            content,
+            parameters,
+        }
     }
 }
 
@@ -48,4 +51,4 @@ impl ToolOutput {
     pub fn new(result: serde_json::Value, metadata: Option<serde_json::Value>) -> Self {
         Self { result, metadata }
     }
-} 
+}
