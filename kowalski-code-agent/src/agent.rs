@@ -1,10 +1,12 @@
+use crate::config::CodeAgentConfig;
+use crate::tools::{
+    CodeAnalysisTool, CodeDocumentationTool, CodeRefactoringTool, CodeSearchTool, CodeTaskType,
+};
 use kowalski_agent_template::TemplateAgent;
 use kowalski_core::config::Config;
 use kowalski_core::error::KowalskiError;
-use kowalski_core::tools::{Tool, ToolInput, ToolOutput, TaskType};
+use kowalski_core::tools::{TaskType, ToolInput};
 use serde_json::json;
-use crate::tools::{CodeTaskType, CodeAnalysisTool, CodeRefactoringTool, CodeDocumentationTool, CodeSearchTool};
-use crate::config::CodeAgentConfig;
 
 /// CodeAgent: A specialized agent for code analysis and processing
 pub struct CodeAgent {
@@ -14,7 +16,7 @@ pub struct CodeAgent {
 
 impl CodeAgent {
     /// Creates a new CodeAgent with the specified configuration
-    pub fn new(config: Config) -> Result<Self, KowalskiError> {
+    pub async fn new(config: Config) -> Result<Self, KowalskiError> {
         let mut template = TemplateAgent::new(config.clone())?;
         let code_config = CodeAgentConfig::from(config);
 
@@ -25,18 +27,21 @@ impl CodeAgent {
 
         // Register code-specific tools
         let analysis_tool = Box::new(CodeAnalysisTool::new(code_config.clone())?);
-        template.register_tool(analysis_tool);
+        template.register_tool(analysis_tool).await;
 
         let refactoring_tool = Box::new(CodeRefactoringTool::new(code_config.clone())?);
-        template.register_tool(refactoring_tool);
+        template.register_tool(refactoring_tool).await;
 
         let documentation_tool = Box::new(CodeDocumentationTool::new(code_config.clone())?);
-        template.register_tool(documentation_tool);
+        template.register_tool(documentation_tool).await;
 
         let search_tool = Box::new(CodeSearchTool::new(code_config.clone()));
-        template.register_tool(search_tool);
+        template.register_tool(search_tool).await;
 
-        Ok(Self { template, config: code_config })
+        Ok(Self {
+            template,
+            config: code_config,
+        })
     }
 
     /// Analyzes code using the code analysis tool
@@ -44,10 +49,13 @@ impl CodeAgent {
         let tool_input = ToolInput::new(
             CodeTaskType::Analyze.name().to_string(),
             code.to_string(),
-            json!({})
+            json!({}),
         );
         let tool_output = self.template.execute_task(tool_input).await?;
-        Ok(tool_output.result["metrics"].as_str().unwrap_or_default().to_string())
+        Ok(tool_output.result["metrics"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string())
     }
 
     /// Refactors code using the code refactoring tool
@@ -55,10 +63,13 @@ impl CodeAgent {
         let tool_input = ToolInput::new(
             CodeTaskType::Refactor.name().to_string(),
             code.to_string(),
-            json!({})
+            json!({}),
         );
         let tool_output = self.template.execute_task(tool_input).await?;
-        Ok(tool_output.result["changes"].as_str().unwrap_or_default().to_string())
+        Ok(tool_output.result["changes"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string())
     }
 
     /// Generates documentation using the code documentation tool
@@ -66,10 +77,13 @@ impl CodeAgent {
         let tool_input = ToolInput::new(
             CodeTaskType::Document.name().to_string(),
             code.to_string(),
-            json!({})
+            json!({}),
         );
         let tool_output = self.template.execute_task(tool_input).await?;
-        Ok(tool_output.result["docs"].as_str().unwrap_or_default().to_string())
+        Ok(tool_output.result["docs"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string())
     }
 
     /// Searches for code patterns using the code search tool
@@ -77,10 +91,13 @@ impl CodeAgent {
         let tool_input = ToolInput::new(
             CodeTaskType::Search.name().to_string(),
             query.to_string(),
-            json!({})
+            json!({}),
         );
         let tool_output = self.template.execute_task(tool_input).await?;
-        Ok(tool_output.result["results"].as_str().unwrap_or_default().to_string())
+        Ok(tool_output.result["results"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string())
     }
 
     /// Gets the underlying template agent
@@ -111,29 +128,35 @@ mod tests {
     #[tokio::test]
     async fn test_code_agent_creation() {
         let config = Config::default();
-        let agent = CodeAgent::new(config);
+        let agent = CodeAgent::new(config).await;
         assert!(agent.is_ok());
     }
 
     #[tokio::test]
     async fn test_code_agent_tools() {
         let config = Config::default();
-        let agent = CodeAgent::new(config).unwrap();
-        
+        let agent = CodeAgent::new(config).await.unwrap();
+
         // Test code analysis
-        let result = agent.analyze_code("fn main() { println!(\"Hello, world!\"); }").await;
+        let result = agent
+            .analyze_code("fn main() { println!(\"Hello, world!\"); }")
+            .await;
         assert!(result.is_ok());
-        
+
         // Test code refactoring
-        let result = agent.refactor_code("fn main() { println!(\"Hello, world!\"); }").await;
+        let result = agent
+            .refactor_code("fn main() { println!(\"Hello, world!\"); }")
+            .await;
         assert!(result.is_ok());
-        
+
         // Test code documentation
-        let result = agent.document_code("fn main() { println!(\"Hello, world!\"); }").await;
+        let result = agent
+            .document_code("fn main() { println!(\"Hello, world!\"); }")
+            .await;
         assert!(result.is_ok());
-        
+
         // Test code search
         let result = agent.search_code("main function").await;
         assert!(result.is_ok());
     }
-} 
+}

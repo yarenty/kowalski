@@ -1,11 +1,9 @@
-use kowalski_core::{Tool, ToolInput, ToolOutput, TaskType};
 use async_trait::async_trait;
 use kowalski_core::config::Config;
-use std::fmt;
+use kowalski_core::{TaskType, Tool, ToolInput, ToolOutput};
 use serde_json;
-use chrono;
-use kowalski_core::error::KowalskiError;
 use serde_json::json;
+use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Academic-specific task types
@@ -68,7 +66,7 @@ impl Tool for AcademicSearchTool {
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_secs()
-            }))
+            })),
         ))
     }
 }
@@ -98,7 +96,7 @@ impl Tool for CitationGeneratorTool {
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_secs()
-            }))
+            })),
         ))
     }
 }
@@ -128,7 +126,7 @@ impl Tool for PaperParserTool {
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_secs()
-            }))
+            })),
         ))
     }
 }
@@ -141,11 +139,13 @@ mod tests {
     async fn test_academic_search() {
         let mut search = AcademicSearchTool::new(Config::default());
         let input = "machine learning";
-        let result = search.execute(ToolInput::new(
-            AcademicTaskType::AcademicSearch.name().to_string(),
-            input.to_string(),
-            json!({})
-        )).await;
+        let result = search
+            .execute(ToolInput::new(
+                AcademicTaskType::AcademicSearch.name().to_string(),
+                input.to_string(),
+                json!({}),
+            ))
+            .await;
         assert!(result.is_ok());
     }
 
@@ -153,11 +153,13 @@ mod tests {
     async fn test_citation_generator() {
         let mut generator = CitationGeneratorTool::new(Config::default());
         let input = "Smith, J. (2020). Title. Journal.";
-        let result = generator.execute(ToolInput::new(
-            AcademicTaskType::CitationGeneration.name().to_string(),
-            input.to_string(),
-            json!({})
-        )).await;
+        let result = generator
+            .execute(ToolInput::new(
+                AcademicTaskType::CitationGeneration.name().to_string(),
+                input.to_string(),
+                json!({}),
+            ))
+            .await;
         assert!(result.is_ok());
     }
 
@@ -165,11 +167,13 @@ mod tests {
     async fn test_paper_parser() {
         let mut parser = PaperParserTool::new(Config::default());
         let input = "Abstract: This is a test paper...";
-        let result = parser.execute(ToolInput::new(
-            AcademicTaskType::PaperParsing.name().to_string(),
-            input.to_string(),
-            json!({})
-        )).await;
+        let result = parser
+            .execute(ToolInput::new(
+                AcademicTaskType::PaperParsing.name().to_string(),
+                input.to_string(),
+                json!({}),
+            ))
+            .await;
         assert!(result.is_ok());
     }
-} 
+}

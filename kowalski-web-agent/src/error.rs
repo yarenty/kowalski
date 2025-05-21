@@ -1,5 +1,5 @@
-use thiserror::Error;
 use kowalski_core::error::KowalskiError;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum WebAgentError {
@@ -35,4 +35,4 @@ impl From<url::ParseError> for WebAgentError {
     fn from(err: url::ParseError) -> Self {
         WebAgentError::InvalidUrl(err.to_string())
     }
-} 
+}

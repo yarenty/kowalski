@@ -53,4 +53,4 @@ impl Conversation {
     pub fn clear(&mut self) {
         self.messages.clear();
     }
-} 
+}

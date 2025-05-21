@@ -1,12 +1,9 @@
 use env_logger;
-use kowalski_web_agent::{
-    agent::WebAgent,
-    config::Config,
-};
 use kowalski_core::{
-    role::{Audience, Preset, Role},
     agent::Agent,
+    role::{Audience, Preset, Role},
 };
+use kowalski_web_agent::{agent::WebAgent, config::Config};
 use log::info;
 use std::io::{self, Write};
 
@@ -119,4 +116,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
-} 
+}

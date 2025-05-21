@@ -1,7 +1,7 @@
-use crate::error::CodeAgentError;
 use crate::config::CodeAgentConfig;
-use tree_sitter::{Parser, Language};
+use crate::error::CodeAgentError;
 use std::path::Path;
+use tree_sitter::{Language, Parser};
 
 /// A code parser that uses tree-sitter for parsing various programming languages
 pub struct CodeParser {
@@ -14,12 +14,11 @@ impl CodeParser {
     pub fn new(config: CodeAgentConfig) -> Result<Self, CodeAgentError> {
         let mut parser = Parser::new();
         // Initialize with Rust language by default - BY HAND!!!
-        parser.set_language(&tree_sitter_rust::LANGUAGE.into()).expect("Error loading Rust grammar");
-        
-        Ok(Self {
-            parser,
-            config,
-        })
+        parser
+            .set_language(&tree_sitter_rust::LANGUAGE.into())
+            .expect("Error loading Rust grammar");
+
+        Ok(Self { parser, config })
     }
 
     /// Parses a file at the given path
@@ -36,7 +35,8 @@ impl CodeParser {
 
     /// Parses a string of code
     pub fn parse_content(&mut self, content: &str) -> Result<(), CodeAgentError> {
-        self.parser.parse(content, None)
+        self.parser
+            .parse(content, None)
             .ok_or_else(|| CodeAgentError::Parser("Failed to parse content".to_string()))?;
 
         Ok(())
@@ -44,7 +44,8 @@ impl CodeParser {
 
     /// Sets the language for parsing
     pub fn set_language(&mut self, language: &Language) -> Result<(), CodeAgentError> {
-        self.parser.set_language(language)
+        self.parser
+            .set_language(language)
             .map_err(|e| CodeAgentError::Parser(format!("Failed to set language: {}", e)))
     }
 
@@ -96,4 +97,4 @@ mod tests {
         let result = parser.set_language(&language);
         assert!(result.is_ok());
     }
-} 
+}

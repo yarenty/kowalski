@@ -52,4 +52,4 @@ pub fn init_with_filters(filters: &[(&str, LevelFilter)]) {
     }
 
     builder.init();
-} 
+}

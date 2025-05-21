@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
-use kowalski_core::config::{Config as CoreConfig, ConfigExt};
 use crate::tools::SearchProvider;
+use kowalski_core::config::{Config as CoreConfig, ConfigExt};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Web agent configuration
@@ -28,7 +28,7 @@ impl ConfigExt for WebAgentConfig {
     fn core(&self) -> &CoreConfig {
         &self.core
     }
-    
+
     fn core_mut(&mut self) -> &mut CoreConfig {
         &mut self.core
     }
@@ -102,4 +102,4 @@ mod tests {
         let value: Option<String> = config.get_additional("test_key");
         assert_eq!(value, Some("test_value".to_string()));
     }
-} 
+}

@@ -1,8 +1,8 @@
-use crate::error::CodeAgentError;
 use crate::config::CodeAgentConfig;
+use crate::error::CodeAgentError;
 use crate::parser::CodeParser;
-use tree_sitter::{Node, Tree};
 use std::collections::HashMap;
+use tree_sitter::{Node, Tree};
 
 /// A code refactoring tool that performs various refactoring operations
 pub struct CodeRefactorer {
@@ -26,7 +26,10 @@ impl CodeRefactorer {
     /// Refactors a file at the given path
     pub fn refactor_file(&mut self, path: &str) -> Result<(), CodeAgentError> {
         self.parser.parse_file(path.as_ref())?;
-        let tree = self.parser.parser_mut().parse(path, None)
+        let tree = self
+            .parser
+            .parser_mut()
+            .parse(path, None)
             .ok_or_else(|| CodeAgentError::Parser("Failed to parse file".to_string()))?;
         self.refactor_tree(&tree)
     }
@@ -34,7 +37,10 @@ impl CodeRefactorer {
     /// Refactors a string of code
     pub fn refactor_content(&mut self, content: &str) -> Result<(), CodeAgentError> {
         self.parser.parse_content(content)?;
-        let tree = self.parser.parser_mut().parse(content.as_bytes(), None)
+        let tree = self
+            .parser
+            .parser_mut()
+            .parse(content.as_bytes(), None)
             .ok_or_else(|| CodeAgentError::Parser("Failed to parse content".to_string()))?;
         self.refactor_tree(&tree)
     }
@@ -42,7 +48,7 @@ impl CodeRefactorer {
     /// Refactors a syntax tree
     fn refactor_tree(&mut self, tree: &Tree) -> Result<(), CodeAgentError> {
         let root_node = tree.root_node();
-        
+
         if self.config.enable_optimization {
             self.optimize_code(&root_node)?;
         }
@@ -129,4 +135,4 @@ mod tests {
         let result = refactorer.refactor_content("fn main() { println!(\"Hello, world!\"); }");
         assert!(result.is_ok());
     }
-} 
+}

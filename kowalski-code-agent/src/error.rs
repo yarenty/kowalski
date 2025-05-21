@@ -1,9 +1,8 @@
-use thiserror::Error;
 use kowalski_core::error::KowalskiError;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum CodeAgentError {
-
     #[error("Core error: {0}")]
     Core(#[from] KowalskiError),
 

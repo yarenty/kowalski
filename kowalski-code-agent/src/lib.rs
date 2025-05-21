@@ -1,11 +1,11 @@
 pub mod agent;
-pub mod tools;
-pub mod error;
-pub mod config;
-pub mod parser;
 pub mod analyzer;
-pub mod refactor;
+pub mod config;
 pub mod documentation;
+pub mod error;
+pub mod parser;
+pub mod refactor;
+pub mod tools;
 
 pub use agent::CodeAgent;
 pub use config::CodeAgentConfig;
@@ -15,16 +15,17 @@ pub use kowalski_core::config::Config;
 pub use kowalski_core::error::KowalskiError;
 pub use kowalski_core::logging;
 
-use kowalski_agent_template::TemplateAgent;
-use kowalski_agent_template::agent::TaskHandler;
-use kowalski_core::tools::{Tool, ToolInput, ToolOutput};
-use crate::tools::{CodeTaskType, CodeAnalysisTool, CodeRefactoringTool, CodeDocumentationTool, CodeSearchTool};
-use serde_json::json;
-use std::sync::Arc;
+use crate::tools::{
+    CodeAnalysisTool, CodeDocumentationTool, CodeRefactoringTool, CodeSearchTool, CodeTaskType,
+};
 use async_trait::async_trait;
+use kowalski_agent_template::agent::TaskHandler;
+use kowalski_agent_template::TemplateAgent;
+use kowalski_core::tools::{ToolInput, ToolOutput};
+use serde_json::json;
 
 /// Creates a new code agent with the specified configuration
-pub fn create_code_agent(config: Config) -> Result<TemplateAgent, KowalskiError> {
+pub async fn create_code_agent(config: Config) -> Result<TemplateAgent, KowalskiError> {
     let mut template = TemplateAgent::new(config.clone())?;
     let code_config = CodeAgentConfig::from(config);
 
@@ -35,16 +36,16 @@ pub fn create_code_agent(config: Config) -> Result<TemplateAgent, KowalskiError>
 
     // Register code-specific tools
     let analysis_tool = Box::new(CodeAnalysisTool::new(code_config.clone())?);
-    template.register_tool(analysis_tool);
+    template.register_tool(analysis_tool).await;
 
     let refactoring_tool = Box::new(CodeRefactoringTool::new(code_config.clone())?);
-    template.register_tool(refactoring_tool);
+    template.register_tool(refactoring_tool).await;
 
     let documentation_tool = Box::new(CodeDocumentationTool::new(code_config.clone())?);
-    template.register_tool(documentation_tool);
+    template.register_tool(documentation_tool).await;
 
     let search_tool = Box::new(CodeSearchTool::new(code_config.clone()));
-    template.register_tool(search_tool);
+    template.register_tool(search_tool).await;
 
     // Register task handlers
     struct AnalyzeHandler;
@@ -61,11 +62,11 @@ pub fn create_code_agent(config: Config) -> Result<TemplateAgent, KowalskiError>
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap()
                         .as_secs()
-                }))
+                })),
             ))
         }
     }
-    template.register_task_handler(CodeTaskType::Analyze, Box::new(AnalyzeHandler));
+    template.register_task_handler(CodeTaskType::Analyze, Box::new(AnalyzeHandler)).await;
 
     struct RefactorHandler;
     #[async_trait]
@@ -81,11 +82,11 @@ pub fn create_code_agent(config: Config) -> Result<TemplateAgent, KowalskiError>
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap()
                         .as_secs()
-                }))
+                })),
             ))
         }
     }
-    template.register_task_handler(CodeTaskType::Refactor, Box::new(RefactorHandler));
+    template.register_task_handler(CodeTaskType::Refactor, Box::new(RefactorHandler)).await;
 
     struct DocumentHandler;
     #[async_trait]
@@ -101,11 +102,11 @@ pub fn create_code_agent(config: Config) -> Result<TemplateAgent, KowalskiError>
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap()
                         .as_secs()
-                }))
+                })),
             ))
         }
     }
-    template.register_task_handler(CodeTaskType::Document, Box::new(DocumentHandler));
+    template.register_task_handler(CodeTaskType::Document, Box::new(DocumentHandler)).await;
 
     struct SearchHandler;
     #[async_trait]
@@ -121,11 +122,11 @@ pub fn create_code_agent(config: Config) -> Result<TemplateAgent, KowalskiError>
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap()
                         .as_secs()
-                }))
+                })),
             ))
         }
     }
-    template.register_task_handler(CodeTaskType::Search, Box::new(SearchHandler));
+    template.register_task_handler(CodeTaskType::Search, Box::new(SearchHandler)).await;
 
     Ok(template)
 }
@@ -137,7 +138,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_code_agent() {
         let config = Config::default();
-        let agent = create_code_agent(config);
+        let agent = create_code_agent(config).await;
         assert!(agent.is_ok());
     }
-} 
+}

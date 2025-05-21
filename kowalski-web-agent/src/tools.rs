@@ -1,13 +1,13 @@
 use async_trait::async_trait;
-use kowalski_core::tools::{Tool, ToolOutput, TaskType, ToolInput};
 use kowalski_core::config::Config;
+use kowalski_core::tools::{TaskType, Tool, ToolInput, ToolOutput};
 use reqwest::Client;
-use std::time::Duration;
-use std::fmt;
-use url::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::fmt;
+use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
+use url::Url;
 
 /// Web-specific task types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,11 +54,15 @@ pub enum SearchProvider {
 
 impl fmt::Display for SearchProvider {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", match self {
-            SearchProvider::DuckDuckGo => "duckduckgo",
-            SearchProvider::Google => "google",
-            SearchProvider::Bing => "bing",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                SearchProvider::DuckDuckGo => "duckduckgo",
+                SearchProvider::Google => "google",
+                SearchProvider::Bing => "bing",
+            }
+        )
     }
 }
 
@@ -89,7 +93,7 @@ impl Tool for SearchTool {
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_secs()
-            }))
+            })),
         ))
     }
 }
@@ -110,10 +114,13 @@ impl WebBrowser {
     }
 
     async fn fetch_dynamic_content(&self, url: &str) -> Result<String, String> {
-        let response = self.client.get(url).send().await
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
             .map_err(|e| e.to_string())?;
-        let text = response.text().await
-            .map_err(|e| e.to_string())?;
+        let text = response.text().await.map_err(|e| e.to_string())?;
         Ok(text)
     }
 }
@@ -123,10 +130,10 @@ impl Tool for WebBrowser {
     async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, String> {
         // Validate URL
         Url::parse(&input.content).map_err(|e| e.to_string())?;
-        
+
         // Fetch dynamic content
         let content = self.fetch_dynamic_content(&input.content).await?;
-        
+
         Ok(ToolOutput::new(
             json!({
                 "content": content,
@@ -138,7 +145,7 @@ impl Tool for WebBrowser {
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_secs()
-            }))
+            })),
         ))
     }
 }
@@ -159,10 +166,13 @@ impl WebScraper {
     }
 
     async fn fetch_url(&self, url: &str) -> Result<String, String> {
-        let response = self.client.get(url).send().await
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
             .map_err(|e| e.to_string())?;
-        let text = response.text().await
-            .map_err(|e| e.to_string())?;
+        let text = response.text().await.map_err(|e| e.to_string())?;
         Ok(text)
     }
 }
@@ -172,10 +182,10 @@ impl Tool for WebScraper {
     async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, String> {
         // Validate URL
         Url::parse(&input.content).map_err(|e| e.to_string())?;
-        
+
         // Fetch content
         let content = self.fetch_url(&input.content).await?;
-        
+
         Ok(ToolOutput::new(
             json!({
                 "content": content,
@@ -187,7 +197,7 @@ impl Tool for WebScraper {
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_secs()
-            }))
+            })),
         ))
     }
 }
@@ -202,7 +212,7 @@ mod tests {
         let input = ToolInput::new(
             WebTaskType::ScrapeStatic.name().to_string(),
             "https://example.com".to_string(),
-            json!({})
+            json!({}),
         );
         let result = scraper.execute(input).await;
         assert!(result.is_ok());
@@ -214,7 +224,7 @@ mod tests {
         let input = ToolInput::new(
             WebTaskType::BrowseDynamic.name().to_string(),
             "https://example.com".to_string(),
-            json!({})
+            json!({}),
         );
         let result = browser.execute(input).await;
         assert!(result.is_ok());
@@ -226,4 +236,4 @@ mod tests {
         assert_eq!(SearchProvider::Google.to_string(), "google");
         assert_eq!(SearchProvider::Bing.to_string(), "bing");
     }
-} 
+}

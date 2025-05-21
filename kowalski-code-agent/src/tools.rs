@@ -1,16 +1,14 @@
-use kowalski_core::error::KowalskiError;
-use kowalski_core::tools::{Tool, ToolInput, ToolOutput, TaskType};
-use crate::config::CodeAgentConfig;
-use crate::parser::CodeParser;
 use crate::analyzer::CodeAnalyzer;
-use crate::refactor::CodeRefactorer;
+use crate::config::CodeAgentConfig;
 use crate::documentation::CodeDocumenter;
+use crate::refactor::CodeRefactorer;
+use async_trait::async_trait;
+use kowalski_core::error::KowalskiError;
+use kowalski_core::tools::{TaskType, Tool, ToolInput, ToolOutput};
 use reqwest::Client;
-use std::time::Duration;
 use serde_json::json;
 use std::fmt;
-use async_trait::async_trait;
-use kowalski_core::config::Config;
+use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Task types specific to code operations
@@ -57,7 +55,8 @@ pub struct CodeAnalysisTool {
 impl CodeAnalysisTool {
     pub fn new(config: CodeAgentConfig) -> Result<Self, KowalskiError> {
         Ok(Self {
-            analyzer: CodeAnalyzer::new(config.clone()).map_err(|e| KowalskiError::Agent(e.to_string()))?,
+            analyzer: CodeAnalyzer::new(config.clone())
+                .map_err(|e| KowalskiError::Agent(e.to_string()))?,
             config,
         })
     }
@@ -66,7 +65,8 @@ impl CodeAnalysisTool {
 #[async_trait]
 impl Tool for CodeAnalysisTool {
     async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, String> {
-        self.analyzer.analyze_content(&input.content)
+        self.analyzer
+            .analyze_content(&input.content)
             .map_err(|e| KowalskiError::Agent(e.to_string()))
             .map_err(|e| e.to_string())?;
         let metrics = self.analyzer.metrics().clone();
@@ -80,7 +80,7 @@ impl Tool for CodeAnalysisTool {
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_secs()
-            }))
+            })),
         ))
     }
 }
@@ -94,7 +94,8 @@ pub struct CodeRefactoringTool {
 impl CodeRefactoringTool {
     pub fn new(config: CodeAgentConfig) -> Result<Self, KowalskiError> {
         Ok(Self {
-            refactorer: CodeRefactorer::new(config.clone()).map_err(|e| KowalskiError::Agent(e.to_string()))?,
+            refactorer: CodeRefactorer::new(config.clone())
+                .map_err(|e| KowalskiError::Agent(e.to_string()))?,
             config,
         })
     }
@@ -103,7 +104,8 @@ impl CodeRefactoringTool {
 #[async_trait]
 impl Tool for CodeRefactoringTool {
     async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, String> {
-        self.refactorer.refactor_content(&input.content)
+        self.refactorer
+            .refactor_content(&input.content)
             .map_err(|e| KowalskiError::Agent(e.to_string()))
             .map_err(|e| e.to_string())?;
         let changes = self.refactorer.changes().clone();
@@ -117,7 +119,7 @@ impl Tool for CodeRefactoringTool {
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_secs()
-            }))
+            })),
         ))
     }
 }
@@ -131,7 +133,8 @@ pub struct CodeDocumentationTool {
 impl CodeDocumentationTool {
     pub fn new(config: CodeAgentConfig) -> Result<Self, KowalskiError> {
         Ok(Self {
-            documenter: CodeDocumenter::new(config.clone()).map_err(|e| KowalskiError::Agent(e.to_string()))?,
+            documenter: CodeDocumenter::new(config.clone())
+                .map_err(|e| KowalskiError::Agent(e.to_string()))?,
             config,
         })
     }
@@ -140,7 +143,8 @@ impl CodeDocumentationTool {
 #[async_trait]
 impl Tool for CodeDocumentationTool {
     async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, String> {
-        self.documenter.document_content(&input.content)
+        self.documenter
+            .document_content(&input.content)
             .map_err(|e| KowalskiError::Agent(e.to_string()))
             .map_err(|e| e.to_string())?;
         let docs = self.documenter.docs().clone();
@@ -154,7 +158,7 @@ impl Tool for CodeDocumentationTool {
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_secs()
-            }))
+            })),
         ))
     }
 }
@@ -192,7 +196,7 @@ impl Tool for CodeSearchTool {
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_secs()
-            }))
+            })),
         ))
     }
 }
@@ -207,7 +211,7 @@ mod tests {
         let input = ToolInput::new(
             CodeTaskType::Analyze.name().to_string(),
             "fn main() { println!(\"Hello, world!\"); }".to_string(),
-            json!({})
+            json!({}),
         );
         let result = tool.execute(input).await;
         assert!(result.is_ok());
@@ -219,7 +223,7 @@ mod tests {
         let input = ToolInput::new(
             CodeTaskType::Refactor.name().to_string(),
             "fn main() { println!(\"Hello, world!\"); }".to_string(),
-            json!({})
+            json!({}),
         );
         let result = tool.execute(input).await;
         assert!(result.is_ok());
@@ -231,7 +235,7 @@ mod tests {
         let input = ToolInput::new(
             CodeTaskType::Document.name().to_string(),
             "fn main() { println!(\"Hello, world!\"); }".to_string(),
-            json!({})
+            json!({}),
         );
         let result = tool.execute(input).await;
         assert!(result.is_ok());
@@ -243,9 +247,9 @@ mod tests {
         let input = ToolInput::new(
             CodeTaskType::Search.name().to_string(),
             "main function".to_string(),
-            json!({})
+            json!({}),
         );
         let result = tool.execute(input).await;
         assert!(result.is_ok());
     }
-} 
+}

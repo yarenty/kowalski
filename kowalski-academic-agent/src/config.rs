@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use kowalski_core::config::{Config as CoreConfig, ConfigExt};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Academic agent configuration
@@ -35,7 +35,7 @@ impl ConfigExt for AcademicAgentConfig {
     fn core(&self) -> &CoreConfig {
         &self.core
     }
-    
+
     fn core_mut(&mut self) -> &mut CoreConfig {
         &mut self.core
     }
@@ -115,4 +115,4 @@ mod tests {
         let value: Option<String> = config.get_additional("test_key");
         assert_eq!(value, Some("test_value".to_string()));
     }
-} 
+}

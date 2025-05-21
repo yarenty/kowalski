@@ -1,6 +1,6 @@
+use crate::error::KowalskiError;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use crate::error::KowalskiError;
 
 /// The default model to use when nobody knows what they're doing.
 pub const DEFAULT_MODEL: &str = "mistral-small";
@@ -38,7 +38,7 @@ impl ModelManager {
         let client = reqwest::ClientBuilder::new()
             .pool_max_idle_per_host(0)
             .build()
-            .map_err( KowalskiError::Request)?;
+            .map_err(KowalskiError::Request)?;
 
         Ok(Self { client, base_url })
     }
@@ -85,4 +85,4 @@ impl ModelManager {
         let pull_response: PullResponse = response.json().await?;
         Ok(pull_response)
     }
-} 
+}

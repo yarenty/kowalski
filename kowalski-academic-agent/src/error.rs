@@ -1,5 +1,5 @@
-use thiserror::Error;
 use kowalski_core::error::KowalskiError;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum AcademicAgentError {
@@ -32,4 +32,4 @@ impl From<reqwest::Error> for AcademicAgentError {
     fn from(err: reqwest::Error) -> Self {
         AcademicAgentError::AcademicSearch(err.to_string())
     }
-} 
+}
