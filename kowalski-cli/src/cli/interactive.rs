@@ -11,6 +11,16 @@ use kowalski_core::{
 };
 use log::info;
 
+
+// Add missing type definitions
+pub type ToolingAgent = Box<dyn Agent + Send + Sync>;
+pub type GeneralAgent = Box<dyn Agent + Send + Sync>;
+
+// Add missing imports
+use std::io::Write; // For stdout.flush()
+use futures::stream::StreamExt; // For stream operations
+
+
 /// Stream generator that yields messages from the agent's response
 async fn message_stream_generator<A: Agent>(
     agent: &mut A,
@@ -235,7 +245,8 @@ pub async fn academic_loop(
     );
     println!("----------------------------------------");
 
-    let role = Role::translator(Some(Audience::Scientist), Some(Preset::Questions));
+
+    let role = Role::new("translator", "Translates academic content for scientists");
 
     let mut response = agent
         .chat_with_history(
@@ -413,4 +424,25 @@ impl InteractiveMode {
         println!("Model {} deleted", name);
         Ok(())
     }
+
+
+
+    
 } 
+
+
+
+
+impl Stream for PullResponse {
+    type Item = Result<String, KowalskiError>;
+    
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        // Implementation that pulls from the underlying response
+        // This is just a skeleton - actual implementation will depend on how PullResponse works
+        if let Some(chunk) = /* get next chunk */ {
+            Poll::Ready(Some(Ok(chunk)))
+        } else {
+            Poll::Ready(None)
+        }
+    }
+}
