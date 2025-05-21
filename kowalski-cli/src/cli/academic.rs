@@ -57,7 +57,8 @@ impl AcademicMode {
                     buffer.clear();
                     stdin.read_line(&mut buffer)?;
                     let file_path = buffer.trim();
-                    if let Ok(path) = PathBuf::from(file_path) {
+                    let path = PathBuf::from(file_path);
+                    if path.exists() { {
                         self.process_paper(&path, model, "text").await?;
                     } else {
                         println!("Invalid file path");
