@@ -4,59 +4,51 @@ mod browser;
 mod cache;
 mod scraper;
 mod search;
+mod chain;
+mod web;
 
 pub use crate::utils::KowalskiError;
 pub use browser::WebBrowser;
 pub use cache::ToolCache;
 pub use scraper::WebScraper;
 pub use search::{SearchProvider, SearchTool};
+pub use chain::ToolChain;
+pub use web::{WebBrowser, WebScraper};
 
 use async_trait::async_trait;
 use log::debug;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt;
+use thiserror::Error;
 
 /// The core trait for all tools, because every tool needs a purpose.
 #[async_trait]
 pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
-    #[allow(dead_code)]
     fn description(&self) -> &str;
-    async fn execute(&self, input: ToolInput) -> Result<ToolOutput, KowalskiError>;
+    async fn execute(&self, input: ToolInput) -> Result<ToolOutput, ToolError>;
 }
 
 /// Input for tools, because tools need something to work with.
-#[derive(Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolInput {
     pub query: String,
-    pub context: Option<String>,
+    pub parameters: HashMap<String, Value>,
 }
 
 impl fmt::Display for ToolInput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}:{}",
-            self.query,
-            self.context.as_deref().unwrap_or("")
-        )
+        write!(f, "{}", self.query)
     }
 }
 
-#[allow(dead_code)]
 impl ToolInput {
     pub fn new(query: String) -> Self {
         Self {
             query,
-            context: None,
-        }
-    }
-
-    pub fn with_context(query: String, context: String) -> Self {
-        Self {
-            query,
-            context: Some(context),
+            parameters: HashMap::new(),
         }
     }
 }
@@ -65,16 +57,15 @@ impl ToolInput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolOutput {
     pub content: String,
-    pub metadata: HashMap<String, serde_json::Value>,
+    pub metadata: HashMap<String, Value>,
     pub source: Option<String>,
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TaskType {
-    Search,        // General web search
-    BrowseDynamic, // JavaScript-heavy sites needing browser
-    ScrapStatic,   // Static HTML content
-    Unknown,
+    Search,
+    BrowseDynamic,
+    ScrapStatic,
 }
 
 pub struct TaskRouter {
@@ -126,7 +117,7 @@ impl TaskRouter {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum ToolType {
     Browser(browser::WebBrowser),
     Search(search::SearchTool),
@@ -193,5 +184,31 @@ impl ToolChain {
             "No suitable tool found for task type {:?}",
             task_type
         )))
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ToolError {
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
+    #[error("Execution failed: {0}")]
+    ExecutionFailed(String),
+    #[error("No tool available: {0}")]
+    NoToolAvailable(String),
+    #[error("Network error: {0}")]
+    NetworkError(String),
+    #[error("Parse error: {0}")]
+    ParseError(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tool_input_creation() {
+        let input = ToolInput::new("test query".to_string());
+        assert_eq!(input.query, "test query");
+        assert!(input.parameters.is_empty());
     }
 }
