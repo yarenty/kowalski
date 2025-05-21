@@ -1,0 +1,61 @@
+[package]
+name = "kowalski-code-agent"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT"
+
+[dependencies]
+kowalski-core = { path = "../kowalski-core" }
+kowalski-agent-template = { path = "../kowalski-agent-template" }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+futures = { workspace = true }
+bytes = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tree-sitter = "0.23"
+url = "2.5.0"
+regex = "1.10"
+markdown = "1"
+tree-sitter-rust = "0.23"
+tree-sitter-python = "0.23"
+tree-sitter-javascript = "0.23"
+tree-sitter-typescript = "0.23"
+tree-sitter-java = "0.23"
+tree-sitter-cpp = "0.23"
+tree-sitter-go = "0.23"
+tree-sitter-ruby = "0.23"
+tree-sitter-php = "0.23"
+tree-sitter-c-sharp = "0.23"
+# tree-sitter-swift = "0.23"
+# tree-sitter-kotlin = "0.23"
+tree-sitter-scala = "0.23"
+# tree-sitter-haskell = "0.20"
+# tree-sitter-ocaml = "0.23"
+# tree-sitter-erlang = "0.20"
+# tree-sitter-elixir = "0.20"
+# tree-sitter-r = "0.20"
+# tree-sitter-julia = "0.20"
+# tree-sitter-matlab = "0.20"
+# tree-sitter-fortran = "0.20"
+# tree-sitter-pascal = "0.20"
+# tree-sitter-lua = "0.20"
+# tree-sitter-d = "0.20""0.20"
+# tree-sitter-zig = "0.20"
+# tree-sitter-v = "0.20"
+# tree-sitter-odin = "0.20"0"0"
+# tree-sitter-mojo = "0.20"
+
+
+[[example]]
+name = "code_analysis"
+path = "examples/code_analysis.rs" 
