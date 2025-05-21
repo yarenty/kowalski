@@ -1,13 +1,12 @@
-pub mod agent;
-pub mod config;
-pub mod conversation;
-pub mod model;
-pub mod role;
-pub mod tools;
-pub mod utils;
+// Re-export commonly used types and core functionality
+pub use kowalski_core::{
+    config::Config,
+    error::KowalskiError,
+    logging,
+    model::ModelManager,
+    role::{Audience, Preset, Role, Style},
+    // ... any other needed re-exports
+};
 
-// Re-export commonly used types
-pub use agent::{AcademicAgent, Agent, ToolingAgent};
-pub use config::Config;
-pub use model::ModelManager;
-pub use role::{Audience, Preset, Role};
+// Re-export core functionality
+pub use kowalski_core::*;

@@ -3,31 +3,23 @@
 ///
 /// This is where the magic happens, or at least where we pretend it does.
 /// Think of it as the conductor of our AI symphony, but with more error handling.
-mod agent;
-mod cli;
-mod config;
-mod conversation;
-mod model;
-mod role;
-mod tools;
-mod utils;
 
 use clap::Parser;
-use cli::Cli;
-use env_logger;
+use kowalski_cli::cli::{Cli, execute};
+use kowalski_core::logging;
 
 /// The main function that makes everything work (or at least tries to).
 /// "Main functions are like first dates - they're exciting but usually end in disappointment."
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
-    env_logger::init();
+    kowalski_core::logging::init();
 
     // Parse CLI arguments
     let cli = Cli::parse();
 
     // Execute the command
-    cli::execute(cli).await?;
+    execute(cli).await?;
 
     Ok(())
 }

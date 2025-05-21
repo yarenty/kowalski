@@ -1,3 +1,39 @@
+[workspace]
+members = [
+    "kowalski-core",
+    "kowalski-agent-template",
+    "kowalski-academic-agent",
+    "kowalski-web-agent",
+    "kowalski-code-agent",
+    "kowalski-cli"
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT"
+
+[workspace.dependencies]
+tokio = { version = "1.37", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+chrono = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+async-trait = "0.1"
+log = "0.4"
+thiserror = "1.0"
+futures = "0.3"
+bytes = "1.5"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2.5.0"
+regex = "1.10"
+markdown = "0.3"
+env_logger = "0.11"
+
 [package]
 name = "kowalski"
 version = "0.3.0"
@@ -23,84 +59,48 @@ keywords = [
     "ollama"
 ]
 
+[features]
+default = []
+web = ["kowalski-web-agent"]
+academic = ["kowalski-academic-agent"]
+code = ["kowalski-code-agent"]
+all = ["web", "academic", "code"]
+
 [dependencies]
-# HTTP and async
-reqwest = { version = "0.12", features = ["json", "stream"] }
-tokio = { version = "1", features = ["full"] }
-futures = "0.3"
-async-trait = "0.1"
-
-# Serialization and data formats
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+kowalski-core = { path = "kowalski-core" }
+kowalski-agent-template = { path = "kowalski-agent-template" }
+kowalski-cli = { path = "kowalski-cli" }
+kowalski-web-agent = { path = "kowalski-web-agent", optional = true }
+kowalski-academic-agent = { path = "kowalski-academic-agent", optional = true }
+kowalski-code-agent = { path = "kowalski-code-agent", optional = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
+futures = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 toml = "0.8"
-
-# Configuration and system
 config = "0.15"
 dirs = "6.0"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.7", features = ["v4", "serde"] }
-
-# Document processing
 pdf-extract = "0.8"
-
-# Web browsing and scraping
-scraper = "0.23"           # HTML parsing and scraping
-url = "2.5"               # URL parsing and manipulation
-fantoccini = "0.19"       # Headless browser automation (replaces headless_chrome)
-select = "0.6"            # CSS selector based scraping
-
-# Search engines
-# google-apis = "5.0"       # Google Custom Search API
-# async-google-apis-common = "0.4.0"
-duckduckgo_rs = "0.0.1"     # Fixed package name for DuckDuckGo API client
-
-# Data processing
-html2md = "0.2"          # HTML to Markdown conversion
-cached = "0.55"          # Result caching
-regex = "1.10"           # Pattern matching
-quick-xml = "0.37"       # XML processing
-encoding_rs = "0.8"      # Character encoding support
-
-# Storage
-sled = "0.34"            # Embedded database for caching
-rusqlite = { version = "0.34", features = ["bundled"] }  # SQLite for local storage
-flate2 = "1.0"          # Compression for cached data
-
-# Rate limiting and utilities
-governor = "0.8"         # Rate limiting
+scraper = "0.23"
+url = { workspace = true }
+fantoccini = "0.19"
+select = "0.6"
+duckduckgo_rs = "0.0.1"
+html2md = "0.2"
+cached = "0.55"
+regex = { workspace = true }
+quick-xml = "0.37"
+encoding_rs = "0.8"
+sled = "0.34"
+rusqlite = { version = "0.34", features = ["bundled"] }
+flate2 = "1.0"
+governor = "0.8"
 urlencoding = "2.1.0"
-
-# Logging
-log = "0.4"
-env_logger = "0.11"
-
+log = { workspace = true }
+env_logger = { workspace = true }
 clap = { version = "4.5", features = ["derive"] }
-
-[[example]]
-name = "model_manager"
-path = "examples/model_manager.rs"
-
-[[example]]
-name = "academic_research"
-path = "examples/academic_research.rs"
-
-[[example]]
-name = "web_research"
-path = "examples/web_research.rs"
-
-[[example]]
-name = "web_search"
-path = "examples/web_search.rs"
-
-[[example]]
-name = "web_dynamic"
-path = "examples/web_dynamic.rs"
-
-[[example]]
-name = "web_static"
-path = "examples/web_static.rs"
-
-[[example]]
-name = "general_chat"
-path = "examples/general_chat.rs"
+thiserror = { workspace = true }
