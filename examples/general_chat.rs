@@ -67,10 +67,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .process_stream_response(&conv_id, &chunk.to_vec())
                 .await
             {
-                Ok(Some(content)) => {
-                    print!("{}", content);
-                    io::stdout().flush()?;
-                    buffer.push_str(&content);
+                Ok(Some(message)) => {
+                    // Print the content if it exists
+                    if !message.content.is_empty() {
+                        print!("{}", message.content);
+                        io::stdout().flush()?;
+                        buffer.push_str(&message.content);
+                    }
+
+                    // Handle tool calls if they exist
+                    if let Some(tool_calls) = &message.tool_calls {
+                        for tool_call in tool_calls {
+                            print!("\n[Tool Call] {}(", tool_call.function.name);
+                            for (key, value) in &tool_call.function.arguments {
+                                print!("{}: {}, ", key, value);
+                            }
+                            println!(")");
+                            io::stdout().flush()?;
+                        }
+                    }
                 }
                 Ok(None) => {
                     println!("\n");

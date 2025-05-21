@@ -3,6 +3,16 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+
+
+
+// TODO: critical agent types:
+// - code agents designed for software development tasks,
+// - tool calling agents for creating modular, function-driven workflows, 
+// - retrieval agents that access and synthesize information
+
+
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChatRequest {
     pub model: String,
@@ -37,3 +47,4 @@ pub struct Message {
     pub content: String,
     pub tool_calls: Option<Vec<ToolCall>>,
 }
+
