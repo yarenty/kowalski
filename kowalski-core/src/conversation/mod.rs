@@ -14,6 +14,19 @@ pub struct Conversation {
 pub struct Message {
     pub role: String,
     pub content: String,
+    pub tool_calls: Option<Vec<ToolCall>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub id: String,
+    pub function: FunctionCall,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunctionCall {
+    pub name: String,
+    pub arguments: serde_json::Value,
 }
 
 impl Conversation {
@@ -29,6 +42,7 @@ impl Conversation {
         self.messages.push(Message {
             role: role.to_string(),
             content: content.to_string(),
+            tool_calls: None,
         });
     }
 
