@@ -1,8 +1,66 @@
 use crate::agent::{AcademicAgent, Agent, GeneralAgent, ToolingAgent};
 use crate::role::{Audience, Preset, Role};
 use crate::utils::PdfReader;
+use futures::StreamExt;
 use std::io::{self, Write};
 use std::path::PathBuf;
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+
+/// Stream generator that yields messages from the agent's response
+async fn message_stream_generator<A: Agent>(
+    agent: &mut A,
+    conv_id: &str,
+    response: &mut reqwest::Response,
+) -> impl futures::Stream<Item = Result<Option<crate::agent::types::Message>, crate::utils::KowalskiError>> {
+    futures::stream::unfold((), move |_| {
+        let agent = agent as *mut A;
+        let conv_id = conv_id.to_string();
+        let response = response as *mut reqwest::Response;
+        
+        async move {
+            unsafe {
+                match (*response).chunk().await {
+                    Ok(Some(chunk)) => {
+                        let result = (*agent).process_stream_response(&conv_id, &chunk).await;
+                        Some((result, ()))
+                    }
+                    Ok(None) => None,
+                    Err(e) => Some((Err(crate::utils::KowalskiError::Server(e.to_string())), ())),
+                }
+            }
+        }
+    })
+}
+
+/// Task processor that handles a single message
+async fn process_message<A: Agent>(
+    message: crate::agent::types::Message,
+    agent: &mut A,
+    conv_id: &str,
+    buffer: &mut String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Print the content if it exists
+    if !message.content.is_empty() {
+        print!("{}", message.content);
+        io::stdout().flush()?;
+        buffer.push_str(&message.content);
+    }
+
+    // Handle tool calls if they exist
+    if let Some(tool_calls) = &message.tool_calls {
+        for tool_call in tool_calls {
+            print!("\n[Tool Call] {}(", tool_call.function.name);
+            for (key, value) in &tool_call.function.arguments {
+                print!("{}: {}, ", key, value);
+            }
+            println!(")");
+            io::stdout().flush()?;
+        }
+    }
+
+    Ok(())
+}
 
 /// Handles the continuous interaction loop with the AI
 async fn interaction_loop<A: Agent>(
@@ -27,47 +85,8 @@ async fn interaction_loop<A: Agent>(
             continue;
         }
 
-        let mut response = agent
-            .chat_with_history(conv_id, input, role.clone())
-            .await?;
-
-        print!("Kowalski: ");
-        io::stdout().flush()?;
-        let mut buffer = String::new();
-
-        while let Some(chunk) = response.chunk().await? {
-            match agent.process_stream_response(conv_id, &chunk).await {
-                Ok(Some(message)) => {
-                    // Print the content if it exists
-                    if !message.content.is_empty() {
-                        print!("{}", message.content);
-                        io::stdout().flush()?;
-                        buffer.push_str(&message.content);
-                    }
-
-                    // Handle tool calls if they exist
-                    if let Some(tool_calls) = &message.tool_calls {
-                        for tool_call in tool_calls {
-                            print!("\n[Tool Call] {}(", tool_call.function.name);
-                            for (key, value) in &tool_call.function.arguments {
-                                print!("{}: {}, ", key, value);
-                            }
-                            print!(")\n");
-                            io::stdout().flush()?;
-                        }
-                    }
-                }
-                Ok(None) => {
-                    println!("\n");
-                    agent.add_message(conv_id, "assistant", &buffer).await;
-                    break;
-                }
-                Err(e) => {
-                    eprintln!("\nError: {}", e);
-                    break;
-                }
-            }
-        }
+        // Use the Ollama chat function
+        ollama_chat(&mut agent, conv_id, input).await?;
     }
 
     Ok(())
@@ -275,4 +294,57 @@ pub async fn academic_loop(
         Some(role),
     )
     .await
+}
+
+/// Demonstrates proper interaction with local Ollama server
+async fn ollama_chat<A: Agent>(
+    mut agent: A,
+    conv_id: &str,
+    message: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Get response from Ollama
+    let mut response = agent
+        .chat_with_history(conv_id, message, None)
+        .await?;
+
+    print!("Kowalski: ");
+    io::stdout().flush()?;
+    let mut buffer = String::new();
+
+    // Process the response stream
+    while let Some(chunk) = response.chunk().await? {
+        match agent.process_stream_response(conv_id, &chunk).await {
+            Ok(Some(message)) => {
+                // Print the content if it exists
+                if !message.content.is_empty() {
+                    print!("{}", message.content);
+                    io::stdout().flush()?;
+                    buffer.push_str(&message.content);
+                }
+
+                // Handle tool calls if they exist
+                if let Some(tool_calls) = &message.tool_calls {
+                    for tool_call in tool_calls {
+                        print!("\n[Tool Call] {}(", tool_call.function.name);
+                        for (key, value) in &tool_call.function.arguments {
+                            print!("{}: {}, ", key, value);
+                        }
+                        println!(")");
+                        io::stdout().flush()?;
+                    }
+                }
+            }
+            Ok(None) => {
+                println!("\n");
+                agent.add_message(conv_id, "assistant", &buffer).await;
+                break;
+            }
+            Err(e) => {
+                eprintln!("\nError: {}", e);
+                break;
+            }
+        }
+    }
+
+    Ok(())
 }
