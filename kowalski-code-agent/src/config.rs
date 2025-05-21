@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
-use kowalski_core::config::Config;
 use kowalski_agent_template::config::TemplateAgentConfig;
+use kowalski_core::config::Config;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CodeAgentConfig {
@@ -150,7 +150,6 @@ pub struct CodeAgentConfig {
 
     /// Whether to enable code verifiability
     pub enable_verifiability: bool,
-
 }
 
 impl Default for CodeAgentConfig {
@@ -215,4 +214,4 @@ impl From<Config> for CodeAgentConfig {
         code_config.template = TemplateAgentConfig::from(config);
         code_config
     }
-} 
+}

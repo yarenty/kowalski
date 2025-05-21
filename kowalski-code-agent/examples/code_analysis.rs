@@ -1,11 +1,8 @@
 use env_logger;
-use kowalski_code_agent::{
-    agent::CodeAgent,
-    config::Config,
-};
+use kowalski_code_agent::{agent::CodeAgent, config::Config};
 use kowalski_core::{
-    role::{Audience, Preset, Role},
     agent::Agent,
+    role::{Audience, Preset, Role},
 };
 use log::info;
 use std::io::{self, Write};
@@ -40,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     "#;
 
     println!("\n🔍 Analyzing code...");
-    
+
     // Analyze the code
     let analysis_result = code_agent.analyze_code(code).await?;
     println!("\n📊 Analysis Results:");
@@ -78,7 +75,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n📝 Generating technical summary...");
 
     let mut response = code_agent
-        .chat_with_history(&conversation_id, "Provide a technical summary of the analysis", Some(role))
+        .chat_with_history(
+            &conversation_id,
+            "Provide a technical summary of the analysis",
+            Some(role),
+        )
         .await?;
 
     // Process the streaming response
@@ -123,4 +124,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
-} 
+}

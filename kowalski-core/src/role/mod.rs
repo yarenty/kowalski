@@ -56,11 +56,7 @@ impl Role {
     }
 
     pub fn get_prompt(&self) -> String {
-        format!(
-            "You are {}. {}",
-            self.name,
-            self.description
-        )
+        format!("You are {}. {}", self.name, self.description)
     }
 
     pub fn get_audience(&self) -> Option<&Audience> {
@@ -85,11 +81,7 @@ impl Audience {
     }
 
     pub fn get_prompt(&self) -> String {
-        format!(
-            "You are speaking to {}. {}",
-            self.name,
-            self.description
-        )
+        format!("You are speaking to {}. {}", self.name, self.description)
     }
 }
 
@@ -104,8 +96,7 @@ impl Preset {
     pub fn get_prompt(&self) -> String {
         format!(
             "Use the following preset: {}. {}",
-            self.name,
-            self.description
+            self.name, self.description
         )
     }
 }
@@ -121,8 +112,7 @@ impl Style {
     pub fn get_prompt(&self) -> String {
         format!(
             "Use the following style: {}. {}",
-            self.name,
-            self.description
+            self.name, self.description
         )
     }
-} 
+}

@@ -1,11 +1,8 @@
 use env_logger;
-use kowalski_academic_agent::{
-    agent::AcademicAgent,
-    config::Config,
-};
+use kowalski_academic_agent::{agent::AcademicAgent, config::Config};
 use kowalski_core::{
-    role::{Audience, Preset, Role},
     agent::Agent,
+    role::{Audience, Preset, Role},
 };
 use std::io::{self, Write};
 
@@ -128,4 +125,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
-} 
+}

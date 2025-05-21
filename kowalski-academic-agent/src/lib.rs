@@ -1,7 +1,7 @@
 pub mod agent;
-pub mod tools;
-pub mod error;
 pub mod config;
+pub mod error;
+pub mod tools;
 
 pub use agent::AcademicAgent;
 pub use config::AcademicAgentConfig;
@@ -11,21 +11,21 @@ pub use kowalski_core::config::Config;
 pub use kowalski_core::error::KowalskiError;
 pub use kowalski_core::logging;
 
-use kowalski_agent_template::TemplateAgent;
-use kowalski_agent_template::agent::TaskHandler;
-use kowalski_core::tools::{Tool, ToolInput, ToolOutput, TaskType};
-use crate::tools::{AcademicTaskType, AcademicSearchTool, CitationGeneratorTool, PaperParserTool};
-use serde_json::json;
+use crate::tools::{AcademicSearchTool, AcademicTaskType, CitationGeneratorTool, PaperParserTool};
 use async_trait::async_trait;
+use kowalski_agent_template::agent::TaskHandler;
+use kowalski_agent_template::TemplateAgent;
+use kowalski_core::tools::{ToolInput, ToolOutput};
+use serde_json::json;
 
 /// Creates a new academic agent with the specified configuration
-pub fn create_academic_agent(config: Config) -> Result<TemplateAgent, KowalskiError> {
-    let mut template = TemplateAgent::new(config.clone())?;
+pub async fn create_academic_agent(config: Config) -> Result<TemplateAgent, KowalskiError> {
+    let template = TemplateAgent::new(config.clone())?;
 
     // Register tools
-    template.register_tool(Box::new(AcademicSearchTool::new(config.clone())));
-    template.register_tool(Box::new(CitationGeneratorTool::new(config.clone())));
-    template.register_tool(Box::new(PaperParserTool::new(config.clone())));
+    template.register_tool(Box::new(AcademicSearchTool::new(config.clone()))).await;
+    template.register_tool(Box::new(CitationGeneratorTool::new(config.clone()))).await;
+    template.register_tool(Box::new(PaperParserTool::new(config.clone()))).await;
 
     // Register task handlers
     struct AcademicSearchHandler;
@@ -42,11 +42,14 @@ pub fn create_academic_agent(config: Config) -> Result<TemplateAgent, KowalskiEr
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap()
                         .as_secs()
-                }))
+                })),
             ))
         }
     }
-    template.register_task_handler(AcademicTaskType::AcademicSearch, Box::new(AcademicSearchHandler));
+    template.register_task_handler(
+        AcademicTaskType::AcademicSearch,
+        Box::new(AcademicSearchHandler),
+    ).await;
 
     struct CitationGenerationHandler;
     #[async_trait]
@@ -62,11 +65,14 @@ pub fn create_academic_agent(config: Config) -> Result<TemplateAgent, KowalskiEr
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap()
                         .as_secs()
-                }))
+                })),
             ))
         }
     }
-    template.register_task_handler(AcademicTaskType::CitationGeneration, Box::new(CitationGenerationHandler));
+    template.register_task_handler(
+        AcademicTaskType::CitationGeneration,
+        Box::new(CitationGenerationHandler),
+    ).await;
 
     struct PaperParsingHandler;
     #[async_trait]
@@ -82,11 +88,14 @@ pub fn create_academic_agent(config: Config) -> Result<TemplateAgent, KowalskiEr
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap()
                         .as_secs()
-                }))
+                })),
             ))
         }
     }
-    template.register_task_handler(AcademicTaskType::PaperParsing, Box::new(PaperParsingHandler));
+    template.register_task_handler(
+        AcademicTaskType::PaperParsing,
+        Box::new(PaperParsingHandler),
+    ).await;
 
     Ok(template)
 }
@@ -98,7 +107,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_academic_agent() {
         let config = Config::default();
-        let agent = create_academic_agent(config);
+        let agent = create_academic_agent(config).await;
         assert!(agent.is_ok());
     }
-} 
+}
