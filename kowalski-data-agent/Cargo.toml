@@ -1,5 +1,6 @@
+
 [package]
-name = "kowalski-cli"
+name = "kowalski-data-agent"
 version = "0.1.0"
 edition = "2021"
 authors = ["Your Name <your.email@example.com>"]
@@ -8,10 +9,6 @@ license = "MIT"
 [dependencies]
 kowalski-core = { path = "../kowalski-core" }
 kowalski-agent-template = { path = "../kowalski-agent-template" }
-kowalski-academic-agent = { path = "../kowalski-academic-agent" }
-kowalski-web-agent = { path = "../kowalski-web-agent" }
-kowalski-code-agent = { path = "../kowalski-code-agent" }
-kowalski-data-agent = { path = "../kowalski-data-agent", optional = true }
 tokio = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
@@ -30,7 +27,4 @@ regex = { workspace = true }
 markdown = { workspace = true }
 env_logger = { workspace = true }
 clap = { version = "4.5", features = ["derive"] }
-
-[features]
-default = []
-data = ["kowalski-data-agent"]
+csv = "1.1"
