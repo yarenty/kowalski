@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use kowalski_core::error::KowalskiError;
+use kowalski_core::tools::{ParameterType, ToolParameter};
 use kowalski_core::tools::{Tool, ToolInput, ToolOutput};
 use lopdf::{Document, Object};
 use serde_json::json;
@@ -8,18 +9,77 @@ pub struct PdfTool;
 
 #[async_trait]
 impl Tool for PdfTool {
-    async fn execute(&mut self, _input: ToolInput) -> Result<ToolOutput, KowalskiError> {
-        // ... implement or stub ...
-        Err(KowalskiError::ToolExecution("Not implemented".to_string()))
+    async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
+        // Parse parameters from input
+        let file_path = input
+            .parameters
+            .get("file_path")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                KowalskiError::ToolExecution("Missing or invalid 'file_path' parameter".to_string())
+            })?;
+        let extract_text = input
+            .parameters
+            .get("extract_text")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let extract_metadata = input
+            .parameters
+            .get("extract_metadata")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let extract_images = input
+            .parameters
+            .get("extract_images")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let result = self.process_pdf(file_path, extract_text, extract_metadata, extract_images)?;
+        Ok(ToolOutput {
+            result,
+            metadata: None,
+        })
     }
+
     fn name(&self) -> &str {
         "pdf_tool"
     }
+
     fn description(&self) -> &str {
         "Processes PDF files to extract text, metadata, and images."
     }
-    fn parameters(&self) -> Vec<kowalski_core::tools::ToolParameter> {
-        vec![]
+
+    fn parameters(&self) -> Vec<ToolParameter> {
+        vec![
+            ToolParameter {
+                name: "file_path".to_string(),
+                description: "Path to the PDF file to process.".to_string(),
+                required: true,
+                default_value: None,
+                parameter_type: ParameterType::String,
+            },
+            ToolParameter {
+                name: "extract_text".to_string(),
+                description: "Whether to extract text from the PDF (true/false).".to_string(),
+                required: true,
+                default_value: Some("true".to_string()),
+                parameter_type: ParameterType::Boolean,
+            },
+            ToolParameter {
+                name: "extract_metadata".to_string(),
+                description: "Whether to extract metadata from the PDF (true/false).".to_string(),
+                required: true,
+                default_value: Some("false".to_string()),
+                parameter_type: ParameterType::Boolean,
+            },
+            ToolParameter {
+                name: "extract_images".to_string(),
+                description: "Whether to extract images from the PDF (true/false).".to_string(),
+                required: true,
+                default_value: Some("false".to_string()),
+                parameter_type: ParameterType::Boolean,
+            },
+        ]
     }
 }
 
