@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Core configuration for the Kowalski system
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     /// Ollama configuration
     pub ollama: OllamaConfig,
@@ -13,15 +13,6 @@ pub struct Config {
     pub additional: HashMap<String, serde_json::Value>,
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            ollama: OllamaConfig::default(),
-            chat: ChatConfig::default(),
-            additional: HashMap::new(),
-        }
-    }
-}
 
 /// Configuration for Ollama integration
 #[derive(Debug, Clone, Serialize, Deserialize)]

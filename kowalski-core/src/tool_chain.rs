@@ -10,6 +10,12 @@ pub struct ToolChain {
     task_handlers: HashMap<String, Arc<dyn Fn(&str) -> bool + Send + Sync>>,
 }
 
+impl Default for ToolChain {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ToolChain {
     /// Create a new tool chain
     pub fn new() -> Self {
@@ -60,7 +66,7 @@ mod tests {
     struct MockTool;
     #[async_trait::async_trait]
     impl Tool for MockTool {
-        async fn execute(&self, input: ToolInput) -> Result<ToolOutput, String> {
+        async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, String> {
             Ok(ToolOutput::new(
                 json!({ "result": input.content }),
                 Some(json!({ "tool": "mock" })),
