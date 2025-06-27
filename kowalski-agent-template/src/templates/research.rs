@@ -13,7 +13,7 @@ impl ResearchTemplate {
         let pdf_tool = PdfTool;
 
         let builder = AgentBuilder::new()
-            .with_system_prompt("You are a research assistant specialized in finding and analyzing academic papers.")
+            .await.with_system_prompt("You are a research assistant specialized in finding and analyzing academic papers.")
             .with_tool(web_search_tool)
             .with_tool(pdf_tool)
             .with_temperature(0.7);

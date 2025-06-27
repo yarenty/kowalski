@@ -13,7 +13,7 @@ use tokio::sync::RwLock;
 pub struct TemplateAgent {
     base: BaseAgent,
     config: TemplateAgentConfig,
-    pub tool_chain: Arc<RwLock<Vec<Box<dyn Tool>>>>,
+    pub tool_chain: Arc<RwLock<Vec<Box<dyn Tool + Send + Sync>>>>,
     pub task_handlers: Arc<RwLock<HashMap<String, Box<dyn TaskHandler>>>>,
 }
 
@@ -69,9 +69,10 @@ impl TemplateAgent {
     }
 
     /// Registers a tool with the agent
-    pub async fn register_tool(&self, tool: Box<dyn Tool>) {
+    pub async fn register_tool(&self, tool: Box<dyn Tool + Send + Sync>) -> Result<(), KowalskiError> {
         let mut tools = self.tool_chain.write().await;
         tools.push(tool);
+        Ok(())
     }
 
     /// Registers a task handler with the agent
@@ -120,7 +121,7 @@ mod tests {
 
     #[async_trait]
     impl Tool for MockTool {
-        async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, String> {
+        async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
             if input.task_type == self.task_type {
                 Ok(ToolOutput::new(
                     json!({
@@ -131,8 +132,17 @@ mod tests {
                     Some(json!({ "tool": "mock" })),
                 ))
             } else {
-                Err("Task type mismatch".to_string())
+                Err(KowalskiError::ToolExecution("Task type mismatch".to_string()))
             }
+        }
+        fn name(&self) -> &str {
+            "mock_tool"
+        }
+        fn description(&self) -> &str {
+            "Mock tool for testing"
+        }
+        fn parameters(&self) -> Vec<kowalski_core::tools::ToolParameter> {
+            Vec::new()
         }
     }
 
@@ -184,7 +194,7 @@ mod tests {
         let tool = Box::new(MockTool {
             task_type: "test".to_string(),
         });
-        agent.register_tool(tool).await;
+        agent.register_tool(tool).await.unwrap();
 
         // Register task handler
         let handler = Box::new(MockTaskHandler);
