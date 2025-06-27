@@ -109,17 +109,105 @@ impl WebScrapeTool {
 
 #[async_trait]
 impl Tool for WebScrapeTool {
-    async fn execute(&mut self, _input: ToolInput) -> Result<ToolOutput, KowalskiError> {
-        // ... implement or stub ...
-        Err(KowalskiError::ToolExecution("Not implemented".to_string()))
+    async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
+        // Parse parameters from input
+        let url = input
+            .parameters
+            .get("url")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| input.content.as_str());
+        if url.is_empty() {
+            return Err(KowalskiError::ToolExecution(
+                "Missing 'url' parameter or content".to_string(),
+            ));
+        }
+        let selectors = input
+            .parameters
+            .get("selectors")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| {
+                KowalskiError::ToolExecution(
+                    "Missing or invalid 'selectors' parameter (must be array of strings)"
+                        .to_string(),
+                )
+            })?
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect::<Vec<_>>();
+        if selectors.is_empty() {
+            return Err(KowalskiError::ToolExecution(
+                "'selectors' parameter must contain at least one selector".to_string(),
+            ));
+        }
+        let follow_links = input
+            .parameters
+            .get("follow_links")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let max_depth = input
+            .parameters
+            .get("max_depth")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(1);
+
+        let results = self
+            .scrape_page(url, &selectors, follow_links, max_depth)
+            .await
+            .map_err(KowalskiError::ToolExecution)?;
+
+        let metadata = serde_json::json!({
+            "url": url,
+            "selectors": selectors,
+            "follow_links": follow_links,
+            "max_depth": max_depth,
+        });
+
+        Ok(ToolOutput {
+            result: serde_json::Value::Array(results),
+            metadata: Some(metadata),
+        })
     }
+
     fn name(&self) -> &str {
         "web_scrape"
     }
+
     fn description(&self) -> &str {
         "Scrapes web pages for content using CSS selectors."
     }
+
     fn parameters(&self) -> Vec<kowalski_core::tools::ToolParameter> {
-        vec![]
+        use kowalski_core::tools::{ParameterType, ToolParameter};
+        vec![
+            ToolParameter {
+                name: "url".to_string(),
+                description: "The URL of the web page to scrape. If not provided, the 'content' field will be used as the URL.".to_string(),
+                required: false,
+                default_value: None,
+                parameter_type: ParameterType::String,
+            },
+            ToolParameter {
+                name: "selectors".to_string(),
+                description: "A list of CSS selectors to extract content from the page. Each selector should be a string.".to_string(),
+                required: true,
+                default_value: None,
+                parameter_type: ParameterType::Array,
+            },
+            ToolParameter {
+                name: "follow_links".to_string(),
+                description: "Whether to follow links found on the page and scrape them recursively. Default is false.".to_string(),
+                required: false,
+                default_value: Some("false".to_string()),
+                parameter_type: ParameterType::Boolean,
+            },
+            ToolParameter {
+                name: "max_depth".to_string(),
+                description: "The maximum recursion depth for following links. Default is 1 (only the initial page).".to_string(),
+                required: false,
+                default_value: Some("1".to_string()),
+                parameter_type: ParameterType::Number,
+            },
+        ]
     }
 }
