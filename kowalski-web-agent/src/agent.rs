@@ -75,15 +75,91 @@ impl WebAgent {
             serde_json::json!({"query": query}),
         );
         let output = tool.execute(input).await?;
-        // Try to parse the results field as a list of SearchResult
-        let results_val = &output.result["results"];
-        // If it's a string (e.g. raw JSON from DuckDuckGo), try to parse it
-        let results: Vec<SearchResult> = if results_val.is_string() {
-            let raw = results_val.as_str().unwrap();
-            // Try to parse as JSON array, fallback to empty
-            serde_json::from_str(raw).unwrap_or_default()
-        } else if results_val.is_array() {
+        let results_val = &output.result;
+
+        println!("RESULT: {}", &results_val);
+
+        // DuckDuckGo-specific parsing
+        if let Some(provider) = results_val.get("provider").and_then(|v| v.as_str()) {
+            if provider == "duckduckgo" {
+                if let Some(raw) = results_val.get("results").and_then(|v| v.as_str()) {
+                    let parsed: Result<Value, _> = serde_json::from_str(raw);
+                    if let Ok(json) = parsed {
+                        // Try to extract RelatedTopics (and nested Topics)
+                        let mut results = Vec::new();
+                        if let Some(related) = json.get("RelatedTopics").and_then(|v| v.as_array())
+                        {
+                            for item in related {
+                                // If item has "Topics", it's a category, else it's a result
+                                if let Some(topics) = item.get("Topics").and_then(|v| v.as_array())
+                                {
+                                    for topic in topics {
+                                        if let (Some(title), Some(url), Some(snippet)) = (
+                                            topic.get("Text").and_then(|v| v.as_str()),
+                                            topic.get("FirstURL").and_then(|v| v.as_str()),
+                                            topic.get("Text").and_then(|v| v.as_str()),
+                                        ) {
+                                            results.push(SearchResult {
+                                                title: title.to_string(),
+                                                url: url.to_string(),
+                                                snippet: snippet.to_string(),
+                                            });
+                                        }
+                                    }
+                                } else if let (Some(title), Some(url), Some(snippet)) = (
+                                    item.get("Text").and_then(|v| v.as_str()),
+                                    item.get("FirstURL").and_then(|v| v.as_str()),
+                                    item.get("Text").and_then(|v| v.as_str()),
+                                ) {
+                                    results.push(SearchResult {
+                                        title: title.to_string(),
+                                        url: url.to_string(),
+                                        snippet: snippet.to_string(),
+                                    });
+                                }
+                            }
+                        }
+                        // Fallback: If no results, try to use Heading/AbstractURL
+                        if results.is_empty() {
+                            let title = json
+                                .get("Heading")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or(query);
+                            let url = json
+                                .get("AbstractURL")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            let snippet = json
+                                .get("AbstractText")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            if !title.is_empty() || !url.is_empty() || !snippet.is_empty() {
+                                results.push(SearchResult {
+                                    title: title.to_string(),
+                                    url: url.to_string(),
+                                    snippet: snippet.to_string(),
+                                });
+                            }
+                        }
+                        // If still empty, fallback to query
+                        if results.is_empty() {
+                            results.push(SearchResult {
+                                title: query.to_string(),
+                                url: String::new(),
+                                snippet: String::new(),
+                            });
+                        }
+                        return Ok(results);
+                    }
+                }
+            }
+        }
+        // Default: try to parse as array of SearchResult
+        let results: Vec<SearchResult> = if results_val.is_array() {
             serde_json::from_value(results_val.clone()).unwrap_or_default()
+        } else if results_val.is_string() {
+            let raw = results_val.as_str().unwrap();
+            serde_json::from_str(raw).unwrap_or_default()
         } else {
             Vec::new()
         };

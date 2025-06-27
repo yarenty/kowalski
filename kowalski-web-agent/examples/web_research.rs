@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Web Agent Conversation ID: {}", conversation_id);
 
     // Perform a web search
-    let query = "Latest developments in AI";
+    let query = "AI";
     println!("\n🔍 Searching: {}", query);
     let search_results = web_agent.search(query).await?;
     if search_results.is_empty() {
