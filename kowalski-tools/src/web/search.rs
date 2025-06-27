@@ -54,14 +54,54 @@ impl WebSearchTool {
 
     async fn serper_search(
         &self,
-        _query: &str,
-        _num_results: usize,
+        query: &str,
+        num_results: usize,
     ) -> Result<ToolOutput, KowalskiError> {
-        // Implementation for Serper API would go here
-        // This would require API key configuration
-        Err(KowalskiError::ToolConfig(
-            "Serper API integration not implemented".to_string(),
-        ))
+        // Implementation for Serper API
+        // Expects SERPER_API_KEY to be set in the environment
+        let api_key = std::env::var("SERPER_API_KEY").map_err(|_| {
+            KowalskiError::ToolConfig("SERPER_API_KEY environment variable not set".to_string())
+        })?;
+        let url = "https://google.serper.dev/search";
+        let payload = json!({
+            "q": query,
+            "num": num_results
+        });
+        let response = self
+            .client
+            .post(url)
+            .header("X-API-KEY", api_key)
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| {
+                KowalskiError::ToolExecution(format!("Serper API request failed: {}", e))
+            })?;
+        let status = response.status();
+        let body = response.text().await.map_err(|e| {
+            KowalskiError::ToolExecution(format!("Failed to read Serper API response: {}", e))
+        })?;
+        if !status.is_success() {
+            return Err(KowalskiError::ToolExecution(format!(
+                "Serper API error ({}): {}",
+                status, body
+            )));
+        }
+        let result = json!({
+            "provider": "serper",
+            "query": query,
+            "results": body,
+        });
+        Ok(ToolOutput {
+            result,
+            metadata: Some(json!({
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+                "provider": "serper",
+                "query": query,
+                "num_results": num_results,
+            })),
+        })
     }
 }
 
