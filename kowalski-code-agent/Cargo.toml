@@ -1,9 +1,13 @@
 [package]
 name = "kowalski-code-agent"
-version = "0.1.0"
-edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
+version = "0.3.0"
+edition = "2024"
+authors = ["yarenty <yarenty@gmail.com>"]
 license = "MIT"
+description = "Kowalski - agent of future AI"
+repository = "https://github.com/yarenty/kowalski"
+homepage = "https://github.com/yarenty/kowalski"
+readme = "README.md"
 
 [dependencies]
 kowalski-core = { path = "../kowalski-core" }
@@ -22,40 +26,74 @@ tower = { workspace = true }
 tower-http = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-tree-sitter = "0.23"
-url = "2.5.0"
-regex = "1.10"
-markdown = "1"
-tree-sitter-rust = "0.23"
-tree-sitter-python = "0.23"
-tree-sitter-javascript = "0.23"
-tree-sitter-typescript = "0.23"
-tree-sitter-java = "0.23"
-tree-sitter-cpp = "0.23"
-tree-sitter-go = "0.23"
-tree-sitter-ruby = "0.23"
-tree-sitter-php = "0.23"
-tree-sitter-c-sharp = "0.23"
-# tree-sitter-swift = "0.23"
-# tree-sitter-kotlin = "0.23"
-tree-sitter-scala = "0.23"
-# tree-sitter-haskell = "0.20"
-# tree-sitter-ocaml = "0.23"
-# tree-sitter-erlang = "0.20"
-# tree-sitter-elixir = "0.20"
-# tree-sitter-r = "0.20"
-# tree-sitter-julia = "0.20"
-# tree-sitter-matlab = "0.20"
-# tree-sitter-fortran = "0.20"
-# tree-sitter-pascal = "0.20"
-# tree-sitter-lua = "0.20"
-# tree-sitter-d = "0.20""0.20"
-# tree-sitter-zig = "0.20"
-# tree-sitter-v = "0.20"
-# tree-sitter-odin = "0.20"0"0"
-# tree-sitter-mojo = "0.20"
+url = { workspace = true }
+regex = { workspace = true }
+markdown = { workspace = true }
+env_logger = { workspace = true }
 
+[features]
+default = []
+all-languages = ["rust", "python", "javascript", "typescript", "java", "cpp", "go", "ruby", "php", "c-sharp", "scala"]
+rust = ["tree-sitter-rust"]
+python = ["tree-sitter-python"]
+javascript = ["tree-sitter-javascript"]
+typescript = ["tree-sitter-typescript"]
+java = ["tree-sitter-java"]
+cpp = ["tree-sitter-cpp"]
+go = ["tree-sitter-go"]
+ruby = ["tree-sitter-ruby"]
+php = ["tree-sitter-php"]
+c-sharp = ["tree-sitter-c-sharp"]
+scala = ["tree-sitter-scala"]
+
+[dependencies.tree-sitter]
+version = "0.23"
+optional = true
+
+[dependencies.tree-sitter-rust]
+version = "0.23"
+optional = true
+
+[dependencies.tree-sitter-python]
+version = "0.23"
+optional = true
+
+[dependencies.tree-sitter-javascript]
+version = "0.23"
+optional = true
+
+[dependencies.tree-sitter-typescript]
+version = "0.23"
+optional = true
+
+[dependencies.tree-sitter-java]
+version = "0.23"
+optional = true
+
+[dependencies.tree-sitter-cpp]
+version = "0.23"
+optional = true
+
+[dependencies.tree-sitter-go]
+version = "0.23"
+optional = true
+
+[dependencies.tree-sitter-ruby]
+version = "0.23"
+optional = true
+
+[dependencies.tree-sitter-php]
+version = "0.23"
+optional = true
+
+[dependencies.tree-sitter-c-sharp]
+version = "0.23"
+optional = true
+
+[dependencies.tree-sitter-scala]
+version = "0.23"
+optional = true
 
 [[example]]
 name = "code_analysis"
-path = "examples/code_analysis.rs" 
+path = "examples/code_analysis.rs"

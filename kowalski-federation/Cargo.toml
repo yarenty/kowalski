@@ -1,5 +1,5 @@
 [package]
-name = "kowalski-agent-template"
+name = "kowalski-federation"
 version = "0.3.0"
 edition = "2024"
 authors = ["yarenty <yarenty@gmail.com>"]
@@ -11,21 +11,15 @@ readme = "README.md"
 
 [dependencies]
 kowalski-core = { path = "../kowalski-core" }
-tokio = { workspace = true }
-reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }
-log = { workspace = true }
 thiserror = { workspace = true }
-futures = { workspace = true }
-bytes = { workspace = true }
-tower = { workspace = true }
-tower-http = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-url = { workspace = true }
-regex = { workspace = true }
-markdown = { workspace = true }
-env_logger = { workspace = true }
-clap = { version = "4.5", features = ["derive"] } 
+
+[dev-dependencies]
+mockall = "0.13"
+wiremock = "0.26"
+
+[features]
+default = []
