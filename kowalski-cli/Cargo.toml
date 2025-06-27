@@ -7,29 +7,25 @@ license = "MIT"
 
 [dependencies]
 kowalski-core = { path = "../kowalski-core" }
-kowalski-agent-template = { path = "../kowalski-agent-template" }
-kowalski-academic-agent = { path = "../kowalski-academic-agent" }
-kowalski-web-agent = { path = "../kowalski-web-agent" }
-kowalski-code-agent = { path = "../kowalski-code-agent" }
-kowalski-data-agent = { path = "../kowalski-data-agent", optional = true }
+kowalski-federation = { path = "../kowalski-federation" }
+clap = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3" }
+env_logger = "0.11"
 tokio = { workspace = true }
 reqwest = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
 async-trait = { workspace = true }
 log = { workspace = true }
-thiserror = { workspace = true }
 futures = { workspace = true }
 bytes = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 url = { workspace = true }
 regex = { workspace = true }
 markdown = { workspace = true }
-env_logger = { workspace = true }
-clap = { version = "4.5", features = ["derive"] }
 
 [features]
 default = []

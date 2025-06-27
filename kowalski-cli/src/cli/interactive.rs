@@ -1,47 +1,38 @@
-use kowalski_academic_agent::agent::AcademicAgent;
+use futures::StreamExt;
 use kowalski_core::role::{Audience, Preset, Role};
 use kowalski_core::Agent;
-use futures::StreamExt;
+use kowalski_core::{config::Config, conversation::Message, model::ModelManager};
 use std::io::{self, Write};
 use std::path::PathBuf;
-use kowalski_core::{
-    config::Config,
-    model::ModelManager,
-    conversation::Message,
-};
-use log::info;
 
 
 // Add missing type definitions
 pub type ToolingAgent = Box<dyn Agent + Send + Sync>;
 pub type GeneralAgent = Box<dyn Agent + Send + Sync>;
 
-// Add missing imports
-use std::io::Write; // For stdout.flush()
-use futures::stream::StreamExt; // For stream operations
-
 
 /// Stream generator that yields messages from the agent's response
-async fn message_stream_generator<A: Agent>(
-    agent: &mut A,
-    conv_id: &str,
-    response: &mut reqwest::Response,
-) -> impl futures::Stream<Item = Result<Option<kowalski_core::Message>, kowalski_core::error::KowalskiError>> {
+async fn message_stream_generator<'a, A: Agent + 'a>(
+    agent: &'a mut A,
+    conv_id: &'a str,
+    response: &'a mut reqwest::Response,
+) -> impl futures::Stream<
+    Item = Result<Option<kowalski_core::Message>, kowalski_core::error::KowalskiError>,
+> + 'a {
     futures::stream::unfold((), move |_| {
-        let agent = agent as *mut A;
-        let conv_id = conv_id.to_string();
-        let response = response as *mut reqwest::Response;
-        
         async move {
-            unsafe {
-                match (*response).chunk().await {
-                    Ok(Some(chunk)) => {
-                        let result = (*agent).process_stream_response(&conv_id, &chunk).await;
-                        Some((result, ()))
-                    }
-                    Ok(None) => None,
-                    Err(e) => Some((Err(kowalski_core::error::KowalskiError::Server(e.to_string())), ())),
+            let agent = unsafe { &mut *agent };
+            let response = unsafe { &mut *response };
+            match response.chunk().await {
+                Ok(Some(chunk)) => {
+                    let result = agent.process_stream_response(conv_id, &chunk).await;
+                    Some((result, ()))
                 }
+                Ok(None) => None,
+                Err(e) => Some((
+                    Err(kowalski_core::error::KowalskiError::Server(e.to_string())),
+                    (),
+                )),
             }
         }
     })
@@ -65,8 +56,10 @@ async fn process_message<A: Agent>(
     if let Some(tool_calls) = &message.tool_calls {
         for tool_call in tool_calls {
             print!("\n[Tool Call] {}(", tool_call.function.name);
-            for (key, value) in &tool_call.function.arguments {
-                print!("{}: {}, ", key, value);
+            if let Some(args) = tool_call.function.arguments.as_object() {
+                for (key, value) in args {
+                    print!("{}: {}, ", key, value);
+                }
             }
             println!(")");
             io::stdout().flush()?;
@@ -76,22 +69,50 @@ async fn process_message<A: Agent>(
     Ok(())
 }
 
-/// Handles the continuous interaction loop with the AI
-async fn interaction_loop<A: Agent>(
+/// Generic interaction loop for all agent types
+pub async fn run_interaction_loop<A: Agent>(
     mut agent: A,
-    conv_id: &str,
-    prompt: &str,
+    mut conv_id: String,
+    model: &str,
+    initial_message: Option<&str>,
     role: Option<Role>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Session started with model: {} (type '/bye' to exit)", model);
+    println!("----------------------------------------");
+
+    if let Some(msg) = initial_message {
+        println!("User: {}", msg);
+        let mut response = agent.chat_with_history(&conv_id, msg, role.clone()).await?;
+        let mut buffer = String::new();
+        print!("Kowalski: ");
+        let mut stream = Box::pin(message_stream_generator(&mut agent, &conv_id, &mut response).await);
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(Some(message)) => {
+                    process_message(message, &mut agent, &conv_id, &mut buffer).await?;
+                }
+                Ok(None) => {
+                    println!("\n");
+                    agent.add_message(&conv_id, "assistant", &buffer).await;
+                    break;
+                }
+                Err(e) => {
+                    eprintln!("\nError: {}", e);
+                    break;
+                }
+            }
+        }
+    }
+
     loop {
-        print!("{}", prompt);
+        print!("User: ");
         io::stdout().flush()?;
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
         let input = input.trim();
 
         if input == "/bye" {
-            println!("Goodbye! (finally)");
+            println!("Goodbye!");
             break;
         }
 
@@ -99,56 +120,14 @@ async fn interaction_loop<A: Agent>(
             continue;
         }
 
-        // Use the Ollama chat function
-        ollama_chat(&mut agent, conv_id, input).await?;
-    }
-
-    Ok(())
-}
-
-/// Handles tool-based interaction with the AI
-pub async fn tooling_loop(
-    mut agent: ToolingAgent,
-    conv_id: String,
-    model: &str,
-    initial_query: &str,
-    tool_type: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    println!(
-        "{} started with model: {} (type '/bye' to exit)",
-        tool_type, model
-    );
-    println!("----------------------------------------");
-
-    // Initial query if provided
-    if !initial_query.is_empty() {
-        println!("Query: {}", initial_query);
-        let mut response = agent
-            .chat_with_history(&conv_id, initial_query, None)
-            .await?;
-        print!("Kowalski: ");
+        let mut response = agent.chat_with_history(&conv_id, input, role.clone()).await?;
         let mut buffer = String::new();
-        while let Some(chunk) = response.chunk().await? {
-            match agent.process_stream_response(&conv_id, &chunk).await {
+        print!("Kowalski: ");
+        let mut stream = Box::pin(message_stream_generator(&mut agent, &conv_id, &mut response).await);
+        while let Some(result) = stream.next().await {
+            match result {
                 Ok(Some(message)) => {
-                    // Print the content if it exists
-                    if !message.content.is_empty() {
-                        print!("{}", message.content);
-                        io::stdout().flush()?;
-                        buffer.push_str(&message.content);
-                    }
-
-                    // Handle tool calls if they exist
-                    if let Some(tool_calls) = &message.tool_calls {
-                        for tool_call in tool_calls {
-                            print!("\n[Tool Call] {}(", tool_call.function.name);
-                            for (key, value) in &tool_call.function.arguments {
-                                print!("{}: {}, ", key, value);
-                            }
-                            print!(")\n");
-                            io::stdout().flush()?;
-                        }
-                    }
+                    process_message(message, &mut agent, &conv_id, &mut buffer).await?;
                 }
                 Ok(None) => {
                     println!("\n");
@@ -163,185 +142,9 @@ pub async fn tooling_loop(
         }
     }
 
-    // Use the common interaction loop with tool-specific prompt
-    let prompt = match tool_type {
-        "Search" => "Ask about your search query (type '/bye' to exit): ",
-        "Scrape" => "What do you want to know more about your URL (type '/bye' to exit): ",
-        "Code" => "Any a code-related question (type '/bye' to exit): ",
-        _ => "Enter your query (or type '/bye' to exit): ",
-    };
-
-    interaction_loop(agent, &conv_id, prompt, None).await
-}
-
-/// Handles continuous chat interaction with the AI
-pub async fn chat_loop(
-    mut agent: GeneralAgent,
-    conv_id: String,
-    model: &str,
-    initial_message: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Chat started with model: {} (type '/bye' to exit)", model);
-    println!("----------------------------------------");
-
-    // Initial message if provided
-    if !initial_message.is_empty() {
-        println!("User: {}", initial_message);
-        let mut response = agent
-            .chat_with_history(&conv_id, initial_message, None)
-            .await?;
-
-        let mut buffer = String::new();
-        print!("Kowalski: ");
-        while let Some(chunk) = response.chunk().await? {
-            match agent.process_stream_response(&conv_id, &chunk).await {
-                Ok(Some(message)) => {
-                    // Print the content if it exists
-                    if !message.content.is_empty() {
-                        print!("{}", message.content);
-                        io::stdout().flush()?;
-                        buffer.push_str(&message.content);
-                    }
-
-                    // Handle tool calls if they exist
-                    if let Some(tool_calls) = &message.tool_calls {
-                        for tool_call in tool_calls {
-                            print!("\n[Tool Call] {}(", tool_call.function.name);
-                            for (key, value) in &tool_call.function.arguments {
-                                print!("{}: {}, ", key, value);
-                            }
-                            print!(")\n");
-                            io::stdout().flush()?;
-                        }
-                    }
-                }
-                Ok(None) => {
-                    println!("\n");
-                    agent.add_message(&conv_id, "assistant", &buffer).await;
-                    break;
-                }
-                Err(e) => {
-                    eprintln!("\nError: {}", e);
-                    break;
-                }
-            }
-        }
-    }
-
-    // Use the common interaction loop
-    interaction_loop(agent, &conv_id, "User: ", None).await
-}
-
-/// Handles continuous academic paper analysis and Q&A
-pub async fn academic_loop(
-    mut agent: AcademicAgent,
-    conv_id: String,
-    model: &str,
-    file: &PathBuf,
-) -> Result<(), Box<dyn std::error::Error>> {
-    println!(
-        "Academic analysis started with model: {} (type '/bye' to exit)",
-        model
-    );
-    println!("----------------------------------------");
-
-
-    let role = Role::new("translator", "Translates academic content for scientists");
-
-    let mut response = agent
-        .chat_with_history(
-            &conv_id,
-            "provide me with a summary of the paper",
-            Some(role.clone()),
-        )
-        .await?;
-
-    print!("Kowalski: ");
-    let mut buffer = String::new();
-    while let Some(chunk) = response.chunk().await? {
-        match agent.process_stream_response(&conv_id, &chunk).await {
-            Ok(Some(message)) => {
-                // Print the content if it exists
-                if !message.content.is_empty() {
-                    print!("{}", message.content);
-                    io::stdout().flush()?;
-                    buffer.push_str(&message.content);
-                }
-
-                // Handle tool calls if they exist
-                if let Some(tool_calls) = &message.tool_calls {
-                    for tool_call in tool_calls {
-                        print!("\n[Tool Call] {}(", tool_call.function.name);
-                        for (key, value) in &tool_call.function.arguments {
-                            print!("{}: {}, ", key, value);
-                        }
-                        println!(")");
-                        io::stdout().flush()?;
-                    }
-                }
-            }
-            Ok(None) => {
-                println!("\n");
-                agent.add_message(&conv_id, "assistant", &buffer).await;
-                break;
-            }
-            Err(e) => {
-                eprintln!("\nError: {}", e);
-                break;
-            }
-        }
-    }
-
-    // Use the common interaction loop with academic-specific prompt
-    interaction_loop(agent, &conv_id, "Ask about the paper (type '/bye' to exit): ", Some(role)).await
-}
-
-/// Handles a single chat interaction with the AI
-async fn ollama_chat<A: Agent>(
-    mut agent: A,
-    conv_id: &str,
-    message: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut response = agent.chat_with_history(conv_id, message, None).await?;
-
-    let mut buffer = String::new();
-    print!("Kowalski: ");
-    while let Some(chunk) = response.chunk().await? {
-        match agent.process_stream_response(conv_id, &chunk).await {
-            Ok(Some(message)) => {
-                // Print the content if it exists
-                if !message.content.is_empty() {
-                    print!("{}", message.content);
-                    io::stdout().flush()?;
-                    buffer.push_str(&message.content);
-                }
-
-                // Handle tool calls if they exist
-                if let Some(tool_calls) = &message.tool_calls {
-                    for tool_call in tool_calls {
-                        print!("\n[Tool Call] {}(", tool_call.function.name);
-                        for (key, value) in &tool_call.function.arguments {
-                            print!("{}: {}, ", key, value);
-                        }
-                        println!(")");
-                        io::stdout().flush()?;
-                    }
-                }
-            }
-            Ok(None) => {
-                println!("\n");
-                agent.add_message(conv_id, "assistant", &buffer).await;
-                break;
-            }
-            Err(e) => {
-                eprintln!("\nError: {}", e);
-                break;
-            }
-        }
-    }
-
     Ok(())
 }
+
 
 /// Core interactive mode for basic LLM interactions
 pub struct InteractiveMode {
@@ -360,89 +163,31 @@ impl InteractiveMode {
 
     /// Start an interactive chat session
     pub async fn chat_loop(&self, model: &str) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Starting chat session with model: {}", model);
-        println!("Type '/bye' to exit, '/help' for commands");
-
-        let mut buffer = String::new();
-        let stdin = io::stdin();
-        let mut stdout = io::stdout();
-
-        loop {
-            print!("> ");
-            stdout.flush()?;
-            buffer.clear();
-            stdin.read_line(&mut buffer)?;
-            let input = buffer.trim();
-
-            match input {
-                "/bye" => break,
-                "/help" => {
-                    println!("Available commands:");
-                    println!("  /bye   - Exit the chat session");
-                    println!("  /help  - Show this help message");
-                    println!("  /model - Show current model info");
-                }
-                "/model" => {
-                    println!("Current model: {}", model);
-                }
-                _ if !input.is_empty() => {
-                    // Here we'll delegate to the specific agent implementation
-                    // This will be handled by the agent-specific code
-                    println!("Processing message: {}", input);
-                }
-                _ => continue,
-            }
-        }
-
-        Ok(())
+        let mut agent = kowalski_core::BaseAgent::new(self.config.clone(), "Chat Agent", "A general purpose chat agent")?;
+        let conv_id = agent.start_conversation(model);
+        run_interaction_loop(agent, conv_id, model, None, None).await
     }
 
     /// List available models
     pub async fn list_models(&self) -> Result<(), Box<dyn std::error::Error>> {
         let models = self.model_manager.list_models().await?;
         for model in models {
-            println!("{}", model);
+            println!("{:?}", model);
         }
         Ok(())
     }
 
     /// Pull a model
     pub async fn pull_model(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let mut stream = self.model_manager.pull_model(name).await?;
-        while let Some(response) = stream.next().await {
-            match response {
-                Ok(chunk) => print!("{}", chunk),
-                Err(e) => eprintln!("Error: {}", e),
-            }
-        }
+        let response = self.model_manager.pull_model(name).await?;
+        println!("Pull status for {}: {}", name, response.status);
         Ok(())
     }
 
     /// Delete a model
     pub async fn delete_model(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
-        self.model_manager.delete_model(name).await?;
-        println!("Model {} deleted", name);
+        // self.model_manager.delete_model(name).await?;
+        println!("Model {} deletion is not yet supported.", name);
         Ok(())
-    }
-
-
-
-    
-} 
-
-
-
-
-impl Stream for PullResponse {
-    type Item = Result<String, KowalskiError>;
-    
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        // Implementation that pulls from the underlying response
-        // This is just a skeleton - actual implementation will depend on how PullResponse works
-        if let Some(chunk) = /* get next chunk */ {
-            Poll::Ready(Some(Ok(chunk)))
-        } else {
-            Poll::Ready(None)
-        }
     }
 }
