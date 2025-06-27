@@ -11,6 +11,7 @@ readme = "README.md"
 
 [dependencies]
 kowalski-core = { path = "../kowalski-core" }
+kowalski-tools = { path = "../kowalski-tools" }
 kowalski-agent-template = { path = "../kowalski-agent-template" }
 tokio = { workspace = true }
 reqwest = { workspace = true }
@@ -28,6 +29,8 @@ tracing-subscriber = { workspace = true }
 url = { workspace = true }
 regex = { workspace = true }
 markdown = { workspace = true }
+env_logger = { workspace = true }
+
 
 [[example]]
 name = "web_research"
