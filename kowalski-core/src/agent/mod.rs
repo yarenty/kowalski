@@ -16,7 +16,7 @@ pub mod types;
 #[async_trait]
 pub trait Agent: Send + Sync {
     /// Creates a new agent with the specified configuration.
-    fn new(config: Config) -> Result<Self, KowalskiError>
+    async fn new(config: Config) -> Result<Self, KowalskiError>
     where
         Self: Sized;
 
@@ -67,7 +67,7 @@ pub struct BaseAgent {
 }
 
 impl BaseAgent {
-    pub fn new(config: Config, name: &str, description: &str) -> Result<Self, KowalskiError> {
+    pub async fn new(config: Config, name: &str, description: &str) -> Result<Self, KowalskiError> {
         let client = reqwest::ClientBuilder::new()
             .pool_max_idle_per_host(0)
             .build()
@@ -87,8 +87,8 @@ impl BaseAgent {
 
 #[async_trait]
 impl Agent for BaseAgent {
-    fn new(config: Config) -> Result<Self, KowalskiError> {
-        Self::new(config, "Base Agent", "A basic agent implementation")
+    async fn new(config: Config) -> Result<Self, KowalskiError> {
+        Self::new(config, "Base Agent", "A basic agent implementation").await
     }
 
     fn start_conversation(&mut self, model: &str) -> String {
