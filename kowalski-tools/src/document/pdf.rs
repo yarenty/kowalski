@@ -1,9 +1,7 @@
-use super::ToolError;
-use crate::tool::{Tool, ToolInput, ToolOutput, ToolParameter, ParameterType};
+use crate::tool::{Tool, ToolInput, ToolOutput, ToolParameter, ParameterType, ToolError};
 use async_trait::async_trait;
-use lopdf::{Document, Object, ObjectId};
+use lopdf::{Document, Object};
 use serde_json::json;
-use std::fs;
 use std::path::Path;
 
 pub struct PdfTool;
@@ -126,10 +124,7 @@ impl PdfTool {
         extract_metadata: bool,
         extract_images: bool,
     ) -> Result<serde_json::Value, ToolError> {
-        let bytes = fs::read(file_path)
-            .map_err(|e| ToolError::Execution(format!("Failed to read file: {}", e)))?;
-
-        let mut doc = Document::load_mem(&bytes)
+        let doc = Document::load(file_path)
             .map_err(|e| ToolError::Execution(format!("Failed to parse PDF: {}", e)))?;
 
         let mut result = serde_json::Map::new();
@@ -155,10 +150,17 @@ impl PdfTool {
     fn extract_metadata(&self, doc: &Document) -> Result<serde_json::Map<String, serde_json::Value>, ToolError> {
         let mut metadata = serde_json::Map::new();
 
-        if let Some(info) = doc.trailer.info {
-            for (key, value) in doc.get_object(info) {
-                if let Ok(Object::String(s)) = value.as_string() {
-                    metadata.insert(key.to_string(), json!(s));
+        if let Ok(Object::Reference(info_id)) = doc.trailer.get(b"Info") {
+            if let Ok(obj) = doc.get_object(*info_id) {
+                if let Ok(info_dict) = obj.as_dict() {
+                    for (key, value) in info_dict.iter() {
+                        let key_vec = key.to_vec();
+                        let key_str = String::from_utf8_lossy(&key_vec).to_string();
+                        if let lopdf::Object::String(ref s, _) = value {
+                            let val_str = String::from_utf8_lossy(s).to_string();
+                            metadata.insert(key_str, json!(val_str));
+                        }
+                    }
                 }
             }
         }
@@ -168,36 +170,19 @@ impl PdfTool {
 
     fn extract_text(&self, doc: &Document) -> Result<String, ToolError> {
         let mut text = String::new();
-
-        for page_id in doc.get_pages() {
-            let page = doc.get_page(page_id).map_err(|e| ToolError::Execution(format!("Failed to get page: {}", e)))?;
-            let content = page.get_content()?
-                .iter()
-                .filter_map(|obj| match obj {
-                    Object::String(s) => Some(s.to_string()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-                .join(" ");
-
-            text.push_str(&content);
+        let pages = doc.get_pages();
+        for (page_number, page_id) in pages.iter() {
+            // Placeholder: just output the page number and object ID
+            let page_text = format!("Page {} object ID: {:?}", page_number, page_id);
+            text.push_str(&page_text);
             text.push('\n');
         }
-
         Ok(text)
     }
 
-    fn extract_images(&self, doc: &Document) -> Result<Vec<String>, ToolError> {
-        let mut images = Vec::new();
-
-        for page_id in doc.get_pages() {
-            let page = doc.get_page(page_id).map_err(|e| ToolError::Execution(format!("Failed to get page: {}", e)))?;
-            
-            // Extract images from page content
-            // Implementation would depend on the specific PDF structure
-            // This is a placeholder for actual image extraction logic
-        }
-
+    fn extract_images(&self, _doc: &Document) -> Result<Vec<String>, ToolError> {
+        let images = Vec::new();
+        // Placeholder for actual image extraction logic
         Ok(images)
     }
 }

@@ -1,5 +1,4 @@
-use super::ToolError;
-use crate::tool::{Tool, ToolInput, ToolOutput, ToolParameter, ParameterType};
+use crate::tool::{Tool, ToolInput, ToolOutput, ToolParameter, ParameterType, ToolError};
 use async_trait::async_trait;
 use reqwest::Client;
 use scraper::{Html, Selector};
@@ -15,6 +14,90 @@ impl WebScrapeTool {
         Self {
             client: Arc::new(Client::new()),
         }
+    }
+
+    async fn scrape_page(
+        &self,
+        url: &str,
+        selectors: &[String],
+        follow_links: bool,
+        max_depth: usize,
+    ) -> Result<Vec<serde_json::Value>, ToolError> {
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| ToolError::Network(e.to_string()))?;
+
+        if !response.status().is_success() {
+            return Err(ToolError::Network(format!(
+                "Failed to fetch URL {}: {}",
+                url,
+                response.status()
+            )));
+        }
+
+        let body = response
+            .text()
+            .await
+            .map_err(|e| ToolError::Network(e.to_string()))?;
+
+        let mut results = Self::extract_from_html(&body, selectors);
+
+        if follow_links && max_depth > 0 {
+            let links = Self::extract_links(&body, url)?;
+            for link in links {
+                if let Ok(link_results) = Box::pin(self.scrape_page(&link, selectors, follow_links, max_depth - 1)).await {
+                    results.extend(link_results);
+                }
+            }
+        }
+
+        Ok(results)
+    }
+
+    fn extract_from_html(body: &str, selectors: &[String]) -> Vec<serde_json::Value> {
+        let document = Html::parse_document(body);
+        let mut results = Vec::new();
+        for selector_str in selectors {
+            if let Ok(selector) = Selector::parse(selector_str) {
+                let elements = document
+                    .select(&selector)
+                    .map(|element| {
+                        let text = element
+                            .text()
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        json!({
+                            "selector": selector_str,
+                            "text": text.trim(),
+                            "html": element.html(),
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                results.extend(elements);
+            }
+        }
+        results
+    }
+
+    fn extract_links(body: &str, base_url: &str) -> Result<Vec<String>, ToolError> {
+        let document = Html::parse_document(body);
+        let link_selector = Selector::parse("a[href]")
+            .map_err(|e| ToolError::InvalidInput(format!("Failed to create link selector: {}", e)))?;
+        let links = document
+            .select(&link_selector)
+            .filter_map(|element| {
+                element.value().attr("href").and_then(|href| {
+                    url::Url::parse(base_url)
+                        .and_then(|base| base.join(href))
+                        .map(|url| url.to_string())
+                        .ok()
+                })
+            })
+            .collect::<Vec<_>>();
+        Ok(links)
     }
 }
 
@@ -93,7 +176,7 @@ impl Tool for WebScrapeTool {
         let result = self.scrape_page(&url, &selectors, follow_links, max_depth).await?;
 
         Ok(ToolOutput {
-            result: json!(result),
+            result: serde_json::Value::Array(result),
             metadata: Some(json!({
                 "timestamp": chrono::Utc::now().to_rfc3339(),
                 "url": url,
@@ -102,83 +185,5 @@ impl Tool for WebScrapeTool {
                 "max_depth": max_depth,
             })),
         })
-    }
-
-    async fn scrape_page(
-        &self,
-        url: &str,
-        selectors: &[String],
-        follow_links: bool,
-        max_depth: usize,
-    ) -> Result<Vec<serde_json::Value>, ToolError> {
-        let response = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| ToolError::Network(e.to_string()))?;
-
-        if !response.status().is_success() {
-            return Err(ToolError::Network(format!(
-                "Failed to fetch URL {}: {}",
-                url,
-                response.status()
-            )));
-        }
-
-        let body = response
-            .text()
-            .await
-            .map_err(|e| ToolError::Network(e.to_string()))?;
-
-        let document = Html::parse_document(&body);
-        let mut results = Vec::new();
-
-        for selector in selectors {
-            let selector = Selector::parse(selector)
-                .map_err(|e| ToolError::InvalidInput(format!("Invalid selector: {}", e)))?;
-
-            let elements = document
-                .select(&selector)
-                .map(|element| {
-                    let text = element
-                        .text()
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    json!({
-                        "selector": selector.to_string(),
-                        "text": text.trim(),
-                        "html": element.html(),
-                    })
-                })
-                .collect::<Vec<_>>();
-
-            results.extend(elements);
-        }
-
-        if follow_links && max_depth > 0 {
-            let link_selector = Selector::parse("a[href]")
-                .map_err(|e| ToolError::InvalidInput(format!("Failed to create link selector: {}", e)))?;
-
-            let links = document
-                .select(&link_selector)
-                .filter_map(|element| {
-                    element.value().attr("href").map(|href| {
-                        url::Url::parse(&url)
-                            .and_then(|base| base.join(href))
-                            .map(|url| url.to_string())
-                            .ok()
-                    })
-                })
-                .collect::<Vec<_>>();
-
-            for link in links {
-                if let Ok(link_results) = self.scrape_page(&link, selectors, follow_links, max_depth - 1).await {
-                    results.extend(link_results);
-                }
-            }
-        }
-
-        Ok(results)
     }
 }

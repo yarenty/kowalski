@@ -1,8 +1,6 @@
 pub mod tool;
 pub mod web;
 pub mod document;
-pub mod data;
-pub mod code;
 
 pub use tool::{Tool, ToolInput, ToolOutput, ToolParameter, ToolError};
 
@@ -35,3 +33,4 @@ pub mod types {
         Object,
     }
 }
+
