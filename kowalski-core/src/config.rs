@@ -33,7 +33,7 @@ impl Default for OllamaConfig {
         Self {
             host: "localhost".to_string(),
             port: 11434,
-            model: "llama2".to_string(),
+            model: "llama3.2".to_string(),
             additional: HashMap::new(),
         }
     }

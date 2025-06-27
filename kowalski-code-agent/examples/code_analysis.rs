@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Start a conversation
     info!("🤖 Starting code agent...");
-    let conversation_id = code_agent.start_conversation("llama2");
+    let conversation_id = code_agent.start_conversation(&config.ollama.model);
     info!("Code Agent Conversation ID: {}", conversation_id);
 
     // Example code to analyze
