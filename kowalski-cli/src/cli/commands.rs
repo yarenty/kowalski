@@ -96,6 +96,21 @@ pub enum Commands {
         #[command(subcommand)]
         command: ToolCommands,
     },
+    /// Analyze data from a file
+    #[cfg(feature = "data")]
+    Data {
+        /// Path to the file to analyze
+        #[arg(help = "Path to the data file")]
+        file: PathBuf,
+        /// Model to use
+        #[arg(
+            short,
+            long,
+            default_value = "llama2",
+            help = "The AI model to use for analysis"
+        )]
+        model: String,
+    },
 }
 
 /// Commands for managing AI models
@@ -151,12 +166,7 @@ pub enum ToolCommands {
         #[arg(help = "The search query")]
         query: String,
         /// Model to use
-        #[arg(
-            short,
-            long,
-            default_value = "llama2",
-            help = "The AI model to use"
-        )]
+        #[arg(short, long, default_value = "llama2", help = "The AI model to use")]
         model: String,
         /// Maximum number of results
         #[arg(
@@ -180,19 +190,10 @@ pub enum ToolCommands {
         #[arg(help = "The URL to browse")]
         url: String,
         /// Model to use
-        #[arg(
-            short,
-            long,
-            default_value = "llama2",
-            help = "The AI model to use"
-        )]
+        #[arg(short, long, default_value = "llama2", help = "The AI model to use")]
         model: String,
         /// Whether to follow links
-        #[arg(
-            short,
-            long,
-            help = "Whether to follow links on the page"
-        )]
+        #[arg(short, long, help = "Whether to follow links on the page")]
         follow_links: bool,
         /// Maximum depth for following links
         #[arg(
@@ -213,4 +214,4 @@ impl ToolCommands {
             ToolCommands::Browse { model, .. } => model,
         }
     }
-} 
+}
