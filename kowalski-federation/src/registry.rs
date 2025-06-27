@@ -10,6 +10,12 @@ pub struct AgentRegistry {
     agents: Arc<RwLock<HashMap<String, Arc<RwLock<dyn FederatedAgent + Send + Sync>>>>>,
 }
 
+impl Default for AgentRegistry {
+       fn default() -> Self {
+             Self::new()
+        }
+ }
+
 impl AgentRegistry {
     /// Create a new agent registry
     pub fn new() -> Self {

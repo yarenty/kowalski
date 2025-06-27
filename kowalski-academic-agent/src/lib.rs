@@ -20,7 +20,7 @@ use serde_json::json;
 
 /// Creates a new academic agent with the specified configuration
 pub async fn create_academic_agent(config: Config) -> Result<TemplateAgent, KowalskiError> {
-    let template = TemplateAgent::new(config.clone())?;
+    let template = TemplateAgent::new(config.clone()).await?;
 
     // Register tools
     template.register_tool(Box::new(AcademicSearchTool::new(config.clone()))).await;

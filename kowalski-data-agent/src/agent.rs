@@ -24,7 +24,7 @@ impl DataAgent {
         let csv_tool = CsvTool::new(data_config.max_rows, data_config.max_columns);
 
         let builder = GeneralTemplate::create_agent(
-            vec![Box::new(csv_tool) as Box<dyn Tool>],
+            vec![Box::new(csv_tool) as Box<dyn Tool + Send + Sync>],
             Some("You are a data analysis assistant specialized in processing and analyzing structured data.".to_string()),
             Some(0.7),
         )
