@@ -2,9 +2,6 @@ use crate::error::KowalskiError;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-/// The default model to use when nobody knows what they're doing.
-pub const DEFAULT_MODEL: &str = "mistral-small";
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ModelInfo {
     pub name: String,

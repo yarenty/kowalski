@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Start a conversation
     info!("🤖 Starting web agent...");
-    let conversation_id = web_agent.start_conversation("llama2");
+    let conversation_id = web_agent.start_conversation(&config.ollama.model);
     info!("Web Agent Conversation ID: {}", conversation_id);
 
     // Perform a web search

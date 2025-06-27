@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Process a research paper
     println!("📚 Processing research paper...");
-    let conversation_id = academic_agent.start_conversation("llama2");
+    let conversation_id = academic_agent.start_conversation(&config.ollama.model);
     println!("Academic Agent Conversation ID: {}", conversation_id);
 
     // Set up the role for scientific paper analysis
