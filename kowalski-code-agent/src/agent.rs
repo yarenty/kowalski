@@ -1,129 +1,159 @@
 use crate::config::CodeAgentConfig;
-use crate::tools::{
-    CodeAnalysisTool, CodeDocumentationTool, CodeRefactoringTool, CodeSearchTool, CodeTaskType,
-};
-use kowalski_agent_template::TemplateAgent;
+use crate::tools::{CodeAnalysisTool, CodeRefactoringTool, CodeDocumentationTool, CodeSearchTool};
+use kowalski_agent_template::builder::AgentBuilder;
+use kowalski_agent_template::templates::general::GeneralTemplate;
+use kowalski_core::agent::Agent;
 use kowalski_core::config::Config;
 use kowalski_core::error::KowalskiError;
-use kowalski_core::tools::{TaskType, ToolInput};
 use serde_json::json;
+use kowalski_core::conversation::{Conversation, Message};
+use kowalski_core::role::Role;
+use async_trait::async_trait;
 
-/// CodeAgent: A specialized agent for code analysis and processing
+/// CodeAgent: A specialized agent for code analysis and development tasks
+/// This agent is built on top of the TemplateAgent and provides code-specific functionality
 pub struct CodeAgent {
-    template: TemplateAgent,
+    template: AgentBuilder,
     config: CodeAgentConfig,
 }
 
 impl CodeAgent {
     /// Creates a new CodeAgent with the specified configuration
     pub async fn new(config: Config) -> Result<Self, KowalskiError> {
-        let mut template = TemplateAgent::new(config.clone())?;
         let code_config = CodeAgentConfig::from(config);
+        
+        // Create code-specific tools
+        let analysis_tool = CodeAnalysisTool::new(code_config.clone())?;
+        let refactoring_tool = CodeRefactoringTool::new(code_config.clone())?;
+        let documentation_tool = CodeDocumentationTool::new(code_config.clone())?;
+        let search_tool = CodeSearchTool::new(code_config.clone());
 
-        // Configure system prompt
-        template = template.with_system_prompt(
-            "You are a code-savvy assistant that helps users analyze, refactor, and document code.",
-        );
+        let tools = vec![
+            Box::new(analysis_tool) as Box<dyn Tool>,
+            Box::new(refactoring_tool) as Box<dyn Tool>,
+            Box::new(documentation_tool) as Box<dyn Tool>,
+            Box::new(search_tool) as Box<dyn Tool>,
+        ];
 
-        // Register code-specific tools
-        let analysis_tool = Box::new(CodeAnalysisTool::new(code_config.clone())?);
-        template.register_tool(analysis_tool).await;
-
-        let refactoring_tool = Box::new(CodeRefactoringTool::new(code_config.clone())?);
-        template.register_tool(refactoring_tool).await;
-
-        let documentation_tool = Box::new(CodeDocumentationTool::new(code_config.clone())?);
-        template.register_tool(documentation_tool).await;
-
-        let search_tool = Box::new(CodeSearchTool::new(code_config.clone()));
-        template.register_tool(search_tool).await;
+        let builder = GeneralTemplate::create_agent(
+            tools,
+            Some("You are a code analysis and development assistant specialized in analyzing, refactoring, and documenting code.".to_string()),
+            Some(0.7),
+        )
+        .await
+        .map_err(|e| KowalskiError::Config(e.to_string()))?;
 
         Ok(Self {
-            template,
+            template: builder,
             config: code_config,
         })
     }
 
-    /// Analyzes code using the code analysis tool
+    /// Analyzes code
     pub async fn analyze_code(&self, code: &str) -> Result<String, KowalskiError> {
         let tool_input = ToolInput::new(
-            CodeTaskType::Analyze.name().to_string(),
+            "code_analysis".to_string(),
             code.to_string(),
-            json!({}),
+            json!({
+                "language": self.config.language,
+                "max_depth": self.config.max_analysis_depth
+            }),
         );
-        let tool_output = self.template.execute_task(tool_input).await?;
-        Ok(tool_output.result["metrics"]
+        let tool_output = self.template.build().await?.execute_task(tool_input).await?;
+        Ok(tool_output.result["analysis"]
             .as_str()
             .unwrap_or_default()
             .to_string())
     }
 
-    /// Refactors code using the code refactoring tool
-    pub async fn refactor_code(&self, code: &str) -> Result<String, KowalskiError> {
+    /// Refactors code
+    pub async fn refactor_code(&self, code: &str, description: &str) -> Result<String, KowalskiError> {
         let tool_input = ToolInput::new(
-            CodeTaskType::Refactor.name().to_string(),
+            "code_refactoring".to_string(),
             code.to_string(),
-            json!({}),
+            json!({
+                "description": description,
+                "language": self.config.language
+            }),
         );
-        let tool_output = self.template.execute_task(tool_input).await?;
-        Ok(tool_output.result["changes"]
+        let tool_output = self.template.build().await?.execute_task(tool_input).await?;
+        Ok(tool_output.result["refactored_code"]
             .as_str()
             .unwrap_or_default()
             .to_string())
     }
 
-    /// Generates documentation using the code documentation tool
-    pub async fn document_code(&self, code: &str) -> Result<String, KowalskiError> {
+    /// Generates documentation
+    pub async fn generate_docs(&self, code: &str) -> Result<String, KowalskiError> {
         let tool_input = ToolInput::new(
-            CodeTaskType::Document.name().to_string(),
+            "code_documentation".to_string(),
             code.to_string(),
-            json!({}),
+            json!({
+                "language": self.config.language,
+                "style": self.config.documentation_style
+            }),
         );
-        let tool_output = self.template.execute_task(tool_input).await?;
-        Ok(tool_output.result["docs"]
+        let tool_output = self.template.build().await?.execute_task(tool_input).await?;
+        Ok(tool_output.result["documentation"]
             .as_str()
             .unwrap_or_default()
             .to_string())
     }
 
-    /// Searches for code patterns using the code search tool
+    /// Searches codebase
     pub async fn search_code(&self, query: &str) -> Result<String, KowalskiError> {
         let tool_input = ToolInput::new(
-            CodeTaskType::Search.name().to_string(),
+            "code_search".to_string(),
             query.to_string(),
-            json!({}),
+            json!({
+                "language": self.config.language,
+                "scope": self.config.search_scope
+            }),
         );
-        let tool_output = self.template.execute_task(tool_input).await?;
+        let tool_output = self.template.build().await?.execute_task(tool_input).await?;
         Ok(tool_output.result["results"]
             .as_str()
             .unwrap_or_default()
             .to_string())
     }
+}
 
-    /// Gets the underlying template agent
-    pub fn template(&self) -> &TemplateAgent {
-        &self.template
+#[async_trait]
+impl Agent for CodeAgent {
+    async fn execute_task(&self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
+        self.template.build().await?.execute_task(input).await
     }
 
-    /// Gets a mutable reference to the underlying template agent
-    pub fn template_mut(&mut self) -> &mut TemplateAgent {
-        &mut self.template
+    async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {
+        self.template
+            .build()
+            .await
+            .expect("Failed to build agent")
+            .add_message(conversation_id, role, content)
+            .await;
     }
 
-    /// Gets the code agent configuration
-    pub fn config(&self) -> &CodeAgentConfig {
-        &self.config
+    async fn start_conversation(&self, model: &str) -> String {
+        self.template
+            .build()
+            .await
+            .expect("Failed to build agent")
+            .start_conversation(model)
     }
 
-    /// Gets a mutable reference to the code agent configuration
-    pub fn config_mut(&mut self) -> &mut CodeAgentConfig {
-        &mut self.config
+    fn set_system_prompt(&mut self, prompt: &str) {
+        self.template = self.template.with_system_prompt(prompt);
+    }
+
+    fn set_temperature(&mut self, temperature: f32) {
+        self.template = self.template.with_temperature(temperature);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kowalski_core::error::KowalskiError;
 
     #[tokio::test]
     async fn test_code_agent_creation() {
@@ -133,30 +163,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_code_agent_tools() {
+    async fn test_code_agent_customization() {
         let config = Config::default();
-        let agent = CodeAgent::new(config).await.unwrap();
-
-        // Test code analysis
-        let result = agent
-            .analyze_code("fn main() { println!(\"Hello, world!\"); }")
-            .await;
-        assert!(result.is_ok());
-
-        // Test code refactoring
-        let result = agent
-            .refactor_code("fn main() { println!(\"Hello, world!\"); }")
-            .await;
-        assert!(result.is_ok());
-
-        // Test code documentation
-        let result = agent
-            .document_code("fn main() { println!(\"Hello, world!\"); }")
-            .await;
-        assert!(result.is_ok());
-
-        // Test code search
-        let result = agent.search_code("main function").await;
-        assert!(result.is_ok());
+        let mut agent = CodeAgent::new(config).await.unwrap();
+        
+        agent.set_system_prompt("You are a specialized code development assistant.");
+        agent.set_temperature(0.5);
     }
 }

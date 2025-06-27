@@ -1,24 +1,65 @@
-/// Main: The entry point of our AI-powered circus.
-/// "Main functions are like orchestras - they make everything work together, but nobody notices until something goes wrong."
-///
-/// This is where the magic happens, or at least where we pretend it does.
-/// Think of it as the conductor of our AI symphony, but with more error handling.
-use clap::Parser;
-use kowalski_cli::cli::{Cli, execute};
-use kowalski_core::logging;
+use kowalski_core::Agent;
+use kowalski_core::BaseAgent;
+use kowalski_core::config::Config;
+use kowalski_core::error::KowalskiError;
+use kowalski_core::model::DEFAULT_MODEL;
+use std::io::{self, Write};
+use futures::StreamExt;
 
-/// The main function that makes everything work (or at least tries to).
-/// "Main functions are like first dates - they're exciting but usually end in disappointment."
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize logging
+    // Initialize logging (optional, but good practice)
     kowalski_core::logging::init();
 
-    // Parse CLI arguments
-    let cli = Cli::parse();
+    let config = Config::default();
+    let mut agent = BaseAgent::new(config, "Simple Chat Agent", "A basic agent for interactive chat").await?;
+    let conv_id = agent.start_conversation(DEFAULT_MODEL);
 
-    // Execute the command
-    execute(cli).await?;
+    println!("Chat session started with model: {} (type '/bye' to exit)", DEFAULT_MODEL);
+    println!("----------------------------------------");
+
+    loop {
+        print!("You: ");
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let input = input.trim();
+
+        if input == "/bye" {
+            println!("Goodbye!");
+            break;
+        }
+
+        if input.is_empty() {
+            continue;
+        }
+
+        let mut response = agent.chat_with_history(&conv_id, input, None).await?;
+
+        print!("Kowalski: ");
+        let mut buffer = String::new();
+        while let Some(chunk) = response.chunk().await? {
+            match agent.process_stream_response(&conv_id, &chunk).await {
+                Ok(Some(message)) => {
+                    if !message.content.is_empty() {
+                        print!("{}", message.content);
+                        io::stdout().flush()?;
+                        buffer.push_str(&message.content);
+                    }
+                }
+                Ok(None) => {
+                    println!("\n");
+                    agent.add_message(&conv_id, "assistant", &buffer).await;
+                    break;
+                }
+                Err(e) => {
+                    eprintln!("\nError: {}", e);
+                    break;
+                }
+            }
+        }
+    }
 
     Ok(())
 }
