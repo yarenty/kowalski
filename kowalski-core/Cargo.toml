@@ -1,9 +1,13 @@
 [package]
 name = "kowalski-core"
-version = "0.1.0"
-edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
+version = "0.3.0"
+edition = "2024"
+authors = ["yarenty <yarenty@gmail.com>"]
 license = "MIT"
+description = "Kowalski - agent of future AI"
+repository = "https://github.com/yarenty/kowalski"
+homepage = "https://github.com/yarenty/kowalski"
+readme = "README.md"
 
 [dependencies]
 async-trait = {workspace = true}

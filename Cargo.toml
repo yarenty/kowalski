@@ -6,6 +6,8 @@ members = [
     "kowalski-academic-agent",
     "kowalski-web-agent",
     "kowalski-code-agent",
+    "kowalski-data-agent",
+    "kowalski-federation",
     "kowalski-cli"
 ]
 
@@ -16,24 +18,43 @@ authors = ["Your Name <your.email@example.com>"]
 license = "MIT"
 
 [workspace.dependencies]
+# Core async/runtime dependencies
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", features = ["json", "stream"] }
-chrono = "0.4"
+async-trait = "0.1"
+futures = "0.3"
+
+# Core serialization and data handling
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-async-trait = "0.1"
-log = "0.4"
+
+# Core time and date handling
+chrono = "0.4"
+
+# Core error handling
 thiserror = "1.0"
-futures = "0.3"
-bytes = "1.5"
-tower = "0.4"
-tower-http = { version = "0.5", features = ["trace"] }
+
+# Core logging and tracing
+log = "0.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+env_logger = "0.11"
+
+# Core utilities
 url = "2.5.0"
 regex = "1.10"
 markdown = "0.3"
-env_logger = "0.11"
+bytes = "1.5"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["trace"] }
+
+# Config and directory handling
+toml = "0.8"
+config = "0.15"
+dirs = "6.0"
+
+# Optional dependencies
+uuid = { version = "1.7", features = ["v4", "serde"], optional = true }
 
 [package]
 name = "kowalski"
@@ -65,7 +86,8 @@ default = []
 web = ["kowalski-web-agent"]
 academic = ["kowalski-academic-agent"]
 code = ["kowalski-code-agent"]
-all = ["web", "academic", "code"]
+federation = ["kowalski-federation"]
+all = ["web", "academic", "code", "federation"]
 
 [dependencies]
 kowalski-core = { path = "kowalski-core" }
@@ -75,6 +97,7 @@ kowalski-cli = { path = "kowalski-cli" }
 kowalski-web-agent = { path = "kowalski-web-agent", optional = true }
 kowalski-academic-agent = { path = "kowalski-academic-agent", optional = true }
 kowalski-code-agent = { path = "kowalski-code-agent", optional = true }
+kowalski-federation = { path = "kowalski-federation", optional = true }
 reqwest = { workspace = true }
 tokio = { workspace = true }
 futures = { workspace = true }
@@ -86,9 +109,4 @@ env_logger = { workspace = true }
 thiserror = { workspace = true }
 url = { workspace = true }
 chrono = { workspace = true }
-
-# Dependencies for config and dirs
-toml = "0.8"
-config = "0.15"
-dirs = "6.0"
 regex = { workspace = true }
