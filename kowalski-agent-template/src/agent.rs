@@ -24,12 +24,12 @@ pub trait TaskHandler: Send + Sync {
 
 impl TemplateAgent {
     /// Creates a new TemplateAgent with the specified configuration
-    pub fn new(config: Config) -> Result<Self, KowalskiError> {
+    pub async fn new(config: Config) -> Result<Self, KowalskiError> {
         let base = BaseAgent::new(
             config.clone(),
             "Template Agent",
             "A base implementation for building specialized agents",
-        )?;
+        ).await?;
         let template_config = TemplateAgentConfig::from(config);
         let tool_chain = Arc::new(RwLock::new(Vec::new()));
         let task_handlers = Arc::new(RwLock::new(HashMap::new()));
@@ -178,7 +178,7 @@ mod tests {
     #[tokio::test]
     async fn test_template_agent() {
         let config = Config::default();
-        let agent = TemplateAgent::new(config).unwrap();
+        let agent = TemplateAgent::new(config).await.unwrap();
 
         // Register mock tool
         let tool = Box::new(MockTool {
