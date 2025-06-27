@@ -5,7 +5,8 @@ use tokio::sync::mpsc;
 use tracing::info;
 
 use kowalski_core::{Agent, BaseAgent, Config, Message, Role, ToolInput, ToolOutput};
-use crate::{FederationMessage, MessageType};
+use crate::{FederationMessage, MessageType, FederationError};
+use kowalski_core::agent::MessageHandler;
 
 /// Represents the role of an agent in the federation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,18 +19,9 @@ pub enum FederationRole {
     Observer,
 }
 
-/// Message handler for federation messages
-#[async_trait]
-pub trait MessageHandler {
-    async fn handle_message(
-        &mut self,
-        message: FederationMessage,
-    ) -> Result<(), FederationError>;
-}
-
 /// Trait for agents that can participate in a federation
 #[async_trait]
-pub trait FederatedAgent: Agent + MessageHandler {
+pub trait FederatedAgent: Agent {
     /// Get the agent's unique identifier within the federation
     fn federation_id(&self) -> &str;
 
@@ -110,6 +102,22 @@ impl FederatedAgent for BaseAgent {
         _message: FederationMessage,
     ) -> Result<(), FederationError> {
         // TODO: Implement message handling
+        Ok(())
+    }
+}
+
+pub struct FederatedBaseAgent(pub BaseAgent);
+
+#[async_trait::async_trait]
+impl MessageHandler for FederatedBaseAgent {
+    type Message = FederationMessage;
+    type Error = FederationError;
+
+    async fn handle_message(
+        &mut self,
+        _message: Self::Message,
+    ) -> Result<(), Self::Error> {
+        // TODO: Implement actual message handling logic
         Ok(())
     }
 }

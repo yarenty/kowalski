@@ -3,11 +3,11 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::info;
 
-use crate::{FederatedAgent, FederationMessage, FederationRole};
+use crate::{FederatedAgent, FederationMessage, FederationRole, FederationError};
 
 /// Registry for managing federated agents
 pub struct AgentRegistry {
-    agents: Arc<RwLock<HashMap<String, Arc<dyn FederatedAgent + Send + Sync>>>>,
+    agents: Arc<RwLock<HashMap<String, Arc<RwLock<dyn FederatedAgent + Send + Sync>>>>>,
 }
 
 impl AgentRegistry {
@@ -21,9 +21,9 @@ impl AgentRegistry {
     /// Register a new agent in the federation
     pub async fn register_agent(
         &self,
-        agent: Arc<dyn FederatedAgent + Send + Sync>,
+        agent: Arc<RwLock<dyn FederatedAgent + Send + Sync>>,
     ) -> Result<(), FederationError> {
-        let id = agent.federation_id().to_string();
+        let id = agent.read().await.federation_id().to_string();
         let mut agents = self.agents.write().await;
         
         if agents.contains_key(&id) {
@@ -39,7 +39,7 @@ impl AgentRegistry {
     pub async fn get_agent(
         &self,
         id: &str,
-    ) -> Option<Arc<dyn FederatedAgent + Send + Sync>> {
+    ) -> Option<Arc<RwLock<dyn FederatedAgent + Send + Sync>>> {
         let agents = self.agents.read().await;
         agents.get(id).cloned()
     }
@@ -47,10 +47,12 @@ impl AgentRegistry {
     /// List all agents in the federation
     pub async fn list_agents(&self) -> Vec<(String, FederationRole)> {
         let agents = self.agents.read().await;
-        agents
-            .iter()
-            .map(|(id, agent)| (id.clone(), agent.federation_role()))
-            .collect()
+        let mut result = Vec::new();
+        for (id, agent) in agents.iter() {
+            let role = agent.read().await.federation_role();
+            result.push((id.clone(), role));
+        }
+        result
     }
 
     /// Broadcast a message to all agents
@@ -60,7 +62,8 @@ impl AgentRegistry {
     ) -> Result<(), FederationError> {
         let agents = self.agents.read().await;
         for agent in agents.values() {
-            if agent.federation_id() != message.sender {
+            if agent.read().await.federation_id() != message.sender {
+                let mut agent = agent.write().await;
                 agent.handle_federation_message(message.clone()).await?;
             }
         }
@@ -74,6 +77,7 @@ impl AgentRegistry {
         message: FederationMessage,
     ) -> Result<(), FederationError> {
         if let Some(agent) = self.get_agent(recipient).await {
+            let mut agent = agent.write().await;
             agent.handle_federation_message(message).await?;
             Ok(())
         } else {
