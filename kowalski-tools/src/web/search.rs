@@ -1,8 +1,9 @@
-use crate::tool::{Tool, ToolInput, ToolOutput, ToolParameter, ParameterType, ToolError};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
 use std::sync::Arc;
+use kowalski_core::tools::{Tool, ToolInput, ToolOutput};
+use kowalski_core::error::KowalskiError;
 
 pub struct WebSearchTool {
     client: Arc<Client>,
@@ -21,7 +22,7 @@ impl WebSearchTool {
         &self,
         query: &str,
         num_results: usize,
-    ) -> Result<ToolOutput, ToolError> {
+    ) -> Result<ToolOutput, String> {
         let url = format!("https://api.duckduckgo.com/?q={}&format=json", query);
         
         let response = self
@@ -29,12 +30,12 @@ impl WebSearchTool {
             .get(&url)
             .send()
             .await
-            .map_err(|e| ToolError::Network(e.to_string()))?;
+            .map_err(|e| e.to_string())?;
 
         let body = response
             .text()
             .await
-            .map_err(|e| ToolError::Network(e.to_string()))?;
+            .map_err(|e| e.to_string())?;
 
         let result = json!({
             "provider": "duckduckgo",
@@ -58,69 +59,27 @@ impl WebSearchTool {
         &self,
         _query: &str,
         _num_results: usize,
-    ) -> Result<ToolOutput, ToolError> {
+    ) -> Result<ToolOutput, KowalskiError> {
         // Implementation for Serper API would go here
         // This would require API key configuration
-        Err(ToolError::Config("Serper API integration not implemented".to_string()))
+        Err(KowalskiError::ToolConfig("Serper API integration not implemented".to_string()))
     }
 
 }
 
 #[async_trait]
 impl Tool for WebSearchTool {
+    async fn execute(&mut self, _input: ToolInput) -> Result<ToolOutput, KowalskiError> {
+        // ... implement or stub ...
+        Err(KowalskiError::ToolExecution("Not implemented".to_string()))
+    }
     fn name(&self) -> &str {
         "web_search"
     }
-
     fn description(&self) -> &str {
-        "Performs web searches using the specified search provider"
+        "Performs a web search using the configured provider."
     }
-
-    fn parameters(&self) -> Vec<ToolParameter> {
-        vec![
-            ToolParameter {
-                name: "query".to_string(),
-                description: "Search query to perform".to_string(),
-                required: true,
-                default_value: None,
-                parameter_type: ParameterType::String,
-            },
-            ToolParameter {
-                name: "num_results".to_string(),
-                description: "Number of results to return".to_string(),
-                required: false,
-                default_value: Some("5".to_string()),
-                parameter_type: ParameterType::Number,
-            },
-        ]
+    fn parameters(&self) -> Vec<kowalski_core::tools::ToolParameter> {
+        vec![]
     }
-
-    async fn execute(&self, input: ToolInput) -> Result<ToolOutput, ToolError> {
-        let params = input.parameters.as_object().ok_or_else(|| {
-            ToolError::InvalidInput("Input parameters must be a JSON object".to_string())
-        })?;
-
-        let query = params
-            .get("query")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolError::InvalidInput("Missing required parameter: query".to_string()))?
-            .to_string();
-
-        let num_results = params
-            .get("num_results")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(5) as usize;
-
-        match self.search_provider.as_str() {
-            "duckduckgo" => self.duckduckgo_search(&query, num_results).await,
-            "serper" => self.serper_search(&query, num_results).await,
-            _ => Err(ToolError::Config(format!(
-                "Unsupported search provider: {}",
-                self.search_provider
-            ))),
-        }
-    }
-
-   
-
 }

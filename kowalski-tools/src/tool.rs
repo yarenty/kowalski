@@ -1,85 +1,17 @@
-use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
-use tracing::error;
-
-#[derive(Debug, Error)]
-pub enum ToolError {
-    #[error("Tool execution failed: {0}")]
-    Execution(String),
-    #[error("Invalid input: {0}")]
-    InvalidInput(String),
-    #[error("Configuration error: {0}")]
-    Config(String),
-    #[error("Network error: {0}")]
-    Network(String),
-    #[error("Tool not found: {0}")]
-    NotFound(String),
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolInput {
-    pub task_type: String,
-    pub content: String,
-    pub parameters: serde_json::Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolOutput {
-    pub result: serde_json::Value,
-    pub metadata: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolParameter {
-    pub name: String,
-    pub description: String,
-    pub required: bool,
-    pub default_value: Option<String>,
-    pub parameter_type: ParameterType,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ParameterType {
-    String,
-    Number,
-    Boolean,
-    Array,
-    Object,
-}
-
-#[async_trait]
-pub trait Tool: Send + Sync {
-    fn name(&self) -> &str;
-    fn description(&self) -> &str;
-    fn parameters(&self) -> Vec<ToolParameter>;
-    async fn execute(&self, input: ToolInput) -> Result<ToolOutput, ToolError>;
-    fn validate_input(&self, input: &ToolInput) -> Result<(), ToolError> {
-        let required_params = self
-            .parameters()
-            .iter()
-            .filter(|p| p.required)
-            .map(|p| p.name.clone())
-            .collect::<Vec<_>>();
-
-        if let Some(params) = input.parameters.as_object() {
-            for param in required_params {
-                if !params.contains_key(&param) {
-                    return Err(ToolError::InvalidInput(format!(
-                        "Missing required parameter: {}",
-                        param
-                    )));
-                }
-            }
-        }
-
-        Ok(())
-    }
-}
+use kowalski_core::tools::{Tool, ToolInput, ToolOutput};
+use kowalski_core::error::KowalskiError;
+use tokio::runtime::Handle;
 
 pub struct ToolManager {
-    tools: Vec<Box<dyn Tool>>,
+    tools: Vec<Box<dyn Tool + Send + Sync>>,
 }
+
+impl Default for ToolManager {
+         fn default() -> Self {
+             Self::new()
+         }
+ }
+
 
 impl ToolManager {
     pub fn new() -> Self {
@@ -90,23 +22,28 @@ impl ToolManager {
         self.tools.push(Box::new(tool));
     }
 
-    pub fn get_tool(&self, name: &str) -> Option<&dyn Tool> {
+    pub fn with_tool_mut<F, R>(&mut self, name: &str, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut (dyn Tool + Send + Sync)) -> R,
+    {
         self.tools
-            .iter()
+            .iter_mut()
             .find(|t| t.name() == name)
-            .map(|t| t.as_ref())
+            .map(|t| f(t.as_mut()))
     }
 
     pub async fn execute_tool(
-        &self,
+        &mut self,
         name: &str,
         input: ToolInput,
-    ) -> Result<ToolOutput, ToolError> {
-        if let Some(tool) = self.get_tool(name) {
+    ) -> Result<ToolOutput, KowalskiError> {
+        if let Some(result) = self.with_tool_mut(name, |tool| {
             tool.validate_input(&input)?;
-            tool.execute(input).await
+            Handle::current().block_on(tool.execute(input))
+        }) {
+            result
         } else {
-            Err(ToolError::NotFound(name.to_string()))
+            Err(KowalskiError::ToolInvalidInput(format!("Tool not found: {}", name)))
         }
     }
 

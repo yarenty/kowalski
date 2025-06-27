@@ -16,6 +16,7 @@ tracing = { workspace = true }
 tokio = { version = "1.32", features = ["full"], workspace = true }
 chrono = { workspace = true }
 url = { workspace = true }
+kowalski-core = { path = "../kowalski-core" }
 
 [dev-dependencies]
 mockall = "0.13"
