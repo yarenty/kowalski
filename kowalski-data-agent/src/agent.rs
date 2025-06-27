@@ -1,14 +1,14 @@
 use crate::config::DataAgentConfig;
 use crate::tools::{CsvTool, DataTaskType};
+use async_trait::async_trait;
 use kowalski_agent_template::builder::AgentBuilder;
 use kowalski_agent_template::templates::general::GeneralTemplate;
 use kowalski_core::agent::Agent;
 use kowalski_core::config::Config;
-use kowalski_core::error::KowalskiError;
-use serde_json::json;
 use kowalski_core::conversation::{Conversation, Message};
+use kowalski_core::error::KowalskiError;
 use kowalski_core::role::Role;
-use async_trait::async_trait;
+use serde_json::json;
 
 /// DataAgent: A specialized agent for data analysis and processing tasks
 /// This agent is built on top of the TemplateAgent and provides data-specific functionality
@@ -47,7 +47,12 @@ impl DataAgent {
                 "max_columns": self.config.max_columns
             }),
         );
-        let tool_output = self.template.build().await?.execute_task(tool_input).await?;
+        let tool_output = self
+            .template
+            .build()
+            .await?
+            .execute_task(tool_input)
+            .await?;
         Ok(tool_output.result["processed_data"]
             .as_str()
             .unwrap_or_default()
@@ -56,12 +61,13 @@ impl DataAgent {
 
     /// Analyzes data statistics
     pub async fn analyze_data(&self, data: serde_json::Value) -> Result<String, KowalskiError> {
-        let tool_input = ToolInput::new(
-            DataTaskType::AnalyzeData.to_string(),
-            String::new(),
-            data,
-        );
-        let tool_output = self.template.build().await?.execute_task(tool_input).await?;
+        let tool_input = ToolInput::new(DataTaskType::AnalyzeData.to_string(), String::new(), data);
+        let tool_output = self
+            .template
+            .build()
+            .await?
+            .execute_task(tool_input)
+            .await?;
         Ok(tool_output.result["analysis"]
             .as_str()
             .unwrap_or_default()
@@ -117,7 +123,7 @@ mod tests {
     async fn test_data_agent_customization() {
         let config = Config::default();
         let mut agent = DataAgent::new(config).await.unwrap();
-        
+
         agent.set_system_prompt("You are a specialized data analysis assistant.");
         agent.set_temperature(0.5);
     }

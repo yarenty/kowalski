@@ -1,9 +1,9 @@
 use async_trait::async_trait;
+use kowalski_core::error::KowalskiError;
+use kowalski_core::tools::{Tool, ToolInput, ToolOutput};
 use reqwest::Client;
 use serde_json::json;
 use std::sync::Arc;
-use kowalski_core::tools::{Tool, ToolInput, ToolOutput};
-use kowalski_core::error::KowalskiError;
 
 pub struct WebSearchTool {
     client: Arc<Client>,
@@ -24,7 +24,7 @@ impl WebSearchTool {
         num_results: usize,
     ) -> Result<ToolOutput, String> {
         let url = format!("https://api.duckduckgo.com/?q={}&format=json", query);
-        
+
         let response = self
             .client
             .get(&url)
@@ -32,10 +32,7 @@ impl WebSearchTool {
             .await
             .map_err(|e| e.to_string())?;
 
-        let body = response
-            .text()
-            .await
-            .map_err(|e| e.to_string())?;
+        let body = response.text().await.map_err(|e| e.to_string())?;
 
         let result = json!({
             "provider": "duckduckgo",
@@ -54,7 +51,6 @@ impl WebSearchTool {
         })
     }
 
-
     async fn serper_search(
         &self,
         _query: &str,
@@ -62,9 +58,10 @@ impl WebSearchTool {
     ) -> Result<ToolOutput, KowalskiError> {
         // Implementation for Serper API would go here
         // This would require API key configuration
-        Err(KowalskiError::ToolConfig("Serper API integration not implemented".to_string()))
+        Err(KowalskiError::ToolConfig(
+            "Serper API integration not implemented".to_string(),
+        ))
     }
-
 }
 
 #[async_trait]

@@ -1,20 +1,20 @@
+use chrono;
 use clap::Parser;
+use futures::StreamExt;
+use kowalski_academic_agent::AcademicAgent;
+use kowalski_agent_template::builder::AgentBuilder;
+use kowalski_agent_template::templates::general::GeneralTemplate;
+use kowalski_code_agent::CodeAgent;
 use kowalski_core::agent::Agent;
 use kowalski_core::config::Config;
-use kowalski_web_agent::WebAgent;
-use kowalski_academic_agent::AcademicAgent;
-use kowalski_code_agent::CodeAgent;
-use kowalski_data_agent::DataAgent;
-use kowalski_agent_template::templates::general::GeneralTemplate;
-use kowalski_agent_template::builder::AgentBuilder;
 use kowalski_core::error::KowalskiError;
-use std::io::{self, Write};
-use futures::StreamExt;
+use kowalski_data_agent::DataAgent;
+use kowalski_web_agent::WebAgent;
 use serde_json::json;
+use std::collections::HashMap;
+use std::io::{self, Write};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use std::collections::HashMap;
-use chrono;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -212,7 +212,10 @@ impl AgentManager {
     }
 
     async fn set_default_model(&self, model: &str) -> Result<(), Box<dyn std::error::Error>> {
-        self.models.write().await.insert("default".to_string(), model.to_string());
+        self.models
+            .write()
+            .await
+            .insert("default".to_string(), model.to_string());
         println!("Default model set to: {}", model);
         Ok(())
     }
@@ -276,11 +279,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manager = AgentManager::new();
 
     match cli.command {
-        Commands::Create { agent_type, prompt, temperature, name, config } => {
+        Commands::Create {
+            agent_type,
+            prompt,
+            temperature,
+            name,
+            config,
+        } => {
             let name = name.unwrap_or_else(|| format!("{}-agent", agent_type));
-            manager.create_agent(name, &agent_type, prompt.as_deref(), temperature).await?
+            manager
+                .create_agent(name, &agent_type, prompt.as_deref(), temperature)
+                .await?
         }
-        Commands::Chat { agent, prompt, temperature, model } => {
+        Commands::Chat {
+            agent,
+            prompt,
+            temperature,
+            model,
+        } => {
             let mut builder = match agent.parse::<usize>() {
                 Ok(idx) => manager.agents.read().await.values().nth(idx).cloned(),
                 Err(_) => manager.get_agent(&agent).await,
@@ -307,14 +323,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             chat_loop(agent, conv_id).await
         }
-        Commands::List => {
-            list_agents()?
-        }
-        Commands::Agents => {
-            manager.list_agents().await?
-        }
-        Commands::Federation { agents, prompt, temperature, name } => {
-            let federation_builder = manager.create_federation(agents, prompt.as_deref(), temperature).await?;
+        Commands::List => list_agents()?,
+        Commands::Agents => manager.list_agents().await?,
+        Commands::Federation {
+            agents,
+            prompt,
+            temperature,
+            name,
+        } => {
+            let federation_builder = manager
+                .create_federation(agents, prompt.as_deref(), temperature)
+                .await?;
             let agent = federation_builder.build().await?;
             let conv_id = agent.start_conversation("default").await;
 
@@ -339,21 +358,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Load agent configuration
             println!("Load agent configuration: Not implemented yet");
         }
-        Commands::Export { name, path } => {
-            manager.export_agent(&name, &path).await?
-        }
-        Commands::Import { path } => {
-            manager.import_agent(&path).await?
-        }
-        Commands::Status { name } => {
-            manager.show_agent_status(&name).await?
-        }
-        Commands::Models => {
-            manager.list_models().await?
-        }
-        Commands::Model { name } => {
-            manager.set_default_model(&name).await?
-        }
+        Commands::Export { name, path } => manager.export_agent(&name, &path).await?,
+        Commands::Import { path } => manager.import_agent(&path).await?,
+        Commands::Status { name } => manager.show_agent_status(&name).await?,
+        Commands::Models => manager.list_models().await?,
+        Commands::Model { name } => manager.set_default_model(&name).await?,
     }
 
     Ok(())
@@ -375,13 +384,14 @@ async fn chat_loop(agent: Agent, conv_id: String) -> Result<(), Box<dyn std::err
         agent.add_message(&conv_id, "user", &input).await;
 
         let mut buffer = String::new();
-        let mut stream = agent.execute_task(ToolInput::new(
-            "chat".to_string(),
-            input.trim().to_string(),
-            json!({}),
-        ))
-        .await?
-        .stream();
+        let mut stream = agent
+            .execute_task(ToolInput::new(
+                "chat".to_string(),
+                input.trim().to_string(),
+                json!({}),
+            ))
+            .await?
+            .stream();
 
         while let Some(message) = stream.next().await {
             match message {

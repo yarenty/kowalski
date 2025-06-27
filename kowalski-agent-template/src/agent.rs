@@ -29,7 +29,8 @@ impl TemplateAgent {
             config.clone(),
             "Template Agent",
             "A base implementation for building specialized agents",
-        ).await?;
+        )
+        .await?;
         let template_config = TemplateAgentConfig::from(config);
         let tool_chain = Arc::new(RwLock::new(Vec::new()));
         let task_handlers = Arc::new(RwLock::new(HashMap::new()));
@@ -69,7 +70,10 @@ impl TemplateAgent {
     }
 
     /// Registers a tool with the agent
-    pub async fn register_tool(&self, tool: Box<dyn Tool + Send + Sync>) -> Result<(), KowalskiError> {
+    pub async fn register_tool(
+        &self,
+        tool: Box<dyn Tool + Send + Sync>,
+    ) -> Result<(), KowalskiError> {
         let mut tools = self.tool_chain.write().await;
         tools.push(tool);
         Ok(())
@@ -132,7 +136,9 @@ mod tests {
                     Some(json!({ "tool": "mock" })),
                 ))
             } else {
-                Err(KowalskiError::ToolExecution("Task type mismatch".to_string()))
+                Err(KowalskiError::ToolExecution(
+                    "Task type mismatch".to_string(),
+                ))
             }
         }
         fn name(&self) -> &str {

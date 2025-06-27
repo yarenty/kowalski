@@ -1,8 +1,8 @@
 use async_trait::async_trait;
+use kowalski_core::error::KowalskiError;
+use kowalski_core::tools::{Tool, ToolInput, ToolOutput};
 use lopdf::{Document, Object};
 use serde_json::json;
-use kowalski_core::tools::{Tool, ToolInput, ToolOutput};
-use kowalski_core::error::KowalskiError;
 
 pub struct PdfTool;
 
@@ -54,7 +54,10 @@ impl PdfTool {
         Ok(serde_json::Value::Object(result))
     }
 
-    fn extract_metadata(&self, doc: &Document) -> Result<serde_json::Map<String, serde_json::Value>, KowalskiError> {
+    fn extract_metadata(
+        &self,
+        doc: &Document,
+    ) -> Result<serde_json::Map<String, serde_json::Value>, KowalskiError> {
         let mut metadata = serde_json::Map::new();
 
         if let Ok(Object::Reference(info_id)) = doc.trailer.get(b"Info") {

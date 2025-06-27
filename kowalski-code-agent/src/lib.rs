@@ -19,8 +19,8 @@ use crate::tools::{
     CodeAnalysisTool, CodeDocumentationTool, CodeRefactoringTool, CodeSearchTool, CodeTaskType,
 };
 use async_trait::async_trait;
-use kowalski_agent_template::agent::TaskHandler;
 use kowalski_agent_template::TemplateAgent;
+use kowalski_agent_template::agent::TaskHandler;
 use kowalski_core::tools::{ToolInput, ToolOutput};
 use serde_json::json;
 
@@ -66,7 +66,9 @@ pub async fn create_code_agent(config: Config) -> Result<TemplateAgent, Kowalski
             ))
         }
     }
-    template.register_task_handler(CodeTaskType::Analyze, Box::new(AnalyzeHandler)).await;
+    template
+        .register_task_handler(CodeTaskType::Analyze, Box::new(AnalyzeHandler))
+        .await;
 
     struct RefactorHandler;
     #[async_trait]
@@ -86,7 +88,9 @@ pub async fn create_code_agent(config: Config) -> Result<TemplateAgent, Kowalski
             ))
         }
     }
-    template.register_task_handler(CodeTaskType::Refactor, Box::new(RefactorHandler)).await;
+    template
+        .register_task_handler(CodeTaskType::Refactor, Box::new(RefactorHandler))
+        .await;
 
     struct DocumentHandler;
     #[async_trait]
@@ -106,7 +110,9 @@ pub async fn create_code_agent(config: Config) -> Result<TemplateAgent, Kowalski
             ))
         }
     }
-    template.register_task_handler(CodeTaskType::Document, Box::new(DocumentHandler)).await;
+    template
+        .register_task_handler(CodeTaskType::Document, Box::new(DocumentHandler))
+        .await;
 
     struct SearchHandler;
     #[async_trait]
@@ -126,7 +132,9 @@ pub async fn create_code_agent(config: Config) -> Result<TemplateAgent, Kowalski
             ))
         }
     }
-    template.register_task_handler(CodeTaskType::Search, Box::new(SearchHandler)).await;
+    template
+        .register_task_handler(CodeTaskType::Search, Box::new(SearchHandler))
+        .await;
 
     Ok(template)
 }

@@ -1,7 +1,7 @@
 use crate::builder::AgentBuilder;
 use kowalski_core::tools::{Tool, ToolInput, ToolOutput};
-use kowalski_tools::web::WebSearchTool;
 use kowalski_tools::document::PdfTool;
+use kowalski_tools::web::WebSearchTool;
 use serde_json::json;
 
 pub struct GeneralTemplate;
@@ -18,7 +18,8 @@ impl GeneralTemplate {
         let temp = temperature.unwrap_or(0.7);
 
         let builder = AgentBuilder::new()
-            .await.with_system_prompt(&prompt)
+            .await
+            .with_system_prompt(&prompt)
             .with_tools(tools)
             .with_temperature(temp);
 
@@ -62,7 +63,8 @@ mod tests {
         let tools = vec![Box::new(web_search_tool) as Box<dyn Tool + Send + Sync>];
         let prompt = "You are a specialized assistant for web research.";
 
-        let builder = GeneralTemplate::create_agent(tools, Some(prompt.to_string()), Some(0.5)).await;
+        let builder =
+            GeneralTemplate::create_agent(tools, Some(prompt.to_string()), Some(0.5)).await;
         assert!(builder.is_ok());
 
         if let Ok(builder) = builder {

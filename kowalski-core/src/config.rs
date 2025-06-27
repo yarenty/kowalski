@@ -13,7 +13,6 @@ pub struct Config {
     pub additional: HashMap<String, serde_json::Value>,
 }
 
-
 /// Configuration for Ollama integration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OllamaConfig {

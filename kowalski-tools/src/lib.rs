@@ -1,6 +1,6 @@
+pub mod document;
 pub mod tool;
 pub mod web;
-pub mod document;
 
 pub use kowalski_core::tools::{Tool, ToolInput, ToolOutput, ToolParameter};
 
@@ -33,4 +33,3 @@ pub mod types {
         Object,
     }
 }
-

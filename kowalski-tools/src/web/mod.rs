@@ -1,5 +1,5 @@
-pub mod search;
 pub mod scrape;
+pub mod search;
 
-pub use search::WebSearchTool;
 pub use scrape::WebScrapeTool;
+pub use search::WebSearchTool;
