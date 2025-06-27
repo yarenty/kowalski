@@ -21,7 +21,7 @@ pub struct WebAgent {
 #[async_trait]
 impl Agent for WebAgent {
 
-    fn new(config:Config) -> Result<Self,KowalskiError>where Self:Sized {
+    async fn new(config:Config) -> Result<Self,KowalskiError>where Self:Sized {
         let agent = TemplateAgent::new(config)?;
      Ok(Self{
         template: agent
