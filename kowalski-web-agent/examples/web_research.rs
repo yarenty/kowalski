@@ -2,8 +2,10 @@ use env_logger;
 use kowalski_core::{
     agent::Agent,
     role::{Audience, Preset, Role},
+    config::Config,
 };
-use kowalski_web_agent::{agent::WebAgent, config::Config};
+use kowalski_web_agent::{agent::WebAgent, config::WebAgentConfig};
+
 use log::info;
 use std::io::{self, Write};
 
@@ -12,9 +14,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
     env_logger::init();
 
+    let config = Config::default();
     // Load configuration
-    let config = Config::load()?;
-    let mut web_agent = WebAgent::new(config)?;
+    let mut web_agent = WebAgent::new(config.clone()).await?;
 
     // Start a conversation
     info!("🤖 Starting web agent...");
@@ -22,9 +24,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Web Agent Conversation ID: {}", conversation_id);
 
     // Perform a web search
-    let query = "Latest developments in Rust programming";
+    let query = "Latest developments in AI";
     println!("\n🔍 Searching: {}", query);
     let search_results = web_agent.search(query).await?;
+    if search_results.is_empty() {
+        println!("No search results found.");
+        return Ok(());
+    }
 
     // Process search results
     for result in &search_results {
@@ -66,7 +72,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .await;
 
         // Generate a simplified summary
-        let role = Role::translator(Some(Audience::Family), Some(Preset::Simplify));
+        let audience = Audience::new("Family", "Explain in a way a family member would understand.");
+        let preset = Preset::new("Simplify", "Summarize in simple terms.");
+        let role = Role::new("Translator", "You translate and simplify information.")
+            .with_audience(audience)
+            .with_preset(preset);
         println!("\n📝 Generating summary...");
 
         let mut response = web_agent
@@ -92,8 +102,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(tool_calls) = &message.tool_calls {
                         for tool_call in tool_calls {
                             print!("\n[Tool Call] {}(", tool_call.function.name);
-                            for (key, value) in &tool_call.function.arguments {
-                                print!("{}: {}, ", key, value);
+                            if let Some(obj) = tool_call.function.arguments.as_object() {
+                                for (key, value) in obj {
+                                    print!("{}: {}, ", key, value);
+                                }
                             }
                             println!(")");
                             io::stdout().flush()?;

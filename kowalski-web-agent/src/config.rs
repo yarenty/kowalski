@@ -1,7 +1,23 @@
-use crate::tools::SearchProvider;
 use kowalski_core::config::{Config as CoreConfig, ConfigExt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SearchProvider {
+    DuckDuckGo,
+    Google,
+    Bing,
+}
+
+impl std::fmt::Display for SearchProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SearchProvider::DuckDuckGo => write!(f, "duckduckgo"),
+            SearchProvider::Google => write!(f, "google"),
+            SearchProvider::Bing => write!(f, "bing"),
+        }
+    }
+}
 
 /// Web agent configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
