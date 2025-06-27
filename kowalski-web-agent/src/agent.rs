@@ -1,17 +1,17 @@
 use crate::config::WebAgentConfig;
 use async_trait::async_trait;
-use kowalski_agent_template::templates::general::GeneralTemplate;
 use kowalski_agent_template::TemplateAgent;
+use kowalski_agent_template::templates::general::GeneralTemplate;
 use kowalski_core::agent::Agent;
 use kowalski_core::config::Config;
 use kowalski_core::conversation::Conversation;
 use kowalski_core::error::KowalskiError;
 use kowalski_core::role::Role;
 use kowalski_core::tools::{Tool, ToolInput, ToolOutput};
-use kowalski_tools::web::{WebSearchTool, WebScrapeTool};
+use kowalski_tools::web::{WebScrapeTool, WebSearchTool};
 use reqwest::Response;
-use serde_json::json;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 /// WebAgent: A specialized agent for web-related tasks
 /// This agent is built on top of the TemplateAgent and provides web-specific functionality
@@ -41,10 +41,8 @@ impl WebAgent {
         let provider = web_config.search.default_provider.to_string();
         let search_tool = WebSearchTool::new(provider);
         let scrape_tool = WebScrapeTool::new();
-        let tools: Vec<Box<dyn Tool + Send + Sync>> = vec![
-            Box::new(search_tool),
-            Box::new(scrape_tool),
-        ];
+        let tools: Vec<Box<dyn Tool + Send + Sync>> =
+            vec![Box::new(search_tool), Box::new(scrape_tool)];
         let builder = GeneralTemplate::create_agent(
             tools,
             Some("You are a web research assistant specialized in finding and analyzing online information.".to_string()),
@@ -65,7 +63,11 @@ impl WebAgent {
         let tool = tools.iter_mut().find(|t| t.name() == "web_search");
         let tool = match tool {
             Some(t) => t,
-            None => return Err(KowalskiError::ToolExecution("web_search tool not found".to_string())),
+            None => {
+                return Err(KowalskiError::ToolExecution(
+                    "web_search tool not found".to_string(),
+                ));
+            }
         };
         let input = ToolInput::new(
             "search".to_string(),
@@ -94,7 +96,11 @@ impl WebAgent {
         let tool = tools.iter_mut().find(|t| t.name() == "web_scrape");
         let tool = match tool {
             Some(t) => t,
-            None => return Err(KowalskiError::ToolExecution("web_scrape tool not found".to_string())),
+            None => {
+                return Err(KowalskiError::ToolExecution(
+                    "web_scrape tool not found".to_string(),
+                ));
+            }
         };
         let input = ToolInput::new(
             "scrape_static".to_string(),
@@ -104,8 +110,18 @@ impl WebAgent {
         let output = tool.execute(input).await?;
         // Parse the first result as the page title/content
         let arr = output.result.as_array().cloned().unwrap_or_default();
-        let title = arr.iter().find(|v| v["selector"] == "title").and_then(|v| v["text"].as_str()).unwrap_or("").to_string();
-        let content = arr.iter().find(|v| v["selector"] == "body").and_then(|v| v["text"].as_str()).unwrap_or("").to_string();
+        let title = arr
+            .iter()
+            .find(|v| v["selector"] == "title")
+            .and_then(|v| v["text"].as_str())
+            .unwrap_or("")
+            .to_string();
+        let content = arr
+            .iter()
+            .find(|v| v["selector"] == "body")
+            .and_then(|v| v["text"].as_str())
+            .unwrap_or("")
+            .to_string();
         Ok(PageResult { title, content })
     }
 }
@@ -138,7 +154,10 @@ impl Agent for WebAgent {
         content: &str,
         role: Option<Role>,
     ) -> Result<reqwest::Response, KowalskiError> {
-        self.agent.base_mut().chat_with_history(conversation_id, content, role).await
+        self.agent
+            .base_mut()
+            .chat_with_history(conversation_id, content, role)
+            .await
     }
 
     async fn process_stream_response(
@@ -146,11 +165,17 @@ impl Agent for WebAgent {
         conversation_id: &str,
         chunk: &[u8],
     ) -> Result<Option<kowalski_core::conversation::Message>, KowalskiError> {
-        self.agent.base_mut().process_stream_response(conversation_id, chunk).await
+        self.agent
+            .base_mut()
+            .process_stream_response(conversation_id, chunk)
+            .await
     }
 
     async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {
-        self.agent.base_mut().add_message(conversation_id, role, content).await;
+        self.agent
+            .base_mut()
+            .add_message(conversation_id, role, content)
+            .await;
     }
 
     fn name(&self) -> &str {

@@ -1,8 +1,8 @@
 use env_logger;
 use kowalski_core::{
     agent::Agent,
-    role::{Audience, Preset, Role},
     config::Config,
+    role::{Audience, Preset, Role},
 };
 use kowalski_web_agent::{agent::WebAgent, config::WebAgentConfig};
 
@@ -72,7 +72,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .await;
 
         // Generate a simplified summary
-        let audience = Audience::new("Family", "Explain in a way a family member would understand.");
+        let audience = Audience::new(
+            "Family",
+            "Explain in a way a family member would understand.",
+        );
         let preset = Preset::new("Simplify", "Summarize in simple terms.");
         let role = Role::new("Translator", "You translate and simplify information.")
             .with_audience(audience)
