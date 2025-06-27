@@ -1,11 +1,14 @@
 use crate::tools::{TaskType, Tool, ToolInput, ToolOutput};
 use std::collections::HashMap;
 use std::sync::Arc;
+use crate::error::KowalskiError;
+
+
 
 /// A chain of tools that can be executed in sequence
 pub struct ToolChain {
     /// The tools in the chain
-    tools: Vec<Box<dyn Tool>>,
+    tools: Vec<Box<dyn Tool + Send + Sync>>,
     /// Task type handlers
     task_handlers: HashMap<String, Arc<dyn Fn(&str) -> bool + Send + Sync>>,
 }
@@ -26,7 +29,7 @@ impl ToolChain {
     }
 
     /// Register a tool in the chain
-    pub fn register_tool(&mut self, tool: Box<dyn Tool>) {
+    pub fn register_tool(&mut self, tool: Box<dyn Tool + Send + Sync>) {
         self.tools.push(tool);
     }
 
@@ -40,7 +43,7 @@ impl ToolChain {
     }
 
     /// Execute the tool chain with the given input
-    pub async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, String> {
+    pub async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
         // Check if we have a handler for this task type
         if let Some(handler) = self.task_handlers.get(&input.task_type) {
             if handler(&input.content) {
@@ -51,10 +54,10 @@ impl ToolChain {
                         Err(_) => continue,
                     }
                 }
-                return Err("No tool could handle the task".to_string());
+                return Err(KowalskiError::ToolExecution("No tool could handle the task".to_string()));
             }
         }
-        Err("No handler found for task type".to_string())
+        Err(KowalskiError::ToolExecution("No handler found for task type".to_string()))
     }
 }
 
@@ -62,15 +65,25 @@ impl ToolChain {
 mod tests {
     use super::*;
     use serde_json::json;
+    use crate::tools::{TaskType, Tool, ToolInput, ToolOutput, ToolParameter};
 
     struct MockTool;
     #[async_trait::async_trait]
     impl Tool for MockTool {
-        async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, String> {
+        async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
             Ok(ToolOutput::new(
                 json!({ "result": input.content }),
                 Some(json!({ "tool": "mock" })),
             ))
+        }
+        fn name(&self) -> &str {
+            "mock_tool"
+        }
+        fn description(&self) -> &str {
+            "A mock tool for testing."
+        }
+        fn parameters(&self) -> Vec<ToolParameter> {
+            vec![]
         }
     }
 

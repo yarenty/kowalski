@@ -64,6 +64,7 @@ pub struct BaseAgent {
     pub conversations: HashMap<String, Conversation>,
     pub name: String,
     pub description: String,
+    pub system_prompt: Option<String>,
 }
 
 impl BaseAgent {
@@ -81,7 +82,16 @@ impl BaseAgent {
             conversations: HashMap::new(),
             name: name.to_string(),
             description: description.to_string(),
+            system_prompt: None,
         })
+    }
+
+    pub fn set_temperature(&mut self, temperature: f32) {
+        self.config.chat.temperature = temperature;
+    }
+
+    pub fn set_system_prompt(&mut self, prompt: &str) {
+        self.system_prompt = Some(prompt.to_string());
     }
 }
 

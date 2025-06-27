@@ -15,7 +15,7 @@ pub enum KowalskiError {
     ContentProcessing(String),
 
     #[error("Invalid input: {0}")]
-    InvalidInput(String),
+    ToolInvalidInput(String),
 
     #[error("Resource not found: {0}")]
     NotFound(String),
@@ -118,6 +118,15 @@ pub enum KowalskiError {
 
     #[error("Conversation not found: {0}")]
     ConversationNotFound(String),
+
+    #[error("Execution error: {0}")]
+    Execution(String),
+
+    #[error("Network error: {0}")]
+    ToolNetwork(String),
+
+    #[error("Config error: {0}")]
+    ToolConfig(String),
 }
 
 impl From<String> for KowalskiError {
