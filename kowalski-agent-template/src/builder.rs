@@ -1,13 +1,13 @@
+use crate::agent::TaskHandler;
 use crate::agent::TemplateAgent;
 use crate::config::TemplateAgentConfig;
 use kowalski_core::agent::BaseAgent;
 use kowalski_core::config::Config;
 use kowalski_core::error::KowalskiError;
 use kowalski_core::tools::Tool;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use std::collections::HashMap;
-use crate::agent::TaskHandler;
 
 pub struct AgentBuilder {
     base: BaseAgent,
@@ -27,7 +27,9 @@ impl AgentBuilder {
             Config::default(),
             "Template Agent",
             "A base implementation for building specialized agents",
-        ).await.expect("Failed to create base agent");
+        )
+        .await
+        .expect("Failed to create base agent");
 
         Self {
             base,
@@ -120,7 +122,8 @@ mod tests {
     #[tokio::test]
     async fn test_builder_with_tool() {
         let builder = AgentBuilder::new()
-            .await.with_system_prompt("You are a helpful assistant")
+            .await
+            .with_system_prompt("You are a helpful assistant")
             .with_tool(MockTool)
             .with_temperature(0.5);
 
@@ -132,7 +135,8 @@ mod tests {
     async fn test_builder_with_multiple_tools() {
         let tools = vec![Box::new(MockTool) as Box<dyn Tool + Send + Sync>];
         let builder = AgentBuilder::new()
-            .await.with_system_prompt("You are a helpful assistant")
+            .await
+            .with_system_prompt("You are a helpful assistant")
             .with_tools(tools)
             .with_temperature(0.5);
 

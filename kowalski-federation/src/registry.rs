@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::info;
 
-use crate::{FederatedAgent, FederationMessage, FederationRole, FederationError};
+use crate::{FederatedAgent, FederationError, FederationMessage, FederationRole};
 
 /// Registry for managing federated agents
 pub struct AgentRegistry {
@@ -11,10 +11,10 @@ pub struct AgentRegistry {
 }
 
 impl Default for AgentRegistry {
-       fn default() -> Self {
-             Self::new()
-        }
- }
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl AgentRegistry {
     /// Create a new agent registry
@@ -31,7 +31,7 @@ impl AgentRegistry {
     ) -> Result<(), FederationError> {
         let id = agent.read().await.federation_id().to_string();
         let mut agents = self.agents.write().await;
-        
+
         if agents.contains_key(&id) {
             return Err(FederationError::DuplicateAgent(id));
         }

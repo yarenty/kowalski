@@ -2,13 +2,13 @@ use crate::config::AcademicAgentConfig;
 use crate::create_academic_agent;
 use crate::tools::AcademicTaskType;
 use kowalski_agent_template::TemplateAgent;
-use kowalski_core::config::Config;
-use kowalski_core::error::KowalskiError;
-use serde_json::json;
 use kowalski_core::agent::Agent;
+use kowalski_core::config::Config;
 use kowalski_core::conversation::{Conversation, Message};
+use kowalski_core::error::KowalskiError;
 use kowalski_core::role::Role;
 use reqwest::Response;
+use serde_json::json;
 
 /// AcademicAgent: A specialized agent for academic tasks
 /// This agent is built on top of the TemplateAgent and provides academic-specific functionality
@@ -60,7 +60,10 @@ impl Agent for AcademicAgent {
         content: &str,
         role: Option<Role>,
     ) -> Result<Response, KowalskiError> {
-        self.template.base_mut().chat_with_history(conversation_id, content, role).await
+        self.template
+            .base_mut()
+            .chat_with_history(conversation_id, content, role)
+            .await
     }
 
     async fn process_stream_response(
@@ -68,11 +71,17 @@ impl Agent for AcademicAgent {
         conversation_id: &str,
         chunk: &[u8],
     ) -> Result<Option<Message>, KowalskiError> {
-        self.template.base_mut().process_stream_response(conversation_id, chunk).await
+        self.template
+            .base_mut()
+            .process_stream_response(conversation_id, chunk)
+            .await
     }
 
     async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {
-        self.template.base_mut().add_message(conversation_id, role, content).await
+        self.template
+            .base_mut()
+            .add_message(conversation_id, role, content)
+            .await
     }
 
     fn name(&self) -> &str {

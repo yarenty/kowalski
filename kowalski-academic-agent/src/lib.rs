@@ -13,8 +13,8 @@ pub use kowalski_core::logging;
 
 use crate::tools::{AcademicSearchTool, AcademicTaskType, CitationGeneratorTool, PaperParserTool};
 use async_trait::async_trait;
-use kowalski_agent_template::agent::TaskHandler;
 use kowalski_agent_template::TemplateAgent;
+use kowalski_agent_template::agent::TaskHandler;
 use kowalski_core::tools::{ToolInput, ToolOutput};
 use serde_json::json;
 
@@ -23,9 +23,15 @@ pub async fn create_academic_agent(config: Config) -> Result<TemplateAgent, Kowa
     let template = TemplateAgent::new(config.clone()).await?;
 
     // Register tools
-    template.register_tool(Box::new(AcademicSearchTool::new(config.clone()))).await;
-    template.register_tool(Box::new(CitationGeneratorTool::new(config.clone()))).await;
-    template.register_tool(Box::new(PaperParserTool::new(config.clone()))).await;
+    template
+        .register_tool(Box::new(AcademicSearchTool::new(config.clone())))
+        .await;
+    template
+        .register_tool(Box::new(CitationGeneratorTool::new(config.clone())))
+        .await;
+    template
+        .register_tool(Box::new(PaperParserTool::new(config.clone())))
+        .await;
 
     // Register task handlers
     struct AcademicSearchHandler;
@@ -46,10 +52,12 @@ pub async fn create_academic_agent(config: Config) -> Result<TemplateAgent, Kowa
             ))
         }
     }
-    template.register_task_handler(
-        AcademicTaskType::AcademicSearch,
-        Box::new(AcademicSearchHandler),
-    ).await;
+    template
+        .register_task_handler(
+            AcademicTaskType::AcademicSearch,
+            Box::new(AcademicSearchHandler),
+        )
+        .await;
 
     struct CitationGenerationHandler;
     #[async_trait]
@@ -69,10 +77,12 @@ pub async fn create_academic_agent(config: Config) -> Result<TemplateAgent, Kowa
             ))
         }
     }
-    template.register_task_handler(
-        AcademicTaskType::CitationGeneration,
-        Box::new(CitationGenerationHandler),
-    ).await;
+    template
+        .register_task_handler(
+            AcademicTaskType::CitationGeneration,
+            Box::new(CitationGenerationHandler),
+        )
+        .await;
 
     struct PaperParsingHandler;
     #[async_trait]
@@ -92,10 +102,12 @@ pub async fn create_academic_agent(config: Config) -> Result<TemplateAgent, Kowa
             ))
         }
     }
-    template.register_task_handler(
-        AcademicTaskType::PaperParsing,
-        Box::new(PaperParsingHandler),
-    ).await;
+    template
+        .register_task_handler(
+            AcademicTaskType::PaperParsing,
+            Box::new(PaperParsingHandler),
+        )
+        .await;
 
     Ok(template)
 }

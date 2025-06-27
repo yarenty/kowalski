@@ -1,20 +1,20 @@
 use async_trait::async_trait;
+use kowalski_core::error::KowalskiError;
+use kowalski_core::tools::{Tool, ToolInput, ToolOutput};
 use reqwest::Client;
 use scraper::{Html, Selector};
 use serde_json::json;
 use std::sync::Arc;
-use kowalski_core::tools::{Tool, ToolInput, ToolOutput};
-use kowalski_core::error::KowalskiError;
 
 pub struct WebScrapeTool {
     client: Arc<Client>,
 }
 
 impl Default for WebScrapeTool {
-       fn default() -> Self {
-           Self::new()
-       }
- }
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl WebScrapeTool {
     pub fn new() -> Self {
@@ -55,7 +55,9 @@ impl WebScrapeTool {
         if follow_links && max_depth > 0 {
             let links = Self::extract_links(&body, url)?;
             for link in links {
-                if let Ok(link_results) = Box::pin(self.scrape_page(&link, selectors, follow_links, max_depth - 1)).await {
+                if let Ok(link_results) =
+                    Box::pin(self.scrape_page(&link, selectors, follow_links, max_depth - 1)).await
+                {
                     results.extend(link_results);
                 }
             }
@@ -72,10 +74,7 @@ impl WebScrapeTool {
                 let elements = document
                     .select(&selector)
                     .map(|element| {
-                        let text = element
-                            .text()
-                            .collect::<Vec<_>>()
-                            .join(" ");
+                        let text = element.text().collect::<Vec<_>>().join(" ");
                         json!({
                             "selector": selector_str,
                             "text": text.trim(),

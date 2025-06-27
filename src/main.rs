@@ -1,9 +1,9 @@
+use futures::StreamExt;
 use kowalski_core::Agent;
 use kowalski_core::BaseAgent;
 use kowalski_core::config::Config;
 use kowalski_core::error::KowalskiError;
 use std::io::{self, Write};
-use futures::StreamExt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -11,10 +11,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     kowalski_core::logging::init();
 
     let config = Config::default();
-    let mut agent = BaseAgent::new(config.clone(), "Simple Chat Agent", "A basic agent for interactive chat").await?;
+    let mut agent = BaseAgent::new(
+        config.clone(),
+        "Simple Chat Agent",
+        "A basic agent for interactive chat",
+    )
+    .await?;
     let conv_id = agent.start_conversation(&config.ollama.model);
 
-    println!("Chat session started with model: {} (type '/bye' to exit)", config.ollama.model);
+    println!(
+        "Chat session started with model: {} (type '/bye' to exit)",
+        config.ollama.model
+    );
     println!("----------------------------------------");
 
     loop {

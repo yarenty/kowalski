@@ -1,9 +1,7 @@
+use crate::error::KowalskiError;
 use crate::tools::{TaskType, Tool, ToolInput, ToolOutput};
 use std::collections::HashMap;
 use std::sync::Arc;
-use crate::error::KowalskiError;
-
-
 
 /// A chain of tools that can be executed in sequence
 pub struct ToolChain {
@@ -54,18 +52,22 @@ impl ToolChain {
                         Err(_) => continue,
                     }
                 }
-                return Err(KowalskiError::ToolExecution("No tool could handle the task".to_string()));
+                return Err(KowalskiError::ToolExecution(
+                    "No tool could handle the task".to_string(),
+                ));
             }
         }
-        Err(KowalskiError::ToolExecution("No handler found for task type".to_string()))
+        Err(KowalskiError::ToolExecution(
+            "No handler found for task type".to_string(),
+        ))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
     use crate::tools::{TaskType, Tool, ToolInput, ToolOutput, ToolParameter};
+    use serde_json::json;
 
     struct MockTool;
     #[async_trait::async_trait]

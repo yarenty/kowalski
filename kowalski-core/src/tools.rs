@@ -32,7 +32,10 @@ pub trait TaskType: Send + Sync + Display {
 #[async_trait::async_trait]
 pub trait Tool: Send + Sync {
     /// Execute the tool with the given input
-    async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, crate::error::KowalskiError>;
+    async fn execute(
+        &mut self,
+        input: ToolInput,
+    ) -> Result<ToolOutput, crate::error::KowalskiError>;
 
     fn name(&self) -> &str;
     fn description(&self) -> &str;

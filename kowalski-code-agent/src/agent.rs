@@ -1,14 +1,14 @@
 use crate::config::CodeAgentConfig;
-use crate::tools::{CodeAnalysisTool, CodeRefactoringTool, CodeDocumentationTool, CodeSearchTool};
+use crate::tools::{CodeAnalysisTool, CodeDocumentationTool, CodeRefactoringTool, CodeSearchTool};
+use async_trait::async_trait;
 use kowalski_agent_template::builder::AgentBuilder;
 use kowalski_agent_template::templates::general::GeneralTemplate;
 use kowalski_core::agent::Agent;
 use kowalski_core::config::Config;
-use kowalski_core::error::KowalskiError;
-use serde_json::json;
 use kowalski_core::conversation::{Conversation, Message};
+use kowalski_core::error::KowalskiError;
 use kowalski_core::role::Role;
-use async_trait::async_trait;
+use serde_json::json;
 
 /// CodeAgent: A specialized agent for code analysis and development tasks
 /// This agent is built on top of the TemplateAgent and provides code-specific functionality
@@ -21,7 +21,7 @@ impl CodeAgent {
     /// Creates a new CodeAgent with the specified configuration
     pub async fn new(config: Config) -> Result<Self, KowalskiError> {
         let code_config = CodeAgentConfig::from(config);
-        
+
         // Create code-specific tools
         let analysis_tool = CodeAnalysisTool::new(code_config.clone())?;
         let refactoring_tool = CodeRefactoringTool::new(code_config.clone())?;
@@ -59,7 +59,12 @@ impl CodeAgent {
                 "max_depth": self.config.max_analysis_depth
             }),
         );
-        let tool_output = self.template.build().await?.execute_task(tool_input).await?;
+        let tool_output = self
+            .template
+            .build()
+            .await?
+            .execute_task(tool_input)
+            .await?;
         Ok(tool_output.result["analysis"]
             .as_str()
             .unwrap_or_default()
@@ -67,7 +72,11 @@ impl CodeAgent {
     }
 
     /// Refactors code
-    pub async fn refactor_code(&self, code: &str, description: &str) -> Result<String, KowalskiError> {
+    pub async fn refactor_code(
+        &self,
+        code: &str,
+        description: &str,
+    ) -> Result<String, KowalskiError> {
         let tool_input = ToolInput::new(
             "code_refactoring".to_string(),
             code.to_string(),
@@ -76,7 +85,12 @@ impl CodeAgent {
                 "language": self.config.language
             }),
         );
-        let tool_output = self.template.build().await?.execute_task(tool_input).await?;
+        let tool_output = self
+            .template
+            .build()
+            .await?
+            .execute_task(tool_input)
+            .await?;
         Ok(tool_output.result["refactored_code"]
             .as_str()
             .unwrap_or_default()
@@ -93,7 +107,12 @@ impl CodeAgent {
                 "style": self.config.documentation_style
             }),
         );
-        let tool_output = self.template.build().await?.execute_task(tool_input).await?;
+        let tool_output = self
+            .template
+            .build()
+            .await?
+            .execute_task(tool_input)
+            .await?;
         Ok(tool_output.result["documentation"]
             .as_str()
             .unwrap_or_default()
@@ -110,7 +129,12 @@ impl CodeAgent {
                 "scope": self.config.search_scope
             }),
         );
-        let tool_output = self.template.build().await?.execute_task(tool_input).await?;
+        let tool_output = self
+            .template
+            .build()
+            .await?
+            .execute_task(tool_input)
+            .await?;
         Ok(tool_output.result["results"]
             .as_str()
             .unwrap_or_default()
@@ -166,7 +190,7 @@ mod tests {
     async fn test_code_agent_customization() {
         let config = Config::default();
         let mut agent = CodeAgent::new(config).await.unwrap();
-        
+
         agent.set_system_prompt("You are a specialized code development assistant.");
         agent.set_temperature(0.5);
     }

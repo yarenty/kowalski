@@ -1,15 +1,15 @@
 use crate::config::WebAgentConfig;
 use crate::tools::{SearchProvider, SearchTool, WebTaskType};
+use async_trait::async_trait;
 use kowalski_agent_template::builder::AgentBuilder;
 use kowalski_agent_template::templates::general::GeneralTemplate;
 use kowalski_core::agent::Agent;
 use kowalski_core::config::Config;
-use kowalski_core::error::KowalskiError;
-use serde_json::json;
 use kowalski_core::conversation::{Conversation, Message};
+use kowalski_core::error::KowalskiError;
 use kowalski_core::role::Role;
 use reqwest::Response;
-use async_trait::async_trait;
+use serde_json::json;
 
 /// WebAgent: A specialized agent for web-related tasks
 /// This agent is built on top of the TemplateAgent and provides web-specific functionality
@@ -87,7 +87,7 @@ mod tests {
     async fn test_web_agent_customization() {
         let config = Config::default();
         let mut agent = WebAgent::new(config).await.unwrap();
-        
+
         agent.set_system_prompt("You are a specialized web research assistant.");
         agent.set_temperature(0.5);
     }

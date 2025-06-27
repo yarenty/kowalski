@@ -213,8 +213,5 @@ pub trait MessageHandler: Send + Sync {
     type Message;
     type Error;
 
-    async fn handle_message(
-        &mut self,
-        message: Self::Message,
-    ) -> Result<(), Self::Error>;
+    async fn handle_message(&mut self, message: Self::Message) -> Result<(), Self::Error>;
 }

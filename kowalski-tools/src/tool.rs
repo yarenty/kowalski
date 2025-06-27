@@ -1,5 +1,5 @@
-use kowalski_core::tools::{Tool, ToolInput, ToolOutput};
 use kowalski_core::error::KowalskiError;
+use kowalski_core::tools::{Tool, ToolInput, ToolOutput};
 use tokio::runtime::Handle;
 
 pub struct ToolManager {
@@ -7,11 +7,10 @@ pub struct ToolManager {
 }
 
 impl Default for ToolManager {
-         fn default() -> Self {
-             Self::new()
-         }
- }
-
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl ToolManager {
     pub fn new() -> Self {
@@ -43,7 +42,10 @@ impl ToolManager {
         }) {
             result
         } else {
-            Err(KowalskiError::ToolInvalidInput(format!("Tool not found: {}", name)))
+            Err(KowalskiError::ToolInvalidInput(format!(
+                "Tool not found: {}",
+                name
+            )))
         }
     }
 
