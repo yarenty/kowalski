@@ -1,5 +1,4 @@
-use super::ToolError;
-use crate::tool::{Tool, ToolInput, ToolOutput, ToolParameter, ParameterType};
+use crate::tool::{Tool, ToolInput, ToolOutput, ToolParameter, ParameterType, ToolError};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
@@ -17,6 +16,54 @@ impl WebSearchTool {
             search_provider: Arc::new(search_provider),
         }
     }
+
+    async fn duckduckgo_search(
+        &self,
+        query: &str,
+        num_results: usize,
+    ) -> Result<ToolOutput, ToolError> {
+        let url = format!("https://api.duckduckgo.com/?q={}&format=json", query);
+        
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| ToolError::Network(e.to_string()))?;
+
+        let body = response
+            .text()
+            .await
+            .map_err(|e| ToolError::Network(e.to_string()))?;
+
+        let result = json!({
+            "provider": "duckduckgo",
+            "query": query,
+            "results": body,
+        });
+
+        Ok(ToolOutput {
+            result,
+            metadata: Some(json!({
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+                "provider": "duckduckgo",
+                "query": query,
+                "num_results": num_results,
+            })),
+        })
+    }
+
+
+    async fn serper_search(
+        &self,
+        _query: &str,
+        _num_results: usize,
+    ) -> Result<ToolOutput, ToolError> {
+        // Implementation for Serper API would go here
+        // This would require API key configuration
+        Err(ToolError::Config("Serper API integration not implemented".to_string()))
+    }
+
 }
 
 #[async_trait]
@@ -74,49 +121,6 @@ impl Tool for WebSearchTool {
         }
     }
 
-    async fn duckduckgo_search(
-        &self,
-        query: &str,
-        num_results: usize,
-    ) -> Result<ToolOutput, ToolError> {
-        let url = format!("https://api.duckduckgo.com/?q={}&format=json", query);
-        
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| ToolError::Network(e.to_string()))?;
+   
 
-        let body = response
-            .text()
-            .await
-            .map_err(|e| ToolError::Network(e.to_string()))?;
-
-        let result = json!({
-            "provider": "duckduckgo",
-            "query": query,
-            "results": body,
-        });
-
-        Ok(ToolOutput {
-            result,
-            metadata: Some(json!({
-                "timestamp": chrono::Utc::now().to_rfc3339(),
-                "provider": "duckduckgo",
-                "query": query,
-                "num_results": num_results,
-            })),
-        })
-    }
-
-    async fn serper_search(
-        &self,
-        query: &str,
-        num_results: usize,
-    ) -> Result<ToolOutput, ToolError> {
-        // Implementation for Serper API would go here
-        // This would require API key configuration
-        Err(ToolError::Config("Serper API integration not implemented".to_string()))
-    }
 }
