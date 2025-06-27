@@ -25,7 +25,7 @@ impl WebSearchTool {
         num_results: usize,
     ) -> Result<ToolOutput, String> {
         let url = format!("https://api.duckduckgo.com/?q={}&format=json", query);
-
+        println!("URL: {}", &url);
         let response = self
             .client
             .get(&url)
@@ -33,7 +33,10 @@ impl WebSearchTool {
             .await
             .map_err(|e| e.to_string())?;
 
+        //println!("Response: {:?}", &response);
         let body = response.text().await.map_err(|e| e.to_string())?;
+
+        //println!("Body: {:?}", &body);
 
         let result = json!({
             "provider": "duckduckgo",
