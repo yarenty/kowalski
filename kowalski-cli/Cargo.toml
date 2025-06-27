@@ -11,7 +11,10 @@ readme = "README.md"
 
 [dependencies]
 kowalski-core = { path = "../kowalski-core" }
+kowalski-agent-template = { path = "../kowalski-agent-template" }
+kowalski-tools = { path = "../kowalski-tools" }
 kowalski-federation = { path = "../kowalski-federation" }
+kowalski-academic-agent = { path = "../kowalski-academic-agent", optional = true }
 kowalski-data-agent = { path = "../kowalski-data-agent", optional = true }
 clap = "4.5"
 serde = { workspace = true, features = ["derive"] }
