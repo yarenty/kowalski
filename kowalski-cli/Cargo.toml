@@ -12,7 +12,8 @@ readme = "README.md"
 [dependencies]
 kowalski-core = { path = "../kowalski-core" }
 kowalski-federation = { path = "../kowalski-federation" }
-clap = { workspace = true }
+kowalski-data-agent = { path = "../kowalski-data-agent", optional = true }
+clap = "4.5"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

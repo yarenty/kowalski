@@ -54,7 +54,7 @@ config = "0.15"
 dirs = "6.0"
 
 # Optional dependencies
-uuid = { version = "1.7", features = ["v4", "serde"], optional = true }
+uuid = { version = "1.7", features = ["v4", "serde"] }
 
 [package]
 name = "kowalski"

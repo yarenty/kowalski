@@ -19,7 +19,7 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 mockall = "0.13"
-wiremock = "0.26"
+wiremock = { version = "0.6.0-rc.3" }
 
 [features]
 default = []
