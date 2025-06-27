@@ -11,6 +11,7 @@ readme = "README.md"
 
 [dependencies]
 kowalski-core = { path = "../kowalski-core" }
+kowalski-tools = { path = "../kowalski-tools" }
 tokio = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }

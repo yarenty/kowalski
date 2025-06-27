@@ -1,5 +1,7 @@
 pub mod agent;
 pub mod config;
+pub mod builder;
+pub mod templates;
 
 pub use agent::TemplateAgent;
 pub use config::TemplateAgentConfig;

@@ -2,7 +2,6 @@ use crate::builder::AgentBuilder;
 use kowalski_core::tools::{Tool, ToolInput, ToolOutput};
 use kowalski_tools::web::WebSearchTool;
 use kowalski_tools::document::PdfTool;
-use kowalski_tools::data::CsvTool;
 use serde_json::json;
 
 pub struct GeneralTemplate;
@@ -10,7 +9,7 @@ pub struct GeneralTemplate;
 impl GeneralTemplate {
     /// Creates a new general-purpose agent with customizable tools
     pub async fn create_agent(
-        tools: Vec<Box<dyn Tool>>,
+        tools: Vec<Box<dyn Tool + Send + Sync>>,
         system_prompt: Option<String>,
         temperature: Option<f32>,
     ) -> Result<AgentBuilder, Box<dyn std::error::Error>> {
@@ -19,7 +18,7 @@ impl GeneralTemplate {
         let temp = temperature.unwrap_or(0.7);
 
         let builder = AgentBuilder::new()
-            .with_system_prompt(&prompt)
+            .await.with_system_prompt(&prompt)
             .with_tools(tools)
             .with_temperature(temp);
 
@@ -30,12 +29,10 @@ impl GeneralTemplate {
     pub async fn create_default_agent() -> Result<AgentBuilder, Box<dyn std::error::Error>> {
         let web_search_tool = WebSearchTool::new("duckduckgo".to_string());
         let pdf_tool = PdfTool;
-        let csv_tool = CsvTool;
 
         let tools = vec![
-            Box::new(web_search_tool) as Box<dyn Tool>,
-            Box::new(pdf_tool) as Box<dyn Tool>,
-            Box::new(csv_tool) as Box<dyn Tool>,
+            Box::new(web_search_tool) as Box<dyn Tool + Send + Sync>,
+            Box::new(pdf_tool) as Box<dyn Tool + Send + Sync>,
         ];
 
         Self::create_agent(tools, None, None).await
@@ -62,7 +59,7 @@ mod tests {
     #[tokio::test]
     async fn test_general_template_custom() {
         let web_search_tool = WebSearchTool::new("duckduckgo".to_string());
-        let tools = vec![Box::new(web_search_tool) as Box<dyn Tool>];
+        let tools = vec![Box::new(web_search_tool) as Box<dyn Tool + Send + Sync>];
         let prompt = "You are a specialized assistant for web research.";
 
         let builder = GeneralTemplate::create_agent(tools, Some(prompt.to_string()), Some(0.5)).await;

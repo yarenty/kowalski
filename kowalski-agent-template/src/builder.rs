@@ -1,33 +1,33 @@
 use crate::agent::TemplateAgent;
 use crate::config::TemplateAgentConfig;
-use async_trait::async_trait;
 use kowalski_core::agent::BaseAgent;
 use kowalski_core::config::Config;
 use kowalski_core::error::KowalskiError;
-use kowalski_core::tools::{Tool, ToolInput, ToolOutput};
+use kowalski_core::tools::Tool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use std::collections::HashMap;
+use crate::agent::TaskHandler;
 
 pub struct AgentBuilder {
     base: BaseAgent,
     config: TemplateAgentConfig,
-    tool_chain: Arc<RwLock<Vec<Box<dyn Tool>>>>,
+    tool_chain: Arc<RwLock<Vec<Box<dyn Tool + Send + Sync>>>>,
     task_handlers: Arc<RwLock<HashMap<String, Box<dyn TaskHandler>>>>,
     system_prompt: String,
     temperature: f32,
-    tools: Vec<Box<dyn Tool>>,
+    tools: Vec<Box<dyn Tool + Send + Sync>>,
 }
 
 impl AgentBuilder {
     /// Creates a new AgentBuilder with default configuration
-    pub fn new() -> Self {
+    pub async fn new() -> Self {
         let config = TemplateAgentConfig::default();
         let base = BaseAgent::new(
-            config.clone().into(),
+            Config::default(),
             "Template Agent",
             "A base implementation for building specialized agents",
-        )
-        .expect("Failed to create base agent");
+        ).await.expect("Failed to create base agent");
 
         Self {
             base,
@@ -59,7 +59,7 @@ impl AgentBuilder {
     }
 
     /// Adds multiple tools to the agent
-    pub fn with_tools(mut self, tools: Vec<Box<dyn Tool>>) -> Self {
+    pub fn with_tools(mut self, tools: Vec<Box<dyn Tool + Send + Sync>>) -> Self {
         self.tools.extend(tools);
         self
     }
@@ -67,19 +67,14 @@ impl AgentBuilder {
     /// Builds the final agent
     pub async fn build(self) -> Result<TemplateAgent, KowalskiError> {
         // Configure base agent
-        let mut base = self.base;
-        base.set_temperature(self.temperature);
-        if !self.system_prompt.is_empty() {
-            base.set_system_prompt(&self.system_prompt);
-        }
+        // let mut base = self.base;
+        // base.set_temperature(self.temperature);
+        // if !self.system_prompt.is_empty() {
+        //     base.set_system_prompt(&self.system_prompt);
+        // }
 
         // Create template agent
-        let mut agent = TemplateAgent {
-            base,
-            config: self.config,
-            tool_chain: self.tool_chain.clone(),
-            task_handlers: self.task_handlers.clone(),
-        };
+        let mut agent = TemplateAgent::new(Config::default()).await?;
 
         // Register tools
         for tool in self.tools {
@@ -114,7 +109,7 @@ mod tests {
             Vec::new()
         }
 
-        async fn execute(&self, _input: ToolInput) -> Result<ToolOutput, KowalskiError> {
+        async fn execute(&mut self, _input: ToolInput) -> Result<ToolOutput, KowalskiError> {
             Ok(ToolOutput {
                 result: json!({ "status": "success" }),
                 metadata: None,
@@ -125,7 +120,7 @@ mod tests {
     #[tokio::test]
     async fn test_builder_with_tool() {
         let builder = AgentBuilder::new()
-            .with_system_prompt("You are a helpful assistant")
+            .await.with_system_prompt("You are a helpful assistant")
             .with_tool(MockTool)
             .with_temperature(0.5);
 
@@ -135,9 +130,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_builder_with_multiple_tools() {
-        let tools = vec![Box::new(MockTool) as Box<dyn Tool>];
+        let tools = vec![Box::new(MockTool) as Box<dyn Tool + Send + Sync>];
         let builder = AgentBuilder::new()
-            .with_system_prompt("You are a helpful assistant")
+            .await.with_system_prompt("You are a helpful assistant")
             .with_tools(tools)
             .with_temperature(0.5);
 
