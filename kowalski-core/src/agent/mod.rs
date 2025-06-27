@@ -174,7 +174,7 @@ impl Agent for BaseAgent {
             .map_err(|e| KowalskiError::Server(format!("Invalid UTF-8: {}", e)))?;
 
         let stream_response: StreamResponse =
-            serde_json::from_str(&text).map_err(|e| KowalskiError::Json(e))?;
+            serde_json::from_str(&text).map_err(KowalskiError::Json)?;
 
         if stream_response.done {
             return Ok(None);
@@ -196,4 +196,15 @@ impl Agent for BaseAgent {
     fn description(&self) -> &str {
         &self.description
     }
+}
+
+#[async_trait]
+pub trait MessageHandler: Send + Sync {
+    type Message;
+    type Error;
+
+    async fn handle_message(
+        &mut self,
+        message: Self::Message,
+    ) -> Result<(), Self::Error>;
 }
