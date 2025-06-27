@@ -2,6 +2,7 @@
 members = [
     "kowalski-core",
     "kowalski-agent-template",
+    "kowalski-tools",
     "kowalski-academic-agent",
     "kowalski-web-agent",
     "kowalski-code-agent",
@@ -15,7 +16,7 @@ authors = ["Your Name <your.email@example.com>"]
 license = "MIT"
 
 [workspace.dependencies]
-tokio = { version = "1.37", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", features = ["json", "stream"] }
 chrono = "0.4"
 serde = { version = "1.0", features = ["derive"] }
@@ -69,6 +70,7 @@ all = ["web", "academic", "code"]
 [dependencies]
 kowalski-core = { path = "kowalski-core" }
 kowalski-agent-template = { path = "kowalski-agent-template" }
+kowalski-tools = { path = "kowalski-tools" }
 kowalski-cli = { path = "kowalski-cli" }
 kowalski-web-agent = { path = "kowalski-web-agent", optional = true }
 kowalski-academic-agent = { path = "kowalski-academic-agent", optional = true }
@@ -79,28 +81,14 @@ futures = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+thiserror = { workspace = true }
+url = { workspace = true }
+chrono = { workspace = true }
+
+# Dependencies for config and dirs
 toml = "0.8"
 config = "0.15"
 dirs = "6.0"
-chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1.7", features = ["v4", "serde"] }
-pdf-extract = "0.8"
-scraper = "0.23"
-url = { workspace = true }
-fantoccini = "0.19"
-select = "0.6"
-duckduckgo_rs = "0.0.1"
-html2md = "0.2"
-cached = "0.55"
 regex = { workspace = true }
-quick-xml = "0.37"
-encoding_rs = "0.8"
-sled = "0.34"
-rusqlite = { version = "0.34", features = ["bundled"] }
-flate2 = "1.0"
-governor = "0.8"
-urlencoding = "2.1.0"
-log = { workspace = true }
-env_logger = { workspace = true }
-clap = { version = "4.5", features = ["derive"] }
-thiserror = { workspace = true }
