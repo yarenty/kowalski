@@ -25,7 +25,7 @@ impl WebAgent {
         let search_tool = SearchTool::new(web_config.search_provider.clone());
 
         let builder = GeneralTemplate::create_agent(
-            vec![Box::new(search_tool) as Box<dyn Tool>],
+            vec![Box::new(search_tool) as Box<dyn Tool + Send + Sync>],
             Some("You are a web research assistant specialized in finding and analyzing online information.".to_string()),
             Some(0.7),
         )

@@ -1,11 +1,9 @@
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
 use tracing::info;
 
-use kowalski_core::{Agent, BaseAgent, Config, Message, Role, ToolInput, ToolOutput};
-use crate::{FederationMessage, MessageType, FederationError};
+use kowalski_core::{Agent, BaseAgent };
+use crate::{FederationMessage, FederationError};
 use kowalski_core::agent::MessageHandler;
 
 /// Represents the role of an agent in the federation

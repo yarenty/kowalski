@@ -26,7 +26,7 @@ use serde_json::json;
 
 /// Creates a new code agent with the specified configuration
 pub async fn create_code_agent(config: Config) -> Result<TemplateAgent, KowalskiError> {
-    let mut template = TemplateAgent::new(config.clone())?;
+    let mut template = TemplateAgent::new(config.clone()).await?;
     let code_config = CodeAgentConfig::from(config);
 
     // Configure system prompt

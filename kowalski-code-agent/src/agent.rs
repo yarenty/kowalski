@@ -29,10 +29,10 @@ impl CodeAgent {
         let search_tool = CodeSearchTool::new(code_config.clone());
 
         let tools = vec![
-            Box::new(analysis_tool) as Box<dyn Tool>,
-            Box::new(refactoring_tool) as Box<dyn Tool>,
-            Box::new(documentation_tool) as Box<dyn Tool>,
-            Box::new(search_tool) as Box<dyn Tool>,
+            Box::new(analysis_tool) as Box<dyn Tool + Send + Sync>,
+            Box::new(refactoring_tool) as Box<dyn Tool + Send + Sync>,
+            Box::new(documentation_tool) as Box<dyn Tool + Send + Sync>,
+            Box::new(search_tool) as Box<dyn Tool + Send + Sync>,
         ];
 
         let builder = GeneralTemplate::create_agent(
