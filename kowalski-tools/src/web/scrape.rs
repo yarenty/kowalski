@@ -1,13 +1,20 @@
-use crate::tool::{Tool, ToolInput, ToolOutput, ToolParameter, ParameterType, ToolError};
 use async_trait::async_trait;
 use reqwest::Client;
 use scraper::{Html, Selector};
 use serde_json::json;
 use std::sync::Arc;
+use kowalski_core::tools::{Tool, ToolInput, ToolOutput};
+use kowalski_core::error::KowalskiError;
 
 pub struct WebScrapeTool {
     client: Arc<Client>,
 }
+
+impl Default for WebScrapeTool {
+       fn default() -> Self {
+           Self::new()
+       }
+ }
 
 impl WebScrapeTool {
     pub fn new() -> Self {
@@ -22,26 +29,26 @@ impl WebScrapeTool {
         selectors: &[String],
         follow_links: bool,
         max_depth: usize,
-    ) -> Result<Vec<serde_json::Value>, ToolError> {
+    ) -> Result<Vec<serde_json::Value>, String> {
         let response = self
             .client
             .get(url)
             .send()
             .await
-            .map_err(|e| ToolError::Network(e.to_string()))?;
+            .map_err(|e| format!("Failed to fetch URL {}: {}", url, e))?;
 
         if !response.status().is_success() {
-            return Err(ToolError::Network(format!(
+            return Err(format!(
                 "Failed to fetch URL {}: {}",
                 url,
                 response.status()
-            )));
+            ));
         }
 
         let body = response
             .text()
             .await
-            .map_err(|e| ToolError::Network(e.to_string()))?;
+            .map_err(|e| format!("Failed to read response body: {}", e))?;
 
         let mut results = Self::extract_from_html(&body, selectors);
 
@@ -82,10 +89,10 @@ impl WebScrapeTool {
         results
     }
 
-    fn extract_links(body: &str, base_url: &str) -> Result<Vec<String>, ToolError> {
+    fn extract_links(body: &str, base_url: &str) -> Result<Vec<String>, String> {
         let document = Html::parse_document(body);
         let link_selector = Selector::parse("a[href]")
-            .map_err(|e| ToolError::InvalidInput(format!("Failed to create link selector: {}", e)))?;
+            .map_err(|e| format!("Failed to create link selector: {}", e))?;
         let links = document
             .select(&link_selector)
             .filter_map(|element| {
@@ -103,87 +110,17 @@ impl WebScrapeTool {
 
 #[async_trait]
 impl Tool for WebScrapeTool {
+    async fn execute(&mut self, _input: ToolInput) -> Result<ToolOutput, KowalskiError> {
+        // ... implement or stub ...
+        Err(KowalskiError::ToolExecution("Not implemented".to_string()))
+    }
     fn name(&self) -> &str {
         "web_scrape"
     }
-
     fn description(&self) -> &str {
-        "Scrapes content from web pages using CSS selectors"
+        "Scrapes web pages for content using CSS selectors."
     }
-
-    fn parameters(&self) -> Vec<ToolParameter> {
-        vec![
-            ToolParameter {
-                name: "url".to_string(),
-                description: "URL to scrape".to_string(),
-                required: true,
-                default_value: None,
-                parameter_type: ParameterType::String,
-            },
-            ToolParameter {
-                name: "selectors".to_string(),
-                description: "CSS selectors to extract content from".to_string(),
-                required: true,
-                default_value: None,
-                parameter_type: ParameterType::Array,
-            },
-            ToolParameter {
-                name: "follow_links".to_string(),
-                description: "Whether to follow links to other pages".to_string(),
-                required: false,
-                default_value: Some("false".to_string()),
-                parameter_type: ParameterType::Boolean,
-            },
-            ToolParameter {
-                name: "max_depth".to_string(),
-                description: "Maximum depth to follow links".to_string(),
-                required: false,
-                default_value: Some("2".to_string()),
-                parameter_type: ParameterType::Number,
-            },
-        ]
-    }
-
-    async fn execute(&self, input: ToolInput) -> Result<ToolOutput, ToolError> {
-        let params = input.parameters.as_object().ok_or_else(|| {
-            ToolError::InvalidInput("Input parameters must be a JSON object".to_string())
-        })?;
-
-        let url = params
-            .get("url")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolError::InvalidInput("Missing required parameter: url".to_string()))?
-            .to_string();
-
-        let selectors = params
-            .get("selectors")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| ToolError::InvalidInput("Missing required parameter: selectors".to_string()))?
-            .iter()
-            .filter_map(|v| v.as_str().map(|s| s.to_string()))
-            .collect::<Vec<_>>();
-
-        let follow_links = params
-            .get("follow_links")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        let max_depth = params
-            .get("max_depth")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(2) as usize;
-
-        let result = self.scrape_page(&url, &selectors, follow_links, max_depth).await?;
-
-        Ok(ToolOutput {
-            result: serde_json::Value::Array(result),
-            metadata: Some(json!({
-                "timestamp": chrono::Utc::now().to_rfc3339(),
-                "url": url,
-                "selectors": selectors,
-                "follow_links": follow_links,
-                "max_depth": max_depth,
-            })),
-        })
+    fn parameters(&self) -> Vec<kowalski_core::tools::ToolParameter> {
+        vec![]
     }
 }

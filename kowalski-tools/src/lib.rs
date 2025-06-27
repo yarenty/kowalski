@@ -2,7 +2,7 @@ pub mod tool;
 pub mod web;
 pub mod document;
 
-pub use tool::{Tool, ToolInput, ToolOutput, ToolParameter, ToolError};
+pub use kowalski_core::tools::{Tool, ToolInput, ToolOutput, ToolParameter};
 
 /// Common types and utilities used across tools
 pub mod types {

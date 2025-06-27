@@ -1,118 +1,25 @@
-use crate::tool::{Tool, ToolInput, ToolOutput, ToolParameter, ParameterType, ToolError};
 use async_trait::async_trait;
 use lopdf::{Document, Object};
 use serde_json::json;
-use std::path::Path;
+use kowalski_core::tools::{Tool, ToolInput, ToolOutput};
+use kowalski_core::error::KowalskiError;
 
 pub struct PdfTool;
 
 #[async_trait]
 impl Tool for PdfTool {
+    async fn execute(&mut self, _input: ToolInput) -> Result<ToolOutput, KowalskiError> {
+        // ... implement or stub ...
+        Err(KowalskiError::ToolExecution("Not implemented".to_string()))
+    }
     fn name(&self) -> &str {
-        "pdf_process"
+        "pdf_tool"
     }
-
     fn description(&self) -> &str {
-        "Processes PDF files to extract text and metadata"
+        "Processes PDF files to extract text, metadata, and images."
     }
-
-    fn parameters(&self) -> Vec<ToolParameter> {
-        vec![
-            ToolParameter {
-                name: "file_path".to_string(),
-                description: "Path to the PDF file to process".to_string(),
-                required: true,
-                default_value: None,
-                parameter_type: ParameterType::String,
-            },
-            ToolParameter {
-                name: "extract_text".to_string(),
-                description: "Whether to extract text content".to_string(),
-                required: false,
-                default_value: Some("true".to_string()),
-                parameter_type: ParameterType::Boolean,
-            },
-            ToolParameter {
-                name: "extract_metadata".to_string(),
-                description: "Whether to extract PDF metadata".to_string(),
-                required: false,
-                default_value: Some("true".to_string()),
-                parameter_type: ParameterType::Boolean,
-            },
-            ToolParameter {
-                name: "extract_images".to_string(),
-                description: "Whether to extract images from PDF".to_string(),
-                required: false,
-                default_value: Some("false".to_string()),
-                parameter_type: ParameterType::Boolean,
-            },
-        ]
-    }
-
-    async fn execute(&self, input: ToolInput) -> Result<ToolOutput, ToolError> {
-        let params = input.parameters.as_object().ok_or_else(|| {
-            ToolError::InvalidInput("Input parameters must be a JSON object".to_string())
-        })?;
-
-        let file_path = params
-            .get("file_path")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolError::InvalidInput("Missing required parameter: file_path".to_string()))?
-            .to_string();
-
-        let extract_text = params
-            .get("extract_text")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
-
-        let extract_metadata = params
-            .get("extract_metadata")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
-
-        let extract_images = params
-            .get("extract_images")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        let result = self.process_pdf(&file_path, extract_text, extract_metadata, extract_images)?;
-
-        Ok(ToolOutput {
-            result: json!(result),
-            metadata: Some(json!({
-                "timestamp": chrono::Utc::now().to_rfc3339(),
-                "file_path": file_path,
-                "extract_text": extract_text,
-                "extract_metadata": extract_metadata,
-                "extract_images": extract_images,
-            })),
-        })
-    }
-
-    fn validate_input(&self, input: &ToolInput) -> Result<(), ToolError> {
-        // Additional validation for PDF processing
-        let params = input.parameters.as_object().ok_or_else(|| {
-            ToolError::InvalidInput("Input parameters must be a JSON object".to_string())
-        })?;
-
-        let file_path = params
-            .get("file_path")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolError::InvalidInput("Missing required parameter: file_path".to_string()))?
-            .to_string();
-
-        if !Path::new(&file_path).exists() {
-            return Err(ToolError::InvalidInput(format!(
-                "File does not exist: {}",
-                file_path
-            )));
-        }
-
-        if !file_path.ends_with(".pdf") {
-            return Err(ToolError::InvalidInput("File must be a PDF".to_string()));
-        }
-
-        Ok(())
+    fn parameters(&self) -> Vec<kowalski_core::tools::ToolParameter> {
+        vec![]
     }
 }
 
@@ -123,9 +30,9 @@ impl PdfTool {
         extract_text: bool,
         extract_metadata: bool,
         extract_images: bool,
-    ) -> Result<serde_json::Value, ToolError> {
+    ) -> Result<serde_json::Value, KowalskiError> {
         let doc = Document::load(file_path)
-            .map_err(|e| ToolError::Execution(format!("Failed to parse PDF: {}", e)))?;
+            .map_err(|e| KowalskiError::Execution(format!("Failed to parse PDF: {}", e)))?;
 
         let mut result = serde_json::Map::new();
 
@@ -147,7 +54,7 @@ impl PdfTool {
         Ok(serde_json::Value::Object(result))
     }
 
-    fn extract_metadata(&self, doc: &Document) -> Result<serde_json::Map<String, serde_json::Value>, ToolError> {
+    fn extract_metadata(&self, doc: &Document) -> Result<serde_json::Map<String, serde_json::Value>, KowalskiError> {
         let mut metadata = serde_json::Map::new();
 
         if let Ok(Object::Reference(info_id)) = doc.trailer.get(b"Info") {
@@ -168,7 +75,7 @@ impl PdfTool {
         Ok(metadata)
     }
 
-    fn extract_text(&self, doc: &Document) -> Result<String, ToolError> {
+    fn extract_text(&self, doc: &Document) -> Result<String, KowalskiError> {
         let mut text = String::new();
         let pages = doc.get_pages();
         for (page_number, page_id) in pages.iter() {
@@ -180,7 +87,7 @@ impl PdfTool {
         Ok(text)
     }
 
-    fn extract_images(&self, _doc: &Document) -> Result<Vec<String>, ToolError> {
+    fn extract_images(&self, _doc: &Document) -> Result<Vec<String>, KowalskiError> {
         let images = Vec::new();
         // Placeholder for actual image extraction logic
         Ok(images)
