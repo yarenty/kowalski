@@ -1,8 +1,28 @@
 # Data Agent
 
+Location: kowalski-data-agent/examples/csv_analysis.rs
+
+Features:
+- Demonstrates CSV processing with sample employee data
+- Shows statistical analysis results
+- Interactive AI analysis with role-based prompts
+- Follow-up questions for deeper insights
+- Proper error handling and streaming response processing
+
+The CSV tool can be easily extended to support other data formats or additional analysis features.
 
 
 # Output of csv_analysis exmaple
+
+The example successfully:
+- Processes CSV data with 10 employee records
+- Generates statistical summaries (age, salary, department analysis)
+- Provides AI-powered insights about the data
+- Handles follow-up questions about salary distribution
+- Shows proper tool integration and streaming responses
+
+
+
 Running `/opt/ml/kowalski/target/debug/examples/csv_analysis`
 
 -----

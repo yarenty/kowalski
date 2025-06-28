@@ -1,261 +1,274 @@
-# Kowalski Code Agent
+# Kowalski Tools
 
+A comprehensive toolkit for the Kowalski AI agent framework, providing specialized tools for data processing, code analysis, web scraping, document processing, and more.
 
-# Output of java_analysis
+## Description
 
------
+Kowalski Tools is a modular collection of specialized tools designed to extend the capabilities of the Kowalski AI agent framework. Each tool implements the `Tool` trait from `kowalski-core` and provides domain-specific functionality for various data processing and analysis tasks.
 
-     Running `/opt/ml/kowalski/target/debug/examples/java_analysis`
-☕ Starting Java Code Analysis...
-Code Agent Conversation ID: 67677c04-2d1a-49e8-8b6d-8c18f7f180d9
+## Dependencies
 
-📝 Java Code to Analyze:
+### Core Dependencies
+- **serde** (1.0) - Serialization/deserialization with derive features
+- **serde_json** (1.0) - JSON serialization/deserialization
+- **thiserror** (2.0) - Error handling utilities
+- **anyhow** (1.0) - Error propagation utilities
+- **async-trait** - Async trait support
+- **tracing** - Logging and diagnostics
+- **tokio** (1.32) - Async runtime with full features
+- **chrono** - Date and time utilities
+- **url** - URL parsing and manipulation
 
-import java.util.*;
+### Tool-Specific Dependencies
+- **reqwest** (0.12) - HTTP client for web tools
+- **scraper** (0.23) - HTML parsing and CSS selector support
+- **lopdf** (0.36) - PDF processing library
+- **csv** (1.1) - CSV parsing and processing
 
-public class Calculator {
-    private int result;
-    
-    public Calculator() {
-        this.result = 0;
-    }
-    
-    public int add(int a, int b) {
-        result = a + b;
-        return result;
-    }
-    
-    public int subtract(int a, int b) {
-        result = a - b;
-        return result;
-    }
-    
-    public int multiply(int a, int b) {
-        result = a * b;
-        return result;
-    }
-    
-    public double divide(int a, int b) {
-        if (b == 0) {
-            System.out.println("Error: Division by zero");
-            return 0;
-        }
-        result = a / b;
-        return (double) result;
-    }
-    
-    public static void main(String[] args) {
-        Calculator calc = new Calculator();
-        System.out.println("Addition: " + calc.add(10, 5));
-        System.out.println("Subtraction: " + calc.subtract(10, 5));
-        System.out.println("Multiplication: " + calc.multiply(10, 5));
-        System.out.println("Division: " + calc.divide(10, 5));
-    }
-}
+### Development Dependencies
+- **mockall** (0.13) - Mocking framework for testing
+- **wiremock** (0.6.0-rc.3) - HTTP mocking for integration tests
 
+## Features
 
-📊 Java Analysis Results:
-Language: java
-Metrics: {
-  "characters": 1008,
-  "classes": 1,
-  "comments": 0,
-  "complexity": {
-    "cyclomatic_complexity": 2,
-    "for_loops": 0,
-    "if_statements": 1,
-    "level": "Low",
-    "switch_statements": 0,
-    "while_loops": 0
-  },
-  "imports": 1,
-  "lines": 42,
-  "methods": 8,
-  "words": 122
-}
-Suggestions: ["Consider using a proper logging framework instead of System.out.println", "Main method found - ensure proper exception handling"]
-Issues: []
+The module supports optional features that can be enabled:
+- `web` - Web scraping and search functionality
+- `pdf` - PDF document processing
+- `data` - CSV and data analysis tools
+- `code` - Code analysis tools
 
-🤖 AI Analysis:
-**Code Analysis and Recommendations**
+## Architecture
 
-The provided Java code implements a basic calculator class with methods for addition, subtraction, multiplication, and division. The analysis highlights several areas for improvement.
-
-### Code Quality and Best Practices
-
-1. **Naming Conventions**: While the variable names `result` and `a`, `b` are concise, they do not follow standard Java naming conventions (e.g., using camelCase instead of underscore notation). Consider renaming them to `calculateResult` and `num1`, respectively.
-2. **Method Signatures**: The methods have unclear return types for division (`double` or `int`). To avoid ambiguity, use a more explicit return type, such as `double` in the case of division by zero handling.
-3. **Exception Handling**: Although we've handled division by zero explicitly, consider throwing an exception instead of printing an error message and returning 0. This approach is more robust and allows for better error handling.
-
-### Code Improvements
-
-1. **Extracting Methods**: Consider extracting separate methods for handling division by zero errors, calculating results in a loop, or performing input validation.
-2. **Input Validation**: Add checks to ensure the inputs are valid (e.g., numbers only) before performing calculations.
-3. **Code Organization**: Consider separating the calculator logic from the main method into its own class or module.
-
-### Code Refactoring
-
-Here's an updated version of the code incorporating these recommendations:
-
-```java
-import java.util.InputMismatchException;
-import java.util.Scanner;
-
-public class Calculator {
-    private double result;
-
-    public Calculator() {}
-
-    public int add(int a, int b) {
-        return (int) calculateResult(a, b);
-    }
-
-    public int subtract(int a, int b) {
-        return (int) calculateResult(a, -b);
-    }
-
-    public int multiply(int a, int b) {
-        return (int) calculateResult(a, 1 * b); // Use implicit multiplication
-    }
-
-    private double calculateResult(int num1, int num2) {
-        if (num2 == 0) {
-            throw new ArithmeticException("Division by zero");
-        }
-        return (double) num1 / num2;
-    }
-
-    public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
-        System.out.println("Enter numbers:");
-        int num1 = getValidNumber(scanner, "First number: ");
-        int num2 = getValidNumber(scanner, "Second number: ");
-
-        Calculator calc = new Calculator();
-        System.out.println("Addition: " + calc.add(num1, num2));
-        System.out.println("Subtraction: " + calc.subtract(num1, num2));
-        System.out.println("Multiplication: " + calc.multiply(num1, num2));
-    }
-
-    private static int getValidNumber(Scanner scanner, String prompt) {
-        while (true) {
-            try {
-                System.out.print(prompt);
-                return scanner.nextInt();
-            } catch (InputMismatchException e) {
-                System.out.println("Invalid input. Please enter a number.");
-                scanner.next(); // Consume invalid input
-            }
-        }
-    }
-}
+### Core Structure
+```kowalski-tools/
+├── src/
+│   ├── lib.rs          # Main library entry point
+│   ├── tool.rs         # Tool manager and utilities
+│   ├── data.rs         # CSV and data processing tools
+│   ├── code.rs         # Code analysis tools
+│   ├── web/            # Web-related tools
+│   │   ├── mod.rs
+│   │   ├── search.rs   # Web search functionality
+│   │   └── scrape.rs   # Web scraping functionality
+│   └── document/       # Document processing tools
+│       ├── mod.rs
+│       └── pdf.rs      # PDF processing
 ```
 
-This refactored code includes:
+### Design Patterns
+- **Trait-based Architecture**: All tools implement the `Tool` trait from `kowalski-core`
+- **Async Support**: Tools are designed for async execution using `async-trait`
+- **Error Handling**: Comprehensive error handling using `KowalskiError` types
+- **Parameter Validation**: Built-in parameter validation and type checking
+- **Metadata Support**: Tools provide execution metadata for debugging and logging
 
-* Improved variable names and method signatures
-* Exception handling for division by zero errors
-* Input validation using `Scanner` to ensure numbers are entered correctly
-* Extracted methods for better organization and reusability
+### Tool Manager
+The `ToolManager` provides centralized tool registration and execution:
+- Tool registration and discovery
+- Parameter validation
+- Async execution handling
+- Tool listing and metadata
 
-These changes enhance the overall quality of the code, making it more robust, maintainable, and efficient.
-✅ Analysis complete!
+## Tools
 
+### CSV Tool
+**Location**: `src/data.rs`  
+**Tool Name**: `csv_tool`
 
-🔍 Follow-up Analysis:
-Based on the provided Java code, here are some specific improvements that can be made:
+A comprehensive CSV processing and analysis tool with statistical capabilities.
 
-1. **Extract a separate class for Calculator Operations**: The current `Calculator` class has multiple methods (addition, subtraction, multiplication, division) that perform similar operations. Consider extracting each operation into its own separate method or even better, create a new class `Operation` with different implementations for each operation.
+**Features**:
+- Proper CSV parsing with error handling
+- Statistical analysis (min, max, average, sum for numeric columns)
+- Text analysis (unique counts, most common values)
+- Configurable limits (max_rows, max_columns)
+- Two task types: `process_csv` and `analyze_csv`
 
-```java
-public enum Operation {
-    ADDITION,
-    SUBTRACTION,
-    Multiplication,
-    DIVISION
-}
+**Parameters**:
+- `content` (required): CSV content to process
+- `max_rows` (optional): Maximum number of rows to process
+- `max_columns` (optional): Maximum number of columns to process
 
-// In the Calculator class
-private Operation operation;
+**Output**: JSON with headers, records, and statistical summary
 
-public void setOperation(Operation operation) {
-    this.operation = operation;
-}
+### Code Analysis Tools
+**Location**: `src/code.rs`
 
-// Then in the main method
-Calculator calc = new Calculator();
-calc.setOperation(Operation.ADDITION);
-System.out.println("Addition: " + calc.calculate(10, 5));
+#### Java Analysis Tool
+**Tool Name**: `java_analysis`
+
+Comprehensive Java code analysis with metrics and quality suggestions.
+
+**Features**:
+- Code metrics (lines, characters, words, classes, methods, imports)
+- Cyclomatic complexity calculation
+- Code quality suggestions
+- Basic syntax validation
+- Complexity level assessment (Low/Medium/High)
+
+**Parameters**:
+- `content` (required): Java code to analyze
+
+**Output**: JSON with metrics, complexity analysis, suggestions, and syntax errors
+
+#### Python Analysis Tool
+**Tool Name**: `python_analysis`
+
+Python-specific code analysis with PEP 8 compliance checking.
+
+**Features**:
+- Python-specific metrics and analysis
+- PEP 8 style guide compliance checking
+- Function and class detection
+- Import analysis
+- Code quality suggestions
+
+**Parameters**:
+- `content` (required): Python code to analyze
+
+**Output**: JSON with Python-specific metrics, PEP 8 violations, and suggestions
+
+#### Rust Analysis Tool
+**Tool Name**: `rust_analysis`
+
+Rust code analysis with safety and performance considerations.
+
+**Features**:
+- Rust-specific syntax and safety analysis
+- Ownership and borrowing pattern detection
+- Performance optimization suggestions
+- Error handling analysis
+- Cargo.toml dependency analysis
+
+**Parameters**:
+- `content` (required): Rust code to analyze
+
+**Output**: JSON with Rust-specific analysis, safety checks, and optimization suggestions
+
+### Web Tools
+**Location**: `src/web/`
+
+#### Web Search Tool
+**Tool Name**: `web_search`
+
+Performs web searches using multiple search providers.
+
+**Features**:
+- Multiple search provider support (DuckDuckGo, Serper)
+- Configurable result count
+- Provider selection via parameters
+- Environment-based API key configuration
+
+**Parameters**:
+- `query` (required): Search query string
+- `num_results` (optional): Number of results (default: 3)
+- `provider` (optional): Search provider (default: duckduckgo)
+
+**Output**: JSON with search results and metadata
+
+#### Web Scrape Tool
+**Tool Name**: `web_scrape`
+
+Scrapes web pages using CSS selectors with recursive link following.
+
+**Features**:
+- CSS selector-based content extraction
+- Recursive link following with depth control
+- HTML and text content extraction
+- Error handling for network issues
+- Configurable scraping depth
+
+**Parameters**:
+- `url` (required): URL to scrape
+- `selectors` (required): Array of CSS selectors
+- `follow_links` (optional): Follow links recursively (default: false)
+- `max_depth` (optional): Maximum recursion depth (default: 1)
+
+**Output**: JSON array of extracted content with metadata
+
+### Document Tools
+**Location**: `src/document/`
+
+#### PDF Tool
+**Tool Name**: `pdf_tool`
+
+Comprehensive PDF processing with text, metadata, and image extraction.
+
+**Features**:
+- Text extraction from PDF pages
+- Metadata extraction (title, author, creation date, etc.)
+- Image extraction capabilities
+- PDF structure analysis
+- Error handling for corrupted files
+
+**Parameters**:
+- `file_path` (required): Path to PDF file
+- `extract_text` (optional): Extract text content (default: true)
+- `extract_metadata` (optional): Extract metadata (default: false)
+- `extract_images` (optional): Extract images (default: false)
+
+**Output**: JSON with extracted content based on selected options
+
+## Usage Examples
+
+### Basic Tool Usage
+```rust
+use kowalski_tools::{CsvTool, ToolManager};
+
+let mut manager = ToolManager::new();
+let csv_tool = CsvTool::new(1000, 50);
+manager.register_tool(csv_tool);
+
+// Execute CSV analysis
+let input = ToolInput {
+    task_type: "analyze_csv".to_string(),
+    content: csv_content,
+    parameters: HashMap::new(),
+};
+
+let result = manager.execute_tool("csv_tool", input).await?;
 ```
 
-2. **Use a `switch` statement for handling different operations**: The current code uses if-else statements to handle each operation separately. This can be improved by using a `switch` statement which is more efficient and concise.
+### Web Search Example
+```rust
+use kowalski_tools::web::WebSearchTool;
 
-```java
-public int calculate(int num1, int num2) {
-    switch (operation) {
-        case ADDITION:
-            return num1 + num2;
-        case SUBTRACTION:
-            return num1 - num2;
-        case Multiplication:
-            return num1 * num2;
-        case DIVISION:
-            if (num2 == 0) {
-                throw new ArithmeticException("Division by zero");
-            }
-            return (int) num1 / num2;
-    }
-}
+let search_tool = WebSearchTool::new("duckduckgo".to_string());
+let input = ToolInput {
+    task_type: "search".to_string(),
+    content: "".to_string(),
+    parameters: {
+        let mut params = HashMap::new();
+        params.insert("query".to_string(), json!("Rust programming"));
+        params.insert("num_results".to_string(), json!(5));
+        params
+    },
+};
+
+let result = search_tool.execute(input).await?;
 ```
 
-3. **Use a more robust method for handling division by zero**: Instead of throwing an exception, consider returning a special value (e.g., `Double.NaN`) to indicate division by zero.
+## Error Handling
 
-```java
-public int calculate(int num1, int num2) {
-    if (num2 == 0) {
-        return Double.NaN;
-    }
-    return (int) num1 / num2;
-}
-```
+All tools use the `KowalskiError` type for consistent error handling:
+- `ToolExecution` - Errors during tool execution
+- `ToolConfig` - Configuration errors
+- `ContentProcessing` - Data processing errors
+- `Execution` - General execution errors
 
-4. **Use a consistent naming convention**: The code uses both camelCase and underscore notation for variable names. Choose one convention throughout the codebase.
+## Testing
 
-5. **Add input validation**: Currently, the code does not validate user input. Consider adding checks to ensure that users enter valid numbers.
+The module includes comprehensive tests for each tool:
+- Unit tests for individual tool functionality
+- Integration tests for tool interactions
+- Mock-based testing for external dependencies
+- HTTP mocking for web tool testing
 
-```java
-public static void main(String[] args) {
-    Scanner scanner = new Scanner(System.in);
-    System.out.println("Enter two numbers:");
-    int num1 = getValidNumber(scanner, "First number: ");
-    int num2 = getValidNumber(scanner, "Second number: ");
+## Future Enhancements
 
-    Calculator calc = new Calculator();
-    System.out.println("Addition: " + calc.calculate(num1, num2));
-}
-```
-
-6. **Use a more robust way to handle exceptions**: Instead of catching the `InputMismatchException`, consider using a more general exception handler (e.g., `try-catch` block with multiple catches).
-
-```java
-public static void main(String[] args) {
-    try {
-        Scanner scanner = new Scanner(System.in);
-        System.out.println("Enter two numbers:");
-        int num1 = scanner.nextInt();
-        int num2 = scanner.nextInt();
-
-        Calculator calc = new Calculator();
-        System.out.println("Addition: " + calc.calculate(num1, num2));
-    } catch (Exception e) {
-        System.err.println("Error: " + e.getMessage());
-    }
-}
-```
-
-These improvements can enhance the code's maintainability, readability, and robustness.
-
-
-
-
------
+- Additional code analysis tools for more languages
+- Enhanced PDF processing with OCR capabilities
+- Database connectivity tools
+- Machine learning model integration
+- Real-time data streaming tools
+- Advanced web scraping with JavaScript rendering
