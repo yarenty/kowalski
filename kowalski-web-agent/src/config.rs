@@ -20,7 +20,7 @@ impl std::fmt::Display for SearchProvider {
 }
 
 /// Web agent configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WebAgentConfig {
     /// Core configuration
     core: CoreConfig,
@@ -30,15 +30,6 @@ pub struct WebAgentConfig {
     pub scraping: ScrapingConfig,
 }
 
-impl Default for WebAgentConfig {
-    fn default() -> Self {
-        Self {
-            core: CoreConfig::default(),
-            search: SearchConfig::default(),
-            scraping: ScrapingConfig::default(),
-        }
-    }
-}
 
 impl ConfigExt for WebAgentConfig {
     fn core(&self) -> &CoreConfig {

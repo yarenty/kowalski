@@ -446,7 +446,7 @@ Remember: Use tools proactively to provide accurate, up-to-date information!"#.t
         println!("[DEBUG] Raw tool output: {}", &results_val);
         println!(
             "[DEBUG] Output type: {:?}",
-            std::any::type_name_of_val(&*results_val)
+            std::any::type_name_of_val(results_val)
         );
 
         // DuckDuckGo-specific parsing
