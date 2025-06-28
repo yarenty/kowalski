@@ -9,8 +9,6 @@ repository = "https://github.com/yarenty/kowalski"
 homepage = "https://github.com/yarenty/kowalski"
 readme = "README.md"
 categories = [
-    "api-bindings",
-    "asynchronous",
     "network-programming",
     "text-processing",
     "ai",
