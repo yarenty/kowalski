@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Academic agent configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AcademicAgentConfig {
     /// Core configuration
     core: CoreConfig,
@@ -13,15 +13,6 @@ pub struct AcademicAgentConfig {
     pub parsing: PaperParsingConfig,
 }
 
-impl Default for AcademicAgentConfig {
-    fn default() -> Self {
-        Self {
-            core: CoreConfig::default(),
-            search: AcademicSearchConfig::default(),
-            parsing: PaperParsingConfig::default(),
-        }
-    }
-}
 
 impl From<CoreConfig> for AcademicAgentConfig {
     fn from(config: CoreConfig) -> Self {
