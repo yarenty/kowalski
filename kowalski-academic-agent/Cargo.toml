@@ -30,6 +30,7 @@ url = { workspace = true }
 regex = { workspace = true }
 markdown = { workspace = true }
 env_logger = { workspace = true }
+kowalski-tools = { path = "../kowalski-tools" }
 
 [[example]]
 name = "research_paper_analysis"
