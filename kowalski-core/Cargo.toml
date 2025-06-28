@@ -11,9 +11,7 @@ readme = "README.md"
 categories = [
     "network-programming",
     "text-processing",
-    "ai",
-    "machine-learning",
-    "concurrency"
+    "science",
 ]
 keywords = [
     "AI",
