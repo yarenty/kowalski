@@ -116,7 +116,7 @@ impl Tool for WebSearchTool {
         let query = params
             .get("query")
             .and_then(|v| v.as_str())
-            .unwrap_or_else(|| input.content.as_str());
+            .unwrap_or(input.content.as_str());
         if query.is_empty() {
             return Err(KowalskiError::ToolExecution(
                 "Missing 'query' parameter or content".to_string(),

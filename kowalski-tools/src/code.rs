@@ -7,6 +7,12 @@ use std::collections::HashMap;
 /// A tool for analyzing Java code
 pub struct JavaAnalysisTool;
 
+impl Default for JavaAnalysisTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl JavaAnalysisTool {
     pub fn new() -> Self {
         Self
@@ -206,6 +212,12 @@ impl Tool for JavaAnalysisTool {
 /// A tool for analyzing Python code
 pub struct PythonAnalysisTool;
 
+impl Default for PythonAnalysisTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PythonAnalysisTool {
     pub fn new() -> Self {
         Self
@@ -392,6 +404,12 @@ impl Tool for PythonAnalysisTool {
 
 /// A tool for analyzing Rust code
 pub struct RustAnalysisTool;
+
+impl Default for RustAnalysisTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl RustAnalysisTool {
     pub fn new() -> Self {
