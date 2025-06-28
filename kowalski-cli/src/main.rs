@@ -248,7 +248,7 @@ async fn chat_with_web_agent_tools(
             }
         }
     }
-    println!("");
+    println!();
     agent.add_message(conv_id, "assistant", input).await;
     Ok(())
 }
@@ -278,7 +278,7 @@ async fn use_regular_chat(
             }
         }
     }
-    println!("");
+    println!();
     agent.add_message(conv_id, "assistant", input).await;
     Ok(())
 }
