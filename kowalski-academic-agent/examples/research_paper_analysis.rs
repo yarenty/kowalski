@@ -1,7 +1,8 @@
 use env_logger;
-use kowalski_academic_agent::{agent::AcademicAgent, config::Config};
+use kowalski_academic_agent::agent::AcademicAgent;
 use kowalski_core::{
     agent::Agent,
+    config::Config,
     role::{Audience, Preset, Role},
 };
 use std::io::{self, Write};
@@ -12,16 +13,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     // Load configuration
-    let config = Config::load()?;
-    let mut academic_agent = AcademicAgent::new(config)?;
+    let config = Config::default();
+    let mut academic_agent = AcademicAgent::new(config).await?;
 
     // Process a research paper
     println!("📚 Processing research paper...");
-    let conversation_id = academic_agent.start_conversation(&config.ollama.model);
+    let conversation_id = academic_agent.start_conversation("llama3.2");
     println!("Academic Agent Conversation ID: {}", conversation_id);
 
     // Set up the role for scientific paper analysis
-    let role = Role::translator(Some(Audience::Scientist), Some(Preset::Questions));
+    let role = Role::new(
+        "Academic Research Assistant",
+        "You are an expert at analyzing academic papers and research.",
+    )
+    .with_audience(Audience::new(
+        "Scientist",
+        "You are speaking to a scientist who needs detailed analysis.",
+    ))
+    .with_preset(Preset::new(
+        "Questions",
+        "Ask clarifying questions to better understand the research.",
+    ));
 
     // Example paper path - replace with your PDF path
     let paper_path = "path/to/your/paper.pdf";
@@ -52,8 +64,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Some(tool_calls) = &message.tool_calls {
                     for tool_call in tool_calls {
                         print!("\n[Tool Call] {}(", tool_call.function.name);
-                        for (key, value) in &tool_call.function.arguments {
-                            print!("{}: {}, ", key, value);
+                        if let Some(obj) = tool_call.function.arguments.as_object() {
+                            for (key, value) in obj {
+                                print!("{}: {}, ", key, value);
+                            }
                         }
                         println!(")");
                         io::stdout().flush()?;
@@ -102,8 +116,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Some(tool_calls) = &message.tool_calls {
                     for tool_call in tool_calls {
                         print!("\n[Tool Call] {}(", tool_call.function.name);
-                        for (key, value) in &tool_call.function.arguments {
-                            print!("{}: {}, ", key, value);
+                        if let Some(obj) = tool_call.function.arguments.as_object() {
+                            for (key, value) in obj {
+                                print!("{}: {}, ", key, value);
+                            }
                         }
                         println!(")");
                         io::stdout().flush()?;
