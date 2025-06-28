@@ -14,9 +14,12 @@ kowalski-core = { path = "../kowalski-core" }
 kowalski-agent-template = { path = "../kowalski-agent-template" }
 kowalski-tools = { path = "../kowalski-tools" }
 kowalski-federation = { path = "../kowalski-federation" }
-kowalski-academic-agent = { path = "../kowalski-academic-agent", optional = true }
+kowalski-academic-agent = { path = "../kowalski-academic-agent" }
 kowalski-data-agent = { path = "../kowalski-data-agent", optional = true }
-clap = "4.5"
+kowalski-code-agent = { path = "../kowalski-code-agent" }
+kowalski-web-agent = { path = "../kowalski-web-agent" }
+chrono = "0.4"
+clap = { version = "4.5", features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
