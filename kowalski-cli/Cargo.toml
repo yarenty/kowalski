@@ -7,14 +7,14 @@ license = {workspace = true}
 readme = "README.md"
 
 [dependencies]
-kowalski-core = { path = "../kowalski-core" }
-kowalski-agent-template = { path = "../kowalski-agent-template" }
-kowalski-tools = { path = "../kowalski-tools" }
-kowalski-federation = { path = "../kowalski-federation" }
-kowalski-academic-agent = { path = "../kowalski-academic-agent" }
-kowalski-data-agent = { path = "../kowalski-data-agent", optional = true }
-kowalski-code-agent = { path = "../kowalski-code-agent" }
-kowalski-web-agent = { path = "../kowalski-web-agent" }
+kowalski-core = { path = "../kowalski-core", version = "0.5.0" }
+kowalski-agent-template = { path = "../kowalski-agent-template", version = "0.5.0" }
+kowalski-tools = { path = "../kowalski-tools", version = "0.5.0" }
+kowalski-federation = { path = "../kowalski-federation", version = "0.5.0" }
+kowalski-academic-agent = { path = "../kowalski-academic-agent", version = "0.5.0" }
+kowalski-data-agent = { path = "../kowalski-data-agent", version = "0.5.0", optional = true }
+kowalski-code-agent = { path = "../kowalski-code-agent", version = "0.5.0" }
+kowalski-web-agent = { path = "../kowalski-web-agent", version = "0.5.0" }
 chrono = "0.4"
 clap = { version = "4.5", features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }

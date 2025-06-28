@@ -20,7 +20,7 @@ tracing = { workspace = true }
 tokio = { workspace = true }
 chrono = { workspace = true }
 url = { workspace = true }
-kowalski-core = { path = "../kowalski-core" }
+kowalski-core = { path = "../kowalski-core", version = "0.5.0" }
 
 [dev-dependencies]
 mockall = "0.13"

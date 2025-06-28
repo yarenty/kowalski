@@ -23,8 +23,8 @@ keywords = [
 
 
 [dependencies]
-kowalski-core = { path = "../kowalski-core" }
-kowalski-tools = { path = "../kowalski-tools" }
+kowalski-core = { path = "../kowalski-core", version = "0.5.0" }
+kowalski-tools = { path = "../kowalski-tools", version = "0.5.0" }
 tokio = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
