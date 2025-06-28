@@ -12,6 +12,7 @@ readme = "README.md"
 [dependencies]
 kowalski-core = { path = "../kowalski-core" }
 kowalski-agent-template = { path = "../kowalski-agent-template" }
+kowalski-tools = { path = "../kowalski-tools" }
 tokio = { workspace = true }
 reqwest = { workspace = true }
 chrono = { workspace = true }
@@ -31,69 +32,18 @@ regex = { workspace = true }
 markdown = { workspace = true }
 env_logger = { workspace = true }
 
-[features]
-default = []
-all-languages = ["rust", "python", "javascript", "typescript", "java", "cpp", "go", "ruby", "php", "c-sharp", "scala"]
-rust = ["tree-sitter-rust"]
-python = ["tree-sitter-python"]
-javascript = ["tree-sitter-javascript"]
-typescript = ["tree-sitter-typescript"]
-java = ["tree-sitter-java"]
-cpp = ["tree-sitter-cpp"]
-go = ["tree-sitter-go"]
-ruby = ["tree-sitter-ruby"]
-php = ["tree-sitter-php"]
-c-sharp = ["tree-sitter-c-sharp"]
-scala = ["tree-sitter-scala"]
-
-[dependencies.tree-sitter]
-version = "0.23"
-optional = true
-
-[dependencies.tree-sitter-rust]
-version = "0.23"
-optional = true
-
-[dependencies.tree-sitter-python]
-version = "0.23"
-optional = true
-
-[dependencies.tree-sitter-javascript]
-version = "0.23"
-optional = true
-
-[dependencies.tree-sitter-typescript]
-version = "0.23"
-optional = true
-
-[dependencies.tree-sitter-java]
-version = "0.23"
-optional = true
-
-[dependencies.tree-sitter-cpp]
-version = "0.23"
-optional = true
-
-[dependencies.tree-sitter-go]
-version = "0.23"
-optional = true
-
-[dependencies.tree-sitter-ruby]
-version = "0.23"
-optional = true
-
-[dependencies.tree-sitter-php]
-version = "0.23"
-optional = true
-
-[dependencies.tree-sitter-c-sharp]
-version = "0.23"
-optional = true
-
-[dependencies.tree-sitter-scala]
-version = "0.23"
-optional = true
-
 [[example]]
 name = "code_analysis"
 path = "examples/code_analysis.rs"
+
+[[example]]
+name = "java_analysis"
+path = "examples/java_analysis.rs"
+
+[[example]]
+name = "python_analysis"
+path = "examples/python_analysis.rs"
+
+[[example]]
+name = "rust_analysis"
+path = "examples/rust_analysis.rs"

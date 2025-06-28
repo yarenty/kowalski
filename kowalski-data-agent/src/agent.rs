@@ -70,7 +70,7 @@ impl DataAgent {
             }),
         );
         let output = tool.execute(input).await?;
-        
+
         let result = output.result;
         Ok(CsvAnalysisResult {
             headers: result["headers"]
@@ -86,7 +86,10 @@ impl DataAgent {
     }
 
     /// Analyzes data statistics
-    pub async fn analyze_data(&self, csv_content: &str) -> Result<serde_json::Value, KowalskiError> {
+    pub async fn analyze_data(
+        &self,
+        csv_content: &str,
+    ) -> Result<serde_json::Value, KowalskiError> {
         let mut tools = self.agent.tool_chain.write().await;
         let tool = tools.iter_mut().find(|t| t.name() == "csv_tool");
         let tool = match tool {

@@ -1,38 +1,46 @@
 use crate::config::CodeAgentConfig;
-use crate::tools::{CodeAnalysisTool, CodeDocumentationTool, CodeRefactoringTool, CodeSearchTool};
 use async_trait::async_trait;
-use kowalski_agent_template::builder::AgentBuilder;
+use kowalski_agent_template::TemplateAgent;
 use kowalski_agent_template::templates::general::GeneralTemplate;
 use kowalski_core::agent::Agent;
 use kowalski_core::config::Config;
-use kowalski_core::conversation::{Conversation, Message};
+use kowalski_core::conversation::Conversation;
 use kowalski_core::error::KowalskiError;
 use kowalski_core::role::Role;
-use serde_json::json;
+use kowalski_core::tools::{Tool, ToolInput};
+use kowalski_tools::code::{JavaAnalysisTool, PythonAnalysisTool, RustAnalysisTool};
+use serde::{Deserialize, Serialize};
 
 /// CodeAgent: A specialized agent for code analysis and development tasks
 /// This agent is built on top of the TemplateAgent and provides code-specific functionality
 pub struct CodeAgent {
-    template: AgentBuilder,
+    agent: TemplateAgent,
     config: CodeAgentConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodeAnalysisResult {
+    pub language: String,
+    pub metrics: serde_json::Value,
+    pub suggestions: Vec<String>,
+    pub issues: Vec<String>,
 }
 
 impl CodeAgent {
     /// Creates a new CodeAgent with the specified configuration
-    pub async fn new(config: Config) -> Result<Self, KowalskiError> {
-        let code_config = CodeAgentConfig::from(config);
+    pub async fn new(_config: Config) -> Result<Self, KowalskiError> {
+        // TODO: Convert Config to CodeAgentConfig if needed
+        let code_config = CodeAgentConfig::default();
 
-        // Create code-specific tools
-        let analysis_tool = CodeAnalysisTool::new(code_config.clone())?;
-        let refactoring_tool = CodeRefactoringTool::new(code_config.clone())?;
-        let documentation_tool = CodeDocumentationTool::new(code_config.clone())?;
-        let search_tool = CodeSearchTool::new(code_config.clone());
+        // Create language-specific analysis tools
+        let java_tool = JavaAnalysisTool::new();
+        let python_tool = PythonAnalysisTool::new();
+        let rust_tool = RustAnalysisTool::new();
 
-        let tools = vec![
-            Box::new(analysis_tool) as Box<dyn Tool + Send + Sync>,
-            Box::new(refactoring_tool) as Box<dyn Tool + Send + Sync>,
-            Box::new(documentation_tool) as Box<dyn Tool + Send + Sync>,
-            Box::new(search_tool) as Box<dyn Tool + Send + Sync>,
+        let tools: Vec<Box<dyn Tool + Send + Sync>> = vec![
+            Box::new(java_tool),
+            Box::new(python_tool),
+            Box::new(rust_tool),
         ];
 
         let builder = GeneralTemplate::create_agent(
@@ -41,143 +49,195 @@ impl CodeAgent {
             Some(0.7),
         )
         .await
-        .map_err(|e| KowalskiError::Config(e.to_string()))?;
+        .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
+        let agent = builder.build().await?;
 
         Ok(Self {
-            template: builder,
+            agent,
             config: code_config,
         })
     }
 
-    /// Analyzes code
-    pub async fn analyze_code(&self, code: &str) -> Result<String, KowalskiError> {
-        let tool_input = ToolInput::new(
-            "code_analysis".to_string(),
+    /// Analyzes Java code
+    pub async fn analyze_java(&self, code: &str) -> Result<CodeAnalysisResult, KowalskiError> {
+        let mut tools = self.agent.tool_chain.write().await;
+        let tool = tools.iter_mut().find(|t| t.name() == "java_analysis");
+        let tool = match tool {
+            Some(t) => t,
+            None => {
+                return Err(KowalskiError::ToolExecution(
+                    "java_analysis tool not found".to_string(),
+                ));
+            }
+        };
+        let input = ToolInput::new(
+            "analyze_java".to_string(),
             code.to_string(),
-            json!({
-                "language": self.config.language,
-                "max_depth": self.config.max_analysis_depth
-            }),
+            serde_json::json!({}),
         );
-        let tool_output = self
-            .template
-            .build()
-            .await?
-            .execute_task(tool_input)
-            .await?;
-        Ok(tool_output.result["analysis"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string())
+        let output = tool.execute(input).await?;
+
+        let result = output.result;
+        Ok(CodeAnalysisResult {
+            language: "java".to_string(),
+            metrics: result["metrics"].clone(),
+            suggestions: result["suggestions"]
+                .as_array()
+                .unwrap_or(&Vec::new())
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect(),
+            issues: result["syntax_errors"]
+                .as_array()
+                .unwrap_or(&Vec::new())
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect(),
+        })
     }
 
-    /// Refactors code
-    pub async fn refactor_code(
-        &self,
-        code: &str,
-        description: &str,
-    ) -> Result<String, KowalskiError> {
-        let tool_input = ToolInput::new(
-            "code_refactoring".to_string(),
+    /// Analyzes Python code
+    pub async fn analyze_python(&self, code: &str) -> Result<CodeAnalysisResult, KowalskiError> {
+        let mut tools = self.agent.tool_chain.write().await;
+        let tool = tools.iter_mut().find(|t| t.name() == "python_analysis");
+        let tool = match tool {
+            Some(t) => t,
+            None => {
+                return Err(KowalskiError::ToolExecution(
+                    "python_analysis tool not found".to_string(),
+                ));
+            }
+        };
+        let input = ToolInput::new(
+            "analyze_python".to_string(),
             code.to_string(),
-            json!({
-                "description": description,
-                "language": self.config.language
-            }),
+            serde_json::json!({}),
         );
-        let tool_output = self
-            .template
-            .build()
-            .await?
-            .execute_task(tool_input)
-            .await?;
-        Ok(tool_output.result["refactored_code"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string())
+        let output = tool.execute(input).await?;
+
+        let result = output.result;
+        Ok(CodeAnalysisResult {
+            language: "python".to_string(),
+            metrics: result["metrics"].clone(),
+            suggestions: result["suggestions"]
+                .as_array()
+                .unwrap_or(&Vec::new())
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect(),
+            issues: result["pep8_issues"]
+                .as_array()
+                .unwrap_or(&Vec::new())
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect(),
+        })
     }
 
-    /// Generates documentation
-    pub async fn generate_docs(&self, code: &str) -> Result<String, KowalskiError> {
-        let tool_input = ToolInput::new(
-            "code_documentation".to_string(),
+    /// Analyzes Rust code
+    pub async fn analyze_rust(&self, code: &str) -> Result<CodeAnalysisResult, KowalskiError> {
+        let mut tools = self.agent.tool_chain.write().await;
+        let tool = tools.iter_mut().find(|t| t.name() == "rust_analysis");
+        let tool = match tool {
+            Some(t) => t,
+            None => {
+                return Err(KowalskiError::ToolExecution(
+                    "rust_analysis tool not found".to_string(),
+                ));
+            }
+        };
+        let input = ToolInput::new(
+            "analyze_rust".to_string(),
             code.to_string(),
-            json!({
-                "language": self.config.language,
-                "style": self.config.documentation_style
-            }),
+            serde_json::json!({}),
         );
-        let tool_output = self
-            .template
-            .build()
-            .await?
-            .execute_task(tool_input)
-            .await?;
-        Ok(tool_output.result["documentation"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string())
-    }
+        let output = tool.execute(input).await?;
 
-    /// Searches codebase
-    pub async fn search_code(&self, query: &str) -> Result<String, KowalskiError> {
-        let tool_input = ToolInput::new(
-            "code_search".to_string(),
-            query.to_string(),
-            json!({
-                "language": self.config.language,
-                "scope": self.config.search_scope
-            }),
-        );
-        let tool_output = self
-            .template
-            .build()
-            .await?
-            .execute_task(tool_input)
-            .await?;
-        Ok(tool_output.result["results"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string())
+        let result = output.result;
+        Ok(CodeAnalysisResult {
+            language: "rust".to_string(),
+            metrics: result["metrics"].clone(),
+            suggestions: result["suggestions"]
+                .as_array()
+                .unwrap_or(&Vec::new())
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect(),
+            issues: result["rust_issues"]
+                .as_array()
+                .unwrap_or(&Vec::new())
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect(),
+        })
     }
 }
 
 #[async_trait]
 impl Agent for CodeAgent {
-    async fn execute_task(&self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
-        self.template.build().await?.execute_task(input).await
+    async fn new(config: Config) -> Result<Self, KowalskiError> {
+        CodeAgent::new(config).await
+    }
+
+    fn start_conversation(&mut self, model: &str) -> String {
+        self.agent.base_mut().start_conversation(model)
+    }
+
+    fn get_conversation(&self, id: &str) -> Option<&Conversation> {
+        self.agent.base().get_conversation(id)
+    }
+
+    fn list_conversations(&self) -> Vec<&Conversation> {
+        self.agent.base().list_conversations()
+    }
+
+    fn delete_conversation(&mut self, id: &str) -> bool {
+        self.agent.base_mut().delete_conversation(id)
+    }
+
+    async fn chat_with_history(
+        &mut self,
+        conversation_id: &str,
+        content: &str,
+        role: Option<Role>,
+    ) -> Result<reqwest::Response, KowalskiError> {
+        self.agent
+            .base_mut()
+            .chat_with_history(conversation_id, content, role)
+            .await
+    }
+
+    async fn process_stream_response(
+        &mut self,
+        conversation_id: &str,
+        chunk: &[u8],
+    ) -> Result<Option<kowalski_core::conversation::Message>, KowalskiError> {
+        self.agent
+            .base_mut()
+            .process_stream_response(conversation_id, chunk)
+            .await
     }
 
     async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {
-        self.template
-            .build()
-            .await
-            .expect("Failed to build agent")
+        self.agent
+            .base_mut()
             .add_message(conversation_id, role, content)
             .await;
     }
 
-    async fn start_conversation(&self, model: &str) -> String {
-        self.template
-            .build()
-            .await
-            .expect("Failed to build agent")
-            .start_conversation(model)
+    fn name(&self) -> &str {
+        self.agent.base().name()
     }
 
-    fn set_system_prompt(&mut self, prompt: &str) {
-        self.template = self.template.with_system_prompt(prompt);
-    }
-
-    fn set_temperature(&mut self, temperature: f32) {
-        self.template = self.template.with_temperature(temperature);
+    fn description(&self) -> &str {
+        self.agent.base().description()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kowalski_core::error::KowalskiError;
+    use kowalski_core::config::Config;
 
     #[tokio::test]
     async fn test_code_agent_creation() {
@@ -187,11 +247,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_code_agent_customization() {
+    async fn test_code_agent_conversation() {
         let config = Config::default();
         let mut agent = CodeAgent::new(config).await.unwrap();
-
-        agent.set_system_prompt("You are a specialized code development assistant.");
-        agent.set_temperature(0.5);
+        let conv_id = agent.start_conversation("test-model");
+        assert!(!conv_id.is_empty());
     }
 }
