@@ -169,24 +169,6 @@ agent.add_message(&conv_id, "user", "Hello, world!").await;
 
 ---
 
-## 📚 Configuration
-
-Configure via `config.toml` or environment variables.  
-Example:
-
-```toml
-[ollama]
-base_url = "http://localhost:11434"
-default_model = "llama3.2"
-
-[chat]
-temperature = 0.7
-max_tokens = 2048
-stream = true
-```
-
----
-
 ## 📖 Documentation & Links
 
 - [CHANGELOG.md](./CHANGELOG.md)
@@ -220,17 +202,6 @@ MIT License. See [LICENSE](./LICENSE).
 - Thanks to the Ollama team and all open source contributors.
 - Thanks to my coffee machine for keeping me awake during development.
 - Thanks to everyone who opens an issue, even if it's just to say "it doesn't work".
-
----
-
-## 🦜 Citations & Sarcasm
-
-> "Documentation is like true love – it exists, but it's hard to find."  
-> "The only thing worse than no documentation is wrong documentation."  
-> "Features are like promises – they're great until you try to use them."  
-> "Change is inevitable, except from a vending machine."  
-> "Version numbers are like birthdays – they keep increasing but nothing really changes."  
-> "The code is more what you'd call 'guidelines' than actual rules." – Pirates of the Caribbean, probably
 
 ---
 
