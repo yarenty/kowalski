@@ -1,5 +1,85 @@
 # Kowalski Code Agent
 
+A specialized AI agent for code analysis, refactoring, and documentation, built on the Kowalski framework. The Code Agent provides intelligent, language-aware code analysis and improvement suggestions for multiple programming languages.
+
+## What is the Code Agent?
+
+The Code Agent is an AI-powered assistant that combines large language models with language-specific static analysis tools. It helps developers analyze, refactor, and document code in languages like Java, Python, and Rust, providing actionable insights and recommendations.
+
+### Core Capabilities
+
+- **Multi-language Support**: Analyze Java, Python, Rust, and more
+- **Code Metrics**: Compute lines, complexity, functions, classes, and more
+- **Quality Suggestions**: Get actionable recommendations for code improvement
+- **Error and Issue Detection**: Identify syntax errors, anti-patterns, and style violations
+- **Refactoring**: Automated suggestions for code refactoring and organization
+- **Documentation Generation**: Create or improve code documentation
+- **Streaming AI Analysis**: Real-time, conversational code review and Q&A
+- **Role-based Analysis**: Customizable analysis for different developer roles
+
+## What Does It Do?
+
+- **Code Ingestion**: Accepts code snippets or files for analysis
+- **Static Analysis**: Computes metrics, detects issues, and checks style
+- **AI-Powered Review**: Provides human-readable feedback and improvement suggestions
+- **Refactoring**: Offers or applies refactoring suggestions
+- **Documentation**: Generates or improves code documentation
+- **Interactive Q&A**: Supports follow-up questions and iterative review
+
+## Example Usage
+
+```rust
+use kowalski_code_agent::CodeAgent;
+use kowalski_core::config::Config;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = Config::default();
+    let mut code_agent = CodeAgent::new(config).await?;
+
+    // Analyze Python code
+    let python_code = "...";
+    let analysis = code_agent.analyze_python(python_code).await?;
+    println!("Suggestions: {:?}", analysis.suggestions);
+
+    // Analyze Rust code
+    let rust_code = "...";
+    let analysis = code_agent.analyze_rust(rust_code).await?;
+    println!("Rust Issues: {:?}", analysis.issues);
+
+    Ok(())
+}
+```
+
+## How Could It Be Extended?
+
+- **Additional Language Support**: Add tools for C++, Go, JavaScript, etc.
+- **Deeper Static Analysis**: Integrate with Clippy, pylint, SonarQube, etc.
+- **Security Auditing**: Add static and dynamic security analysis tools
+- **Performance Profiling**: Integrate with profilers for runtime analysis
+- **Automated Test Generation**: Suggest or generate unit and integration tests
+- **Continuous Integration**: Integrate with CI/CD pipelines for automated code review
+- **Visualization**: Generate call graphs, dependency diagrams, and more
+
+## Potential Benefits
+
+### For Developers
+- **Faster Code Review**: Automated, actionable feedback
+- **Improved Code Quality**: Early detection of bugs and anti-patterns
+- **Learning**: Understand best practices and idioms for each language
+
+### For Teams
+- **Consistency**: Enforce style and quality standards
+- **Productivity**: Reduce manual review time
+- **Onboarding**: Help new team members understand codebases
+
+### For Organizations
+- **Security**: Early detection of vulnerabilities
+- **Maintainability**: Cleaner, more robust codebases
+- **Scalability**: Handle large codebases and multiple languages
+
+---
+
 ## Key Features of the Code Analysis Tools
 
 Each tool provides:
@@ -409,7 +489,7 @@ Based on the analysis, here are some suggestions:
 
 1.  **Use logging instead of print statements**: Replace all `print` statements with `logging` calls to improve log output control and flexibility.
 2.  **Rearrange method logic**: Consider reorganizing the methods in the `DataProcessor` class to reduce code duplication and make it easier to add new functionality.
-3.  **Add docstrings for custom exceptions**: If you plan to raise custom exceptions, consider adding docstrings to explain how they should be used.
+3. **Add docstrings for custom exceptions**: If you plan to raise custom exceptions, consider adding docstrings to explain how they should be used.
 
 **Refactored Code**
 
@@ -422,36 +502,60 @@ logging.basicConfig(level=logging.INFO)
 
 class DataProcessor:
     def __init__(self, data: list[int]):
-        self.data = data
+        """
+        Initialize the data processor with sample input data.
+        
+        Args:
+            input_data (list): List of numbers to process.
+        """
+        self.input_data = data
         self.result = 0
     
     def calculate_sum(self) -> int:
-        """Calculate the sum of all data points."""
+        """
+        Calculate the sum of all data points.
+        
+        Returns:
+            int: The calculated sum.
+        """
         total = 0
-        for item in self.data:
+        for item in self.input_data:
             total += item
         return total
     
     def calculate_average(self) -> float:
-        """Calculate the average of all data points."""
-        if not self.data:
+        """
+        Calculate the average of all data points.
+        
+        Raises:
+            ValueError: If input data is empty.
+        
+        Returns:
+            float: The calculated average.
+        """
+        if not self.input_data:
             raise ValueError("Cannot calculate average with empty data")
-        return self.calculate_sum() / len(self.data)
+        return self.calculate_sum() / len(self.input_data)
     
     def find_max(self) -> Optional[int]:
-        """Find the maximum value in the data."""
-        if not self.data:
+        """
+        Find the maximum value in all data points.
+        
+        Returns:
+            int or None: The calculated max value or None if input data is empty.
+        """
+        if not self.input_data:
             return None
-        max_val = self.data[0]
-        for item in self.data:
+        max_val = self.input_data[0]
+        for item in self.input_data:
             if item > max_val:
                 max_val = item
         return max_val
 
 def main():
-    numbers = [10, 20, 30, 40, 50]
+    sample_numbers = [10, 20, 30, 40, 50]
     
-    processor = DataProcessor(numbers)
+    processor = DataProcessor(sample_numbers)
     
     logging.info(f"Sum: {processor.calculate_sum()}")
     logging.info(f"Average: {processor.calculate_average()}")
@@ -808,103 +912,6 @@ The provided Rust code is well-structured and easy to read. It demonstrates a go
 5. Add documentation for functions and methods using doc comments.
 
 **Updated Code**
-
-```rust
-use std::collections::HashMap;
-use std::error::Error;
-
-#[derive(Debug)]
-struct DataProcessor {
-    data: Vec<i32>,
-    cache: HashMap<String, i32>,
-}
-
-impl DataProcessor {
-    fn new(data: Vec<i32>) -> Self {
-        Self {
-            data,
-            cache: HashMap::new(),
-        }
-    }
-
-    /// Calculate the total sum of all elements in the data.
-    fn calculate_total_sum(&self) -> i32 {
-        self.data.iter().sum()
-    }
-
-    /// Calculate the average of all elements in the data if it's not empty.
-    fn calculate_average(&self) -> Option<f64> {
-        let total = self.calculate_total_sum();
-        if total.is_null() || self.data.is_empty() {
-            None
-        } else {
-            Some(total as f64 / self.data.len() as f64)
-        }
-    }
-
-    /// Find the maximum element in the data.
-    fn find_max(&self) -> Option<&i32> {
-        self.data.iter().max()
-    }
-
-    /// Process a key with caching. Returns an error if the result is not found in the cache.
-    fn process_with_cache(&mut self, key: String) -> Result<i32, Box<dyn Error>> {
-        if let Some(&cached_value) = self.cache.get(&key) {
-            return Ok(cached_value);
-        }
-
-        let total = self.calculate_total_sum();
-        self.cache.insert(key.clone(), total);
-
-        Ok(total)
-    }
-}
-
-fn main() {
-    let numbers = vec![10, 20, 30, 40, 50];
-    let mut processor = DataProcessor::new(numbers);
-
-    println!("Sum: {}", processor.calculate_total_sum());
-
-    match processor.calculate_average() {
-        Some(avg) => println!("Average: {}", avg),
-        None => println!("No data to calculate average"),
-    }
-
-    match processor.find_max() {
-        Some(max) => println!("Maximum: {}", max),
-        None => println!("No data to find maximum"),
-    }
-
-    match processor.process_with_cache("sum".to_string()) {
-        Ok(result) => println!("Cached result: {}", result),
-        Err(e) => println!("Error: {}", e),
-    }
-}
-```
-✅ Analysis complete!
-
-
-🔍 Follow-up Analysis:
-Here are some Rust-specific improvements that can be made to the provided code:
-
-1. **Use `Result` and `Option`**: Instead of using `Box<dyn Error>` or `Box<Error>`, use `Result<i32, Box<dyn Error>>`. This will allow you to handle errors more elegantly.
-
-2. **Use `?` operator for error propagation**: In the `process_with_cache` method, instead of returning an error explicitly, consider using the `?` operator to propagate the error upwards. This will make your code more concise and easier to read.
-
-3. **Avoid cloning strings**: In the `process_with_cache` method, when inserting into the cache, avoid cloning the string by using `&key` directly instead of `key.clone()`.
-
-4. **Use `Vec::into_iter()`**: Instead of using `vec.iter()`, consider using `vec.into_iter()` for better performance and readability.
-
-5. **Avoid explicit type conversions**: Instead of explicitly converting `i32` to `f64` in the `calculate_average` method, consider using `f64` literals or `f64::from(i32)` for more expressive code.
-
-6. **Use `HashMap::entry()` instead of `get()` and `insert()`**: In the `process_with_cache` method, use `HashMap::entry()` to insert a value into the cache. This will be more efficient than using `get()` followed by `insert()`.
-
-7. **Consider using `std::sync::RwLock` for caching**: If you need to access the cache from multiple threads or want to limit concurrent access, consider using `std::sync::RwLock` instead of a simple `HashMap`.
-
-8. **Use Rust's standard library functions and methods**: Instead of implementing custom logic in your code, use Rust's standard library functions and methods whenever possible.
-
-Here's an updated version of the code incorporating these improvements:
 
 ```rust
 use std::collections::{HashMap, HashSet};
