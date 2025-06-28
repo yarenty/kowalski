@@ -5,9 +5,12 @@ use tracing::info;
 
 use crate::{FederatedAgent, FederationError, FederationMessage, FederationRole};
 
+/// Type alias for federated agent references
+type FederatedAgentRef = Arc<RwLock<dyn FederatedAgent + Send + Sync>>;
+
 /// Registry for managing federated agents
 pub struct AgentRegistry {
-    agents: Arc<RwLock<HashMap<String, Arc<RwLock<dyn FederatedAgent + Send + Sync>>>>>,
+    agents: Arc<RwLock<HashMap<String, FederatedAgentRef>>>,
 }
 
 impl Default for AgentRegistry {
@@ -27,7 +30,7 @@ impl AgentRegistry {
     /// Register a new agent in the federation
     pub async fn register_agent(
         &self,
-        agent: Arc<RwLock<dyn FederatedAgent + Send + Sync>>,
+        agent: FederatedAgentRef,
     ) -> Result<(), FederationError> {
         let id = agent.read().await.federation_id().to_string();
         let mut agents = self.agents.write().await;
@@ -45,7 +48,7 @@ impl AgentRegistry {
     pub async fn get_agent(
         &self,
         id: &str,
-    ) -> Option<Arc<RwLock<dyn FederatedAgent + Send + Sync>>> {
+    ) -> Option<FederatedAgentRef> {
         let agents = self.agents.read().await;
         agents.get(id).cloned()
     }

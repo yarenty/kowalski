@@ -210,8 +210,9 @@ impl Default for CodeAgentConfig {
 
 impl From<Config> for CodeAgentConfig {
     fn from(config: Config) -> Self {
-        let mut code_config = Self::default();
-        code_config.template = TemplateAgentConfig::from(config);
-        code_config
+        Self {
+            template: TemplateAgentConfig::from(config),
+            ..Default::default()
+        }
     }
 }
