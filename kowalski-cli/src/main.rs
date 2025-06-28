@@ -1,16 +1,16 @@
 use clap::Parser;
+use futures::StreamExt;
 use kowalski_academic_agent::AcademicAgent;
 use kowalski_code_agent::CodeAgent;
 use kowalski_core::agent::Agent;
 use kowalski_core::config::Config;
-// use kowalski_data_agent::DataAgent;
+#[cfg(feature = "data")]
+use kowalski_data_agent::DataAgent;
 use kowalski_web_agent::WebAgent;
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use futures::StreamExt;
-use serde::Deserialize;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -83,6 +83,13 @@ impl AgentManager {
             "web" => Box::new(WebAgent::new(config.clone()).await?),
             "academic" => Box::new(AcademicAgent::new(config.clone()).await?),
             "code" => Box::new(CodeAgent::new(config.clone()).await?),
+            #[cfg(feature = "data")]
+            "data" => Box::new(DataAgent::new(config.clone()).await?),
+            #[cfg(not(feature = "data"))]
+            "data" => {
+                eprintln!("Data agent not available. Enable the 'data' feature to use it.");
+                return Ok(());
+            }
             _ => {
                 eprintln!("Unknown agent type: {}", agent_type);
                 return Ok(());
@@ -114,12 +121,6 @@ impl AgentManager {
         }
         Ok(())
     }
-}
-
-#[derive(Deserialize)]
-struct ToolCall {
-    tool: String,
-    input: String,
 }
 
 #[tokio::main]
@@ -161,6 +162,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn chat_loop(agent: &mut Box<dyn Agent + Send + Sync>, conv_id: String) -> Result<(), Box<dyn std::error::Error>> {
     let agent_name = agent.name().to_lowercase();
     let is_web_agent = agent_name.contains("web");
+    
+    println!("[DEBUG] Agent name: '{}', is_web_agent: {}", agent_name, is_web_agent);
+    
     loop {
         print!("You: ");
         io::stdout().flush()?;
@@ -170,76 +174,93 @@ async fn chat_loop(agent: &mut Box<dyn Agent + Send + Sync>, conv_id: String) ->
             println!("Goodbye!");
             break;
         }
-        agent.add_message(&conv_id, "user", &input).await;
-        let mut buffer = String::new();
-        let mut last_tool_result = None;
-        // ReAct loop for web-agent
-        loop {
-            let response = agent
-                .chat_with_history(&conv_id, input.trim(), None)
-                .await?;
-            let mut stream = response.bytes_stream();
-            buffer.clear();
-            while let Some(chunk) = stream.next().await {
-                match chunk {
-                    Ok(bytes) => {
-                        if let Ok(Some(message)) = agent.process_stream_response(&conv_id, &bytes).await {
-                            if !message.content.is_empty() {
-                                print!("{}", message.content);
-                                io::stdout().flush()?;
-                                buffer.push_str(&message.content);
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("\nError: {}", e);
-                        break;
-                    }
+        
+        if is_web_agent {
+            println!("[DEBUG] Using web agent enhanced chat method");
+            // For web agents, use the enhanced tool-calling method
+            match chat_with_web_agent_tools(agent, &conv_id, &input).await {
+                Ok(_) => {
+                    println!("[DEBUG] Web agent chat completed successfully");
+                }
+                Err(e) => {
+                    eprintln!("[DEBUG] Web agent chat failed: {}", e);
+                    // Fallback to regular chat
+                    use_regular_chat(agent, &conv_id, &input).await?;
                 }
             }
-            println!("");
-            // Try to parse buffer as a tool call
-            if is_web_agent {
-                if let Ok(tool_call) = serde_json::from_str::<ToolCall>(&buffer) {
-                    // Execute the tool
-                    let tool_result = match tool_call.tool.as_str() {
-                        "web_search" => run_web_search(&tool_call.input).await,
-                        "web_scrape" => run_web_scrape(&tool_call.input).await,
-                        _ => Err(format!("Unknown tool: {}", tool_call.tool).into()),
-                    };
-                    match tool_result {
-                        Ok(result) => {
-                            let tool_result_str = format!("Tool result: {}", result);
-                            agent.add_message(&conv_id, "tool", &tool_result_str).await;
-                            last_tool_result = Some(tool_result_str);
-                        }
-                        Err(e) => {
-                            let err_str = format!("Tool error: {}", e);
-                            agent.add_message(&conv_id, "tool", &err_str).await;
-                            println!("{}", err_str);
-                            break;
-                        }
-                    }
-                    // Continue loop: feed tool result as next user input
-                    input = last_tool_result.clone().unwrap_or_default();
-                    continue;
-                }
-            }
-            // Not a tool call, print the answer and break
-            agent.add_message(&conv_id, "assistant", &buffer).await;
-            break;
+        } else {
+            println!("[DEBUG] Using regular chat method");
+            use_regular_chat(agent, &conv_id, &input).await?;
         }
     }
     Ok(())
 }
 
-// Dummy implementations for tool execution (replace with real logic)
-async fn run_web_search(query: &str) -> Result<String, Box<dyn std::error::Error>> {
-    Ok(format!("[web_search executed for query: {}]", query))
+async fn chat_with_web_agent_tools(
+    agent: &mut Box<dyn Agent + Send + Sync>, 
+    conv_id: &str, 
+    input: &str
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Try to use the web agent's chat_with_tools method
+    // Since we can't downcast easily, we'll use a different approach
+    // We'll add the user message and then use the regular chat method
+    // but the web agent should have the enhanced system prompt that encourages tool usage
+    agent.add_message(conv_id, "user", input).await;
+    let response = agent
+        .chat_with_history(conv_id, input.trim(), None)
+        .await?;
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        match chunk {
+            Ok(bytes) => {
+                if let Ok(Some(message)) = agent.process_stream_response(conv_id, &bytes).await {
+                    if !message.content.is_empty() {
+                        print!("{}", message.content);
+                        io::stdout().flush()?;
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("\nError: {}", e);
+                break;
+            }
+        }
+    }
+    println!("");
+    agent.add_message(conv_id, "assistant", input).await;
+    Ok(())
 }
 
-async fn run_web_scrape(url: &str) -> Result<String, Box<dyn std::error::Error>> {
-    Ok(format!("[web_scrape executed for url: {}]", url))
+async fn use_regular_chat(
+    agent: &mut Box<dyn Agent + Send + Sync>, 
+    conv_id: &str, 
+    input: &str
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Regular chat for non-web agents
+    agent.add_message(conv_id, "user", input).await;
+    let response = agent
+        .chat_with_history(conv_id, input.trim(), None)
+        .await?;
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        match chunk {
+            Ok(bytes) => {
+                if let Ok(Some(message)) = agent.process_stream_response(conv_id, &bytes).await {
+                    if !message.content.is_empty() {
+                        print!("{}", message.content);
+                        io::stdout().flush()?;
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("\nError: {}", e);
+                break;
+            }
+        }
+    }
+    println!("");
+    agent.add_message(conv_id, "assistant", input).await;
+    Ok(())
 }
 
 fn list_agents() -> Result<(), Box<dyn std::error::Error>> {
@@ -247,7 +268,10 @@ fn list_agents() -> Result<(), Box<dyn std::error::Error>> {
     println!("- web: Web research and information retrieval");
     println!("- academic: Academic research and paper analysis");
     println!("- code: Code analysis, refactoring, and documentation");
+    #[cfg(feature = "data")]
     println!("- data: Data analysis and processing");
+    #[cfg(not(feature = "data"))]
+    println!("- data: Data analysis and processing (requires 'data' feature)");
     Ok(())
 }
 

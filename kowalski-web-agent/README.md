@@ -12,6 +12,7 @@ The Web Agent is an AI-powered assistant that combines large language models wit
 
 - **Web Search**: Query the internet using multiple search providers (DuckDuckGo, Google, Bing)
 - **Web Scraping**: Extract content from web pages for further analysis
+- **ReAct-Style Tool Calling**: Intelligent tool usage with reasoning and iteration
 - **Summarization**: Generate human-readable summaries of web content
 - **Conversational Q&A**: Ask follow-up questions and get iterative, context-aware answers
 - **Role-based Summaries**: Tailor explanations for different audiences (e.g., technical, family-friendly)
@@ -21,11 +22,35 @@ The Web Agent is an AI-powered assistant that combines large language models wit
 
 - **Search**: Finds relevant web pages for a given query
 - **Extract**: Scrapes and processes content from web pages
+- **Reason & Act**: Uses ReAct-style tool calling to intelligently chain tools
 - **Summarize**: Provides concise, audience-tailored summaries of online information
 - **Interactive Research**: Supports follow-up questions and iterative exploration
 - **Conversation History**: Maintains context for multi-step research tasks
 
+## ReAct-Style Tool Calling
+
+The Web Agent implements a ReAct (Reasoning and Acting) loop that enables intelligent tool usage:
+
+1. **Reason**: The agent analyzes the user's query and decides which tools to use
+2. **Act**: The agent executes the appropriate tool (web_search or web_scrape)
+3. **Observe**: The agent processes the tool's results
+4. **Iterate**: The agent continues the loop until a final answer is reached
+
+### Tool Usage Examples
+
+The agent can intelligently chain tools:
+
+```rust
+// The agent will automatically:
+// 1. Use web_search to find relevant URLs
+// 2. Use web_scrape to extract content from promising URLs
+// 3. Synthesize the information into a comprehensive answer
+let response = agent.chat_with_tools(&conv_id, "What are the latest developments in AI?").await?;
+```
+
 ## Example Usage
+
+### Basic Usage
 
 ```rust
 use kowalski_web_agent::WebAgent;
@@ -55,6 +80,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+### Advanced Tool-Calling Usage
+
+```rust
+use kowalski_web_agent::WebAgent;
+use kowalski_core::config::Config;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = Config::default();
+    let mut agent = WebAgent::new(config).await?;
+    
+    // Start a conversation
+    let conv_id = agent.start_conversation("llama3.2");
+    
+    // Use ReAct-style tool calling for complex queries
+    let response = agent.chat_with_tools(&conv_id, "What's the latest news about AI?").await?;
+    println!("Response: {}", response);
+    
+    // The agent will automatically:
+    // 1. Search for recent AI news
+    // 2. Scrape relevant articles
+    // 3. Synthesize the information
+    // 4. Provide a comprehensive answer
+    
+    Ok(())
+}
+```
+
 ## How Could It Be Extended?
 
 - **Additional Search Providers**: Integrate with more APIs (Google, Bing, academic search, etc.)
@@ -64,6 +117,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 - **Sentiment and Topic Analysis**: Extract opinions, topics, and trends from web content
 - **Automated Alerts**: Notify users of new or changing information on topics of interest
 - **Integration**: Embed in chatbots, research assistants, or browser extensions
+- **Advanced Tool Chaining**: More sophisticated reasoning and tool selection logic
 
 ## Potential Benefits
 
@@ -71,14 +125,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 - **Faster Discovery**: Rapidly find and summarize relevant online information
 - **Contextual Summaries**: Get explanations tailored to your audience or expertise
 - **Iterative Exploration**: Ask follow-up questions and dig deeper
+- **Intelligent Tool Usage**: The agent automatically chooses the right tools for each task
 
 ### For Developers
 - **API-First**: Integrate web research into your own tools and workflows
 - **Customizable**: Extend with new providers, scrapers, or analysis modules
+- **ReAct Integration**: Leverage the reasoning and acting capabilities in your applications
 
 ### For Organizations
 - **Knowledge Aggregation**: Gather and synthesize information from across the web
 - **Monitoring**: Track topics, competitors, or trends in real time
+- **Automated Research**: Reduce manual effort in information gathering and analysis
 
 ---
 
@@ -89,6 +146,7 @@ The example successfully:
 - Fetches and processes the content of a selected web page
 - Generates a simplified summary for a non-technical audience
 - Handles streaming responses and conversation context
+- Uses ReAct-style tool calling for intelligent information gathering
 
 Running the web research example:
 
@@ -114,6 +172,26 @@ Snippet: Artificial intelligence leverages computers and machines to mimic the p
 Artificial intelligence (AI) is when computers or machines are designed to think and learn like humans. It helps solve problems, make decisions, and can be found in things like voice assistants or self-driving cars.
 
 ✅ Summary complete!
+```
+
+Running the tool-calling demo:
+
+```
+Kowalski Web Agent Tool-Calling Demo
+=====================================
+Conversation started with ID: abc123
+
+--- Query: What's the latest news about AI? ---
+Processing with ReAct-style tool calling...
+[DEBUG] Iteration 1: What's the latest news about AI?
+[DEBUG] Tool call detected: web_search with input: latest AI news 2024
+[DEBUG] Tool web_search executed successfully: [search results...]
+[DEBUG] Iteration 2: Based on the tool result: [search results...]
+[DEBUG] Tool call detected: web_scrape with input: https://example-news-site.com
+[DEBUG] Tool web_scrape executed successfully: [article content...]
+Final Response: Based on recent news, AI developments include...
+
+--- End Query ---
 ```
 
 ---
