@@ -1,8 +1,214 @@
-# Data Agent
+# Kowalski Data Agent
 
-Location: kowalski-data-agent/examples/csv_analysis.rs
+A specialized AI agent for data analysis and processing tasks, built on top of the Kowalski framework. The Data Agent provides intelligent, conversational data analysis capabilities with support for structured data formats like CSV files.
 
-Features:
+## What is the Data Agent?
+
+The Data Agent is a sophisticated AI-powered data analysis tool that combines the power of large language models with specialized data processing tools. It's designed to help users analyze, understand, and extract insights from structured data through natural language conversations.
+
+### Core Capabilities
+
+- **Intelligent Data Processing**: Automatically analyzes CSV files and other structured data formats
+- **Statistical Analysis**: Provides comprehensive statistical summaries including averages, ranges, distributions, and correlations
+- **AI-Powered Insights**: Uses advanced language models to generate human-readable insights and recommendations
+- **Conversational Interface**: Supports interactive follow-up questions and iterative analysis
+- **Streaming Responses**: Real-time processing and display of analysis results
+- **Role-Based Analysis**: Configurable analysis styles based on user roles and requirements
+
+## What Does It Do?
+
+The Data Agent performs several key functions:
+
+1. **Data Ingestion**: Reads and validates structured data from various sources
+2. **Statistical Computation**: Calculates descriptive statistics for all data columns
+3. **Pattern Recognition**: Identifies trends, outliers, and relationships in the data
+4. **Insight Generation**: Provides contextual analysis and business recommendations
+5. **Interactive Q&A**: Answers follow-up questions about specific aspects of the data
+6. **Report Generation**: Creates comprehensive analysis reports with actionable insights
+
+## Example Usage
+
+### Basic CSV Analysis
+
+```rust
+use kowalski_data_agent::DataAgent;
+use kowalski_core::config::Config;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize the data agent
+    let config = Config::default();
+    let mut data_agent = DataAgent::new(config).await?;
+    
+    // Start a conversation
+    let conversation_id = data_agent.start_conversation("llama3.2");
+    
+    // Sample CSV data
+    let csv_data = r#"name,age,city,salary,department
+John Doe,30,New York,75000,Engineering
+Jane Smith,28,San Francisco,85000,Marketing
+Bob Johnson,35,Chicago,65000,Sales"#;
+    
+    // Process the CSV data
+    let analysis_result = data_agent.process_csv(csv_data).await?;
+    
+    // Get AI analysis
+    let analysis_prompt = format!(
+        "Please analyze this CSV data and provide insights:\n\n{}\n\nAnalysis results:\n{}",
+        csv_data,
+        serde_json::to_string_pretty(&analysis_result.summary)?
+    );
+    
+    let response = data_agent
+        .chat_with_history(&conversation_id, &analysis_prompt, None)
+        .await?;
+    
+    // Process streaming response...
+    Ok(())
+}
+```
+
+### Advanced Analysis with Custom Roles
+
+```rust
+use kowalski_core::role::{Audience, Preset, Role};
+
+// Create a specialized role for business analysis
+let role = Role::new(
+    "Business Data Analyst",
+    "You are an expert business analyst specializing in HR and financial data.",
+)
+.with_audience(Audience::new(
+    "HR Manager",
+    "You are speaking to an HR manager who needs actionable insights for decision-making.",
+))
+.with_preset(Preset::new(
+    "Strategic Analysis",
+    "Focus on strategic implications and actionable recommendations.",
+));
+
+// Use the role in analysis
+let response = data_agent
+    .chat_with_history(&conversation_id, &analysis_prompt, Some(role))
+    .await?;
+```
+
+### Follow-up Questions
+
+```rust
+// Ask specific follow-up questions
+let follow_up = "What are the key insights about salary distribution across departments?";
+let follow_up_response = data_agent
+    .chat_with_history(&conversation_id, follow_up, None)
+    .await?;
+```
+
+## How Could It Be Extended?
+
+The Data Agent is designed with extensibility in mind and can be enhanced in several ways:
+
+### 1. Additional Data Formats
+
+```rust
+// Add support for JSON, XML, Excel files
+pub struct ExtendedDataAgent {
+    agent: DataAgent,
+    json_tool: JsonTool,
+    excel_tool: ExcelTool,
+    xml_tool: XmlTool,
+}
+```
+
+### 2. Advanced Analytics
+
+```rust
+// Integrate with statistical libraries
+use statrs::statistics::Statistics;
+
+pub struct AdvancedDataAgent {
+    agent: DataAgent,
+    correlation_analyzer: CorrelationAnalyzer,
+    outlier_detector: OutlierDetector,
+    trend_analyzer: TrendAnalyzer,
+}
+```
+
+### 3. Machine Learning Integration
+
+```rust
+// Add ML capabilities for predictive analysis
+pub struct MLDataAgent {
+    agent: DataAgent,
+    prediction_engine: PredictionEngine,
+    clustering_analyzer: ClusteringAnalyzer,
+    anomaly_detector: AnomalyDetector,
+}
+```
+
+### 4. Visualization Tools
+
+```rust
+// Generate charts and graphs
+pub struct VisualDataAgent {
+    agent: DataAgent,
+    chart_generator: ChartGenerator,
+    plot_creator: PlotCreator,
+    dashboard_builder: DashboardBuilder,
+}
+```
+
+### 5. Database Integration
+
+```rust
+// Connect to databases for live data analysis
+pub struct DatabaseDataAgent {
+    agent: DataAgent,
+    sql_connector: SqlConnector,
+    nosql_connector: NoSqlConnector,
+    query_optimizer: QueryOptimizer,
+}
+```
+
+### 6. Real-time Data Processing
+
+```rust
+// Handle streaming data sources
+pub struct StreamingDataAgent {
+    agent: DataAgent,
+    stream_processor: StreamProcessor,
+    window_analyzer: WindowAnalyzer,
+    alert_system: AlertSystem,
+}
+```
+
+## Potential Benefits of Using It
+
+### For Data Scientists
+- **Rapid Prototyping**: Quickly analyze new datasets without writing custom code
+- **Exploratory Data Analysis**: Automated initial insights and pattern discovery
+- **Documentation**: Natural language explanations of complex statistical findings
+- **Collaboration**: Share insights with non-technical stakeholders
+
+### For Business Analysts
+- **Accessibility**: No coding required for sophisticated data analysis
+- **Speed**: Instant insights from data without waiting for custom reports
+- **Flexibility**: Ask follow-up questions and drill down into specific areas
+- **Actionable Insights**: Business-focused recommendations and implications
+
+### For Organizations
+- **Cost Reduction**: Reduce time spent on routine data analysis tasks
+- **Improved Decision Making**: Data-driven insights accessible to all stakeholders
+- **Scalability**: Handle multiple datasets and analysis requests simultaneously
+- **Knowledge Democratization**: Make data analysis accessible to non-technical users
+
+### For Developers
+- **Integration**: Easy to embed in existing applications and workflows
+- **Customization**: Extensible architecture for domain-specific analysis
+- **API-First**: RESTful interface for programmatic access
+- **Streaming**: Real-time analysis capabilities for live data
+
+## Features
+
 - Demonstrates CSV processing with sample employee data
 - Shows statistical analysis results
 - Interactive AI analysis with role-based prompts
@@ -11,8 +217,7 @@ Features:
 
 The CSV tool can be easily extended to support other data formats or additional analysis features.
 
-
-# Output of csv_analysis exmaple
+## Output of csv_analysis example
 
 The example successfully:
 - Processes CSV data with 10 employee records
@@ -20,8 +225,6 @@ The example successfully:
 - Provides AI-powered insights about the data
 - Handles follow-up questions about salary distribution
 - Shows proper tool integration and streaming responses
-
-
 
 Running `/opt/ml/kowalski/target/debug/examples/csv_analysis`
 
