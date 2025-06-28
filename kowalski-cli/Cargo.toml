@@ -1,0 +1,40 @@
+[package]
+name = "kowalski-cli"
+version = {workspace = true}
+edition = {workspace = true}
+authors = {workspace = true}
+license = {workspace = true}
+readme = "README.md"
+
+[dependencies]
+kowalski-core = { path = "../kowalski-core" }
+kowalski-agent-template = { path = "../kowalski-agent-template" }
+kowalski-tools = { path = "../kowalski-tools" }
+kowalski-federation = { path = "../kowalski-federation" }
+kowalski-academic-agent = { path = "../kowalski-academic-agent" }
+kowalski-data-agent = { path = "../kowalski-data-agent", optional = true }
+kowalski-code-agent = { path = "../kowalski-code-agent" }
+kowalski-web-agent = { path = "../kowalski-web-agent" }
+chrono = "0.4"
+clap = { version = "4.5", features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3" }
+env_logger = "0.11"
+tokio = { workspace = true }
+reqwest = { workspace = true }
+async-trait = { workspace = true }
+log = { workspace = true }
+futures = { workspace = true }
+bytes = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+url = { workspace = true }
+regex = { workspace = true }
+markdown = { workspace = true }
+
+[features]
+default = []
+data = ["kowalski-data-agent"]

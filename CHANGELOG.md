@@ -4,6 +4,85 @@
 
 All notable changes to this project will be documented in this file, or at least we'll try to remember to do so.
 
+## [0.5.0] - 2024-06-09
+
+> "Version 0.5.0: The Great Kowalski Restructurization. Now with 100% more modules!"
+
+### 🚀 Major Release: Modular Kowalski
+- **Project Restructurization:**
+  - Split the codebase into clear, separate modules:
+    - `kowalski-core`: Foundational types, agent abstractions, conversation, roles, configuration, error handling, and toolchain logic.
+    - `kowalski-agent-template`: Flexible agent base, builder, and ready-to-use templates for rapid agent development.
+    - `kowalski-tools`: Pluggable tools for code, data, web, and document analysis.
+    - `kowalski-federation`: (WIP) Multi-agent orchestration, registry, and federation protocols.
+    - Specific agents (e.g., academic, code, data, web) now live in their own crates.
+  - Each module now has its own README and clear documentation.
+  - Lays the groundwork for future multi-agent, federated, and plugin-based development.
+
+### 🏗️ Architecture
+- **Separation of Concerns:** Each module is now responsible for a single aspect of the system, making the codebase easier to maintain, extend, and test.
+- **Extensibility:** New agents, tools, and federation protocols can be added without touching the core logic.
+- **Documentation:** All major modules now have comprehensive, modern README files.
+
+### 🧪 Federation (Experimental)
+- Initial implementation of `kowalski-federation` for multi-agent orchestration.
+- Open questions remain about protocol selection (A2A, ACP, MCP, or custom).
+- Marked as UNDER CONSTRUCTION—expect rapid changes and design discussions.
+
+### 🧰 Tools
+- All tools (code, data, web, document) are now in `kowalski-tools` and can be plugged into any agent.
+
+### 🧑‍💻 Agent Templates
+- `kowalski-agent-template` provides a builder and templates for fast custom agent creation.
+- General and research agent templates included as examples.
+
+### 🗃️ Other
+- Updated and unified dependency management across all modules.
+- Improved test coverage and modular test structure.
+- Cleaned up legacy code, TODOs, and dead ends from previous versions.
+
+---
+
+## [0.3.0] - 2024-03-10
+
+> "Version 0.3.0: Because 0.2.0 wasn't confusing enough." - A Version Control Enthusiast
+
+### 🎭 Added
+- **CLI Interface** (because typing commands is more fun than clicking buttons):
+  - `kowalski chat`: Talk to your AI without all the fancy UI
+  - `kowalski academic`: Analyze papers without actually reading them
+  - `kowalski model`: Manage your AI models like a pro
+  - Command-line arguments that make sense (for once)
+  - Helpful error messages (they're still errors, but at least they're helpful)
+
+### 🔧 Changed
+- Completely revamped command-line interface (it's not just a bunch of flags anymore)
+- Improved model management commands (your AI models are now properly domesticated)
+- Enhanced error handling in CLI (because users deserve to know what they did wrong)
+- Better streaming response handling (watch your AI think in real-time, now with better formatting)
+
+### 🐛 Fixed
+- CLI argument parsing issues (now it actually understands what you're trying to say)
+- Model management command errors (your models won't disappear into the void anymore)
+- Response streaming formatting (no more broken lines or missing characters)
+- Various "it works on my machine" issues (it still might not work on yours, but at least we tried)
+
+### 📚 Documentation
+- Added CLI usage examples (because reading the code is so last year)
+- Updated README with command-line instructions (they're actually useful this time)
+- Added command help messages (they're sarcastic, but they work)
+- Improved error messages (they're still errors, but at least they're funny)
+
+### 🔬 Technical Debt
+- Replaced quick CLI hacks with slightly more sophisticated CLI hacks
+- Moved CLI-related TODOs to actual GitHub issues
+- Pretended to understand command-line argument parsing better
+
+### 🎯 Dependencies
+- Added `clap` for proper CLI argument parsing (because parsing strings manually is so 2010)
+- Updated other dependencies (because old code is like old milk - it smells bad)
+- Removed deprecated dependencies (they served us well, but it's time to move on)
+
 ## [0.2.0] - 2024-03-09
 
 > "The best time to write a changelog is when you make the changes. The second best time is right before a release when you've forgotten everything you did." - Ancient Developer Proverb

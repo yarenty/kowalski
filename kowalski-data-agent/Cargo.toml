@@ -1,0 +1,36 @@
+[package]
+name = "kowalski-data-agent"
+version = {workspace = true}
+edition = {workspace = true}
+authors = {workspace = true}
+license = {workspace = true}
+readme = "README.md"
+
+
+[dependencies]
+kowalski-core = { path = "../kowalski-core" }
+kowalski-agent-template = { path = "../kowalski-agent-template" }
+kowalski-tools = { path = "../kowalski-tools" }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+futures = { workspace = true }
+bytes = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+url = { workspace = true }
+regex = { workspace = true }
+markdown = { workspace = true }
+env_logger = { workspace = true }
+clap = { version = "4.5", features = ["derive"] }
+csv = "1.1"
+
+[[example]]
+name = "csv_analysis"
+path = "examples/csv_analysis.rs"

@@ -1,0 +1,24 @@
+[package]
+name = "kowalski-core"
+version = {workspace = true}
+edition = {workspace = true}
+authors = {workspace = true}
+license = {workspace = true}
+readme = "README.md"
+
+[dependencies]
+async-trait = {workspace = true}
+serde = { workspace= true,features = ["derive"] }
+serde_json = {workspace = true}
+reqwest = {workspace = true }
+tokio = {workspace = true}
+thiserror = {workspace = true}
+uuid = { version = "1.7", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+log = {workspace = true}
+
+config = "0.14"
+dirs = "5.0"
+toml = "0.8"
+env_logger = "0.10"
+url = "2.5" 
