@@ -16,9 +16,10 @@ pub struct AcademicAgentConfig {
 
 impl From<CoreConfig> for AcademicAgentConfig {
     fn from(config: CoreConfig) -> Self {
-        let mut academic_config = Self::default();
-        academic_config.core = config;
-        academic_config
+        Self {
+            core: config,
+            ..Default::default()
+        }
     }
 }
 

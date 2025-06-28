@@ -3,12 +3,15 @@ use crate::tools::{TaskType, Tool, ToolInput, ToolOutput};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+/// Type alias for task handler functions
+type TaskHandlerFn = Arc<dyn Fn(&str) -> bool + Send + Sync>;
+
 /// A chain of tools that can be executed in sequence
 pub struct ToolChain {
     /// The tools in the chain
     tools: Vec<Box<dyn Tool + Send + Sync>>,
     /// Task type handlers
-    task_handlers: HashMap<String, Arc<dyn Fn(&str) -> bool + Send + Sync>>,
+    task_handlers: HashMap<String, TaskHandlerFn>,
 }
 
 impl Default for ToolChain {
