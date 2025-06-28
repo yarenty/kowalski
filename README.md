@@ -3,11 +3,86 @@
 > "AI agents are like pets – they're cute, but they make a mess."  
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"
 
-A modular, extensible Rust-based AI agent framework for interacting with LLMs (Ollama, OpenAI, etc.), document/code/data/web analysis, and multi-agent orchestration. Built for research, automation, and fun.
+
+A sophisticated Rust-based multi-agent framework for interacting with various LLM providers, with built-in support for federation, secure multi-party computation, and extensible tooling architecture.
 
 ---
 
-## 🏛️ Global Architecture
+
+## 🌟 Vision & Architecture
+Kowalski is designed as a foundational framework for building intelligent, distributed agent systems that can collaborate securely and efficiently. The architecture supports both standalone operation and federated deployments with advanced privacy-preserving capabilities.
+
+```mermaid
+graph TB
+    subgraph "Client Layer"
+        CLI[CLI Interface]
+        API[REST API]
+        WEB[Web Interface]
+    end
+    
+    subgraph "Agent Layer"
+        GA[General Agent]
+        AA[Academic Agent]
+        TA[Tooling Agent]
+        CA[Custom Agents]
+    end
+    
+    subgraph "Core Services"
+        CM[Conversation Manager]
+        RM[Role Manager]
+        SM[Streaming Manager]
+        CFG[Configuration Manager]
+    end
+    
+    subgraph "Tools & Extensions"
+        PDF[PDF Processor]
+        TXT[Text Processor]
+        WS[Web Search]
+        WF[Web Fetcher]
+        FT[Future Tools]
+    end
+    
+    subgraph "External Services"
+        OLLAMA[Ollama Server]
+        MODELS[LLM Models]
+        SEARCH[Search APIs]
+        WEB_SRC[Web Sources]
+    end
+    
+    CLI --> GA
+    API --> GA
+    WEB --> GA
+    
+    GA --> CM
+    AA --> CM
+    TA --> CM
+    CA --> CM
+    
+    CM --> RM
+    CM --> SM
+    CM --> CFG
+    
+    AA --> PDF
+    AA --> TXT
+    TA --> WS
+    TA --> WF
+    CA --> FT
+    
+    GA --> OLLAMA
+    AA --> OLLAMA
+    TA --> OLLAMA
+    CA --> OLLAMA
+    
+    OLLAMA --> MODELS
+    WS --> SEARCH
+    WF --> WEB_SRC
+    
+    style GA fill:#e1f5fe
+    style AA fill:#f3e5f5
+    style TA fill:#e8f5e8
+    style OLLAMA fill:#fff3e0
+```
+
 
 ```
 kowalski/
