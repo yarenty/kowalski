@@ -27,13 +27,9 @@ kowalski-agent-template = { path = "../kowalski-agent-template", version = "0.5.
 kowalski-tools = { path = "../kowalski-tools", version = "0.5.0" }
 kowalski-federation = { path = "../kowalski-federation", version = "0.5.0" }
 kowalski-academic-agent = { path = "../kowalski-academic-agent", version = "0.5.0" }
-kowalski-data-agent = { path = "../kowalski-data-agent", version = "0.5.0", optional = true }
+kowalski-data-agent = { path = "../kowalski-data-agent", version = "0.5.0" }
 kowalski-code-agent = { path = "../kowalski-code-agent", version = "0.5.0" }
 kowalski-web-agent = { path = "../kowalski-web-agent", version = "0.5.0" }
-
-[features]
-default = []
-data = ["kowalski-data-agent"]
 
 [lib]
 name = "kowalski"
