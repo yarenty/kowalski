@@ -1,10 +1,10 @@
 use env_logger;
+use kowalski_code_agent::agent::CodeAgent;
 use kowalski_core::{
     agent::Agent,
     config::Config,
     role::{Audience, Preset, Role},
 };
-use kowalski_data_agent::agent::DataAgent;
 use std::io::{self, Write};
 
 #[tokio::main]
@@ -14,63 +14,121 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Load configuration
     let config = Config::default();
-    let mut data_agent = DataAgent::new(config).await?;
+    let mut code_agent = CodeAgent::new(config).await?;
 
     // Start a conversation
-    println!("📊 Starting CSV Analysis...");
-    let conversation_id = data_agent.start_conversation("llama3.2");
-    println!("Data Agent Conversation ID: {}", conversation_id);
+    println!("🦀 Starting Rust Code Analysis...");
+    let conversation_id = code_agent.start_conversation("llama3.2");
+    println!("Code Agent Conversation ID: {}", conversation_id);
 
-    // Set up the role for data analysis
+    // Set up the role for code analysis
     let role = Role::new(
-        "Data Analysis Assistant",
-        "You are an expert at analyzing and interpreting data from CSV files.",
+        "Rust Code Analysis Assistant",
+        "You are an expert at analyzing Rust code, providing insights on code quality, safety, and potential improvements.",
     )
     .with_audience(Audience::new(
-        "Data Scientist",
-        "You are speaking to a data scientist who needs detailed analysis.",
+        "Rust Developer",
+        "You are speaking to a Rust developer who needs detailed code analysis.",
     ))
     .with_preset(Preset::new(
         "Analysis",
-        "Provide comprehensive analysis with insights and recommendations.",
+        "Provide comprehensive analysis with specific recommendations for improvement.",
     ));
 
-    // Sample CSV data for analysis
-    let csv_data = r#"name,age,city,salary,department
-John Doe,30,New York,75000,Engineering
-Jane Smith,28,San Francisco,85000,Marketing
-Bob Johnson,35,Chicago,65000,Sales
-Alice Brown,32,Boston,70000,Engineering
-Charlie Wilson,29,Seattle,80000,Engineering
-Diana Davis,31,Austin,72000,Marketing
-Eve Miller,27,Denver,68000,Sales
-Frank Garcia,33,Portland,75000,Engineering
-Grace Lee,26,Atlanta,65000,Marketing
-Henry Taylor,34,Dallas,78000,Engineering"#;
+    // Sample Rust code for analysis
+    let rust_code = r#"
+use std::collections::HashMap;
+use std::error::Error;
 
-    println!("\n📈 Processing CSV Data:");
-    println!("{}", csv_data);
+#[derive(Debug)]
+struct DataProcessor {
+    data: Vec<i32>,
+    cache: HashMap<String, i32>,
+}
 
-    // Process the CSV data
-    let analysis_result = data_agent.process_csv(csv_data).await?;
+impl DataProcessor {
+    fn new(data: Vec<i32>) -> Self {
+        Self {
+            data,
+            cache: HashMap::new(),
+        }
+    }
+    
+    fn calculate_sum(&self) -> i32 {
+        self.data.iter().sum()
+    }
+    
+    fn calculate_average(&self) -> Option<f64> {
+        if self.data.is_empty() {
+            None
+        } else {
+            Some(self.calculate_sum() as f64 / self.data.len() as f64)
+        }
+    }
+    
+    fn find_max(&self) -> Option<&i32> {
+        self.data.iter().max()
+    }
+    
+    fn process_with_cache(&mut self, key: String) -> Result<i32, Box<dyn Error>> {
+        if let Some(&cached_value) = self.cache.get(&key) {
+            return Ok(cached_value);
+        }
+        
+        let result = self.calculate_sum();
+        self.cache.insert(key, result);
+        Ok(result)
+    }
+}
 
-    println!("\n📊 CSV Analysis Results:");
-    println!("Headers: {:?}", analysis_result.headers);
-    println!("Total Rows: {}", analysis_result.total_rows);
-    println!("Total Columns: {}", analysis_result.total_columns);
+fn main() {
+    let numbers = vec![10, 20, 30, 40, 50];
+    let mut processor = DataProcessor::new(numbers);
+    
+    println!("Sum: {}", processor.calculate_sum());
+    
+    match processor.calculate_average() {
+        Some(avg) => println!("Average: {}", avg),
+        None => println!("No data to calculate average"),
+    }
+    
+    match processor.find_max() {
+        Some(max) => println!("Maximum: {}", max),
+        None => println!("No data to find maximum"),
+    }
+    
+    match processor.process_with_cache("sum".to_string()) {
+        Ok(result) => println!("Cached result: {}", result),
+        Err(e) => println!("Error: {}", e),
+    }
+}
+"#;
+
+    println!("\n📝 Rust Code to Analyze:");
+    println!("{}", rust_code);
+
+    // Analyze the Rust code
+    let analysis_result = code_agent.analyze_rust(rust_code).await?;
+
+    println!("\n📊 Rust Analysis Results:");
+    println!("Language: {}", analysis_result.language);
     println!(
-        "Summary: {}",
-        serde_json::to_string_pretty(&analysis_result.summary)?
+        "Metrics: {}",
+        serde_json::to_string_pretty(&analysis_result.metrics)?
     );
+    println!("Suggestions: {:?}", analysis_result.suggestions);
+    println!("Rust Issues: {:?}", analysis_result.issues);
 
-    // Ask the agent to analyze the data
+    // Ask the agent to analyze the code
     let analysis_prompt = format!(
-        "Please analyze this CSV data and provide insights:\n\n{}\n\nAnalysis results:\n{}",
-        csv_data,
-        serde_json::to_string_pretty(&analysis_result.summary)?
+        "Please analyze this Rust code and provide insights:\n\n{}\n\nAnalysis results:\nMetrics: {}\nSuggestions: {:?}\nRust Issues: {:?}",
+        rust_code,
+        serde_json::to_string_pretty(&analysis_result.metrics)?,
+        analysis_result.suggestions,
+        analysis_result.issues
     );
 
-    let mut response = data_agent
+    let mut response = code_agent
         .chat_with_history(&conversation_id, &analysis_prompt, Some(role))
         .await?;
 
@@ -79,7 +137,7 @@ Henry Taylor,34,Dallas,78000,Engineering"#;
     // Process the streaming response
     let mut buffer = String::new();
     while let Some(chunk) = response.chunk().await? {
-        match data_agent
+        match code_agent
             .process_stream_response(&conversation_id, &chunk)
             .await
         {
@@ -106,7 +164,7 @@ Henry Taylor,34,Dallas,78000,Engineering"#;
                 }
             }
             Ok(None) => {
-                data_agent
+                code_agent
                     .add_message(&conversation_id, "assistant", &buffer)
                     .await;
                 println!("\n✅ Analysis complete!\n");
@@ -119,16 +177,16 @@ Henry Taylor,34,Dallas,78000,Engineering"#;
         }
     }
 
-    // Ask a follow-up question about specific insights
-    let follow_up = "What are the key insights about salary distribution across departments?";
-    let mut follow_up_response = data_agent
+    // Ask a follow-up question about Rust-specific improvements
+    let follow_up = "What Rust-specific improvements would you recommend for this code?";
+    let mut follow_up_response = code_agent
         .chat_with_history(&conversation_id, follow_up, None)
         .await?;
 
     println!("\n🔍 Follow-up Analysis:");
     let mut buffer = String::new();
     while let Some(chunk) = follow_up_response.chunk().await? {
-        match data_agent
+        match code_agent
             .process_stream_response(&conversation_id, &chunk)
             .await
         {
@@ -155,7 +213,7 @@ Henry Taylor,34,Dallas,78000,Engineering"#;
                 }
             }
             Ok(None) => {
-                data_agent
+                code_agent
                     .add_message(&conversation_id, "assistant", &buffer)
                     .await;
                 println!("\n");

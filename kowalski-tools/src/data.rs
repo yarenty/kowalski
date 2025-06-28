@@ -20,23 +20,27 @@ impl CsvTool {
 
     fn read_csv(&self, content: &str) -> Result<serde_json::Value, KowalskiError> {
         let mut rdr = csv::Reader::from_reader(content.as_bytes());
-        let headers = rdr.headers()
-            .map_err(|e| KowalskiError::ContentProcessing(format!("Failed to read CSV headers: {}", e)))?
+        let headers = rdr
+            .headers()
+            .map_err(|e| {
+                KowalskiError::ContentProcessing(format!("Failed to read CSV headers: {}", e))
+            })?
             .iter()
             .map(|h| h.to_string())
             .collect::<Vec<_>>();
 
         let mut records = Vec::new();
         let mut row_count = 0;
-        
+
         for result in rdr.records() {
             if row_count >= self.max_rows {
                 break;
             }
-            
-            let record = result
-                .map_err(|e| KowalskiError::ContentProcessing(format!("Failed to read CSV record: {}", e)))?;
-            
+
+            let record = result.map_err(|e| {
+                KowalskiError::ContentProcessing(format!("Failed to read CSV record: {}", e))
+            })?;
+
             let mut row = HashMap::new();
             for (i, field) in record.iter().enumerate() {
                 if i >= self.max_columns {
@@ -53,7 +57,7 @@ impl CsvTool {
         }
 
         let summary = self.generate_summary(&headers, &records);
-        
+
         Ok(json!({
             "headers": headers,
             "records": records,
@@ -63,7 +67,11 @@ impl CsvTool {
         }))
     }
 
-    fn generate_summary(&self, headers: &[String], records: &[HashMap<String, String>]) -> serde_json::Value {
+    fn generate_summary(
+        &self,
+        headers: &[String],
+        records: &[HashMap<String, String>],
+    ) -> serde_json::Value {
         if records.is_empty() {
             return json!({
                 "message": "No data to analyze",
@@ -79,10 +87,8 @@ impl CsvTool {
         // Analyze each column
         let mut column_analysis = HashMap::new();
         for header in headers {
-            let values: Vec<&String> = records.iter()
-                .filter_map(|row| row.get(header))
-                .collect();
-            
+            let values: Vec<&String> = records.iter().filter_map(|row| row.get(header)).collect();
+
             if !values.is_empty() {
                 let analysis = self.analyze_column(values);
                 column_analysis.insert(header.clone(), analysis);
@@ -96,18 +102,19 @@ impl CsvTool {
     fn analyze_column(&self, values: Vec<&String>) -> serde_json::Value {
         let mut analysis = HashMap::new();
         analysis.insert("count".to_string(), json!(values.len()));
-        
+
         // Try to parse as numbers
-        let numbers: Vec<f64> = values.iter()
+        let numbers: Vec<f64> = values
+            .iter()
             .filter_map(|v| v.parse::<f64>().ok())
             .collect();
-        
+
         if !numbers.is_empty() {
             let min = numbers.iter().fold(f64::INFINITY, |a, &b| a.min(b));
             let max = numbers.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b));
             let sum: f64 = numbers.iter().sum();
             let avg = sum / numbers.len() as f64;
-            
+
             analysis.insert("type".to_string(), json!("numeric"));
             analysis.insert("min".to_string(), json!(min));
             analysis.insert("max".to_string(), json!(max));
@@ -115,18 +122,19 @@ impl CsvTool {
             analysis.insert("average".to_string(), json!(avg));
         } else {
             // Analyze as text
-            let unique_values: std::collections::HashSet<&String> = values.iter().cloned().collect();
+            let unique_values: std::collections::HashSet<&String> =
+                values.iter().cloned().collect();
             analysis.insert("type".to_string(), json!("text"));
             analysis.insert("unique_count".to_string(), json!(unique_values.len()));
-            
+
             // Most common value
             let mut value_counts: HashMap<&String, usize> = HashMap::new();
             for value in values {
                 *value_counts.entry(value).or_insert(0) += 1;
             }
-            
-            if let Some((most_common, count)) = value_counts.iter()
-                .max_by_key(|(_, &count)| count) {
+
+            if let Some((most_common, count)) = value_counts.iter().max_by_key(|(_, &count)| count)
+            {
                 analysis.insert("most_common".to_string(), json!(*most_common));
                 analysis.insert("most_common_count".to_string(), json!(*count));
             }
@@ -142,19 +150,25 @@ impl Tool for CsvTool {
         match input.task_type.as_str() {
             "process_csv" => {
                 let result = self.read_csv(&input.content)?;
-                Ok(ToolOutput::new(result, Some(json!({
-                    "tool": "csv_tool",
-                    "max_rows": self.max_rows,
-                    "max_columns": self.max_columns
-                }))))
+                Ok(ToolOutput::new(
+                    result,
+                    Some(json!({
+                        "tool": "csv_tool",
+                        "max_rows": self.max_rows,
+                        "max_columns": self.max_columns
+                    })),
+                ))
             }
             "analyze_csv" => {
                 let result = self.read_csv(&input.content)?;
                 let summary = result["summary"].clone();
-                Ok(ToolOutput::new(summary, Some(json!({
-                    "tool": "csv_tool",
-                    "analysis_type": "summary"
-                }))))
+                Ok(ToolOutput::new(
+                    summary,
+                    Some(json!({
+                        "tool": "csv_tool",
+                        "analysis_type": "summary"
+                    })),
+                ))
             }
             _ => Err(KowalskiError::ToolExecution(format!(
                 "Unsupported task type: {}",
@@ -215,4 +229,4 @@ mod tests {
         assert!(!params.is_empty());
         assert_eq!(params[0].name, "content");
     }
-} 
+}
