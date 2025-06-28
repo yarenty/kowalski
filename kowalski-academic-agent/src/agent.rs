@@ -44,7 +44,7 @@ impl AcademicAgent {
             vec![Box::new(search_tool), Box::new(pdf_tool)];
         let builder = GeneralTemplate::create_agent(
             tools,
-            Some("You are an academic research assistant specialized in finding and analyzing academic papers.".to_string()),
+            Some("You are an academic research assistant specialized in finding and analyzing academic papers. You have access to web_search and pdf tools. Use them to answer questions about academic research.".to_string()),
             Some(0.7),
         )
         .await

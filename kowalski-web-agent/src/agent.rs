@@ -45,7 +45,7 @@ impl WebAgent {
             vec![Box::new(search_tool), Box::new(scrape_tool)];
         let builder = GeneralTemplate::create_agent(
             tools,
-            Some("You are a web research assistant specialized in finding and analyzing online information.".to_string()),
+            Some("You are a web research assistant specialized in finding and analyzing online information. You have access to web_search and web_scrape tools. Use them to answer questions about the web.".to_string()),
             Some(0.7),
         )
         .await
