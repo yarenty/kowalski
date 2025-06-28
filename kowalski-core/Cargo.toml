@@ -23,18 +23,6 @@ keywords = [
     "chat",
     "llm",
     "ollama",
-    "conversation",
-    "toolchain",
-    "async",
-    "framework",
-    "model-management",
-    "role-based",
-    "extensible",
-    "modular",
-    "trait",
-    "configuration",
-    "error-handling",
-    "logging"
 ]
 
 
