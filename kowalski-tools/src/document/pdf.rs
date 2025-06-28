@@ -126,7 +126,7 @@ impl PdfTool {
                     for (key, value) in info_dict.iter() {
                         let key_vec = key.to_vec();
                         let key_str = String::from_utf8_lossy(&key_vec).to_string();
-                        if let lopdf::Object::String(ref s, _) = value {
+                        if let lopdf::Object::String(s, _) = value {
                             let val_str = String::from_utf8_lossy(s).to_string();
                             metadata.insert(key_str, json!(val_str));
                         }

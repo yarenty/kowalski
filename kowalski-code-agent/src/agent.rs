@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 
 /// CodeAgent: A specialized agent for code analysis and development tasks
 /// This agent is built on top of the TemplateAgent and provides code-specific functionality
+#[allow(dead_code)]
 pub struct CodeAgent {
     agent: TemplateAgent,
     config: CodeAgentConfig,

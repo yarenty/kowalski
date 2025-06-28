@@ -1,4 +1,5 @@
 [workspace]
+resolver = "3"
 members = [
     "kowalski-core",
     "kowalski-agent-template",
@@ -11,54 +12,9 @@ members = [
     "kowalski-cli"
 ]
 
+
 [workspace.package]
-version = "0.1.0"
-edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
-license = "MIT"
-
-[workspace.dependencies]
-# Core async/runtime dependencies
-tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", features = ["json", "stream"] }
-async-trait = "0.1"
-futures = "0.3"
-
-# Core serialization and data handling
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-
-# Core time and date handling
-chrono = "0.4"
-
-# Core error handling
-thiserror = "1.0"
-
-# Core logging and tracing
-log = "0.4"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-env_logger = "0.11"
-
-# Core utilities
-url = "2.5.0"
-regex = "1.10"
-markdown = "0.3"
-bytes = "1.5"
-tower = "0.4"
-tower-http = { version = "0.5", features = ["trace"] }
-
-# Config and directory handling
-toml = "0.8"
-config = "0.15"
-dirs = "6.0"
-
-# Optional dependencies
-uuid = { version = "1.7", features = ["v4", "serde"] }
-
-[package]
-name = "kowalski"
-version = "0.3.0"
+version = "0.5.0"
 edition = "2024"
 description = "A Rust-based agent for interacting with Ollama models"
 license = "MIT"
@@ -81,32 +37,42 @@ keywords = [
     "ollama"
 ]
 
-[features]
-default = []
-web = ["kowalski-web-agent"]
-academic = ["kowalski-academic-agent"]
-code = ["kowalski-code-agent"]
-federation = ["kowalski-federation"]
-all = ["web", "academic", "code", "federation"]
 
-[dependencies]
-kowalski-core = { path = "kowalski-core" }
-kowalski-agent-template = { path = "kowalski-agent-template" }
-kowalski-tools = { path = "kowalski-tools" }
-kowalski-cli = { path = "kowalski-cli" }
-kowalski-web-agent = { path = "kowalski-web-agent", optional = true }
-kowalski-academic-agent = { path = "kowalski-academic-agent", optional = true }
-kowalski-code-agent = { path = "kowalski-code-agent", optional = true }
-kowalski-federation = { path = "kowalski-federation", optional = true }
-reqwest = { workspace = true }
-tokio = { workspace = true }
-futures = { workspace = true }
-async-trait = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-log = { workspace = true }
-env_logger = { workspace = true }
-thiserror = { workspace = true }
-url = { workspace = true }
-chrono = { workspace = true }
-regex = { workspace = true }
+[workspace.dependencies]
+# Core async/runtime dependencies
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+async-trait = "0.1"
+futures = "0.3"
+
+# Core serialization and data handling
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Core time and date handling
+chrono = "0.4"
+
+# Core error handling
+thiserror = "2.0"
+
+# Core logging and tracing
+log = "0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+env_logger = "0.11"
+
+# Core utilities
+url = "2.5.0"
+regex = "1.10"
+markdown = "1.0"
+bytes = "1.5"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace"] }
+
+# Config and directory handling
+toml = "0.8"
+config = "0.15"
+dirs = "6.0"
+
+# Optional dependencies
+uuid = { version = "1", features = ["v4", "serde"] }

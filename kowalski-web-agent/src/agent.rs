@@ -1,5 +1,6 @@
 use crate::config::WebAgentConfig;
 use async_trait::async_trait;
+use futures::StreamExt;
 use kowalski_agent_template::TemplateAgent;
 use kowalski_agent_template::templates::general::GeneralTemplate;
 use kowalski_core::agent::Agent;
@@ -7,17 +8,15 @@ use kowalski_core::config::Config;
 use kowalski_core::conversation::Conversation;
 use kowalski_core::error::KowalskiError;
 use kowalski_core::role::Role;
-use kowalski_core::tools::{Tool, ToolInput, ToolOutput};
+use kowalski_core::tools::{Tool, ToolInput};
 use kowalski_tools::web::{WebScrapeTool, WebSearchTool};
-use reqwest::Response;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::io::{self, Write};
-use tokio::io::AsyncReadExt;
-use futures::StreamExt;
 
 /// WebAgent: A specialized agent for web-related tasks
 /// This agent is built on top of the TemplateAgent and provides web-specific functionality
+#[allow(dead_code)]
 pub struct WebAgent {
     agent: TemplateAgent,
     config: WebAgentConfig,
@@ -53,7 +52,7 @@ impl WebAgent {
         let scrape_tool = WebScrapeTool::new();
         let tools: Vec<Box<dyn Tool + Send + Sync>> =
             vec![Box::new(search_tool), Box::new(scrape_tool)];
-        
+
         // Enhanced system prompt that explicitly encourages tool usage
         let system_prompt = r#"You are a web research assistant specialized in finding and analyzing online information. 
 
@@ -87,13 +86,9 @@ When you have a final answer, respond normally without JSON formatting.
 
 Remember: Use tools proactively to provide accurate, up-to-date information!"#.to_string();
 
-        let builder = GeneralTemplate::create_agent(
-            tools,
-            Some(system_prompt),
-            Some(0.7),
-        )
-        .await
-        .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
+        let builder = GeneralTemplate::create_agent(tools, Some(system_prompt), Some(0.7))
+            .await
+            .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
         let agent = builder.build().await?;
         Ok(Self {
             agent,
@@ -102,13 +97,20 @@ Remember: Use tools proactively to provide accurate, up-to-date information!"#.t
     }
 
     /// Chat with the web agent using ReAct-style tool calling
-    pub async fn chat_with_tools(&mut self, conversation_id: &str, user_input: &str) -> Result<String, KowalskiError> {
+    pub async fn chat_with_tools(
+        &mut self,
+        conversation_id: &str,
+        user_input: &str,
+    ) -> Result<String, KowalskiError> {
         let mut final_response = String::new();
         let mut current_input = user_input.to_string();
         let mut iteration_count = 0;
         const MAX_ITERATIONS: usize = 5; // Prevent infinite loops
 
-        println!("[DEBUG] Starting chat_with_tools for input: '{}'", user_input);
+        println!(
+            "[DEBUG] Starting chat_with_tools for input: '{}'",
+            user_input
+        );
 
         while iteration_count < MAX_ITERATIONS {
             iteration_count += 1;
@@ -116,13 +118,16 @@ Remember: Use tools proactively to provide accurate, up-to-date information!"#.t
             println!("[DEBUG] Current input: '{}'", current_input);
 
             // Add user input to conversation
-            self.add_message(conversation_id, "user", &current_input).await;
+            self.add_message(conversation_id, "user", &current_input)
+                .await;
             println!("[DEBUG] Added user message to conversation");
 
             // Get response from LLM
             println!("[DEBUG] Calling LLM...");
             let response = self
-                .agent.base_mut().chat_with_history(conversation_id, &current_input, None)
+                .agent
+                .base_mut()
+                .chat_with_history(conversation_id, &current_input, None)
                 .await?;
 
             let mut stream = response.bytes_stream();
@@ -133,10 +138,14 @@ Remember: Use tools proactively to provide accurate, up-to-date information!"#.t
             while let Some(chunk) = stream.next().await {
                 match chunk {
                     Ok(bytes) => {
-                        if let Ok(Some(message)) = self.process_stream_response(conversation_id, &bytes).await {
+                        if let Ok(Some(message)) =
+                            self.process_stream_response(conversation_id, &bytes).await
+                        {
                             if !message.content.is_empty() {
                                 print!("{}", message.content);
-                                io::stdout().flush().map_err(|e| KowalskiError::Server(e.to_string()))?;
+                                io::stdout()
+                                    .flush()
+                                    .map_err(|e| KowalskiError::Server(e.to_string()))?;
                                 buffer.push_str(&message.content);
                             }
                         }
@@ -152,18 +161,21 @@ Remember: Use tools proactively to provide accurate, up-to-date information!"#.t
 
             // Try to parse as tool call
             println!("[DEBUG] Attempting to parse as tool call...");
-            
+
             // First try to parse the entire response as JSON
             if let Ok(tool_call) = serde_json::from_str::<ToolCall>(&buffer) {
                 println!("[DEBUG] ✅ Tool call successfully parsed!");
                 println!("[DEBUG] Tool: {}", tool_call.tool);
                 println!("[DEBUG] Input: {}", tool_call.input);
                 println!("[DEBUG] Reasoning: {:?}", tool_call.reasoning);
-                
+
                 // Execute the tool using specialized methods
                 let tool_result = match tool_call.tool.as_str() {
                     "web_search" => {
-                        println!("[DEBUG] Executing web_search with query: '{}'", tool_call.input);
+                        println!(
+                            "[DEBUG] Executing web_search with query: '{}'",
+                            tool_call.input
+                        );
                         match self.search(&tool_call.input).await {
                             Ok(results) => {
                                 let result_str = if results.is_empty() {
@@ -171,8 +183,13 @@ Remember: Use tools proactively to provide accurate, up-to-date information!"#.t
                                 } else {
                                     let mut formatted = String::new();
                                     for (i, result) in results.iter().enumerate() {
-                                        formatted.push_str(&format!("{}. {}\n   URL: {}\n   Snippet: {}\n\n", 
-                                            i + 1, result.title, result.url, result.snippet));
+                                        formatted.push_str(&format!(
+                                            "{}. {}\n   URL: {}\n   Snippet: {}\n\n",
+                                            i + 1,
+                                            result.title,
+                                            result.url,
+                                            result.snippet
+                                        ));
                                     }
                                     formatted
                                 };
@@ -187,12 +204,21 @@ Remember: Use tools proactively to provide accurate, up-to-date information!"#.t
                         }
                     }
                     "web_scrape" => {
-                        println!("[DEBUG] Executing web_scrape with URL: '{}'", tool_call.input);
+                        println!(
+                            "[DEBUG] Executing web_scrape with URL: '{}'",
+                            tool_call.input
+                        );
                         match self.fetch_page(&tool_call.input).await {
                             Ok(page) => {
-                                let result_str = format!("Page Title: {}\n\nContent: {}", page.title, page.content);
+                                let result_str = format!(
+                                    "Page Title: {}\n\nContent: {}",
+                                    page.title, page.content
+                                );
                                 println!("[DEBUG] ✅ web_scrape completed successfully");
-                                println!("[DEBUG] Scraped content length: {} chars", page.content.len());
+                                println!(
+                                    "[DEBUG] Scraped content length: {} chars",
+                                    page.content.len()
+                                );
                                 result_str
                             }
                             Err(e) => {
@@ -202,40 +228,51 @@ Remember: Use tools proactively to provide accurate, up-to-date information!"#.t
                         }
                     }
                     _ => {
-                        println!("[DEBUG] Unknown tool: {}, using generic execution", tool_call.tool);
+                        println!(
+                            "[DEBUG] Unknown tool: {}, using generic execution",
+                            tool_call.tool
+                        );
                         self.execute_tool(&tool_call.tool, &tool_call.input).await?
                     }
                 };
-                
+
                 // Add tool result to conversation
                 let tool_message = format!("Tool result for {}: {}", tool_call.tool, tool_result);
-                self.add_message(conversation_id, "assistant", &tool_message).await;
+                self.add_message(conversation_id, "assistant", &tool_message)
+                    .await;
                 println!("[DEBUG] Added tool result to conversation");
-                
+
                 // Continue loop with tool result as next input
                 current_input = format!("Based on the tool result: {}", tool_result);
                 println!("[DEBUG] Continuing with new input: '{}'", current_input);
                 continue;
             } else {
                 // Try to extract JSON from mixed text response
-                println!("[DEBUG] ❌ Failed to parse entire response as tool call, trying to extract JSON...");
-                
+                println!(
+                    "[DEBUG] ❌ Failed to parse entire response as tool call, trying to extract JSON..."
+                );
+
                 // Look for JSON blocks in the response
                 if let Some(json_start) = buffer.find('{') {
                     if let Some(json_end) = buffer.rfind('}') {
                         let json_str = &buffer[json_start..=json_end];
                         println!("[DEBUG] Extracted JSON: {}", json_str);
-                        
+
                         if let Ok(tool_call) = serde_json::from_str::<ToolCall>(json_str) {
-                            println!("[DEBUG] ✅ Tool call successfully parsed from extracted JSON!");
+                            println!(
+                                "[DEBUG] ✅ Tool call successfully parsed from extracted JSON!"
+                            );
                             println!("[DEBUG] Tool: {}", tool_call.tool);
                             println!("[DEBUG] Input: {}", tool_call.input);
                             println!("[DEBUG] Reasoning: {:?}", tool_call.reasoning);
-                            
+
                             // Execute the tool using specialized methods
                             let tool_result = match tool_call.tool.as_str() {
                                 "web_search" => {
-                                    println!("[DEBUG] Executing web_search with query: '{}'", tool_call.input);
+                                    println!(
+                                        "[DEBUG] Executing web_search with query: '{}'",
+                                        tool_call.input
+                                    );
                                     match self.search(&tool_call.input).await {
                                         Ok(results) => {
                                             let result_str = if results.is_empty() {
@@ -243,12 +280,19 @@ Remember: Use tools proactively to provide accurate, up-to-date information!"#.t
                                             } else {
                                                 let mut formatted = String::new();
                                                 for (i, result) in results.iter().enumerate() {
-                                                    formatted.push_str(&format!("{}. {}\n   URL: {}\n   Snippet: {}\n\n", 
-                                                        i + 1, result.title, result.url, result.snippet));
+                                                    formatted.push_str(&format!(
+                                                        "{}. {}\n   URL: {}\n   Snippet: {}\n\n",
+                                                        i + 1,
+                                                        result.title,
+                                                        result.url,
+                                                        result.snippet
+                                                    ));
                                                 }
                                                 formatted
                                             };
-                                            println!("[DEBUG] ✅ web_search completed successfully");
+                                            println!(
+                                                "[DEBUG] ✅ web_search completed successfully"
+                                            );
                                             println!("[DEBUG] Search results: {}", result_str);
                                             result_str
                                         }
@@ -259,12 +303,23 @@ Remember: Use tools proactively to provide accurate, up-to-date information!"#.t
                                     }
                                 }
                                 "web_scrape" => {
-                                    println!("[DEBUG] Executing web_scrape with URL: '{}'", tool_call.input);
+                                    println!(
+                                        "[DEBUG] Executing web_scrape with URL: '{}'",
+                                        tool_call.input
+                                    );
                                     match self.fetch_page(&tool_call.input).await {
                                         Ok(page) => {
-                                            let result_str = format!("Page Title: {}\n\nContent: {}", page.title, page.content);
-                                            println!("[DEBUG] ✅ web_scrape completed successfully");
-                                            println!("[DEBUG] Scraped content length: {} chars", page.content.len());
+                                            let result_str = format!(
+                                                "Page Title: {}\n\nContent: {}",
+                                                page.title, page.content
+                                            );
+                                            println!(
+                                                "[DEBUG] ✅ web_scrape completed successfully"
+                                            );
+                                            println!(
+                                                "[DEBUG] Scraped content length: {} chars",
+                                                page.content.len()
+                                            );
                                             result_str
                                         }
                                         Err(e) => {
@@ -274,16 +329,21 @@ Remember: Use tools proactively to provide accurate, up-to-date information!"#.t
                                     }
                                 }
                                 _ => {
-                                    println!("[DEBUG] Unknown tool: {}, using generic execution", tool_call.tool);
+                                    println!(
+                                        "[DEBUG] Unknown tool: {}, using generic execution",
+                                        tool_call.tool
+                                    );
                                     self.execute_tool(&tool_call.tool, &tool_call.input).await?
                                 }
                             };
-                            
+
                             // Add tool result to conversation
-                            let tool_message = format!("Tool result for {}: {}", tool_call.tool, tool_result);
-                            self.add_message(conversation_id, "assistant", &tool_message).await;
+                            let tool_message =
+                                format!("Tool result for {}: {}", tool_call.tool, tool_result);
+                            self.add_message(conversation_id, "assistant", &tool_message)
+                                .await;
                             println!("[DEBUG] Added tool result to conversation");
-                            
+
                             // Continue loop with tool result as next input
                             current_input = format!("Based on the tool result: {}", tool_result);
                             println!("[DEBUG] Continuing with new input: '{}'", current_input);
@@ -293,13 +353,14 @@ Remember: Use tools proactively to provide accurate, up-to-date information!"#.t
                         }
                     }
                 }
-                
+
                 println!("[DEBUG] ❌ No valid tool call found - treating as final response");
             }
 
             // Not a tool call, this is the final answer
             final_response = buffer;
-            self.add_message(conversation_id, "assistant", &final_response).await;
+            self.add_message(conversation_id, "assistant", &final_response)
+                .await;
             println!("[DEBUG] ✅ Final response set: '{}'", final_response);
             break;
         }
@@ -308,25 +369,31 @@ Remember: Use tools proactively to provide accurate, up-to-date information!"#.t
             println!("[WARNING] Reached maximum iterations, returning current response");
         }
 
-        println!("[DEBUG] chat_with_tools completed after {} iterations", iteration_count);
+        println!(
+            "[DEBUG] chat_with_tools completed after {} iterations",
+            iteration_count
+        );
         Ok(final_response)
     }
 
     /// Execute a specific tool
     async fn execute_tool(&self, tool_name: &str, input: &str) -> Result<String, KowalskiError> {
         let mut tools = self.agent.tool_chain.write().await;
-        
+
         if let Some(tool) = tools.iter_mut().find(|t| t.name() == tool_name) {
             let tool_input = ToolInput::new(
                 tool_name.to_string(),
                 input.to_string(),
                 json!({"query": input}),
             );
-            
+
             match tool.execute(tool_input).await {
                 Ok(output) => {
                     let result = format!("{}", output.result);
-                    println!("[DEBUG] Tool {} executed successfully: {}", tool_name, result);
+                    println!(
+                        "[DEBUG] Tool {} executed successfully: {}",
+                        tool_name, result
+                    );
                     Ok(result)
                 }
                 Err(e) => {
@@ -345,10 +412,13 @@ Remember: Use tools proactively to provide accurate, up-to-date information!"#.t
     pub async fn search(&self, query: &str) -> Result<Vec<SearchResult>, KowalskiError> {
         use serde_json::Value;
         println!("[DEBUG] 🔍 Starting web search for query: '{}'", query);
-        
+
         let mut tools = self.agent.tool_chain.write().await;
-        println!("[DEBUG] Available tools: {:?}", tools.iter().map(|t| t.name()).collect::<Vec<_>>());
-        
+        println!(
+            "[DEBUG] Available tools: {:?}",
+            tools.iter().map(|t| t.name()).collect::<Vec<_>>()
+        );
+
         let tool = tools.iter_mut().find(|t| t.name() == "web_search");
         let tool = match tool {
             Some(t) => {
@@ -362,19 +432,22 @@ Remember: Use tools proactively to provide accurate, up-to-date information!"#.t
                 ));
             }
         };
-        
+
         let input = ToolInput::new(
             "search".to_string(),
             query.to_string(),
             serde_json::json!({"query": query}),
         );
         println!("[DEBUG] Executing web_search tool with input: {:?}", input);
-        
+
         let output = tool.execute(input).await?;
         let results_val = &output.result;
 
         println!("[DEBUG] Raw tool output: {}", &results_val);
-        println!("[DEBUG] Output type: {:?}", std::any::type_name_of_val(&*results_val));
+        println!(
+            "[DEBUG] Output type: {:?}",
+            std::any::type_name_of_val(&*results_val)
+        );
 
         // DuckDuckGo-specific parsing
         if let Some(provider) = results_val.get("provider").and_then(|v| v.as_str()) {
@@ -465,7 +538,7 @@ Remember: Use tools proactively to provide accurate, up-to-date information!"#.t
         } else {
             println!("[DEBUG] No provider field found, trying generic parsing");
         }
-        
+
         // Default: try to parse as array of SearchResult
         let results: Vec<SearchResult> = if results_val.is_array() {
             println!("[DEBUG] Trying to parse as array");
@@ -478,18 +551,20 @@ Remember: Use tools proactively to provide accurate, up-to-date information!"#.t
             println!("[DEBUG] ❌ Could not parse results, returning empty");
             Vec::new()
         };
-        
+
         println!("[DEBUG] ✅ Final search results: {} items", results.len());
         Ok(results)
     }
 
     pub async fn fetch_page(&self, url: &str) -> Result<PageResult, KowalskiError> {
-        use serde_json::Value;
         println!("[DEBUG] 🌐 Starting web scrape for URL: '{}'", url);
-        
+
         let mut tools = self.agent.tool_chain.write().await;
-        println!("[DEBUG] Available tools: {:?}", tools.iter().map(|t| t.name()).collect::<Vec<_>>());
-        
+        println!(
+            "[DEBUG] Available tools: {:?}",
+            tools.iter().map(|t| t.name()).collect::<Vec<_>>()
+        );
+
         let tool = tools.iter_mut().find(|t| t.name() == "web_scrape");
         let tool = match tool {
             Some(t) => {
@@ -503,21 +578,21 @@ Remember: Use tools proactively to provide accurate, up-to-date information!"#.t
                 ));
             }
         };
-        
+
         let input = ToolInput::new(
             "scrape_static".to_string(),
             url.to_string(),
             serde_json::json!({"url": url, "selectors": ["title", "body"]}),
         );
         println!("[DEBUG] Executing web_scrape tool with input: {:?}", input);
-        
+
         let output = tool.execute(input).await?;
         println!("[DEBUG] Raw tool output: {}", &output.result);
-        
+
         // Parse the first result as the page title/content
         let arr = output.result.as_array().cloned().unwrap_or_default();
         println!("[DEBUG] Parsed array has {} elements", arr.len());
-        
+
         let title = arr
             .iter()
             .find(|v| v["selector"] == "title")
@@ -530,10 +605,14 @@ Remember: Use tools proactively to provide accurate, up-to-date information!"#.t
             .and_then(|v| v["text"].as_str())
             .unwrap_or("")
             .to_string();
-            
-        println!("[DEBUG] ✅ Extracted title: '{}' ({} chars)", title, title.len());
+
+        println!(
+            "[DEBUG] ✅ Extracted title: '{}' ({} chars)",
+            title,
+            title.len()
+        );
         println!("[DEBUG] ✅ Extracted content: {} chars", content.len());
-        
+
         Ok(PageResult { title, content })
     }
 }
@@ -546,7 +625,7 @@ impl Agent for WebAgent {
 
     fn start_conversation(&mut self, model: &str) -> String {
         let conv_id = self.agent.base_mut().start_conversation(model);
-        
+
         // Add the system prompt to the conversation to ensure the LLM knows about tools
         let system_prompt = r#"You are a web research assistant specialized in finding and analyzing online information. 
 
@@ -579,12 +658,12 @@ or
 When you have a final answer, respond normally without JSON formatting.
 
 Remember: Use tools proactively to provide accurate, up-to-date information!"#;
-        
+
         // Add the system prompt to the conversation synchronously
         if let Some(conversation) = self.agent.base_mut().conversations.get_mut(&conv_id) {
             conversation.add_message("system", system_prompt);
         }
-        
+
         conv_id
     }
 
@@ -606,12 +685,18 @@ Remember: Use tools proactively to provide accurate, up-to-date information!"#;
         content: &str,
         role: Option<Role>,
     ) -> Result<reqwest::Response, KowalskiError> {
-        println!("[DEBUG] WebAgent chat_with_history called with content: '{}'", content);
-        
+        println!(
+            "[DEBUG] WebAgent chat_with_history called with content: '{}'",
+            content
+        );
+
         // Use the enhanced tool-calling method for web agents
         match self.chat_with_tools(conversation_id, content).await {
             Ok(response_text) => {
-                println!("[DEBUG] chat_with_tools completed successfully, response length: {}", response_text.len());
+                println!(
+                    "[DEBUG] chat_with_tools completed successfully, response length: {}",
+                    response_text.len()
+                );
                 // For now, just print the response and fall back to regular chat
                 // This is a workaround since we can't easily create a streaming response
                 println!("[DEBUG] Tool-calling response: {}", response_text);
@@ -622,7 +707,10 @@ Remember: Use tools proactively to provide accurate, up-to-date information!"#;
                     .await
             }
             Err(e) => {
-                println!("[DEBUG] chat_with_tools failed: {}, falling back to regular chat", e);
+                println!(
+                    "[DEBUG] chat_with_tools failed: {}, falling back to regular chat",
+                    e
+                );
                 // Fallback to regular chat
                 self.agent
                     .base_mut()

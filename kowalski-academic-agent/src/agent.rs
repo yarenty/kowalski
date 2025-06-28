@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 
 /// AcademicAgent: A specialized agent for academic tasks
 /// This agent is built on top of the TemplateAgent and provides academic-specific functionality
+#[allow(dead_code)]
 pub struct AcademicAgent {
     agent: TemplateAgent,
     config: AcademicAgentConfig,
@@ -76,7 +77,7 @@ impl AcademicAgent {
             query.to_string(),
             serde_json::json!({"query": query}),
         );
-        let output = tool.execute(input).await?;
+        let _output = tool.execute(input).await?;
         // For now, return a simple result since DuckDuckGo doesn't provide academic-specific results
         Ok(vec![PaperSearchResult {
             title: query.to_string(),

@@ -100,7 +100,11 @@ impl AgentManager {
         Ok(())
     }
 
-    async fn get_agent_mut(&self, name: &str) -> Option<tokio::sync::RwLockWriteGuard<'_, HashMap<String, Box<dyn Agent + Send + Sync>>>> {
+    async fn get_agent_mut(
+        &self,
+        name: &str,
+    ) -> Option<tokio::sync::RwLockWriteGuard<'_, HashMap<String, Box<dyn Agent + Send + Sync>>>>
+    {
         let guard = self.agents.write().await;
         if guard.contains_key(name) {
             Some(guard)
@@ -129,17 +133,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manager = AgentManager::new();
 
     match cli.command {
-        Some(Commands::Create { agent_type, prompt, temperature, name, config }) => {
+        Some(Commands::Create {
+            agent_type,
+            prompt,
+            temperature,
+            name,
+            config: _,
+        }) => {
             let name = name.unwrap_or_else(|| format!("{}-agent", agent_type));
-            manager.create_agent(name, &agent_type, prompt.as_deref(), temperature).await?
+            manager
+                .create_agent(name, &agent_type, prompt.as_deref(), temperature)
+                .await?
         }
         Some(Commands::Chat { agent, .. }) => {
-            let mut agents_guard = manager.get_agent_mut(&agent).await;
+            let agents_guard = manager.get_agent_mut(&agent).await;
             if let Some(mut agents_guard) = agents_guard {
                 if let Some(agent_ref) = agents_guard.get_mut(&agent) {
-                    let config = manager.get_config(&agent).await.unwrap_or_else(Config::default);
+                    let config = manager
+                        .get_config(&agent)
+                        .await
+                        .unwrap_or_else(Config::default);
                     let conv_id = agent_ref.start_conversation(&config.ollama.model);
-                    println!("Chat session started with agent '{}'. Type /bye to end chat.", agent);
+                    println!(
+                        "Chat session started with agent '{}'. Type /bye to end chat.",
+                        agent
+                    );
                     chat_loop(agent_ref, conv_id).await?;
                 } else {
                     println!("Agent '{}' not found.", agent);
@@ -159,12 +177,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn chat_loop(agent: &mut Box<dyn Agent + Send + Sync>, conv_id: String) -> Result<(), Box<dyn std::error::Error>> {
+async fn chat_loop(
+    agent: &mut Box<dyn Agent + Send + Sync>,
+    conv_id: String,
+) -> Result<(), Box<dyn std::error::Error>> {
     let agent_name = agent.name().to_lowercase();
     let is_web_agent = agent_name.contains("web");
-    
-    println!("[DEBUG] Agent name: '{}', is_web_agent: {}", agent_name, is_web_agent);
-    
+
+    println!(
+        "[DEBUG] Agent name: '{}', is_web_agent: {}",
+        agent_name, is_web_agent
+    );
+
     loop {
         print!("You: ");
         io::stdout().flush()?;
@@ -174,7 +198,7 @@ async fn chat_loop(agent: &mut Box<dyn Agent + Send + Sync>, conv_id: String) ->
             println!("Goodbye!");
             break;
         }
-        
+
         if is_web_agent {
             println!("[DEBUG] Using web agent enhanced chat method");
             // For web agents, use the enhanced tool-calling method
@@ -197,18 +221,16 @@ async fn chat_loop(agent: &mut Box<dyn Agent + Send + Sync>, conv_id: String) ->
 }
 
 async fn chat_with_web_agent_tools(
-    agent: &mut Box<dyn Agent + Send + Sync>, 
-    conv_id: &str, 
-    input: &str
+    agent: &mut Box<dyn Agent + Send + Sync>,
+    conv_id: &str,
+    input: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Try to use the web agent's chat_with_tools method
     // Since we can't downcast easily, we'll use a different approach
     // We'll add the user message and then use the regular chat method
     // but the web agent should have the enhanced system prompt that encourages tool usage
     agent.add_message(conv_id, "user", input).await;
-    let response = agent
-        .chat_with_history(conv_id, input.trim(), None)
-        .await?;
+    let response = agent.chat_with_history(conv_id, input.trim(), None).await?;
     let mut stream = response.bytes_stream();
     while let Some(chunk) = stream.next().await {
         match chunk {
@@ -232,15 +254,13 @@ async fn chat_with_web_agent_tools(
 }
 
 async fn use_regular_chat(
-    agent: &mut Box<dyn Agent + Send + Sync>, 
-    conv_id: &str, 
-    input: &str
+    agent: &mut Box<dyn Agent + Send + Sync>,
+    conv_id: &str,
+    input: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Regular chat for non-web agents
     agent.add_message(conv_id, "user", input).await;
-    let response = agent
-        .chat_with_history(conv_id, input.trim(), None)
-        .await?;
+    let response = agent.chat_with_history(conv_id, input.trim(), None).await?;
     let mut stream = response.bytes_stream();
     while let Some(chunk) = stream.next().await {
         match chunk {
@@ -308,7 +328,9 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
                         Some(n) => n.to_string(),
                         None => format!("{}-agent", agent_type),
                     };
-                    manager.create_agent(agent_name.clone(), agent_type, None, None).await?;
+                    manager
+                        .create_agent(agent_name.clone(), agent_type, None, None)
+                        .await?;
                     println!("Agent created successfully: {}", agent_name);
                 } else {
                     println!("Usage: create <type> [name]");
@@ -317,12 +339,18 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
             "chat" => {
                 let name = parts.next();
                 if let Some(name) = name {
-                    let mut agents_guard = manager.get_agent_mut(name).await;
+                    let agents_guard = manager.get_agent_mut(name).await;
                     if let Some(mut agents_guard) = agents_guard {
                         if let Some(agent_ref) = agents_guard.get_mut(name) {
-                            let config = manager.get_config(name).await.unwrap_or_else(Config::default);
+                            let config = manager
+                                .get_config(name)
+                                .await
+                                .unwrap_or_else(Config::default);
                             let conv_id = agent_ref.start_conversation(&config.ollama.model);
-                            println!("Chat session started with agent '{}'. Type /bye to end chat.", name);
+                            println!(
+                                "Chat session started with agent '{}'. Type /bye to end chat.",
+                                name
+                            );
                             chat_loop(agent_ref, conv_id).await?;
                         } else {
                             println!("Agent '{}' not found.", name);
@@ -341,7 +369,10 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
                 manager.list_agents().await?;
             }
             _ => {
-                println!("Unknown command: {}. Type 'help' for a list of commands.", cmd);
+                println!(
+                    "Unknown command: {}. Type 'help' for a list of commands.",
+                    cmd
+                );
             }
         }
     }
