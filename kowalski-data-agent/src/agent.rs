@@ -36,7 +36,7 @@ impl DataAgent {
         let tools: Vec<Box<dyn Tool + Send + Sync>> = vec![Box::new(csv_tool)];
         let builder = GeneralTemplate::create_agent(
             tools,
-            Some("You are a data analysis assistant specialized in processing and analyzing structured data.".to_string()),
+            Some("You are a data analysis assistant specialized in processing and analyzing structured data. You have access to the csv_tool. Use it to answer questions about data analysis.".to_string()),
             Some(0.7),
         )
         .await

@@ -45,7 +45,7 @@ impl CodeAgent {
 
         let builder = GeneralTemplate::create_agent(
             tools,
-            Some("You are a code analysis and development assistant specialized in analyzing, refactoring, and documenting code.".to_string()),
+            Some("You are a code analysis and development assistant specialized in analyzing, refactoring, and documenting code. You have access to java_analysis, python_analysis, and rust_analysis tools. Use them to answer questions about code.".to_string()),
             Some(0.7),
         )
         .await
