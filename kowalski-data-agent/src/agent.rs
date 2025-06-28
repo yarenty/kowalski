@@ -1,7 +1,7 @@
 use crate::config::DataAgentConfig;
 use async_trait::async_trait;
-use kowalski_agent_template::templates::general::GeneralTemplate;
 use kowalski_agent_template::TemplateAgent;
+use kowalski_agent_template::templates::general::GeneralTemplate;
 use kowalski_core::agent::Agent;
 use kowalski_core::config::Config;
 use kowalski_core::conversation::Conversation;

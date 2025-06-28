@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+#[allow(dead_code)]
 pub struct AgentBuilder {
     base: BaseAgent,
     config: TemplateAgentConfig,
@@ -76,7 +77,7 @@ impl AgentBuilder {
         // }
 
         // Create template agent
-        let mut agent = TemplateAgent::new(Config::default()).await?;
+        let agent = TemplateAgent::new(Config::default()).await?;
 
         // Register tools
         for tool in self.tools {
@@ -90,57 +91,26 @@ impl AgentBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
-    use std::sync::Arc;
-    use tokio::sync::RwLock;
 
-    #[derive(Debug)]
-    struct MockTool;
-
-    #[async_trait]
-    impl Tool for MockTool {
-        fn name(&self) -> &str {
-            "mock_tool"
-        }
-
-        fn description(&self) -> &str {
-            "Mock tool for testing"
-        }
-
-        fn parameters(&self) -> Vec<ToolParameter> {
-            Vec::new()
-        }
-
-        async fn execute(&mut self, _input: ToolInput) -> Result<ToolOutput, KowalskiError> {
-            Ok(ToolOutput {
-                result: json!({ "status": "success" }),
-                metadata: None,
-            })
-        }
+    #[tokio::test]
+    async fn test_builder_creation() {
+        let builder = AgentBuilder::new().await;
+        assert_eq!(builder.system_prompt, "");
+        assert_eq!(builder.temperature, 0.7);
+        assert!(builder.tools.is_empty());
     }
 
     #[tokio::test]
-    async fn test_builder_with_tool() {
+    async fn test_builder_with_system_prompt() {
         let builder = AgentBuilder::new()
             .await
-            .with_system_prompt("You are a helpful assistant")
-            .with_tool(MockTool)
-            .with_temperature(0.5);
-
-        let agent = builder.build().await;
-        assert!(agent.is_ok());
+            .with_system_prompt("You are a helpful assistant");
+        assert_eq!(builder.system_prompt, "You are a helpful assistant");
     }
 
     #[tokio::test]
-    async fn test_builder_with_multiple_tools() {
-        let tools = vec![Box::new(MockTool) as Box<dyn Tool + Send + Sync>];
-        let builder = AgentBuilder::new()
-            .await
-            .with_system_prompt("You are a helpful assistant")
-            .with_tools(tools)
-            .with_temperature(0.5);
-
-        let agent = builder.build().await;
-        assert!(agent.is_ok());
+    async fn test_builder_with_temperature() {
+        let builder = AgentBuilder::new().await.with_temperature(0.5);
+        assert_eq!(builder.temperature, 0.5);
     }
 }

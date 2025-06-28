@@ -1,9 +1,11 @@
 [package]
 name = "kowalski-data-agent"
-version = "0.1.0"
-edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
-license = "MIT"
+version = {workspace = true}
+edition = {workspace = true}
+authors = {workspace = true}
+license = {workspace = true}
+readme = "README.md"
+
 
 [dependencies]
 kowalski-core = { path = "../kowalski-core" }

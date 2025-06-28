@@ -133,7 +133,7 @@ impl CsvTool {
                 *value_counts.entry(value).or_insert(0) += 1;
             }
 
-            if let Some((most_common, count)) = value_counts.iter().max_by_key(|(_, &count)| count)
+            if let Some((most_common, count)) = value_counts.iter().max_by_key(|&(_, &count)| count)
             {
                 analysis.insert("most_common".to_string(), json!(*most_common));
                 analysis.insert("most_common_count".to_string(), json!(*count));

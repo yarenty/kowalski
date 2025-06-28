@@ -1,8 +1,6 @@
 use crate::builder::AgentBuilder;
-use kowalski_core::tools::{Tool, ToolInput, ToolOutput};
 use kowalski_tools::document::PdfTool;
 use kowalski_tools::web::WebSearchTool;
-use serde_json::json;
 
 pub struct ResearchTemplate;
 
