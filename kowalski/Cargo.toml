@@ -1,0 +1,26 @@
+[package]
+name = "kowalski"
+version = {workspace = true}
+edition = {workspace = true}
+authors = {workspace = true}
+license = {workspace = true}
+description = {workspace = true}
+repository = {workspace = true}
+homepage = {workspace = true}
+readme = {workspace = true}
+categories = {workspace = true}
+keywords = {workspace = true}
+
+[dependencies]
+kowalski-core = { path = "../kowalski-core" }
+kowalski-agent-template = { path = "../kowalski-agent-template" }
+kowalski-tools = { path = "../kowalski-tools" }
+kowalski-federation = { path = "../kowalski-federation" }
+kowalski-academic-agent = { path = "../kowalski-academic-agent" }
+kowalski-data-agent = { path = "../kowalski-data-agent" }
+kowalski-code-agent = { path = "../kowalski-code-agent" }
+kowalski-web-agent = { path = "../kowalski-web-agent" }
+
+[lib]
+name = "kowalski"
+path = "src/lib.rs" 

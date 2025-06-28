@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "kowalski",
     "kowalski-core",
     "kowalski-agent-template",
     "kowalski-tools",
