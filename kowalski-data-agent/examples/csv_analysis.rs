@@ -6,6 +6,7 @@ use kowalski_core::{
 };
 use kowalski_data_agent::agent::DataAgent;
 use std::io::{self, Write};
+use tempfile::NamedTempFile;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -51,24 +52,26 @@ Henry Taylor,34,Dallas,78000,Engineering"#;
     println!("\n📈 Processing CSV Data:");
     println!("{}", csv_data);
 
-    // Process the CSV data
-    let analysis_result = data_agent.process_csv(csv_data).await?;
+    // Write CSV data to a temporary file
+    let mut temp_file = NamedTempFile::new()?;
+    write!(temp_file, "{}", csv_data)?;
+    let temp_path = temp_file.path().to_str().unwrap();
 
-    println!("\n📊 CSV Analysis Results:");
-    println!("Headers: {:?}", analysis_result.headers);
-    println!("Total Rows: {}", analysis_result.total_rows);
-    println!("Total Columns: {}", analysis_result.total_columns);
-    println!(
-        "Summary: {}",
-        serde_json::to_string_pretty(&analysis_result.summary)?
-    );
+    // Process the CSV file using the new method
+    let analysis_summary = data_agent.process_csv_path(temp_path).await?;
 
-    // Ask the agent to analyze the data
+    println!("\n📊 CSV Analysis Summary:");
+    println!("{}", serde_json::to_string_pretty(&analysis_summary)?);
+
+    // Always follow up with a prompt to the agent for natural language analysis
     let analysis_prompt = format!(
-        "Please analyze this CSV data and provide insights:\n\n{}\n\nAnalysis results:\n{}",
-        csv_data,
-        serde_json::to_string_pretty(&analysis_result.summary)?
+        "This is follow up. Given the following summary (in JSON), provide a detailed, human-readable analysis with key insights, trends, and recommendations. Do not ask for a file path. Here is the summary:\n\n{}",
+        serde_json::to_string_pretty(&analysis_summary)?
     );
+
+    println!("{}", &analysis_prompt);
+
+    
 
     let mut response = data_agent
         .chat_with_history(&conversation_id, &analysis_prompt, Some(role))

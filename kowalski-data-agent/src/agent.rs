@@ -14,6 +14,8 @@ use reqwest::Response;
 
 /// DataAgent: A specialized agent for data analysis and processing tasks
 /// This agent is built on top of the TemplateAgent and provides data-specific functionality
+///
+/// New: Can now analyze CSV files directly from a file path using the 'process_csv_path' tool task.
 pub struct DataAgent {
     agent: TemplateAgent,
     config: DataAgentConfig,
@@ -31,31 +33,22 @@ impl DataAgent {
         let system_prompt = r#"You are a data analysis assistant.
 
 AVAILABLE TOOLS:
-1. fs_tool - For all filesystem operations (list directories, find files, read file contents).
-   - task: "get_file_contents" - Get the full contents of a file. Parameters: { "path": "/some/file.csv" }
-2. csv_tool - For all CSV data analysis.
+csv_tool - For all CSV data analysis.
    - task: "process_csv" - Analyze CSV data. Parameters: { "content": "CSV file contents as a string" }
+   - task: "process_csv_path" - Analyze CSV data from a file path. Parameters: { "path": "/some/file.csv" }
 
 TOOL USAGE INSTRUCTIONS:
 - ALWAYS use tools when asked about files, directories, or CSV data.
 - NEVER give instructions, shell commands, or say you cannot access the filesystem.
-- When asked to analyze a CSV file, ALWAYS follow these steps:
-  1. Use fs_tool with task "get_file_contents" to read the file (provide the file path).
-  2. Use csv_tool with task "process_csv" and pass the file contents as the "content" parameter.
+- When asked to analyze a CSV file, you can now use either:
+  1. fs_tool with task "get_file_contents" to read the file (provide the file path), then csv_tool with task "process_csv" and pass the file contents as the "content" parameter.
+  2. OR, use csv_tool with task "process_csv_path" and provide the file path directly as the "path" parameter.
 - Respond ONLY with JSON in this exact format for each tool call:
 
 {
-  "name": "fs_tool",
-  "parameters": { "task": "get_file_contents", "path": "/opt/data/nce/ems_100.csv" },
-  "reasoning": "User asked to read a CSV file."
-}
-
-Then, after reading the file:
-
-{
   "name": "csv_tool",
-  "parameters": { "task": "process_csv", "content": "<file contents from previous step>" },
-  "reasoning": "User asked to analyze the CSV data."
+  "parameters": { "task": "process_csv_path", "path": "/opt/data/example.csv" },
+  "reasoning": "User asked to analyze a CSV file from a path."
 }
 
 When you have a final answer, respond normally without JSON formatting. NEVER give instructions, shell commands, or say you cannot access the filesystem. ALWAYS use the tool call format for such requests.
@@ -82,6 +75,16 @@ When you have a final answer, respond normally without JSON formatting. NEVER gi
 
     pub async fn list_tools(&self) -> Vec<(String, String)> {
         self.agent.list_tools().await
+    }
+
+    /// Analyze a CSV file from a file path using the csv_tool
+    pub async fn process_csv_path(&mut self, path: &str) -> Result<serde_json::Value, KowalskiError> {
+        let params = serde_json::json!({
+            "task": "process_csv_path",
+            "path": path
+        });
+        let output = self.execute_tool("csv_tool", &params).await?;
+        Ok(output.result)
     }
 }
 

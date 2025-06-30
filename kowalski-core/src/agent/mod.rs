@@ -87,12 +87,13 @@ pub trait Agent: Send + Sync {
             println!("[DEBUG] === ITERATION {} ===", iteration_count);
             println!("[DEBUG] Current input: '{}'", current_input);
 
-            // Only add the user message on the first iteration
-            if first_iteration {
-                self.add_message(conversation_id, "user", &current_input).await;
-                println!("[DEBUG] Added user message to conversation");
-                first_iteration = false;
-            }
+            //TODO: remove me - ... need some sleep today
+            // // Only add the user message on the first iteration
+            // if first_iteration {
+            //     self.add_message(conversation_id, "user", &current_input).await;
+            //     println!("[DEBUG] Added user message to conversation");
+            //     first_iteration = false;
+            // }
 
             // Get response from LLM
             println!("[DEBUG] Calling LLM...");
@@ -328,6 +329,7 @@ impl Agent for BaseAgent {
             }
         }
 
+        conversation.add_message("user", content);
         let request = ChatRequest {
             model: conversation.model.clone(),
             messages: conversation.messages.clone(),
