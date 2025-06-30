@@ -4,11 +4,14 @@ use crate::conversation::Conversation;
 use crate::conversation::Message;
 use crate::error::KowalskiError;
 use crate::role::Role;
+use crate::tools::{ToolCall, ToolOutput};
 use async_trait::async_trait;
+use futures::StreamExt;
 use log::info;
 use reqwest::Response;
 use serde_json;
 use std::collections::HashMap;
+use std::io::{self, Write};
 
 pub mod types;
 
@@ -49,6 +52,103 @@ pub trait Agent: Send + Sync {
 
     /// Adds a message to a conversation
     async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str);
+
+    /// Executes a tool with the given name and input.
+    async fn execute_tool(
+        &mut self,
+        _tool_name: &str,
+        _tool_input: &serde_json::Value,
+    ) -> Result<ToolOutput, KowalskiError> {
+        Err(KowalskiError::ToolExecution(
+            "Tool execution not implemented for this agent".to_string(),
+        ))
+    }
+
+    /// Chat with the agent using ReAct-style tool calling
+    async fn chat_with_tools(
+        &mut self,
+        conversation_id: &str,
+        user_input: &str,
+    ) -> Result<String, KowalskiError> {
+        let mut final_response = String::new();
+        let mut current_input = user_input.to_string();
+        let mut iteration_count = 0;
+        const MAX_ITERATIONS: usize = 5; // Prevent infinite loops
+
+        while iteration_count < MAX_ITERATIONS {
+            iteration_count += 1;
+
+            // Add user input to conversation
+            self.add_message(conversation_id, "user", &current_input)
+                .await;
+
+            // Get response from LLM
+            let response = self
+                .chat_with_history(conversation_id, &current_input, None)
+                .await?;
+
+            let mut stream = response.bytes_stream();
+            let mut buffer = String::new();
+
+            // Process streaming response
+            while let Some(chunk) = stream.next().await {
+                match chunk {
+                    Ok(bytes) => {
+                        if let Ok(Some(message)) =
+                            self.process_stream_response(conversation_id, &bytes).await
+                        {
+                            if !message.content.is_empty() {
+                                print!("{}", message.content);
+                                io::stdout()
+                                    .flush()
+                                    .map_err(|e| KowalskiError::Server(e.to_string()))?;
+                                buffer.push_str(&message.content);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("\nError: {}", e);
+                        return Err(KowalskiError::Server(e.to_string()));
+                    }
+                }
+            }
+            println!(); // New line after response
+
+            // Try to parse as tool call
+            if let Ok(tool_call) = serde_json::from_str::<ToolCall>(&buffer) {
+                // Execute the tool
+                let tool_result = match self
+                    .execute_tool(&tool_call.name, &tool_call.parameters)
+                    .await
+                {
+                    Ok(output) => output.result.to_string(),
+                    Err(e) => format!("Tool execution failed: {}", e),
+                };
+
+                // Add tool result to conversation
+                let tool_message =
+                    format!("Tool result for {}: {}", tool_call.name, tool_result);
+                self.add_message(conversation_id, "assistant", &tool_message)
+                    .await;
+
+                // Continue loop with tool result as next input
+                current_input = format!("Based on the tool result: {}", tool_result);
+                continue;
+            } else {
+                // No tool call, so this is the final response
+                final_response = buffer;
+                break;
+            }
+        }
+
+        if final_response.is_empty() && iteration_count == MAX_ITERATIONS {
+            return Err(KowalskiError::ToolExecution(
+                "Max iterations reached without a final answer".to_string(),
+            ));
+        }
+
+        Ok(final_response)
+    }
 
     /// Gets the agent's name
     fn name(&self) -> &str;

@@ -7,23 +7,15 @@ use kowalski_core::config::Config;
 use kowalski_core::conversation::Conversation;
 use kowalski_core::error::KowalskiError;
 use kowalski_core::role::Role;
-use kowalski_core::tools::{Tool, ToolInput};
+use kowalski_core::tools::{Tool, ToolOutput};
 use kowalski_tools::data::CsvTool;
-use serde::{Deserialize, Serialize};
+use reqwest::Response;
 
 /// DataAgent: A specialized agent for data analysis and processing tasks
 /// This agent is built on top of the TemplateAgent and provides data-specific functionality
 pub struct DataAgent {
     agent: TemplateAgent,
     config: DataAgentConfig,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CsvAnalysisResult {
-    pub headers: Vec<String>,
-    pub total_rows: usize,
-    pub total_columns: usize,
-    pub summary: serde_json::Value,
 }
 
 impl DataAgent {
@@ -34,9 +26,36 @@ impl DataAgent {
         let csv_tool = CsvTool::new(data_config.max_rows, data_config.max_columns);
 
         let tools: Vec<Box<dyn Tool + Send + Sync>> = vec![Box::new(csv_tool)];
+        
+        let system_prompt = r#"You are a data analysis assistant. You have access to a tool for processing CSV data.
+
+AVAILABLE TOOLS:
+1. csv_tool - Processes and analyzes CSV data.
+   - task: "process_csv" - Reads a CSV file and returns headers, records, and a summary.
+   - task: "analyze_csv" - Reads a CSV file and returns a statistical summary.
+
+TOOL USAGE INSTRUCTIONS:
+- When you need to analyze CSV data, use the "csv_tool".
+- Specify the task you want to perform ("process_csv" or "analyze_csv").
+- Provide the CSV data in the "content" parameter.
+
+RESPONSE FORMAT:
+When you need to use a tool, respond with JSON in this exact format:
+{
+  "name": "csv_tool",
+  "parameters": {
+    "task": "process_csv",
+    "content": "header1,header2\nvalue1,value2"
+  },
+  "reasoning": "I need to process this CSV data."
+}
+
+When you have a final answer, respond normally without JSON formatting."#
+            .to_string();
+
         let builder = GeneralTemplate::create_agent(
             tools,
-            Some("You are a data analysis assistant specialized in processing and analyzing structured data. You have access to the csv_tool. Use it to answer questions about data analysis.".to_string()),
+            Some(system_prompt),
             Some(0.7),
         )
         .await
@@ -47,66 +66,6 @@ impl DataAgent {
             agent,
             config: data_config,
         })
-    }
-
-    /// Processes a CSV file
-    pub async fn process_csv(&self, csv_content: &str) -> Result<CsvAnalysisResult, KowalskiError> {
-        let mut tools = self.agent.tool_chain.write().await;
-        let tool = tools.iter_mut().find(|t| t.name() == "csv_tool");
-        let tool = match tool {
-            Some(t) => t,
-            None => {
-                return Err(KowalskiError::ToolExecution(
-                    "csv_tool not found".to_string(),
-                ));
-            }
-        };
-        let input = ToolInput::new(
-            "process_csv".to_string(),
-            csv_content.to_string(),
-            serde_json::json!({
-                "max_rows": self.config.max_rows,
-                "max_columns": self.config.max_columns
-            }),
-        );
-        let output = tool.execute(input).await?;
-
-        let result = output.result;
-        Ok(CsvAnalysisResult {
-            headers: result["headers"]
-                .as_array()
-                .unwrap_or(&Vec::new())
-                .iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                .collect(),
-            total_rows: result["total_rows"].as_u64().unwrap_or_default() as usize,
-            total_columns: result["total_columns"].as_u64().unwrap_or_default() as usize,
-            summary: result["summary"].clone(),
-        })
-    }
-
-    /// Analyzes data statistics
-    pub async fn analyze_data(
-        &self,
-        csv_content: &str,
-    ) -> Result<serde_json::Value, KowalskiError> {
-        let mut tools = self.agent.tool_chain.write().await;
-        let tool = tools.iter_mut().find(|t| t.name() == "csv_tool");
-        let tool = match tool {
-            Some(t) => t,
-            None => {
-                return Err(KowalskiError::ToolExecution(
-                    "csv_tool not found".to_string(),
-                ));
-            }
-        };
-        let input = ToolInput::new(
-            "analyze_csv".to_string(),
-            csv_content.to_string(),
-            serde_json::json!({}),
-        );
-        let output = tool.execute(input).await?;
-        Ok(output.result)
     }
 }
 
@@ -137,7 +96,7 @@ impl Agent for DataAgent {
         conversation_id: &str,
         content: &str,
         role: Option<Role>,
-    ) -> Result<reqwest::Response, KowalskiError> {
+    ) -> Result<Response, KowalskiError> {
         self.agent
             .base_mut()
             .chat_with_history(conversation_id, content, role)
@@ -162,12 +121,20 @@ impl Agent for DataAgent {
             .await;
     }
 
+    async fn execute_tool(
+        &mut self,
+        tool_name: &str,
+        tool_input: &serde_json::Value,
+    ) -> Result<ToolOutput, KowalskiError> {
+        self.agent.execute_tool(tool_name, tool_input).await
+    }
+
     fn name(&self) -> &str {
-        self.agent.base().name()
+        "Data Agent"
     }
 
     fn description(&self) -> &str {
-        self.agent.base().description()
+        "A specialized agent for data analysis tasks."
     }
 }
 

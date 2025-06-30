@@ -147,9 +147,27 @@ impl CsvTool {
 #[async_trait]
 impl Tool for CsvTool {
     async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
-        match input.task_type.as_str() {
+        let task = input
+            .parameters
+            .get("task")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&input.task_type);
+
+        let content = input
+            .parameters
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&input.content);
+
+        if content.is_empty() {
+            return Err(KowalskiError::ToolExecution(
+                "Missing 'content' parameter".to_string(),
+            ));
+        }
+
+        match task {
             "process_csv" => {
-                let result = self.read_csv(&input.content)?;
+                let result = self.read_csv(content)?;
                 Ok(ToolOutput::new(
                     result,
                     Some(json!({
@@ -160,7 +178,7 @@ impl Tool for CsvTool {
                 ))
             }
             "analyze_csv" => {
-                let result = self.read_csv(&input.content)?;
+                let result = self.read_csv(content)?;
                 let summary = result["summary"].clone();
                 Ok(ToolOutput::new(
                     summary,
@@ -172,7 +190,7 @@ impl Tool for CsvTool {
             }
             _ => Err(KowalskiError::ToolExecution(format!(
                 "Unsupported task type: {}",
-                input.task_type
+                task
             ))),
         }
     }
@@ -187,6 +205,13 @@ impl Tool for CsvTool {
 
     fn parameters(&self) -> Vec<ToolParameter> {
         vec![
+            ToolParameter {
+                name: "task".to_string(),
+                description: "The task to perform: 'process_csv' or 'analyze_csv'".to_string(),
+                required: true,
+                default_value: None,
+                parameter_type: kowalski_core::tools::ParameterType::String,
+            },
             ToolParameter {
                 name: "content".to_string(),
                 description: "CSV content to process".to_string(),
@@ -227,6 +252,6 @@ mod tests {
         let tool = CsvTool::new(100, 10);
         let params = tool.parameters();
         assert!(!params.is_empty());
-        assert_eq!(params[0].name, "content");
+        assert_eq!(params[0].name, "task");
     }
 }

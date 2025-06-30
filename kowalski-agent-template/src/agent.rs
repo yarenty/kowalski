@@ -89,6 +89,27 @@ impl TemplateAgent {
         handlers.insert(task_type.name().to_string(), handler);
     }
 
+    pub async fn execute_tool(
+        &mut self,
+        tool_name: &str,
+        tool_input: &serde_json::Value,
+    ) -> Result<ToolOutput, KowalskiError> {
+        let mut tools = self.tool_chain.write().await;
+        if let Some(tool) = tools.iter_mut().find(|t| t.name() == tool_name) {
+            let tool_input_struct = ToolInput {
+                task_type: tool_name.to_string(),
+                content: "".to_string(),
+                parameters: tool_input.clone(),
+            };
+            tool.execute(tool_input_struct).await
+        } else {
+            Err(KowalskiError::ToolExecution(format!(
+                "Tool '{}' not found",
+                tool_name
+            )))
+        }
+    }
+
     /// Executes a task using the appropriate tool or handler
     pub async fn execute_task(&self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
         // First try to find a matching tool
