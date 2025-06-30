@@ -10,6 +10,7 @@ use kowalski_core::role::Role;
 use kowalski_core::tools::{Tool, ToolOutput};
 use kowalski_tools::document::PdfTool;
 use kowalski_tools::web::WebSearchTool;
+use kowalski_tools::fs::FsTool;
 use reqwest::Response;
 
 /// AcademicAgent: A specialized agent for academic tasks
@@ -27,46 +28,44 @@ impl AcademicAgent {
         let academic_config = AcademicAgentConfig::default();
         let search_tool = WebSearchTool::new("duckduckgo".to_string());
         let pdf_tool = PdfTool;
+        let fs_tool = FsTool::new();
         let tools: Vec<Box<dyn Tool + Send + Sync>> =
-            vec![Box::new(search_tool), Box::new(pdf_tool)];
+            vec![Box::new(search_tool), Box::new(pdf_tool), Box::new(fs_tool)];
 
-        let system_prompt = r#"You are an academic research assistant. You can search for papers and process PDF files.
+        let system_prompt = r#"You are an academic research assistant. You can search for papers, process PDF files, and interact with the filesystem.
 
 AVAILABLE TOOLS:
 1. web_search - Search the web for academic papers.
    - parameters: { "query": "search query" }
 2. pdf_tool - Process a PDF file from a given path.
    - parameters: { "file_path": "/path/to/file.pdf", "extract_text": true, "extract_metadata": false, "extract_images": false }
+3. fs_tool - Filesystem operations (list directories, find files, read file contents).
+   - task: "list_dir" - List files and directories in a given path. Parameters: { "path": "/some/dir" }
+   - task: "find_files" - Recursively find files matching a pattern. Parameters: { "dir": "/some/dir", "pattern": ".pdf" }
+   - task: "get_file_contents" - Get the full contents of a file. Parameters: { "path": "/some/file.txt" }
+   - task: "get_file_first_lines" - Get the first N lines of a file. Parameters: { "path": "/some/file.txt", "num_lines": 10 }
+   - task: "get_file_last_lines" - Get the last N lines of a file. Parameters: { "path": "/some/file.txt", "num_lines": 10 }
 
 TOOL USAGE INSTRUCTIONS:
 - Use "web_search" to find papers on a topic.
 - Use "pdf_tool" to analyze a paper you have the path to.
+- Use "fs_tool" for filesystem operations.
+- Specify the task and required parameters for each tool.
 
 RESPONSE FORMAT:
 When you need to use a tool, respond with JSON in this exact format:
 {
-  "name": "web_search",
+  "name": "fs_tool",
   "parameters": {
-    "query": "machine learning in healthcare"
+    "task": "list_dir",
+    "path": "/some/dir"
   },
-  "reasoning": "I need to find papers on this topic."
-}
-
-or
-
-{
-  "name": "pdf_tool",
-  "parameters": {
-    "file_path": "/path/to/downloaded/paper.pdf",
-    "extract_text": true,
-    "extract_metadata": true
-  },
-  "reasoning": "I need to extract text and metadata from this PDF."
+  "reasoning": "I need to list the contents of this directory."
 }
 
 When you have a final answer, respond normally without JSON formatting."#
             .to_string();
-
+        let system_prompt_clone = system_prompt.clone();
         let builder = GeneralTemplate::create_agent(
             tools,
             Some(system_prompt),
@@ -74,11 +73,17 @@ When you have a final answer, respond normally without JSON formatting."#
         )
         .await
         .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
-        let agent = builder.build().await?;
+        let mut agent = builder.build().await?;
+        // Ensure the system prompt is set on the base agent
+        agent.base_mut().set_system_prompt(&system_prompt_clone);
         Ok(Self {
             agent,
             config: academic_config,
         })
+    }
+
+    pub async fn list_tools(&self) -> Vec<(String, String)> {
+        self.agent.list_tools().await
     }
 }
 
@@ -89,7 +94,15 @@ impl Agent for AcademicAgent {
     }
 
     fn start_conversation(&mut self, model: &str) -> String {
-        self.agent.base_mut().start_conversation(model)
+        let system_prompt = {
+            let base = self.agent.base();
+            base.system_prompt.as_deref().unwrap_or("You are a helpful assistant.").to_string()
+        };
+        let conv_id = self.agent.base_mut().start_conversation(model);
+        if let Some(conversation) = self.agent.base_mut().conversations.get_mut(&conv_id) {
+            conversation.add_message("system", &system_prompt);
+        }
+        conv_id
     }
 
     fn get_conversation(&self, id: &str) -> Option<&Conversation> {
@@ -148,6 +161,10 @@ impl Agent for AcademicAgent {
 
     fn description(&self) -> &str {
         "A specialized agent for academic research tasks."
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

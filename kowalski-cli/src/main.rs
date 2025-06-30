@@ -11,6 +11,9 @@ use std::collections::HashMap;
 use std::io::{self, Write};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use std::any::Any;
+use kowalski_core::tools::ToolCall;
+use serde_json::json;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -158,6 +161,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "Chat session started with agent '{}'. Type /bye to end chat.",
                         agent
                     );
+                    println!("[DEBUG] Model in use: {}", config.ollama.model);
+                    // --- DEBUG: Print registered tools if available ---
+                    let any_agent = agent_ref.as_any();
+                    #[cfg(feature = "data")]
+                    if let Some(data_agent) = any_agent.downcast_ref::<DataAgent>() {
+                        let tools = data_agent.list_tools().await;
+                        println!("[DEBUG] Registered tools:");
+                        for (name, desc) in tools {
+                            println!("  - {}: {}", name, desc);
+                        }
+                    } else
+                    if let Some(academic_agent) = any_agent.downcast_ref::<AcademicAgent>() {
+                        let tools = academic_agent.list_tools().await;
+                        println!("[DEBUG] Registered tools:");
+                        for (name, desc) in tools {
+                            println!("  - {}: {}", name, desc);
+                        }
+                    } else
+                    if let Some(code_agent) = any_agent.downcast_ref::<CodeAgent>() {
+                        let tools = code_agent.list_tools().await;
+                        println!("[DEBUG] Registered tools:");
+                        for (name, desc) in tools {
+                            println!("  - {}: {}", name, desc);
+                        }
+                    } else
+                    if let Some(web_agent) = any_agent.downcast_ref::<WebAgent>() {
+                        let tools = web_agent.list_tools().await;
+                        println!("[DEBUG] Registered tools:");
+                        for (name, desc) in tools {
+                            println!("  - {}: {}", name, desc);
+                        }
+                    } else {
+                        println!("[DEBUG] Tool listing not available for this agent type.");
+                    }
+                    // --- END DEBUG ---
                     chat_loop(agent_ref, conv_id).await?;
                 } else {
                     println!("Agent '{}' not found.", agent);
@@ -182,11 +220,9 @@ async fn chat_loop(
     conv_id: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let agent_name = agent.name().to_lowercase();
-    let is_web_agent = agent_name.contains("web");
-
     println!(
         "[DEBUG] Agent name: '{}', is_web_agent: {}",
-        agent_name, is_web_agent
+        agent_name, agent_name.contains("web")
     );
 
     loop {
@@ -199,57 +235,31 @@ async fn chat_loop(
             break;
         }
 
-        if is_web_agent {
-            println!("[DEBUG] Using web agent enhanced chat method");
-            // For web agents, use the enhanced tool-calling method
-            match chat_with_web_agent_tools(agent, &conv_id, &input).await {
-                Ok(_) => {
-                    println!("[DEBUG] Web agent chat completed successfully");
-                }
-                Err(e) => {
-                    eprintln!("[DEBUG] Web agent chat failed: {}", e);
-                    // Fallback to regular chat
-                    use_regular_chat(agent, &conv_id, &input).await?;
-                }
+        // Always use tool-calling chat method
+        println!("[DEBUG] Using tool-calling chat method");
+        match chat_with_tools(agent, &conv_id, &input).await {
+            Ok(_) => {
+                println!("[DEBUG] Tool-calling chat completed successfully");
             }
-        } else {
-            println!("[DEBUG] Using regular chat method");
-            use_regular_chat(agent, &conv_id, &input).await?;
+            Err(e) => {
+                eprintln!("[DEBUG] Tool-calling chat failed: {}", e);
+                // Optionally fallback to regular chat
+                use_regular_chat(agent, &conv_id, &input).await?;
+            }
         }
     }
     Ok(())
 }
 
-async fn chat_with_web_agent_tools(
+async fn chat_with_tools(
     agent: &mut Box<dyn Agent + Send + Sync>,
     conv_id: &str,
     input: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Try to use the web agent's chat_with_tools method
-    // Since we can't downcast easily, we'll use a different approach
-    // We'll add the user message and then use the regular chat method
-    // but the web agent should have the enhanced system prompt that encourages tool usage
-    agent.add_message(conv_id, "user", input).await;
-    let response = agent.chat_with_history(conv_id, input.trim(), None).await?;
-    let mut stream = response.bytes_stream();
-    while let Some(chunk) = stream.next().await {
-        match chunk {
-            Ok(bytes) => {
-                if let Ok(Some(message)) = agent.process_stream_response(conv_id, &bytes).await {
-                    if !message.content.is_empty() {
-                        print!("{}", message.content);
-                        io::stdout().flush()?;
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("\nError: {}", e);
-                break;
-            }
-        }
-    }
-    println!();
-    agent.add_message(conv_id, "assistant", input).await;
+    // Use the agent's chat_with_tools method directly
+    let response = agent.chat_with_tools(conv_id, input).await?;
+    print!("{}", response);
+    io::stdout().flush()?;
     Ok(())
 }
 
@@ -351,6 +361,41 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
                                 "Chat session started with agent '{}'. Type /bye to end chat.",
                                 name
                             );
+                            println!("[DEBUG] Model in use: {}", config.ollama.model);
+                            // --- DEBUG: Print registered tools if available ---
+                            let any_agent = agent_ref.as_any();
+                            #[cfg(feature = "data")]
+                            if let Some(data_agent) = any_agent.downcast_ref::<DataAgent>() {
+                                let tools = data_agent.list_tools().await;
+                                println!("[DEBUG] Registered tools:");
+                                for (name, desc) in tools {
+                                    println!("  - {}: {}", name, desc);
+                                }
+                            } else
+                            if let Some(academic_agent) = any_agent.downcast_ref::<AcademicAgent>() {
+                                let tools = academic_agent.list_tools().await;
+                                println!("[DEBUG] Registered tools:");
+                                for (name, desc) in tools {
+                                    println!("  - {}: {}", name, desc);
+                                }
+                            } else
+                            if let Some(code_agent) = any_agent.downcast_ref::<CodeAgent>() {
+                                let tools = code_agent.list_tools().await;
+                                println!("[DEBUG] Registered tools:");
+                                for (name, desc) in tools {
+                                    println!("  - {}: {}", name, desc);
+                                }
+                            } else
+                            if let Some(web_agent) = any_agent.downcast_ref::<WebAgent>() {
+                                let tools = web_agent.list_tools().await;
+                                println!("[DEBUG] Registered tools:");
+                                for (name, desc) in tools {
+                                    println!("  - {}: {}", name, desc);
+                                }
+                            } else {
+                                println!("[DEBUG] Tool listing not available for this agent type.");
+                            }
+                            // --- END DEBUG ---
                             chat_loop(agent_ref, conv_id).await?;
                         } else {
                             println!("Agent '{}' not found.", name);
@@ -377,4 +422,28 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     Ok(())
+}
+
+fn rule_based_tool_call(user_input: &str) -> Option<ToolCall> {
+    let input = user_input.to_lowercase();
+    if input.contains("list") && input.contains("directory") {
+        if let Some(path) = input.split_whitespace().find(|w| w.starts_with('/')) {
+            return Some(ToolCall {
+                name: "fs_tool".to_string(),
+                parameters: json!({ "task": "list_dir", "path": path }),
+                reasoning: Some("Rule-based: user asked to list a directory".to_string()),
+            });
+        }
+    }
+    if input.contains("first 10 lines") && input.contains(".csv") {
+        if let Some(path) = input.split_whitespace().find(|w| w.ends_with(".csv")) {
+            return Some(ToolCall {
+                name: "fs_tool".to_string(),
+                parameters: json!({ "task": "get_file_first_lines", "path": path, "num_lines": 10 }),
+                reasoning: Some("Rule-based: user asked for first 10 lines of a CSV".to_string()),
+            });
+        }
+    }
+    // Add more rules as needed...
+    None
 }

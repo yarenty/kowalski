@@ -32,7 +32,7 @@ impl Default for OllamaConfig {
         Self {
             host: "localhost".to_string(),
             port: 11434,
-            model: "llama3.2".to_string(),
+            model: "llama3.2".to_string(), //llama3.2 //deepseek-r1:1.5b
             additional: HashMap::new(),
         }
     }
