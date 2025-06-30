@@ -1,15 +1,30 @@
 [package]
 name = "kowalski-web-agent"
-version = {workspace = true}
-edition = {workspace = true}
-authors = {workspace = true}
-license = {workspace = true}
+version = "0.5.0"
+edition = "2024"
+description = "Kowalski Web Agent: A Rust-based agent for interacting with Ollama models"
+license = "MIT"
+authors = ["yarenty <yarenty@gmail.com>"]
+repository = "https://github.com/yarenty/kowalski"
+homepage = "https://github.com/yarenty/kowalski"
 readme = "README.md"
+categories = [
+    "network-programming",
+    "text-processing",
+    "science",
+]
+keywords = [
+    "AI",
+    "agent",
+    "chat",
+    "llm",
+    "ollama",
+]
 
 [dependencies]
-kowalski-core = { path = "../kowalski-core" }
-kowalski-tools = { path = "../kowalski-tools" }
-kowalski-agent-template = { path = "../kowalski-agent-template" }
+kowalski-core = { path = "../kowalski-core", version = "0.5.0" }
+kowalski-tools = { path = "../kowalski-tools", version = "0.5.0" }
+kowalski-agent-template = { path = "../kowalski-agent-template", version = "0.5.0" }
 tokio = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
