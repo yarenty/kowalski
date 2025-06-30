@@ -112,6 +112,297 @@ Kowalski is now split into clear, focused modules:
 
 ---
 
+Future architecture (high level):
+
+```mermaid
+graph TB
+    subgraph "Client Interfaces"
+        CLI[CLI Interface]
+        REST[REST API Server]
+        GRPC[gRPC Server]
+        WS_SRV[WebSocket Server]
+        WEB_UI[Web Dashboard]
+    end
+    
+    subgraph "Agent Orchestration Layer"
+        ORCH[Agent Orchestrator]
+        LB[Load Balancer]
+        DISC[Service Discovery]
+        HEALTH[Health Monitor]
+    end
+    
+    subgraph "Core Agent Types"
+        GA[General Agent<br/>Basic Chat & Q&A]
+        AA[Academic Agent<br/>Research & Analysis]
+        TA[Tooling Agent<br/>Web Search & Tools]
+        CA[Code Agent<br/>Programming Tasks]
+        DA[Data Agent<br/>Analytics & Viz]
+        SEC[Security Agent<br/>Audit & Compliance]
+    end
+    
+    subgraph "Agent Communication"
+        A2A[Agent-to-Agent Protocol]
+        MSG_BUS[Message Bus<br/>Redis/RabbitMQ]
+        EVENTS[Event Store]
+        COORD[Coordination Service]
+    end
+    
+    subgraph "Core Services"
+        subgraph "Conversation Management"
+            CM[Conversation Manager]
+            HIST[History Store]
+            CTX[Context Manager]
+            SESS[Session Manager]
+        end
+        
+        subgraph "Role & Personality"
+            RM[Role Manager]
+            PERS[Personality Engine]
+            PROMPT[Prompt Templates]
+        end
+        
+        subgraph "Streaming & Response"
+            SM[Streaming Manager]
+            RESP[Response Formatter]
+            CACHE[Response Cache]
+        end
+    end
+    
+    subgraph "Tool Infrastructure"
+        subgraph "Document Processing"
+            PDF[PDF Processor]
+            TXT[Text Processor]
+            DOC[Document Parser]
+            OCR[OCR Engine]
+        end
+        
+        subgraph "Web & Search Tools"
+            WS[Web Search Engine]
+            WF[Web Fetcher]
+            SCRAPE[Web Scraper]
+            RSS[RSS Reader]
+        end
+        
+        subgraph "Code Tools"
+            COMPILE[Code Compiler]
+            LINT[Code Linter]
+            TEST[Test Runner]
+            REPO[Repository Manager]
+        end
+        
+        subgraph "Data Tools"
+            DB_CONN[Database Connectors]
+            CSV[CSV Processor]
+            JSON[JSON Processor]
+            VIZ[Data Visualization]
+        end
+        
+        subgraph "MPC Interface"
+            MPC_MGR[MPC Manager]
+            PRIV_COMP[Private Computation]
+            SECURE_AGG[Secure Aggregation]
+            KEY_MGR[Key Management]
+        end
+        
+        subgraph "Future Extensions"
+            PLUGIN[Plugin System]
+            CUSTOM[Custom Tools API]
+            EXT_API[External APIs]
+            WORKFLOW[Workflow Engine]
+        end
+    end
+    
+    subgraph "Federation & Distribution"
+        FED_ORCH[Federation Orchestrator]
+        NODE_MGR[Node Manager]
+        CONSENSUS[Consensus Protocol]
+        P2P[P2P Network Layer]
+        CRYPTO[Cryptographic Layer]
+    end
+    
+    subgraph "External Services"
+        subgraph "LLM Providers"
+            OLLAMA[Ollama Server]
+            OPENAI[OpenAI API]
+            ANTHROPIC[Anthropic API]
+            MODELS[Local Models]
+        end
+        
+        subgraph "Search & Web"
+            SEARCH_API[Search APIs<br/>Google, Bing, etc.]
+            WEB_SRC[Web Sources]
+            NEWS[News APIs]
+        end
+        
+        subgraph "Infrastructure"
+            DB[(Database<br/>PostgreSQL)]
+            REDIS[(Redis Cache)]
+            S3[(Object Storage)]
+            METRICS[Metrics Store]
+        end
+    end
+    
+    subgraph "Security & Monitoring"
+        AUTH[Authentication]
+        AUTHZ[Authorization]
+        AUDIT[Audit Logger]
+        MON[Monitoring]
+        ALERT[Alerting]
+    end
+    
+    subgraph "Configuration & Management"
+        CFG[Configuration Manager]
+        ENV[Environment Config]
+        SECRETS[Secret Management]
+        DEPLOY[Deployment Manager]
+    end
+    
+    %% Client Connections
+    CLI --> ORCH
+    REST --> ORCH
+    GRPC --> ORCH
+    WS_SRV --> ORCH
+    WEB_UI --> ORCH
+    
+    %% Orchestration
+    ORCH --> LB
+    LB --> GA
+    LB --> AA
+    LB --> TA
+    LB --> CA
+    LB --> DA
+    LB --> SEC
+    
+    ORCH --> DISC
+    ORCH --> HEALTH
+    
+    %% Agent Communication
+    GA --> A2A
+    AA --> A2A
+    TA --> A2A
+    CA --> A2A
+    DA --> A2A
+    SEC --> A2A
+    
+    A2A --> MSG_BUS
+    A2A --> EVENTS
+    A2A --> COORD
+    
+    %% Core Services
+    GA --> CM
+    AA --> CM
+    TA --> CM
+    CA --> CM
+    DA --> CM
+    SEC --> CM
+    
+    CM --> HIST
+    CM --> CTX
+    CM --> SESS
+    
+    GA --> RM
+    AA --> RM
+    TA --> RM
+    
+    RM --> PERS
+    RM --> PROMPT
+    
+    GA --> SM
+    AA --> SM
+    TA --> SM
+    
+    SM --> RESP
+    SM --> CACHE
+    
+    %% Tool Connections
+    AA --> PDF
+    AA --> TXT
+    AA --> DOC
+    AA --> OCR
+    
+    TA --> WS
+    TA --> WF
+    TA --> SCRAPE
+    TA --> RSS
+    
+    CA --> COMPILE
+    CA --> LINT
+    CA --> TEST
+    CA --> REPO
+    
+    DA --> DB_CONN
+    DA --> CSV
+    DA --> JSON
+    DA --> VIZ
+    
+    SEC --> MPC_MGR
+    MPC_MGR --> PRIV_COMP
+    MPC_MGR --> SECURE_AGG
+    MPC_MGR --> KEY_MGR
+    
+    %% Plugin System
+    PLUGIN --> CUSTOM
+    PLUGIN --> EXT_API
+    PLUGIN --> WORKFLOW
+    
+    %% Federation
+    ORCH --> FED_ORCH
+    FED_ORCH --> NODE_MGR
+    FED_ORCH --> CONSENSUS
+    FED_ORCH --> P2P
+    FED_ORCH --> CRYPTO
+    
+    %% External Services
+    GA --> OLLAMA
+    AA --> OLLAMA
+    TA --> OLLAMA
+    CA --> OLLAMA
+    DA --> OLLAMA
+    SEC --> OLLAMA
+    
+    GA --> OPENAI
+    AA --> ANTHROPIC
+    
+    WS --> SEARCH_API
+    WF --> WEB_SRC
+    RSS --> NEWS
+    
+    %% Data Storage
+    CM --> DB
+    HIST --> DB
+    EVENTS --> DB
+    CACHE --> REDIS
+    RESP --> S3
+    
+    %% Security
+    REST --> AUTH
+    GRPC --> AUTH
+    AUTH --> AUTHZ
+    AUDIT --> DB
+    MON --> METRICS
+    MON --> ALERT
+    
+    %% Configuration
+    ORCH --> CFG
+    CFG --> ENV
+    CFG --> SECRETS
+    CFG --> DEPLOY
+    
+    %% Styling
+    style ORCH fill:#ff9800
+    style GA fill:#e1f5fe
+    style AA fill:#f3e5f5
+    style TA fill:#e8f5e8
+    style CA fill:#fff3e0
+    style DA fill:#e0f2f1
+    style SEC fill:#fce4ec
+    style FED_ORCH fill:#f1f8e9
+    style MPC_MGR fill:#e8eaf6
+    style PLUGIN fill:#fff8e1
+```
+
+
+---
 **Legend:**
 - [x] Implemented
 - [ ] Planned / In Progress / Experimental
