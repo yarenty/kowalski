@@ -52,8 +52,7 @@ pub use kowalski_data_agent as data_agent;
 pub use kowalski_core::{
     BaseAgent,
     Config,
-    Conversation,
-    Message,
+    conversation::{Conversation, Message},
     Role,
     Tool,
     ToolChain,

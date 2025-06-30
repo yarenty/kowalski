@@ -7,10 +7,10 @@ use kowalski_core::config::Config;
 use kowalski_core::conversation::Conversation;
 use kowalski_core::error::KowalskiError;
 use kowalski_core::role::Role;
-use kowalski_core::tools::{Tool, ToolInput};
+use kowalski_core::tools::{Tool, ToolOutput};
 use kowalski_tools::document::PdfTool;
 use kowalski_tools::web::WebSearchTool;
-use serde::{Deserialize, Serialize};
+use reqwest::Response;
 
 /// AcademicAgent: A specialized agent for academic tasks
 /// This agent is built on top of the TemplateAgent and provides academic-specific functionality
@@ -18,20 +18,6 @@ use serde::{Deserialize, Serialize};
 pub struct AcademicAgent {
     agent: TemplateAgent,
     config: AcademicAgentConfig,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PaperSearchResult {
-    pub title: String,
-    pub authors: String,
-    pub abstract_text: String,
-    pub url: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CitationResult {
-    pub citation: String,
-    pub format: String,
 }
 
 impl AcademicAgent {
@@ -43,9 +29,47 @@ impl AcademicAgent {
         let pdf_tool = PdfTool;
         let tools: Vec<Box<dyn Tool + Send + Sync>> =
             vec![Box::new(search_tool), Box::new(pdf_tool)];
+
+        let system_prompt = r#"You are an academic research assistant. You can search for papers and process PDF files.
+
+AVAILABLE TOOLS:
+1. web_search - Search the web for academic papers.
+   - parameters: { "query": "search query" }
+2. pdf_tool - Process a PDF file from a given path.
+   - parameters: { "file_path": "/path/to/file.pdf", "extract_text": true, "extract_metadata": false, "extract_images": false }
+
+TOOL USAGE INSTRUCTIONS:
+- Use "web_search" to find papers on a topic.
+- Use "pdf_tool" to analyze a paper you have the path to.
+
+RESPONSE FORMAT:
+When you need to use a tool, respond with JSON in this exact format:
+{
+  "name": "web_search",
+  "parameters": {
+    "query": "machine learning in healthcare"
+  },
+  "reasoning": "I need to find papers on this topic."
+}
+
+or
+
+{
+  "name": "pdf_tool",
+  "parameters": {
+    "file_path": "/path/to/downloaded/paper.pdf",
+    "extract_text": true,
+    "extract_metadata": true
+  },
+  "reasoning": "I need to extract text and metadata from this PDF."
+}
+
+When you have a final answer, respond normally without JSON formatting."#
+            .to_string();
+
         let builder = GeneralTemplate::create_agent(
             tools,
-            Some("You are an academic research assistant specialized in finding and analyzing academic papers. You have access to web_search and pdf tools. Use them to answer questions about academic research.".to_string()),
+            Some(system_prompt),
             Some(0.7),
         )
         .await
@@ -55,74 +79,6 @@ impl AcademicAgent {
             agent,
             config: academic_config,
         })
-    }
-
-    /// Searches for academic papers
-    pub async fn search_papers(
-        &self,
-        query: &str,
-    ) -> Result<Vec<PaperSearchResult>, KowalskiError> {
-        let mut tools = self.agent.tool_chain.write().await;
-        let tool = tools.iter_mut().find(|t| t.name() == "web_search");
-        let tool = match tool {
-            Some(t) => t,
-            None => {
-                return Err(KowalskiError::ToolExecution(
-                    "web_search tool not found".to_string(),
-                ));
-            }
-        };
-        let input = ToolInput::new(
-            "search".to_string(),
-            query.to_string(),
-            serde_json::json!({"query": query}),
-        );
-        let _output = tool.execute(input).await?;
-        // For now, return a simple result since DuckDuckGo doesn't provide academic-specific results
-        Ok(vec![PaperSearchResult {
-            title: query.to_string(),
-            authors: "Unknown".to_string(),
-            abstract_text:
-                "Academic search results would be available with a proper academic search API."
-                    .to_string(),
-            url: "".to_string(),
-        }])
-    }
-
-    /// Generates a citation for a reference
-    pub async fn generate_citation(
-        &self,
-        reference: &str,
-    ) -> Result<CitationResult, KowalskiError> {
-        // For now, return a simple citation format
-        Ok(CitationResult {
-            citation: format!("Citation for: {}", reference),
-            format: "APA".to_string(),
-        })
-    }
-
-    /// Parses and analyzes an academic paper
-    pub async fn parse_paper(&self, content: &str) -> Result<String, KowalskiError> {
-        let mut tools = self.agent.tool_chain.write().await;
-        let tool = tools.iter_mut().find(|t| t.name() == "pdf_tool");
-        let tool = match tool {
-            Some(t) => t,
-            None => {
-                return Err(KowalskiError::ToolExecution(
-                    "pdf_tool not found".to_string(),
-                ));
-            }
-        };
-        let input = ToolInput::new(
-            "parse".to_string(),
-            content.to_string(),
-            serde_json::json!({}),
-        );
-        let output = tool.execute(input).await?;
-        Ok(output.result["content"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string())
     }
 }
 
@@ -153,7 +109,7 @@ impl Agent for AcademicAgent {
         conversation_id: &str,
         content: &str,
         role: Option<Role>,
-    ) -> Result<reqwest::Response, KowalskiError> {
+    ) -> Result<Response, KowalskiError> {
         self.agent
             .base_mut()
             .chat_with_history(conversation_id, content, role)
@@ -178,12 +134,20 @@ impl Agent for AcademicAgent {
             .await;
     }
 
+    async fn execute_tool(
+        &mut self,
+        tool_name: &str,
+        tool_input: &serde_json::Value,
+    ) -> Result<ToolOutput, KowalskiError> {
+        self.agent.execute_tool(tool_name, tool_input).await
+    }
+
     fn name(&self) -> &str {
-        self.agent.base().name()
+        "Academic Agent"
     }
 
     fn description(&self) -> &str {
-        self.agent.base().description()
+        "A specialized agent for academic research tasks."
     }
 }
 

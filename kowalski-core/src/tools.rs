@@ -64,6 +64,13 @@ pub trait Tool: Send + Sync {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub name: String,
+    pub parameters: serde_json::Value,
+    pub reasoning: Option<String>,
+}
+
 /// Input for a tool execution
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolInput {
