@@ -1,0 +1,124 @@
+---
+config:
+  theme: neo
+  look: handDrawn
+---
+graph TB
+    %% Top Level Interfaces
+    CLI[CLI Interface]
+    RestUI[REST UI]
+    A2A[A2A Integration]
+    MCP[MCP Protocol]
+    
+    %% Federation Layer
+    subgraph Federation["Federation Layer"]
+        Orchestrator[Orchestrator]
+        Registry[Service Registry]
+        Protocols[Communication Protocols]
+    end
+    
+    %% Agent Layer
+    subgraph Agents["Agent Layer"]
+        WebAgent[Web Agent]
+        AcademicAgent[Academic Agent]
+        CodeAgent[Code Agent]
+        DataAgent[Data Agent]
+    end
+    
+    %% Template Layer
+    subgraph Template["Template Layer"]
+        Builder[Template Builder]
+        Configs[Configurations]
+    end
+    
+    %% Tooling Layer
+    subgraph Tooling["Tooling Layer"]
+        FS[File System<br/>- Git<br/>- Archive]
+        Web[Web Services<br/>- REST API<br/>- GraphQL]
+        Documents[Documents<br/>- PDFs<br/>- HTML<br/>- DocX]
+        Code[Code<br/>- Java<br/>- Python<br/>- Rust]
+        Data[Data<br/>- CSV<br/>- Database<br/>- Parquet<br/>- JSON]
+    end
+    
+    %% Core Layer
+    subgraph Core["Core Layer"]
+        AgentAPI[Agent API]
+        Conversation[Conversation Manager]
+        Memory[Memory System]
+        Storage[Storage Layer]
+        Model[Model Interface]
+        ToolAPI[Tool API]
+    end
+    
+    %% External Systems
+    subgraph External["External Systems"]
+        ExtAPI[External APIs]
+        Database[(Database)]
+        FileStorage[(File Storage)]
+        MLModels[ML Models]
+    end
+    
+    %% Connections - Top Level to Federation
+    CLI --> Federation
+    RestUI --> Federation
+    A2A --> Federation
+    MCP --> Federation
+    
+    %% Federation to Agents
+    Orchestrator --> Agents    
+    Registry --> Agents
+    Protocols --> Agents
+    
+    %% Agents to Template
+    WebAgent --> Template
+    AcademicAgent --> Template
+    CodeAgent --> Template
+    DataAgent --> Template
+    
+
+    Builder --> AgentAPI
+    
+    %% Template to Tooling
+    Configs --> Tooling
+    Configs --> Core
+    Builder --> Tooling
+
+    
+    
+    %% Tooling to Core
+    Tooling --> ToolAPI
+    Tooling --> External
+
+    
+    %% Core Internal Connections
+    AgentAPI --> Conversation
+    AgentAPI --> ToolAPI
+    Conversation --> Memory
+    Memory --> Storage
+    AgentAPI --> Model
+
+
+    
+    %% Core to External
+    ToolAPI --> External
+    Storage --> Database
+    Storage --> FileStorage
+    Model --> MLModels
+    AgentAPI --> ExtAPI
+    
+    %% Styling
+    classDef interfaceClass fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef federationClass fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef agentClass fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef templateClass fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef toolingClass fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+    classDef coreClass fill:#f1f8e9,stroke:#33691e,stroke-width:2px
+    classDef externalClass fill:#eceff1,stroke:#263238,stroke-width:2px
+    
+    class CLI,RestUI,A2A,MCP interfaceClass
+    class Orchestrator,Registry,Protocols federationClass
+    class WebAgent,AcademicAgent,CodeAgent,DataAgent agentClass
+    class Builder,Configs,Roles templateClass
+    class FS,Web,Documents,Code,Data toolingClass
+    class AgentAPI,Conversation,Memory,Storage,ToolChain,Model,Utils,ToolAPI coreClass
+    class ExtAPI,Database,FileStorage,MLModels externalClass
