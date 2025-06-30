@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kowalski - Architecture</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; margin: 0; padding: 0; background: #f4f4f4; color: #333; }
+        .container { max-width: 800px; margin: auto; overflow: hidden; padding: 0 20px; }
+        header { background: #333; color: #fff; padding: 1rem 0; text-align: center; }
+        nav { background: #444; padding: 1rem; }
+        nav ul { padding: 0; list-style: none; text-align: center; }
+        nav ul li { display: inline; margin-right: 20px; }
+        nav a { color: #fff; text-decoration: none; }
+        section { padding: 20px; background: #fff; margin-top: 20px; }
+        h1 { color: #333; }
+        img { max-width: 100%; }
+        footer { text-align: center; padding: 20px; margin-top: 20px; background: #333; color: #fff;}
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Kowalski Architecture</h1>
+        </div>
+    </header>
+    <nav>
+        <div class="container">
+            <ul>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="architecture.html">Architecture</a></li>
+                <li><a href="roadmap.html">Roadmap</a></li>
+                <li><a href="modules.html">Modules</a></li>
+            </ul>
+        </div>
+    </nav>
+    <div class="container">
+        <section id="architecture-diagram">
+            <h2>High-Level Architecture</h2>
+            <img src="img/architecture_v01.png" alt="Kowalski Architecture Diagram">
+        </section>
+        <section id="components">
+            <h2>Core Components</h2>
+            <p>The architecture is divided into several key layers:</p>
+            <ul>
+                <li><strong>Federation Layer:</strong> Manages communication and orchestration between agents.</li>
+                <li><strong>Agent Layer:</strong> Contains the different types of specialized agents (Web, Academic, Code, Data).</li>
+                <li><strong>Template Layer:</strong> Provides templates and configurations for building new agents.</li>
+                <li><strong>Core Layer:</strong> The heart of Kowalski, containing the Tool API, Agent API, and other core components.</li>
+                <li><strong>Tooling Layer:</strong> A collection of tools for interacting with various systems and data formats.</li>
+            </ul>
+        </section>
+    </div>
+    <footer>
+        <p>Kowalski Agentic-AI Development</p>
+    </footer>
+</body>
+</html>
