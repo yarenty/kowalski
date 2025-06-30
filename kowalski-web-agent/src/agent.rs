@@ -76,15 +76,21 @@ or
 When you have a final answer, respond normally without JSON formatting.
 
 Remember: Use tools proactively to provide accurate, up-to-date information!"#.to_string();
-
+        let system_prompt_clone = system_prompt.clone();
         let builder = GeneralTemplate::create_agent(tools, Some(system_prompt), Some(0.7))
             .await
             .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
-        let agent = builder.build().await?;
+        let mut agent = builder.build().await?;
+        // Ensure the system prompt is set on the base agent
+        agent.base_mut().set_system_prompt(&system_prompt_clone);
         Ok(Self {
             agent,
             config: web_config,
         })
+    }
+
+    pub async fn list_tools(&self) -> Vec<(String, String)> {
+        self.agent.list_tools().await
     }
 }
 
@@ -95,7 +101,15 @@ impl Agent for WebAgent {
     }
 
     fn start_conversation(&mut self, model: &str) -> String {
-        self.agent.base_mut().start_conversation(model)
+        let system_prompt = {
+            let base = self.agent.base();
+            base.system_prompt.as_deref().unwrap_or("You are a helpful assistant.").to_string()
+        };
+        let conv_id = self.agent.base_mut().start_conversation(model);
+        if let Some(conversation) = self.agent.base_mut().conversations.get_mut(&conv_id) {
+            conversation.add_message("system", &system_prompt);
+        }
+        conv_id
     }
 
     fn get_conversation(&self, id: &str) -> Option<&Conversation> {
@@ -154,5 +168,9 @@ impl Agent for WebAgent {
 
     fn description(&self) -> &str {
         "A specialized agent for web-based tasks like searching and scraping"
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }

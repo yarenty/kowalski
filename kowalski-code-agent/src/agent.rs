@@ -62,7 +62,7 @@ When you need to use a tool, respond with JSON in this exact format:
 
 When you have a final answer, respond normally without JSON formatting."#
             .to_string();
-
+        let system_prompt_clone = system_prompt.clone();
         let builder = GeneralTemplate::create_agent(
             tools,
             Some(system_prompt),
@@ -70,12 +70,17 @@ When you have a final answer, respond normally without JSON formatting."#
         )
         .await
         .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
-        let agent = builder.build().await?;
-
+        let mut agent = builder.build().await?;
+        // Ensure the system prompt is set on the base agent
+        agent.base_mut().set_system_prompt(&system_prompt_clone);
         Ok(Self {
             agent,
             config: code_config,
         })
+    }
+
+    pub async fn list_tools(&self) -> Vec<(String, String)> {
+        self.agent.list_tools().await
     }
 }
 
@@ -86,7 +91,15 @@ impl Agent for CodeAgent {
     }
 
     fn start_conversation(&mut self, model: &str) -> String {
-        self.agent.base_mut().start_conversation(model)
+        let system_prompt = {
+            let base = self.agent.base();
+            base.system_prompt.as_deref().unwrap_or("You are a helpful assistant.").to_string()
+        };
+        let conv_id = self.agent.base_mut().start_conversation(model);
+        if let Some(conversation) = self.agent.base_mut().conversations.get_mut(&conv_id) {
+            conversation.add_message("system", &system_prompt);
+        }
+        conv_id
     }
 
     fn get_conversation(&self, id: &str) -> Option<&Conversation> {
@@ -145,6 +158,10 @@ impl Agent for CodeAgent {
 
     fn description(&self) -> &str {
         "A specialized agent for code analysis tasks."
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

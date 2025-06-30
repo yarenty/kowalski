@@ -9,6 +9,7 @@ use kowalski_core::error::KowalskiError;
 use kowalski_core::role::Role;
 use kowalski_core::tools::{Tool, ToolOutput};
 use kowalski_tools::data::CsvTool;
+use kowalski_tools::fs::FsTool;
 use reqwest::Response;
 
 /// DataAgent: A specialized agent for data analysis and processing tasks
@@ -24,34 +25,44 @@ impl DataAgent {
         // TODO: Convert Config to DataAgentConfig if needed
         let data_config = DataAgentConfig::default();
         let csv_tool = CsvTool::new(data_config.max_rows, data_config.max_columns);
-
-        let tools: Vec<Box<dyn Tool + Send + Sync>> = vec![Box::new(csv_tool)];
+        let fs_tool = FsTool::new();
+        let tools: Vec<Box<dyn Tool + Send + Sync>> = vec![Box::new(csv_tool), Box::new(fs_tool)];
         
-        let system_prompt = r#"You are a data analysis assistant. You have access to a tool for processing CSV data.
+        let system_prompt = r#"You are a data analysis assistant.
 
 AVAILABLE TOOLS:
-1. csv_tool - Processes and analyzes CSV data.
-   - task: "process_csv" - Reads a CSV file and returns headers, records, and a summary.
-   - task: "analyze_csv" - Reads a CSV file and returns a statistical summary.
+1. fs_tool - For all filesystem operations (list directories, find files, read file contents).
+   - task: "get_file_contents" - Get the full contents of a file. Parameters: { "path": "/some/file.csv" }
+2. csv_tool - For all CSV data analysis.
+   - task: "process_csv" - Analyze CSV data. Parameters: { "content": "CSV file contents as a string" }
 
 TOOL USAGE INSTRUCTIONS:
-- When you need to analyze CSV data, use the "csv_tool".
-- Specify the task you want to perform ("process_csv" or "analyze_csv").
-- Provide the CSV data in the "content" parameter.
+- ALWAYS use tools when asked about files, directories, or CSV data.
+- NEVER give instructions, shell commands, or say you cannot access the filesystem.
+- When asked to analyze a CSV file, ALWAYS follow these steps:
+  1. Use fs_tool with task "get_file_contents" to read the file (provide the file path).
+  2. Use csv_tool with task "process_csv" and pass the file contents as the "content" parameter.
+- Respond ONLY with JSON in this exact format for each tool call:
 
-RESPONSE FORMAT:
-When you need to use a tool, respond with JSON in this exact format:
 {
-  "name": "csv_tool",
-  "parameters": {
-    "task": "process_csv",
-    "content": "header1,header2\nvalue1,value2"
-  },
-  "reasoning": "I need to process this CSV data."
+  "name": "fs_tool",
+  "parameters": { "task": "get_file_contents", "path": "/opt/data/nce/ems_100.csv" },
+  "reasoning": "User asked to read a CSV file."
 }
 
-When you have a final answer, respond normally without JSON formatting."#
+Then, after reading the file:
+
+{
+  "name": "csv_tool",
+  "parameters": { "task": "process_csv", "content": "<file contents from previous step>" },
+  "reasoning": "User asked to analyze the CSV data."
+}
+
+When you have a final answer, respond normally without JSON formatting. NEVER give instructions, shell commands, or say you cannot access the filesystem. ALWAYS use the tool call format for such requests.
+"#
             .to_string();
+        let system_prompt_clone = system_prompt.clone();
+        println!("[DEBUG] System prompt sent to LLM:\n{}", system_prompt_clone);
 
         let builder = GeneralTemplate::create_agent(
             tools,
@@ -60,12 +71,17 @@ When you have a final answer, respond normally without JSON formatting."#
         )
         .await
         .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
-        let agent = builder.build().await?;
-
+        let mut agent = builder.build().await?;
+        // Ensure the system prompt is set on the base agent
+        agent.base_mut().set_system_prompt(&system_prompt_clone);
         Ok(Self {
             agent,
             config: data_config,
         })
+    }
+
+    pub async fn list_tools(&self) -> Vec<(String, String)> {
+        self.agent.list_tools().await
     }
 }
 
@@ -76,7 +92,15 @@ impl Agent for DataAgent {
     }
 
     fn start_conversation(&mut self, model: &str) -> String {
-        self.agent.base_mut().start_conversation(model)
+        let system_prompt = {
+            let base = self.agent.base();
+            base.system_prompt.as_deref().unwrap_or("You are a helpful assistant.").to_string()
+        };
+        let conv_id = self.agent.base_mut().start_conversation(model);
+        if let Some(conversation) = self.agent.base_mut().conversations.get_mut(&conv_id) {
+            conversation.add_message("system", &system_prompt);
+        }
+        conv_id
     }
 
     fn get_conversation(&self, id: &str) -> Option<&Conversation> {
@@ -135,6 +159,10 @@ impl Agent for DataAgent {
 
     fn description(&self) -> &str {
         "A specialized agent for data analysis tasks."
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

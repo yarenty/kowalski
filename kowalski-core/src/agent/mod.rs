@@ -12,6 +12,8 @@ use reqwest::Response;
 use serde_json;
 use std::collections::HashMap;
 use std::io::{self, Write};
+use std::any::Any;
+use serde_json::json;
 
 pub mod types;
 
@@ -70,38 +72,44 @@ pub trait Agent: Send + Sync {
         conversation_id: &str,
         user_input: &str,
     ) -> Result<String, KowalskiError> {
+        use crate::tools::ToolCall;
         let mut final_response = String::new();
         let mut current_input = user_input.to_string();
         let mut iteration_count = 0;
         const MAX_ITERATIONS: usize = 5; // Prevent infinite loops
+        let mut first_iteration = true;
+        let mut last_tool_call: Option<(String, serde_json::Value)> = None;
+
+        println!("[DEBUG] Starting chat_with_tools for input: '{}'", user_input);
 
         while iteration_count < MAX_ITERATIONS {
             iteration_count += 1;
+            println!("[DEBUG] === ITERATION {} ===", iteration_count);
+            println!("[DEBUG] Current input: '{}'", current_input);
 
-            // Add user input to conversation
-            self.add_message(conversation_id, "user", &current_input)
-                .await;
+            // Only add the user message on the first iteration
+            if first_iteration {
+                self.add_message(conversation_id, "user", &current_input).await;
+                println!("[DEBUG] Added user message to conversation");
+                first_iteration = false;
+            }
 
             // Get response from LLM
-            let response = self
-                .chat_with_history(conversation_id, &current_input, None)
-                .await?;
+            println!("[DEBUG] Calling LLM...");
+            let response = self.chat_with_history(conversation_id, &current_input, None).await?;
 
             let mut stream = response.bytes_stream();
             let mut buffer = String::new();
 
             // Process streaming response
+            println!("[DEBUG] Processing streaming response...");
             while let Some(chunk) = stream.next().await {
                 match chunk {
                     Ok(bytes) => {
-                        if let Ok(Some(message)) =
-                            self.process_stream_response(conversation_id, &bytes).await
-                        {
+                        if let Ok(Some(message)) = self.process_stream_response(conversation_id, &bytes).await {
                             if !message.content.is_empty() {
                                 print!("{}", message.content);
-                                io::stdout()
-                                    .flush()
-                                    .map_err(|e| KowalskiError::Server(e.to_string()))?;
+                                io::stdout().flush().map_err(|e| KowalskiError::Server(e.to_string()))?;
                                 buffer.push_str(&message.content);
                             }
                         }
@@ -113,40 +121,112 @@ pub trait Agent: Send + Sync {
                 }
             }
             println!(); // New line after response
+            println!("[DEBUG] Full LLM response: '{}'", buffer);
 
-            // Try to parse as tool call
-            if let Ok(tool_call) = serde_json::from_str::<ToolCall>(&buffer) {
-                // Execute the tool
-                let tool_result = match self
-                    .execute_tool(&tool_call.name, &tool_call.parameters)
-                    .await
-                {
+            // Try to extract JSON from mixed text response
+            println!("[DEBUG] ❌ Failed to parse entire response as tool call, trying to extract JSON...");
+            if let Some(json_start) = buffer.find('{') {
+                // Find the first valid JSON object only
+                let mut brace_count = 0;
+                let mut end_idx = None;
+                for (i, c) in buffer[json_start..].char_indices() {
+                    match c {
+                        '{' => brace_count += 1,
+                        '}' => {
+                            brace_count -= 1;
+                            if brace_count == 0 {
+                                end_idx = Some(json_start + i);
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                if let Some(json_end) = end_idx {
+                    let json_str = &buffer[json_start..=json_end];
+                    println!("[DEBUG] Extracted first JSON object: {}", json_str);
+                    if let Ok(mut tool_call) = serde_json::from_str::<ToolCall>(json_str) {
+                        // Detect repeated tool calls
+                        let tool_call_key = (tool_call.name.clone(), tool_call.parameters.clone());
+                        if let Some(last) = &last_tool_call {
+                            if *last == tool_call_key {
+                                println!("[DEBUG] Detected repeated tool call. Breaking loop to prevent infinite tool call loop.");
+                                break;
+                            }
+                        }
+                        last_tool_call = Some(tool_call_key.clone());
+                        println!("[DEBUG] ✅ Tool call successfully parsed from extracted JSON!");
+                        println!("[DEBUG] Tool: {}", tool_call.name);
+                        println!("[DEBUG] Parameters: {}", tool_call.parameters);
+                        println!("[DEBUG] Reasoning: {:?}", tool_call.reasoning);
+                        let tool_result = match self.execute_tool(&tool_call.name, &tool_call.parameters).await {
+                            Ok(output) => output.result.to_string(),
+                            Err(e) => {
+                                let err_msg = format!("{}", e);
+                                println!("[DEBUG] Tool execution failed: {}", err_msg);
+                                // Tool chaining: if csv_tool is called with an unsupported task, try fs_tool get_file_contents then csv_tool process_csv
+                                if tool_call.name == "csv_tool" && tool_call.parameters.get("task").map(|v| v == "read_file").unwrap_or(false) {
+                                    if let Some(path) = tool_call.parameters.get("path").and_then(|v| v.as_str()) {
+                                        println!("[DEBUG] Tool chaining: Detected csv_tool with read_file. Chaining fs_tool get_file_contents then csv_tool process_csv.");
+                                        // Step 1: fs_tool get_file_contents
+                                        let fs_params = serde_json::json!({"task": "get_file_contents", "path": path});
+                                        match self.execute_tool("fs_tool", &fs_params).await {
+                                            Ok(fs_output) => {
+                                                let file_contents = fs_output.result.get("contents").and_then(|v| v.as_str()).unwrap_or("");
+                                                // Step 2: csv_tool process_csv
+                                                let csv_params = serde_json::json!({"task": "process_csv", "content": file_contents});
+                                                match self.execute_tool("csv_tool", &csv_params).await {
+                                                    Ok(csv_output) => csv_output.result.to_string(),
+                                                    Err(e2) => format!("Tool chaining failed at csv_tool: {}", e2),
+                                                }
+                                            }
+                                            Err(e1) => format!("Tool chaining failed at fs_tool: {}", e1),
+                                        }
+                                    } else {
+                                        err_msg
+                                    }
+                                } else {
+                                    err_msg
+                                }
+                            }
+                        };
+                        let tool_message = format!("Tool result for {}: {}", tool_call.name, tool_result);
+                        self.add_message(conversation_id, "assistant", &tool_message).await;
+                        println!("[DEBUG] Added tool result to conversation");
+                        current_input = format!("Based on the tool result: {}", tool_result);
+                        println!("[DEBUG] Continuing with new input: '{}'", current_input);
+                        continue;
+                    } else {
+                        println!("[DEBUG] ❌ Failed to parse extracted JSON as tool call");
+                    }
+                }
+            }
+
+            // Not a tool call, this is the final answer
+            final_response = buffer;
+            self.add_message(conversation_id, "assistant", &final_response).await;
+            println!("[DEBUG] ✅ Final response set: '{}'", final_response);
+
+            if let Some(tool_call) = rule_based_tool_call(user_input) {
+                println!("[DEBUG] Rule-based tool call triggered: {:?}", tool_call);
+                let tool_result = self.execute_tool(&tool_call.name, &tool_call.parameters).await;
+                let tool_result_str = match tool_result {
                     Ok(output) => output.result.to_string(),
                     Err(e) => format!("Tool execution failed: {}", e),
                 };
-
-                // Add tool result to conversation
-                let tool_message =
-                    format!("Tool result for {}: {}", tool_call.name, tool_result);
-                self.add_message(conversation_id, "assistant", &tool_message)
-                    .await;
-
-                // Continue loop with tool result as next input
-                current_input = format!("Based on the tool result: {}", tool_result);
-                continue;
-            } else {
-                // No tool call, so this is the final response
-                final_response = buffer;
-                break;
+                self.add_message(conversation_id, "assistant", &tool_result_str).await;
+                println!("[DEBUG] Rule-based tool result: {}", tool_result_str);
+                return Ok(tool_result_str);
             }
+
+            break;
         }
 
-        if final_response.is_empty() && iteration_count == MAX_ITERATIONS {
-            return Err(KowalskiError::ToolExecution(
-                "Max iterations reached without a final answer".to_string(),
-            ));
+        if iteration_count >= MAX_ITERATIONS {
+            println!("[WARNING] Reached maximum iterations, returning current response");
         }
 
+        println!("[DEBUG] chat_with_tools completed after {} iterations", iteration_count);
         Ok(final_response)
     }
 
@@ -155,6 +235,8 @@ pub trait Agent: Send + Sync {
 
     /// Gets the agent's description
     fn description(&self) -> &str;
+
+    fn as_any(&self) -> &dyn Any;
 }
 
 /// The base agent implementation that provides common functionality.
@@ -246,8 +328,6 @@ impl Agent for BaseAgent {
             }
         }
 
-        conversation.add_message("user", content);
-
         let request = ChatRequest {
             model: conversation.model.clone(),
             messages: conversation.messages.clone(),
@@ -306,6 +386,10 @@ impl Agent for BaseAgent {
     fn description(&self) -> &str {
         &self.description
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 #[async_trait]
@@ -314,4 +398,28 @@ pub trait MessageHandler: Send + Sync {
     type Error;
 
     async fn handle_message(&mut self, message: Self::Message) -> Result<(), Self::Error>;
+}
+
+fn rule_based_tool_call(user_input: &str) -> Option<ToolCall> {
+    let input = user_input.to_lowercase();
+    if input.contains("list") && input.contains("directory") {
+        if let Some(path) = input.split_whitespace().find(|w| w.starts_with('/')) {
+            return Some(ToolCall {
+                name: "fs_tool".to_string(),
+                parameters: json!({ "task": "list_dir", "path": path }),
+                reasoning: Some("Rule-based: user asked to list a directory".to_string()),
+            });
+        }
+    }
+    if input.contains("first 10 lines") && input.contains(".csv") {
+        if let Some(path) = input.split_whitespace().find(|w| w.ends_with(".csv")) {
+            return Some(ToolCall {
+                name: "fs_tool".to_string(),
+                parameters: json!({ "task": "get_file_first_lines", "path": path, "num_lines": 10 }),
+                reasoning: Some("Rule-based: user asked for first 10 lines of a CSV".to_string()),
+            });
+        }
+    }
+    // Add more rules as needed...
+    None
 }
