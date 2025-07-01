@@ -1,10 +1,10 @@
-use std::fs;
-use std::io::{self, BufRead};
-use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 use kowalski_core::error::KowalskiError;
 use kowalski_core::tools::{Tool, ToolInput, ToolOutput, ToolParameter};
 use serde_json::json;
+use std::fs;
+use std::io::{self, BufRead};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, thiserror::Error)]
 pub enum FsError {
@@ -34,7 +34,11 @@ pub fn find_files<P: AsRef<Path>>(dir: P, pattern: &str) -> Result<Vec<PathBuf>,
     Ok(result)
 }
 
-fn find_files_recursive(dir: &Path, pattern: &str, result: &mut Vec<PathBuf>) -> Result<(), FsError> {
+fn find_files_recursive(
+    dir: &Path,
+    pattern: &str,
+    result: &mut Vec<PathBuf>,
+) -> Result<(), FsError> {
     if dir.is_dir() {
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
@@ -58,14 +62,20 @@ pub fn get_file_contents<P: AsRef<Path>>(path: P) -> Result<String, FsError> {
 }
 
 /// Get the first `num_lines` lines of a file as a Vec<String>.
-pub fn get_file_first_lines<P: AsRef<Path>>(path: P, num_lines: usize) -> Result<Vec<String>, FsError> {
+pub fn get_file_first_lines<P: AsRef<Path>>(
+    path: P,
+    num_lines: usize,
+) -> Result<Vec<String>, FsError> {
     let file = fs::File::open(&path)?;
     let reader = io::BufReader::new(file);
     Ok(reader.lines().take(num_lines).collect::<Result<_, _>>()?)
 }
 
 /// Get the last `num_lines` lines of a file as a Vec<String>.
-pub fn get_file_last_lines<P: AsRef<Path>>(path: P, num_lines: usize) -> Result<Vec<String>, FsError> {
+pub fn get_file_last_lines<P: AsRef<Path>>(
+    path: P,
+    num_lines: usize,
+) -> Result<Vec<String>, FsError> {
     let file = fs::File::open(&path)?;
     let reader = io::BufReader::new(file);
     let mut lines = Vec::new();
@@ -73,7 +83,7 @@ pub fn get_file_last_lines<P: AsRef<Path>>(path: P, num_lines: usize) -> Result<
         lines.push(line?);
     }
     let len = lines.len();
-    let start = if num_lines > len { 0 } else { len - num_lines };
+    let start = len.saturating_sub(num_lines);
     Ok(lines[start..].to_vec())
 }
 
@@ -85,53 +95,118 @@ impl FsTool {
     }
 }
 
+impl Default for FsTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl Tool for FsTool {
     async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
-        println!("[DEBUG][fs_tool] execute called: task={:?}, parameters={:?}", input.task_type, input.parameters);
-        let task = input.parameters.get("task").and_then(|v| v.as_str()).unwrap_or(&input.task_type);
+        println!(
+            "[DEBUG][fs_tool] execute called: task={:?}, parameters={:?}",
+            input.task_type, input.parameters
+        );
+        let task = input
+            .parameters
+            .get("task")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&input.task_type);
         match task {
             "list_dir" => {
-                let path = input.parameters.get("path").and_then(|v| v.as_str()).ok_or_else(||
-                    KowalskiError::ToolExecution("Missing 'path' parameter for list_dir".to_string())
-                )?;
-                let entries = list_dir(path).map_err(|e| KowalskiError::ToolExecution(e.to_string()))?;
+                let path = input
+                    .parameters
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        KowalskiError::ToolExecution(
+                            "Missing 'path' parameter for list_dir".to_string(),
+                        )
+                    })?;
+                let entries =
+                    list_dir(path).map_err(|e| KowalskiError::ToolExecution(e.to_string()))?;
                 Ok(ToolOutput::new(json!({"entries": entries}), None))
             }
             "find_files" => {
-                let dir = input.parameters.get("dir").and_then(|v| v.as_str()).ok_or_else(||
-                    KowalskiError::ToolExecution("Missing 'dir' parameter for find_files".to_string())
-                )?;
-                let pattern = input.parameters.get("pattern").and_then(|v| v.as_str()).ok_or_else(||
-                    KowalskiError::ToolExecution("Missing 'pattern' parameter for find_files".to_string())
-                )?;
-                let files = find_files(dir, pattern).map_err(|e| KowalskiError::ToolExecution(e.to_string()))?;
+                let dir = input
+                    .parameters
+                    .get("dir")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        KowalskiError::ToolExecution(
+                            "Missing 'dir' parameter for find_files".to_string(),
+                        )
+                    })?;
+                let pattern = input
+                    .parameters
+                    .get("pattern")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        KowalskiError::ToolExecution(
+                            "Missing 'pattern' parameter for find_files".to_string(),
+                        )
+                    })?;
+                let files = find_files(dir, pattern)
+                    .map_err(|e| KowalskiError::ToolExecution(e.to_string()))?;
                 Ok(ToolOutput::new(json!({"files": files}), None))
             }
             "get_file_contents" => {
-                let path = input.parameters.get("path").and_then(|v| v.as_str()).ok_or_else(||
-                    KowalskiError::ToolExecution("Missing 'path' parameter for get_file_contents".to_string())
-                )?;
-                let contents = get_file_contents(path).map_err(|e| KowalskiError::ToolExecution(e.to_string()))?;
+                let path = input
+                    .parameters
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        KowalskiError::ToolExecution(
+                            "Missing 'path' parameter for get_file_contents".to_string(),
+                        )
+                    })?;
+                let contents = get_file_contents(path)
+                    .map_err(|e| KowalskiError::ToolExecution(e.to_string()))?;
                 Ok(ToolOutput::new(json!({"contents": contents}), None))
             }
             "get_file_first_lines" => {
-                let path = input.parameters.get("path").and_then(|v| v.as_str()).ok_or_else(||
-                    KowalskiError::ToolExecution("Missing 'path' parameter for get_file_first_lines".to_string())
-                )?;
-                let num_lines = input.parameters.get("num_lines").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
-                let lines = get_file_first_lines(path, num_lines).map_err(|e| KowalskiError::ToolExecution(e.to_string()))?;
+                let path = input
+                    .parameters
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        KowalskiError::ToolExecution(
+                            "Missing 'path' parameter for get_file_first_lines".to_string(),
+                        )
+                    })?;
+                let num_lines = input
+                    .parameters
+                    .get("num_lines")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(10) as usize;
+                let lines = get_file_first_lines(path, num_lines)
+                    .map_err(|e| KowalskiError::ToolExecution(e.to_string()))?;
                 Ok(ToolOutput::new(json!({"lines": lines}), None))
             }
             "get_file_last_lines" => {
-                let path = input.parameters.get("path").and_then(|v| v.as_str()).ok_or_else(||
-                    KowalskiError::ToolExecution("Missing 'path' parameter for get_file_last_lines".to_string())
-                )?;
-                let num_lines = input.parameters.get("num_lines").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
-                let lines = get_file_last_lines(path, num_lines).map_err(|e| KowalskiError::ToolExecution(e.to_string()))?;
+                let path = input
+                    .parameters
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        KowalskiError::ToolExecution(
+                            "Missing 'path' parameter for get_file_last_lines".to_string(),
+                        )
+                    })?;
+                let num_lines = input
+                    .parameters
+                    .get("num_lines")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(10) as usize;
+                let lines = get_file_last_lines(path, num_lines)
+                    .map_err(|e| KowalskiError::ToolExecution(e.to_string()))?;
                 Ok(ToolOutput::new(json!({"lines": lines}), None))
             }
-            _ => Err(KowalskiError::ToolExecution(format!("Unsupported task type: {}", task))),
+            _ => Err(KowalskiError::ToolExecution(format!(
+                "Unsupported task type: {}",
+                task
+            ))),
         }
     }
 
@@ -182,4 +257,4 @@ impl Tool for FsTool {
             },
         ]
     }
-} 
+}

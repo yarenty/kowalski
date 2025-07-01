@@ -4,16 +4,14 @@ use kowalski_academic_agent::AcademicAgent;
 use kowalski_code_agent::CodeAgent;
 use kowalski_core::agent::Agent;
 use kowalski_core::config::Config;
-#[cfg(feature = "data")]
+use kowalski_core::tools::ToolCall;
 use kowalski_data_agent::DataAgent;
 use kowalski_web_agent::WebAgent;
+use serde_json::json;
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use std::any::Any;
-use kowalski_core::tools::ToolCall;
-use serde_json::json;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -86,13 +84,7 @@ impl AgentManager {
             "web" => Box::new(WebAgent::new(config.clone()).await?),
             "academic" => Box::new(AcademicAgent::new(config.clone()).await?),
             "code" => Box::new(CodeAgent::new(config.clone()).await?),
-            #[cfg(feature = "data")]
             "data" => Box::new(DataAgent::new(config.clone()).await?),
-            #[cfg(not(feature = "data"))]
-            "data" => {
-                eprintln!("Data agent not available. Enable the 'data' feature to use it.");
-                return Ok(());
-            }
             _ => {
                 eprintln!("Unknown agent type: {}", agent_type);
                 return Ok(());
@@ -164,29 +156,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("[DEBUG] Model in use: {}", config.ollama.model);
                     // --- DEBUG: Print registered tools if available ---
                     let any_agent = agent_ref.as_any();
-                    #[cfg(feature = "data")]
                     if let Some(data_agent) = any_agent.downcast_ref::<DataAgent>() {
                         let tools = data_agent.list_tools().await;
                         println!("[DEBUG] Registered tools:");
                         for (name, desc) in tools {
                             println!("  - {}: {}", name, desc);
                         }
-                    } else
-                    if let Some(academic_agent) = any_agent.downcast_ref::<AcademicAgent>() {
+                    } else if let Some(academic_agent) = any_agent.downcast_ref::<AcademicAgent>() {
                         let tools = academic_agent.list_tools().await;
                         println!("[DEBUG] Registered tools:");
                         for (name, desc) in tools {
                             println!("  - {}: {}", name, desc);
                         }
-                    } else
-                    if let Some(code_agent) = any_agent.downcast_ref::<CodeAgent>() {
+                    } else if let Some(code_agent) = any_agent.downcast_ref::<CodeAgent>() {
                         let tools = code_agent.list_tools().await;
                         println!("[DEBUG] Registered tools:");
                         for (name, desc) in tools {
                             println!("  - {}: {}", name, desc);
                         }
-                    } else
-                    if let Some(web_agent) = any_agent.downcast_ref::<WebAgent>() {
+                    } else if let Some(web_agent) = any_agent.downcast_ref::<WebAgent>() {
                         let tools = web_agent.list_tools().await;
                         println!("[DEBUG] Registered tools:");
                         for (name, desc) in tools {
@@ -222,7 +210,8 @@ async fn chat_loop(
     let agent_name = agent.name().to_lowercase();
     println!(
         "[DEBUG] Agent name: '{}', is_web_agent: {}",
-        agent_name, agent_name.contains("web")
+        agent_name,
+        agent_name.contains("web")
     );
 
     loop {
@@ -298,10 +287,7 @@ fn list_agents() -> Result<(), Box<dyn std::error::Error>> {
     println!("- web: Web research and information retrieval");
     println!("- academic: Academic research and paper analysis");
     println!("- code: Code analysis, refactoring, and documentation");
-    #[cfg(feature = "data")]
     println!("- data: Data analysis and processing");
-    #[cfg(not(feature = "data"))]
-    println!("- data: Data analysis and processing (requires 'data' feature)");
     Ok(())
 }
 
@@ -364,29 +350,27 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
                             println!("[DEBUG] Model in use: {}", config.ollama.model);
                             // --- DEBUG: Print registered tools if available ---
                             let any_agent = agent_ref.as_any();
-                            #[cfg(feature = "data")]
                             if let Some(data_agent) = any_agent.downcast_ref::<DataAgent>() {
                                 let tools = data_agent.list_tools().await;
                                 println!("[DEBUG] Registered tools:");
                                 for (name, desc) in tools {
                                     println!("  - {}: {}", name, desc);
                                 }
-                            } else
-                            if let Some(academic_agent) = any_agent.downcast_ref::<AcademicAgent>() {
+                            } else if let Some(academic_agent) =
+                                any_agent.downcast_ref::<AcademicAgent>()
+                            {
                                 let tools = academic_agent.list_tools().await;
                                 println!("[DEBUG] Registered tools:");
                                 for (name, desc) in tools {
                                     println!("  - {}: {}", name, desc);
                                 }
-                            } else
-                            if let Some(code_agent) = any_agent.downcast_ref::<CodeAgent>() {
+                            } else if let Some(code_agent) = any_agent.downcast_ref::<CodeAgent>() {
                                 let tools = code_agent.list_tools().await;
                                 println!("[DEBUG] Registered tools:");
                                 for (name, desc) in tools {
                                     println!("  - {}: {}", name, desc);
                                 }
-                            } else
-                            if let Some(web_agent) = any_agent.downcast_ref::<WebAgent>() {
+                            } else if let Some(web_agent) = any_agent.downcast_ref::<WebAgent>() {
                                 let tools = web_agent.list_tools().await;
                                 println!("[DEBUG] Registered tools:");
                                 for (name, desc) in tools {
@@ -424,6 +408,7 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn rule_based_tool_call(user_input: &str) -> Option<ToolCall> {
     let input = user_input.to_lowercase();
     if input.contains("list") && input.contains("directory") {

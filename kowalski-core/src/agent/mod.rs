@@ -10,10 +10,10 @@ use futures::StreamExt;
 use log::info;
 use reqwest::Response;
 use serde_json;
+use serde_json::json;
+use std::any::Any;
 use std::collections::HashMap;
 use std::io::{self, Write};
-use std::any::Any;
-use serde_json::json;
 
 pub mod types;
 
@@ -77,10 +77,12 @@ pub trait Agent: Send + Sync {
         let mut current_input = user_input.to_string();
         let mut iteration_count = 0;
         const MAX_ITERATIONS: usize = 5; // Prevent infinite loops
-        let mut first_iteration = true;
         let mut last_tool_call: Option<(String, serde_json::Value)> = None;
 
-        println!("[DEBUG] Starting chat_with_tools for input: '{}'", user_input);
+        println!(
+            "[DEBUG] Starting chat_with_tools for input: '{}'",
+            user_input
+        );
 
         while iteration_count < MAX_ITERATIONS {
             iteration_count += 1;
@@ -97,7 +99,9 @@ pub trait Agent: Send + Sync {
 
             // Get response from LLM
             println!("[DEBUG] Calling LLM...");
-            let response = self.chat_with_history(conversation_id, &current_input, None).await?;
+            let response = self
+                .chat_with_history(conversation_id, &current_input, None)
+                .await?;
 
             let mut stream = response.bytes_stream();
             let mut buffer = String::new();
@@ -107,10 +111,14 @@ pub trait Agent: Send + Sync {
             while let Some(chunk) = stream.next().await {
                 match chunk {
                     Ok(bytes) => {
-                        if let Ok(Some(message)) = self.process_stream_response(conversation_id, &bytes).await {
+                        if let Ok(Some(message)) =
+                            self.process_stream_response(conversation_id, &bytes).await
+                        {
                             if !message.content.is_empty() {
                                 print!("{}", message.content);
-                                io::stdout().flush().map_err(|e| KowalskiError::Server(e.to_string()))?;
+                                io::stdout()
+                                    .flush()
+                                    .map_err(|e| KowalskiError::Server(e.to_string()))?;
                                 buffer.push_str(&message.content);
                             }
                         }
@@ -125,7 +133,9 @@ pub trait Agent: Send + Sync {
             println!("[DEBUG] Full LLM response: '{}'", buffer);
 
             // Try to extract JSON from mixed text response
-            println!("[DEBUG] ❌ Failed to parse entire response as tool call, trying to extract JSON...");
+            println!(
+                "[DEBUG] ❌ Failed to parse entire response as tool call, trying to extract JSON..."
+            );
             if let Some(json_start) = buffer.find('{') {
                 // Find the first valid JSON object only
                 let mut brace_count = 0;
@@ -146,12 +156,14 @@ pub trait Agent: Send + Sync {
                 if let Some(json_end) = end_idx {
                     let json_str = &buffer[json_start..=json_end];
                     println!("[DEBUG] Extracted first JSON object: {}", json_str);
-                    if let Ok(mut tool_call) = serde_json::from_str::<ToolCall>(json_str) {
+                    if let Ok(tool_call) = serde_json::from_str::<ToolCall>(json_str) {
                         // Detect repeated tool calls
                         let tool_call_key = (tool_call.name.clone(), tool_call.parameters.clone());
                         if let Some(last) = &last_tool_call {
                             if *last == tool_call_key {
-                                println!("[DEBUG] Detected repeated tool call. Breaking loop to prevent infinite tool call loop.");
+                                println!(
+                                    "[DEBUG] Detected repeated tool call. Breaking loop to prevent infinite tool call loop."
+                                );
                                 break;
                             }
                         }
@@ -160,28 +172,53 @@ pub trait Agent: Send + Sync {
                         println!("[DEBUG] Tool: {}", tool_call.name);
                         println!("[DEBUG] Parameters: {}", tool_call.parameters);
                         println!("[DEBUG] Reasoning: {:?}", tool_call.reasoning);
-                        let tool_result = match self.execute_tool(&tool_call.name, &tool_call.parameters).await {
+                        let tool_result = match self
+                            .execute_tool(&tool_call.name, &tool_call.parameters)
+                            .await
+                        {
                             Ok(output) => output.result.to_string(),
                             Err(e) => {
                                 let err_msg = format!("{}", e);
                                 println!("[DEBUG] Tool execution failed: {}", err_msg);
                                 // Tool chaining: if csv_tool is called with an unsupported task, try fs_tool get_file_contents then csv_tool process_csv
-                                if tool_call.name == "csv_tool" && tool_call.parameters.get("task").map(|v| v == "read_file").unwrap_or(false) {
-                                    if let Some(path) = tool_call.parameters.get("path").and_then(|v| v.as_str()) {
-                                        println!("[DEBUG] Tool chaining: Detected csv_tool with read_file. Chaining fs_tool get_file_contents then csv_tool process_csv.");
+                                if tool_call.name == "csv_tool"
+                                    && tool_call
+                                        .parameters
+                                        .get("task")
+                                        .map(|v| v == "read_file")
+                                        .unwrap_or(false)
+                                {
+                                    if let Some(path) =
+                                        tool_call.parameters.get("path").and_then(|v| v.as_str())
+                                    {
+                                        println!(
+                                            "[DEBUG] Tool chaining: Detected csv_tool with read_file. Chaining fs_tool get_file_contents then csv_tool process_csv."
+                                        );
                                         // Step 1: fs_tool get_file_contents
                                         let fs_params = serde_json::json!({"task": "get_file_contents", "path": path});
                                         match self.execute_tool("fs_tool", &fs_params).await {
                                             Ok(fs_output) => {
-                                                let file_contents = fs_output.result.get("contents").and_then(|v| v.as_str()).unwrap_or("");
+                                                let file_contents = fs_output
+                                                    .result
+                                                    .get("contents")
+                                                    .and_then(|v| v.as_str())
+                                                    .unwrap_or("");
                                                 // Step 2: csv_tool process_csv
                                                 let csv_params = serde_json::json!({"task": "process_csv", "content": file_contents});
-                                                match self.execute_tool("csv_tool", &csv_params).await {
+                                                match self
+                                                    .execute_tool("csv_tool", &csv_params)
+                                                    .await
+                                                {
                                                     Ok(csv_output) => csv_output.result.to_string(),
-                                                    Err(e2) => format!("Tool chaining failed at csv_tool: {}", e2),
+                                                    Err(e2) => format!(
+                                                        "Tool chaining failed at csv_tool: {}",
+                                                        e2
+                                                    ),
                                                 }
                                             }
-                                            Err(e1) => format!("Tool chaining failed at fs_tool: {}", e1),
+                                            Err(e1) => {
+                                                format!("Tool chaining failed at fs_tool: {}", e1)
+                                            }
                                         }
                                     } else {
                                         err_msg
@@ -191,8 +228,10 @@ pub trait Agent: Send + Sync {
                                 }
                             }
                         };
-                        let tool_message = format!("Tool result for {}: {}", tool_call.name, tool_result);
-                        self.add_message(conversation_id, "assistant", &tool_message).await;
+                        let tool_message =
+                            format!("Tool result for {}: {}", tool_call.name, tool_result);
+                        self.add_message(conversation_id, "assistant", &tool_message)
+                            .await;
                         println!("[DEBUG] Added tool result to conversation");
                         current_input = format!("Based on the tool result: {}", tool_result);
                         println!("[DEBUG] Continuing with new input: '{}'", current_input);
@@ -205,17 +244,21 @@ pub trait Agent: Send + Sync {
 
             // Not a tool call, this is the final answer
             final_response = buffer;
-            self.add_message(conversation_id, "assistant", &final_response).await;
+            self.add_message(conversation_id, "assistant", &final_response)
+                .await;
             println!("[DEBUG] ✅ Final response set: '{}'", final_response);
 
             if let Some(tool_call) = rule_based_tool_call(user_input) {
                 println!("[DEBUG] Rule-based tool call triggered: {:?}", tool_call);
-                let tool_result = self.execute_tool(&tool_call.name, &tool_call.parameters).await;
+                let tool_result = self
+                    .execute_tool(&tool_call.name, &tool_call.parameters)
+                    .await;
                 let tool_result_str = match tool_result {
                     Ok(output) => output.result.to_string(),
                     Err(e) => format!("Tool execution failed: {}", e),
                 };
-                self.add_message(conversation_id, "assistant", &tool_result_str).await;
+                self.add_message(conversation_id, "assistant", &tool_result_str)
+                    .await;
                 println!("[DEBUG] Rule-based tool result: {}", tool_result_str);
                 return Ok(tool_result_str);
             }
@@ -227,7 +270,10 @@ pub trait Agent: Send + Sync {
             println!("[WARNING] Reached maximum iterations, returning current response");
         }
 
-        println!("[DEBUG] chat_with_tools completed after {} iterations", iteration_count);
+        println!(
+            "[DEBUG] chat_with_tools completed after {} iterations",
+            iteration_count
+        );
         Ok(final_response)
     }
 

@@ -71,8 +71,6 @@ Henry Taylor,34,Dallas,78000,Engineering"#;
 
     println!("{}", &analysis_prompt);
 
-    
-
     let mut response = data_agent
         .chat_with_history(&conversation_id, &analysis_prompt, Some(role))
         .await?;

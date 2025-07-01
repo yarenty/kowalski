@@ -1,6 +1,6 @@
 [package]
 name = "kowalski-data-agent"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 description = "Kowalski Date Agent: A Rust-based agent for interacting with Ollama models"
 license = "MIT"
@@ -23,9 +23,9 @@ keywords = [
 
 
 [dependencies]
-kowalski-core = { path = "../kowalski-core", version = "0.5.0" }
-kowalski-agent-template = { path = "../kowalski-agent-template", version = "0.5.0" }
-kowalski-tools = { path = "../kowalski-tools", version = "0.5.0" }
+kowalski-core = { path = "../kowalski-core", version = "0.5.1" }
+kowalski-agent-template = { path = "../kowalski-agent-template", version = "0.5.1" }
+kowalski-tools = { path = "../kowalski-tools", version = "0.5.1" }
 tokio = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
