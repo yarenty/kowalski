@@ -9,8 +9,8 @@ use kowalski_core::error::KowalskiError;
 use kowalski_core::role::Role;
 use kowalski_core::tools::{Tool, ToolOutput};
 use kowalski_tools::web::{WebScrapeTool, WebSearchTool};
-use serde::{Deserialize, Serialize};
 use reqwest::Response;
+use serde::{Deserialize, Serialize};
 
 /// WebAgent: A specialized agent for web-related tasks
 /// This agent is built on top of the TemplateAgent and provides web-specific functionality
@@ -103,7 +103,10 @@ impl Agent for WebAgent {
     fn start_conversation(&mut self, model: &str) -> String {
         let system_prompt = {
             let base = self.agent.base();
-            base.system_prompt.as_deref().unwrap_or("You are a helpful assistant.").to_string()
+            base.system_prompt
+                .as_deref()
+                .unwrap_or("You are a helpful assistant.")
+                .to_string()
         };
         let conv_id = self.agent.base_mut().start_conversation(model);
         if let Some(conversation) = self.agent.base_mut().conversations.get_mut(&conv_id) {

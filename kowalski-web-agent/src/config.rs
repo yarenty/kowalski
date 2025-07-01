@@ -30,7 +30,6 @@ pub struct WebAgentConfig {
     pub scraping: ScrapingConfig,
 }
 
-
 impl ConfigExt for WebAgentConfig {
     fn core(&self) -> &CoreConfig {
         &self.core

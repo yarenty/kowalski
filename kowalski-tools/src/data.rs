@@ -146,7 +146,10 @@ impl CsvTool {
     fn read_csv_from_path(&self, path: &str) -> Result<serde_json::Value, KowalskiError> {
         use std::fs;
         let content = fs::read_to_string(path).map_err(|e| {
-            KowalskiError::ContentProcessing(format!("Failed to read CSV file from path {}: {}", path, e))
+            KowalskiError::ContentProcessing(format!(
+                "Failed to read CSV file from path {}: {}",
+                path, e
+            ))
         })?;
         self.read_csv(&content)
     }
@@ -167,10 +170,7 @@ impl Tool for CsvTool {
             .and_then(|v| v.as_str())
             .unwrap_or(&input.content);
 
-        let path = input
-            .parameters
-            .get("path")
-            .and_then(|v| v.as_str());
+        let path = input.parameters.get("path").and_then(|v| v.as_str());
 
         match task {
             "process_csv" => {
@@ -190,9 +190,9 @@ impl Tool for CsvTool {
                 ))
             }
             "process_csv_path" => {
-                let path = path.ok_or_else(||
+                let path = path.ok_or_else(|| {
                     KowalskiError::ToolExecution("Missing 'path' parameter".to_string())
-                )?;
+                })?;
                 let result = self.read_csv_from_path(path)?;
                 let summary = result["summary"].clone();
                 Ok(ToolOutput::new(
@@ -240,7 +240,9 @@ impl Tool for CsvTool {
         vec![
             ToolParameter {
                 name: "task".to_string(),
-                description: "The task to perform: 'process_csv', 'process_csv_path', or 'analyze_csv'".to_string(),
+                description:
+                    "The task to perform: 'process_csv', 'process_csv_path', or 'analyze_csv'"
+                        .to_string(),
                 required: true,
                 default_value: None,
                 parameter_type: kowalski_core::tools::ParameterType::String,
