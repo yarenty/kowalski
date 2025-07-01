@@ -12,6 +12,15 @@ This sophisticated AI-powered tool is more than just a script; it's an intellige
 
 To appreciate the power of the Kowalski Data Agent, let's consider a practical example. We fed it a simple CSV file containing employee data—ten records with details like age, city, salary, and department. The agent didn't just parse the data; it performed a full-blown exploratory analysis.
 
+```mermaid
+graph TD
+    A[User provides CSV data] --> B{Kowalski Data Agent};
+    B --> C[Step 1. Ingest & Parse CSV];
+    C --> D[Step 2. Perform Statistical Analysis];
+    D --> E[Step 3. Generate AI-powered Insights];
+    E --> F[User receives comprehensive report];
+```
+
 First, it delivered a statistical summary, providing a foundational understanding of the dataset's structure. It identified the headers, counted the rows and columns, and then broke down each column. For numerical data like 'age' and 'salary', it calculated the average, minimum, maximum, and sum. For categorical data like 'department', it identified the most common entry and counted unique values. This initial breakdown is the same process any human data scientist would follow, but it was completed in a fraction of the time.
 
 But this is where the magic truly begins. The agent didn't stop at the numbers. It leveraged its AI core to interpret these statistics and generate human-readable insights. It observed that the workforce was relatively young, with an average age of 30.5 years. It noted that the 'Engineering' department was the largest, making up half of the team, suggesting that technical expertise is a core focus for the organization.
@@ -21,6 +30,16 @@ The agent even offered strategic recommendations based on its findings. For tale
 ## A Vision for the Future of Data Analysis
 
 The current capabilities of the Kowalski Data Agent are already impressive, but the vision for its future is even more inspiring. The agent is built on an extensible framework, designed to evolve into an even more powerful and versatile analytical tool.
+
+```mermaid
+graph TD
+    A[Core Data Agent] --> B{Future Extensions};
+    B --> C[Additional Data Formats <br> JSON, XML, Excel];
+    B --> D[Advanced Analytics <br> Correlation, Outliers];
+    B --> E[Machine Learning <br> Prediction, Clustering];
+    B --> F[Visualization <br> Charts, Dashboards];
+    B --> G[Database Integration <br> SQL, NoSQL];
+```
 
 Imagine a future where the agent's capabilities are not limited to CSV files. The roadmap includes extending its functionality to seamlessly process a variety of data formats, including JSON, XML, and even complex Excel spreadsheets. This will allow it to become a universal data interpreter, ready for any structured data you throw at it.
 
@@ -35,3 +54,18 @@ Finally, to make it a truly indispensable tool for modern businesses, the agent 
 This article is the first in a series exploring the capabilities of the various specialized agents within the Kowalski framework.
 
 **About Kowalski:** "Kowalski" is a high-performance, Rust-based framework for building sophisticated and modular AI agents. It is designed for creating intelligent, distributed systems that can collaborate securely and efficiently. The framework includes a core set of abstractions, a pluggable toolchain, and a growing collection of specialized agents for tasks like code analysis, academic research, web interaction, and, as we've seen, data analysis. Stay tuned for more articles showcasing the power and flexibility of the Kowalski ecosystem.
+
+```mermaid
+graph TD
+    subgraph Kowalski Framework
+        A[Kowalski Core] --> B[Pluggable Toolchain];
+        B --> C[Data Tools];
+        B --> D[Code Tools];
+        B --> E[Web Tools];
+        A --> F[Agent Templates];
+        F --> G((Data Agent));
+        F --> H((Code Agent));
+        F --> I((Web Agent));
+        F --> J((...and more));
+    end
+```
