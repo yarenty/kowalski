@@ -7,10 +7,11 @@ use kowalski_core::config::Config;
 use kowalski_core::conversation::Conversation;
 use kowalski_core::error::KowalskiError;
 use kowalski_core::role::Role;
-use kowalski_core::tools::{Tool, ToolInput};
+use kowalski_core::tools::{Tool, ToolOutput};
 use kowalski_tools::document::PdfTool;
+use kowalski_tools::fs::FsTool;
 use kowalski_tools::web::WebSearchTool;
-use serde::{Deserialize, Serialize};
+use reqwest::Response;
 
 /// AcademicAgent: A specialized agent for academic tasks
 /// This agent is built on top of the TemplateAgent and provides academic-specific functionality
@@ -20,20 +21,6 @@ pub struct AcademicAgent {
     config: AcademicAgentConfig,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PaperSearchResult {
-    pub title: String,
-    pub authors: String,
-    pub abstract_text: String,
-    pub url: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CitationResult {
-    pub citation: String,
-    pub format: String,
-}
-
 impl AcademicAgent {
     /// Creates a new AcademicAgent with the specified configuration
     pub async fn new(_config: Config) -> Result<Self, KowalskiError> {
@@ -41,88 +28,58 @@ impl AcademicAgent {
         let academic_config = AcademicAgentConfig::default();
         let search_tool = WebSearchTool::new("duckduckgo".to_string());
         let pdf_tool = PdfTool;
+        let fs_tool = FsTool::new();
         let tools: Vec<Box<dyn Tool + Send + Sync>> =
-            vec![Box::new(search_tool), Box::new(pdf_tool)];
-        let builder = GeneralTemplate::create_agent(
-            tools,
-            Some("You are an academic research assistant specialized in finding and analyzing academic papers. You have access to web_search and pdf tools. Use them to answer questions about academic research.".to_string()),
-            Some(0.7),
-        )
-        .await
-        .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
-        let agent = builder.build().await?;
+            vec![Box::new(search_tool), Box::new(pdf_tool), Box::new(fs_tool)];
+
+        let system_prompt = r#"You are an academic research assistant. You can search for papers, process PDF files, and interact with the filesystem.
+
+AVAILABLE TOOLS:
+1. web_search - Search the web for academic papers.
+   - parameters: { "query": "search query" }
+2. pdf_tool - Process a PDF file from a given path.
+   - parameters: { "file_path": "/path/to/file.pdf", "extract_text": true, "extract_metadata": false, "extract_images": false }
+3. fs_tool - Filesystem operations (list directories, find files, read file contents).
+   - task: "list_dir" - List files and directories in a given path. Parameters: { "path": "/some/dir" }
+   - task: "find_files" - Recursively find files matching a pattern. Parameters: { "dir": "/some/dir", "pattern": ".pdf" }
+   - task: "get_file_contents" - Get the full contents of a file. Parameters: { "path": "/some/file.txt" }
+   - task: "get_file_first_lines" - Get the first N lines of a file. Parameters: { "path": "/some/file.txt", "num_lines": 10 }
+   - task: "get_file_last_lines" - Get the last N lines of a file. Parameters: { "path": "/some/file.txt", "num_lines": 10 }
+
+TOOL USAGE INSTRUCTIONS:
+- Use "web_search" to find papers on a topic.
+- Use "pdf_tool" to analyze a paper you have the path to.
+- Use "fs_tool" for filesystem operations.
+- Specify the task and required parameters for each tool.
+
+RESPONSE FORMAT:
+When you need to use a tool, respond with JSON in this exact format:
+{
+  "name": "fs_tool",
+  "parameters": {
+    "task": "list_dir",
+    "path": "/some/dir"
+  },
+  "reasoning": "I need to list the contents of this directory."
+}
+
+When you have a final answer, respond normally without JSON formatting."#
+            .to_string();
+        let system_prompt_clone = system_prompt.clone();
+        let builder = GeneralTemplate::create_agent(tools, Some(system_prompt), Some(0.7))
+            .await
+            .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
+        let mut agent = builder.build().await?;
+        // Ensure the system prompt is set on the base agent
+        agent.base_mut().set_system_prompt(&system_prompt_clone);
         Ok(Self {
             agent,
             config: academic_config,
         })
     }
 
-    /// Searches for academic papers
-    pub async fn search_papers(
-        &self,
-        query: &str,
-    ) -> Result<Vec<PaperSearchResult>, KowalskiError> {
-        let mut tools = self.agent.tool_chain.write().await;
-        let tool = tools.iter_mut().find(|t| t.name() == "web_search");
-        let tool = match tool {
-            Some(t) => t,
-            None => {
-                return Err(KowalskiError::ToolExecution(
-                    "web_search tool not found".to_string(),
-                ));
-            }
-        };
-        let input = ToolInput::new(
-            "search".to_string(),
-            query.to_string(),
-            serde_json::json!({"query": query}),
-        );
-        let _output = tool.execute(input).await?;
-        // For now, return a simple result since DuckDuckGo doesn't provide academic-specific results
-        Ok(vec![PaperSearchResult {
-            title: query.to_string(),
-            authors: "Unknown".to_string(),
-            abstract_text:
-                "Academic search results would be available with a proper academic search API."
-                    .to_string(),
-            url: "".to_string(),
-        }])
-    }
-
-    /// Generates a citation for a reference
-    pub async fn generate_citation(
-        &self,
-        reference: &str,
-    ) -> Result<CitationResult, KowalskiError> {
-        // For now, return a simple citation format
-        Ok(CitationResult {
-            citation: format!("Citation for: {}", reference),
-            format: "APA".to_string(),
-        })
-    }
-
-    /// Parses and analyzes an academic paper
-    pub async fn parse_paper(&self, content: &str) -> Result<String, KowalskiError> {
-        let mut tools = self.agent.tool_chain.write().await;
-        let tool = tools.iter_mut().find(|t| t.name() == "pdf_tool");
-        let tool = match tool {
-            Some(t) => t,
-            None => {
-                return Err(KowalskiError::ToolExecution(
-                    "pdf_tool not found".to_string(),
-                ));
-            }
-        };
-        let input = ToolInput::new(
-            "parse".to_string(),
-            content.to_string(),
-            serde_json::json!({}),
-        );
-        let output = tool.execute(input).await?;
-        Ok(output.result["content"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string())
+    pub async fn list_tools(&self) -> Vec<(String, String)> {
+        self.agent.list_tools().await
     }
 }
 
@@ -133,7 +90,18 @@ impl Agent for AcademicAgent {
     }
 
     fn start_conversation(&mut self, model: &str) -> String {
-        self.agent.base_mut().start_conversation(model)
+        let system_prompt = {
+            let base = self.agent.base();
+            base.system_prompt
+                .as_deref()
+                .unwrap_or("You are a helpful assistant.")
+                .to_string()
+        };
+        let conv_id = self.agent.base_mut().start_conversation(model);
+        if let Some(conversation) = self.agent.base_mut().conversations.get_mut(&conv_id) {
+            conversation.add_message("system", &system_prompt);
+        }
+        conv_id
     }
 
     fn get_conversation(&self, id: &str) -> Option<&Conversation> {
@@ -153,7 +121,7 @@ impl Agent for AcademicAgent {
         conversation_id: &str,
         content: &str,
         role: Option<Role>,
-    ) -> Result<reqwest::Response, KowalskiError> {
+    ) -> Result<Response, KowalskiError> {
         self.agent
             .base_mut()
             .chat_with_history(conversation_id, content, role)
@@ -178,12 +146,24 @@ impl Agent for AcademicAgent {
             .await;
     }
 
+    async fn execute_tool(
+        &mut self,
+        tool_name: &str,
+        tool_input: &serde_json::Value,
+    ) -> Result<ToolOutput, KowalskiError> {
+        self.agent.execute_tool(tool_name, tool_input).await
+    }
+
     fn name(&self) -> &str {
-        self.agent.base().name()
+        "Academic Agent"
     }
 
     fn description(&self) -> &str {
-        self.agent.base().description()
+        "A specialized agent for academic research tasks."
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

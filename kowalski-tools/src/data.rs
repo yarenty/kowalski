@@ -142,14 +142,44 @@ impl CsvTool {
 
         json!(analysis)
     }
+
+    fn read_csv_from_path(&self, path: &str) -> Result<serde_json::Value, KowalskiError> {
+        use std::fs;
+        let content = fs::read_to_string(path).map_err(|e| {
+            KowalskiError::ContentProcessing(format!(
+                "Failed to read CSV file from path {}: {}",
+                path, e
+            ))
+        })?;
+        self.read_csv(&content)
+    }
 }
 
 #[async_trait]
 impl Tool for CsvTool {
     async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
-        match input.task_type.as_str() {
+        let task = input
+            .parameters
+            .get("task")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&input.task_type);
+
+        let content = input
+            .parameters
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&input.content);
+
+        let path = input.parameters.get("path").and_then(|v| v.as_str());
+
+        match task {
             "process_csv" => {
-                let result = self.read_csv(&input.content)?;
+                if content.is_empty() {
+                    return Err(KowalskiError::ToolExecution(
+                        "Missing 'content' parameter".to_string(),
+                    ));
+                }
+                let result = self.read_csv(content)?;
                 Ok(ToolOutput::new(
                     result,
                     Some(json!({
@@ -159,8 +189,29 @@ impl Tool for CsvTool {
                     })),
                 ))
             }
+            "process_csv_path" => {
+                let path = path.ok_or_else(|| {
+                    KowalskiError::ToolExecution("Missing 'path' parameter".to_string())
+                })?;
+                let result = self.read_csv_from_path(path)?;
+                let summary = result["summary"].clone();
+                Ok(ToolOutput::new(
+                    summary,
+                    Some(json!({
+                        "tool": "csv_tool",
+                        "max_rows": self.max_rows,
+                        "max_columns": self.max_columns,
+                        "path": path
+                    })),
+                ))
+            }
             "analyze_csv" => {
-                let result = self.read_csv(&input.content)?;
+                if content.is_empty() {
+                    return Err(KowalskiError::ToolExecution(
+                        "Missing 'content' parameter".to_string(),
+                    ));
+                }
+                let result = self.read_csv(content)?;
                 let summary = result["summary"].clone();
                 Ok(ToolOutput::new(
                     summary,
@@ -172,7 +223,7 @@ impl Tool for CsvTool {
             }
             _ => Err(KowalskiError::ToolExecution(format!(
                 "Unsupported task type: {}",
-                input.task_type
+                task
             ))),
         }
     }
@@ -188,9 +239,25 @@ impl Tool for CsvTool {
     fn parameters(&self) -> Vec<ToolParameter> {
         vec![
             ToolParameter {
+                name: "task".to_string(),
+                description:
+                    "The task to perform: 'process_csv', 'process_csv_path', or 'analyze_csv'"
+                        .to_string(),
+                required: true,
+                default_value: None,
+                parameter_type: kowalski_core::tools::ParameterType::String,
+            },
+            ToolParameter {
                 name: "content".to_string(),
                 description: "CSV content to process".to_string(),
-                required: true,
+                required: false,
+                default_value: None,
+                parameter_type: kowalski_core::tools::ParameterType::String,
+            },
+            ToolParameter {
+                name: "path".to_string(),
+                description: "Path to the CSV file to process".to_string(),
+                required: false,
                 default_value: None,
                 parameter_type: kowalski_core::tools::ParameterType::String,
             },
@@ -227,6 +294,6 @@ mod tests {
         let tool = CsvTool::new(100, 10);
         let params = tool.parameters();
         assert!(!params.is_empty());
-        assert_eq!(params[0].name, "content");
+        assert_eq!(params[0].name, "task");
     }
 }

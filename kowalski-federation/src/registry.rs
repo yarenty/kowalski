@@ -28,10 +28,7 @@ impl AgentRegistry {
     }
 
     /// Register a new agent in the federation
-    pub async fn register_agent(
-        &self,
-        agent: FederatedAgentRef,
-    ) -> Result<(), FederationError> {
+    pub async fn register_agent(&self, agent: FederatedAgentRef) -> Result<(), FederationError> {
         let id = agent.read().await.federation_id().to_string();
         let mut agents = self.agents.write().await;
 
@@ -45,10 +42,7 @@ impl AgentRegistry {
     }
 
     /// Get an agent by ID
-    pub async fn get_agent(
-        &self,
-        id: &str,
-    ) -> Option<FederatedAgentRef> {
+    pub async fn get_agent(&self, id: &str) -> Option<FederatedAgentRef> {
         let agents = self.agents.read().await;
         agents.get(id).cloned()
     }

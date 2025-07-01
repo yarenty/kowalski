@@ -1,6 +1,6 @@
 [package]
 name = "kowalski-federation"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 description = "Kowalski Federation: A Rust-based agent for interacting with Ollama models"
 license = "MIT"
@@ -22,7 +22,7 @@ keywords = [
 ]
 
 [dependencies]
-kowalski-core = { path = "../kowalski-core", version = "0.5.0" }
+kowalski-core = { path = "../kowalski-core", version = "0.5.1" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
