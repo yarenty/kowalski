@@ -4,7 +4,34 @@
 
 All notable changes to this project will be documented in this file, or at least we'll try to remember to do so.
 
-## [0.5.0] - 2024-06-09
+## [0.5.1] - 2024-07-01
+
+> "Version 0.5.1: Now with 42% more reactivity and a filesystem that actually listens to you."
+
+### ✨ Added
+- **React-Style Tool Processing for All Agents:**
+  - Agents now process tool calls in a React-like, stepwise fashion (think: "thought, tool, action, repeat").
+  - Enables more dynamic, context-aware, and multi-step reasoning for all agent types.
+  - Tool outputs are now seamlessly integrated into agent responses—no more "tool says hi, agent ignores it" moments.
+
+- **New Filesystem Tools (`fs`):**
+  - Added a suite of pluggable filesystem tools for reading, writing, listing, and manipulating files and directories.
+  - Agents can now interact with the local filesystem in a safe, modular way (no more "accidentally deleted the project" moments... probably).
+  - Unified interface for file operations across all agents.
+
+- **Data-Agent: Now Fully Operational:**
+  - The `kowalski-data-agent` is now feature-complete and ready for data wrangling.
+  - Supports CSV, tabular, and structured data analysis out of the box.
+  - Improved error handling, configuration, and extensibility for custom data workflows.
+
+### 🛠️ Improved
+- Enhanced agent orchestration logic for better multi-step tool use.
+- Unified tool API across all agent modules for easier extension and maintenance.
+- Documentation updates for new tools and agent capabilities.
+
+
+
+## [0.5.0] - 2024-06-29
 
 > "Version 0.5.0: The Great Kowalski Restructurization. Now with 100% more modules!"
 

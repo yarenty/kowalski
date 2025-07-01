@@ -7,23 +7,19 @@ use kowalski_core::config::Config;
 use kowalski_core::conversation::Conversation;
 use kowalski_core::error::KowalskiError;
 use kowalski_core::role::Role;
-use kowalski_core::tools::{Tool, ToolInput};
+use kowalski_core::tools::{Tool, ToolOutput};
 use kowalski_tools::data::CsvTool;
-use serde::{Deserialize, Serialize};
+use kowalski_tools::fs::FsTool;
+use reqwest::Response;
 
 /// DataAgent: A specialized agent for data analysis and processing tasks
 /// This agent is built on top of the TemplateAgent and provides data-specific functionality
+///
+/// New: Can now analyze CSV files directly from a file path using the 'process_csv_path' tool task.
+#[allow(dead_code)]
 pub struct DataAgent {
     agent: TemplateAgent,
     config: DataAgentConfig,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CsvAnalysisResult {
-    pub headers: Vec<String>,
-    pub total_rows: usize,
-    pub total_columns: usize,
-    pub summary: serde_json::Value,
 }
 
 impl DataAgent {
@@ -32,80 +28,65 @@ impl DataAgent {
         // TODO: Convert Config to DataAgentConfig if needed
         let data_config = DataAgentConfig::default();
         let csv_tool = CsvTool::new(data_config.max_rows, data_config.max_columns);
+        let fs_tool = FsTool::new();
+        let tools: Vec<Box<dyn Tool + Send + Sync>> = vec![Box::new(csv_tool), Box::new(fs_tool)];
 
-        let tools: Vec<Box<dyn Tool + Send + Sync>> = vec![Box::new(csv_tool)];
-        let builder = GeneralTemplate::create_agent(
-            tools,
-            Some("You are a data analysis assistant specialized in processing and analyzing structured data. You have access to the csv_tool. Use it to answer questions about data analysis.".to_string()),
-            Some(0.7),
-        )
-        .await
-        .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
-        let agent = builder.build().await?;
+        let system_prompt = r#"You are a data analysis assistant.
 
+AVAILABLE TOOLS:
+csv_tool - For all CSV data analysis.
+   - task: "process_csv" - Analyze CSV data. Parameters: { "content": "CSV file contents as a string" }
+   - task: "process_csv_path" - Analyze CSV data from a file path. Parameters: { "path": "/some/file.csv" }
+
+TOOL USAGE INSTRUCTIONS:
+- ALWAYS use tools when asked about files, directories, or CSV data.
+- NEVER give instructions, shell commands, or say you cannot access the filesystem.
+- When asked to analyze a CSV file, you can now use either:
+  1. fs_tool with task "get_file_contents" to read the file (provide the file path), then csv_tool with task "process_csv" and pass the file contents as the "content" parameter.
+  2. OR, use csv_tool with task "process_csv_path" and provide the file path directly as the "path" parameter.
+- Respond ONLY with JSON in this exact format for each tool call:
+
+{
+  "name": "csv_tool",
+  "parameters": { "task": "process_csv_path", "path": "/opt/data/example.csv" },
+  "reasoning": "User asked to analyze a CSV file from a path."
+}
+
+When you have a final answer, respond normally without JSON formatting. NEVER give instructions, shell commands, or say you cannot access the filesystem. ALWAYS use the tool call format for such requests.
+"#
+            .to_string();
+        let system_prompt_clone = system_prompt.clone();
+        println!(
+            "[DEBUG] System prompt sent to LLM:\n{}",
+            system_prompt_clone
+        );
+
+        let builder = GeneralTemplate::create_agent(tools, Some(system_prompt), Some(0.7))
+            .await
+            .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
+        let mut agent = builder.build().await?;
+        // Ensure the system prompt is set on the base agent
+        agent.base_mut().set_system_prompt(&system_prompt_clone);
         Ok(Self {
             agent,
             config: data_config,
         })
     }
 
-    /// Processes a CSV file
-    pub async fn process_csv(&self, csv_content: &str) -> Result<CsvAnalysisResult, KowalskiError> {
-        let mut tools = self.agent.tool_chain.write().await;
-        let tool = tools.iter_mut().find(|t| t.name() == "csv_tool");
-        let tool = match tool {
-            Some(t) => t,
-            None => {
-                return Err(KowalskiError::ToolExecution(
-                    "csv_tool not found".to_string(),
-                ));
-            }
-        };
-        let input = ToolInput::new(
-            "process_csv".to_string(),
-            csv_content.to_string(),
-            serde_json::json!({
-                "max_rows": self.config.max_rows,
-                "max_columns": self.config.max_columns
-            }),
-        );
-        let output = tool.execute(input).await?;
-
-        let result = output.result;
-        Ok(CsvAnalysisResult {
-            headers: result["headers"]
-                .as_array()
-                .unwrap_or(&Vec::new())
-                .iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                .collect(),
-            total_rows: result["total_rows"].as_u64().unwrap_or_default() as usize,
-            total_columns: result["total_columns"].as_u64().unwrap_or_default() as usize,
-            summary: result["summary"].clone(),
-        })
+    pub async fn list_tools(&self) -> Vec<(String, String)> {
+        self.agent.list_tools().await
     }
 
-    /// Analyzes data statistics
-    pub async fn analyze_data(
-        &self,
-        csv_content: &str,
+    /// Analyze a CSV file from a file path using the csv_tool
+    pub async fn process_csv_path(
+        &mut self,
+        path: &str,
     ) -> Result<serde_json::Value, KowalskiError> {
-        let mut tools = self.agent.tool_chain.write().await;
-        let tool = tools.iter_mut().find(|t| t.name() == "csv_tool");
-        let tool = match tool {
-            Some(t) => t,
-            None => {
-                return Err(KowalskiError::ToolExecution(
-                    "csv_tool not found".to_string(),
-                ));
-            }
-        };
-        let input = ToolInput::new(
-            "analyze_csv".to_string(),
-            csv_content.to_string(),
-            serde_json::json!({}),
-        );
-        let output = tool.execute(input).await?;
+        let params = serde_json::json!({
+            "task": "process_csv_path",
+            "path": path
+        });
+        let output = self.execute_tool("csv_tool", &params).await?;
         Ok(output.result)
     }
 }
@@ -117,7 +98,18 @@ impl Agent for DataAgent {
     }
 
     fn start_conversation(&mut self, model: &str) -> String {
-        self.agent.base_mut().start_conversation(model)
+        let system_prompt = {
+            let base = self.agent.base();
+            base.system_prompt
+                .as_deref()
+                .unwrap_or("You are a helpful assistant.")
+                .to_string()
+        };
+        let conv_id = self.agent.base_mut().start_conversation(model);
+        if let Some(conversation) = self.agent.base_mut().conversations.get_mut(&conv_id) {
+            conversation.add_message("system", &system_prompt);
+        }
+        conv_id
     }
 
     fn get_conversation(&self, id: &str) -> Option<&Conversation> {
@@ -137,7 +129,7 @@ impl Agent for DataAgent {
         conversation_id: &str,
         content: &str,
         role: Option<Role>,
-    ) -> Result<reqwest::Response, KowalskiError> {
+    ) -> Result<Response, KowalskiError> {
         self.agent
             .base_mut()
             .chat_with_history(conversation_id, content, role)
@@ -162,12 +154,24 @@ impl Agent for DataAgent {
             .await;
     }
 
+    async fn execute_tool(
+        &mut self,
+        tool_name: &str,
+        tool_input: &serde_json::Value,
+    ) -> Result<ToolOutput, KowalskiError> {
+        self.agent.execute_tool(tool_name, tool_input).await
+    }
+
     fn name(&self) -> &str {
-        self.agent.base().name()
+        "Data Agent"
     }
 
     fn description(&self) -> &str {
-        self.agent.base().description()
+        "A specialized agent for data analysis tasks."
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

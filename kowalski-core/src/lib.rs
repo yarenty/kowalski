@@ -10,11 +10,12 @@ pub mod tools;
 
 pub use agent::*;
 pub use config::*;
-pub use conversation::*;
+// pub use conversation::*; // Remove this to avoid ToolCall ambiguity
 pub use error::KowalskiError;
 pub use logging::*;
 pub use model::ModelManager;
 pub use model::*;
 pub use role::{Audience, Preset, Role, Style};
 pub use tool_chain::*;
+pub use tools::ToolCall;
 pub use tools::*;

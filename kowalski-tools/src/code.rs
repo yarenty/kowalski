@@ -172,9 +172,21 @@ impl JavaAnalysisTool {
 #[async_trait]
 impl Tool for JavaAnalysisTool {
     async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
+        let content = input
+            .parameters
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&input.content);
+
+        if content.is_empty() {
+            return Err(KowalskiError::ToolExecution(
+                "Missing 'content' parameter".to_string(),
+            ));
+        }
+
         match input.task_type.as_str() {
             "analyze_java" => {
-                let result = self.analyze_java(&input.content)?;
+                let result = self.analyze_java(content)?;
                 Ok(ToolOutput::new(
                     result,
                     Some(json!({
@@ -365,9 +377,21 @@ impl PythonAnalysisTool {
 #[async_trait]
 impl Tool for PythonAnalysisTool {
     async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
+        let content = input
+            .parameters
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&input.content);
+
+        if content.is_empty() {
+            return Err(KowalskiError::ToolExecution(
+                "Missing 'content' parameter".to_string(),
+            ));
+        }
+
         match input.task_type.as_str() {
             "analyze_python" => {
-                let result = self.analyze_python(&input.content)?;
+                let result = self.analyze_python(content)?;
                 Ok(ToolOutput::new(
                     result,
                     Some(json!({
@@ -573,9 +597,21 @@ impl RustAnalysisTool {
 #[async_trait]
 impl Tool for RustAnalysisTool {
     async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
+        let content = input
+            .parameters
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&input.content);
+
+        if content.is_empty() {
+            return Err(KowalskiError::ToolExecution(
+                "Missing 'content' parameter".to_string(),
+            ));
+        }
+
         match input.task_type.as_str() {
             "analyze_rust" => {
-                let result = self.analyze_rust(&input.content)?;
+                let result = self.analyze_rust(content)?;
                 Ok(ToolOutput::new(
                     result,
                     Some(json!({
