@@ -13,7 +13,6 @@ pub struct AcademicAgentConfig {
     pub parsing: PaperParsingConfig,
 }
 
-
 impl From<CoreConfig> for AcademicAgentConfig {
     fn from(config: CoreConfig) -> Self {
         Self {

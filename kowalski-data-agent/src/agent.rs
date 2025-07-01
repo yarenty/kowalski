@@ -16,6 +16,7 @@ use reqwest::Response;
 /// This agent is built on top of the TemplateAgent and provides data-specific functionality
 ///
 /// New: Can now analyze CSV files directly from a file path using the 'process_csv_path' tool task.
+#[allow(dead_code)]
 pub struct DataAgent {
     agent: TemplateAgent,
     config: DataAgentConfig,
@@ -29,7 +30,7 @@ impl DataAgent {
         let csv_tool = CsvTool::new(data_config.max_rows, data_config.max_columns);
         let fs_tool = FsTool::new();
         let tools: Vec<Box<dyn Tool + Send + Sync>> = vec![Box::new(csv_tool), Box::new(fs_tool)];
-        
+
         let system_prompt = r#"You are a data analysis assistant.
 
 AVAILABLE TOOLS:
@@ -55,15 +56,14 @@ When you have a final answer, respond normally without JSON formatting. NEVER gi
 "#
             .to_string();
         let system_prompt_clone = system_prompt.clone();
-        println!("[DEBUG] System prompt sent to LLM:\n{}", system_prompt_clone);
+        println!(
+            "[DEBUG] System prompt sent to LLM:\n{}",
+            system_prompt_clone
+        );
 
-        let builder = GeneralTemplate::create_agent(
-            tools,
-            Some(system_prompt),
-            Some(0.7),
-        )
-        .await
-        .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
+        let builder = GeneralTemplate::create_agent(tools, Some(system_prompt), Some(0.7))
+            .await
+            .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
         let mut agent = builder.build().await?;
         // Ensure the system prompt is set on the base agent
         agent.base_mut().set_system_prompt(&system_prompt_clone);
@@ -78,7 +78,10 @@ When you have a final answer, respond normally without JSON formatting. NEVER gi
     }
 
     /// Analyze a CSV file from a file path using the csv_tool
-    pub async fn process_csv_path(&mut self, path: &str) -> Result<serde_json::Value, KowalskiError> {
+    pub async fn process_csv_path(
+        &mut self,
+        path: &str,
+    ) -> Result<serde_json::Value, KowalskiError> {
         let params = serde_json::json!({
             "task": "process_csv_path",
             "path": path
@@ -97,7 +100,10 @@ impl Agent for DataAgent {
     fn start_conversation(&mut self, model: &str) -> String {
         let system_prompt = {
             let base = self.agent.base();
-            base.system_prompt.as_deref().unwrap_or("You are a helpful assistant.").to_string()
+            base.system_prompt
+                .as_deref()
+                .unwrap_or("You are a helpful assistant.")
+                .to_string()
         };
         let conv_id = self.agent.base_mut().start_conversation(model);
         if let Some(conversation) = self.agent.base_mut().conversations.get_mut(&conv_id) {

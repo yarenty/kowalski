@@ -36,7 +36,8 @@ impl CodeAgent {
             Box::new(rust_tool),
         ];
 
-        let system_prompt = r#"You are a code analysis assistant. You can analyze Java, Python, and Rust code.
+        let system_prompt =
+            r#"You are a code analysis assistant. You can analyze Java, Python, and Rust code.
 
 AVAILABLE TOOLS:
 1. java_analysis - Analyzes a snippet of Java code.
@@ -61,15 +62,11 @@ When you need to use a tool, respond with JSON in this exact format:
 }
 
 When you have a final answer, respond normally without JSON formatting."#
-            .to_string();
+                .to_string();
         let system_prompt_clone = system_prompt.clone();
-        let builder = GeneralTemplate::create_agent(
-            tools,
-            Some(system_prompt),
-            Some(0.7),
-        )
-        .await
-        .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
+        let builder = GeneralTemplate::create_agent(tools, Some(system_prompt), Some(0.7))
+            .await
+            .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
         let mut agent = builder.build().await?;
         // Ensure the system prompt is set on the base agent
         agent.base_mut().set_system_prompt(&system_prompt_clone);
@@ -93,7 +90,10 @@ impl Agent for CodeAgent {
     fn start_conversation(&mut self, model: &str) -> String {
         let system_prompt = {
             let base = self.agent.base();
-            base.system_prompt.as_deref().unwrap_or("You are a helpful assistant.").to_string()
+            base.system_prompt
+                .as_deref()
+                .unwrap_or("You are a helpful assistant.")
+                .to_string()
         };
         let conv_id = self.agent.base_mut().start_conversation(model);
         if let Some(conversation) = self.agent.base_mut().conversations.get_mut(&conv_id) {

@@ -137,7 +137,10 @@ impl TemplateAgent {
     /// Lists all registered tools (name, description)
     pub async fn list_tools(&self) -> Vec<(String, String)> {
         let tools = self.tool_chain.read().await;
-        tools.iter().map(|t| (t.name().to_string(), t.description().to_string())).collect()
+        tools
+            .iter()
+            .map(|t| (t.name().to_string(), t.description().to_string()))
+            .collect()
     }
 }
 
