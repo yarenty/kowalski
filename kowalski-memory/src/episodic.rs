@@ -5,6 +5,7 @@ use crate::{MemoryProvider, MemoryUnit, MemoryQuery};
 use async_trait::async_trait;
 use log::{debug, info, error};
 use rocksdb::{DB, Options, IteratorMode};
+use tokio::sync::{OnceCell, Mutex};
 
 /// A persistent, chronological memory store using RocksDB.
 ///
@@ -25,11 +26,35 @@ impl EpisodicBuffer {
         let mut opts = Options::default();
         opts.create_if_missing(true);
         let db = DB::open(&opts, path).map_err(|e| {
-            error!("Failed to open RocksDB at {}: {}", path, e);
-            e.to_string()
+            let err_str = e.to_string();
+            if err_str.contains("No locks available") || err_str.contains("lock hold by current process") {
+                error!("RocksDB lock error at {}: {}", path, err_str);
+                format!(
+                    "Failed to open RocksDB at {} due to a lock error: {}\n\
+                    This usually means another process is using the database, or a previous process crashed and left a stale lock.\n\
+                    - Ensure no other process is using the database.\n\
+                    - If safe, remove the LOCK file in the database directory and try again.\n\
+                    - If the problem persists, try rebooting your system.\n\
+                    - For development, you can move or delete the entire database directory to start fresh.\n\
+                    (Original error: {})",
+                    path, err_str, err_str
+                )
+            } else {
+                error!("Failed to open RocksDB at {}: {}", path, err_str);
+                err_str
+            }
         })?;
         Ok(Self { db })
     }
+}
+
+static EPISODIC_BUFFER: OnceCell<Mutex<EpisodicBuffer>> = OnceCell::const_new();
+
+/// Get or initialize the singleton EpisodicBuffer asynchronously, wrapped in a Mutex for safe mutable access.
+pub async fn get_or_init_episodic_buffer(path: &str) -> Result<&'static Mutex<EpisodicBuffer>, String> {
+    EPISODIC_BUFFER
+        .get_or_try_init(|| async move { Ok(Mutex::new(EpisodicBuffer::new(path)?)) })
+        .await
 }
 
 #[async_trait]
@@ -38,6 +63,7 @@ impl MemoryProvider for EpisodicBuffer {
     ///
     /// The unit is serialized to JSON. The `MemoryUnit.id` is used as the key.
     async fn add(&mut self, memory: MemoryUnit) -> Result<(), String> {
+        info!("[EpisodicBuffer] Adding memory unit: {}", memory.id);
         debug!("Adding memory unit to episodic buffer: {}", memory.id);
         let key = memory.id.clone();
         let value = serde_json::to_string(&memory).map_err(|e| {
@@ -56,18 +82,20 @@ impl MemoryProvider for EpisodicBuffer {
     /// This performs a full scan of the database, which can be slow on large datasets.
     /// It is intended for retrieving recent, related conversational context, not for
     /// large-scale semantic search.
-    async fn retrieve(&self, query: &str) -> Result<Vec<MemoryUnit>, String> {
-        debug!("Retrieving from episodic buffer with query: '{}'", query);
-        let lower_query = query.to_lowercase();
-        let mut results = Vec::new();
+    async fn retrieve(&self, query: &str, retrieval_limit: usize) -> Result<Vec<MemoryUnit>, String> {
+        info!("[EpisodicBuffer][RETRIEVE] Query: '{}'", query);
         let iter = self.db.iterator(IteratorMode::Start);
-
+        let lower_query = query.to_lowercase().trim().to_string();
+        let query_words: Vec<&str> = lower_query.split_whitespace().collect();
+        let mut results = Vec::new();
         for item in iter {
             match item {
                 Ok((_key, value)) => {
                     match serde_json::from_slice::<MemoryUnit>(&value) {
                         Ok(unit) => {
-                            if unit.content.to_lowercase().contains(&lower_query) {
+                            info!("[EpisodicBuffer][RETRIEVE] Stored: '{}'", unit.content);
+                            let content = unit.content.to_lowercase();
+                            if query_words.iter().any(|w| content.contains(w)) {
                                 results.push(unit);
                             }
                         }
@@ -77,13 +105,19 @@ impl MemoryProvider for EpisodicBuffer {
                 Err(e) => error!("Error during RocksDB iteration: {}", e),
             }
         }
+        // Limit to retrieval_limit
+        let results = if results.len() > retrieval_limit {
+            results[results.len() - retrieval_limit..].to_vec()
+        } else {
+            results
+        };
         Ok(results)
     }
 
     /// Performs a structured search, currently equivalent to `retrieve`.
     async fn search(&self, query: MemoryQuery) -> Result<Vec<MemoryUnit>, String> {
         debug!("Searching episodic buffer with query: {:?}", query);
-        self.retrieve(&query.text_query).await
+        self.retrieve(&query.text_query, 3).await
     }
 }
 
@@ -116,7 +150,7 @@ mod tests {
         memory.add(unit.clone()).await.unwrap();
 
         // Retrieve it back
-        let results = memory.retrieve("first message").await.unwrap();
+        let results = memory.retrieve("first message", 3).await.unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].id, "id1");
     }
@@ -136,7 +170,7 @@ mod tests {
         // Re-open the DB and check if the item is still there
         {
             let memory = EpisodicBuffer::new(path).unwrap();
-            let results = memory.retrieve("persistent").await.unwrap();
+            let results = memory.retrieve("persistent", 3).await.unwrap();
             assert_eq!(results.len(), 1);
             assert_eq!(results[0].id, "id2");
         }
@@ -152,7 +186,7 @@ mod tests {
         memory.add(create_test_unit("id2", "another test")).await.unwrap();
         memory.add(create_test_unit("id3", "something else")).await.unwrap();
 
-        let results = memory.retrieve("test").await.unwrap();
+        let results = memory.retrieve("test", 3).await.unwrap();
         assert_eq!(results.len(), 2);
         assert!(results.iter().any(|m| m.id == "id1"));
         assert!(results.iter().any(|m| m.id == "id2"));
@@ -164,7 +198,7 @@ mod tests {
         let path = dir.path().to_str().unwrap();
         let memory = EpisodicBuffer::new(path).unwrap();
 
-        let results = memory.retrieve("nonexistent").await.unwrap();
+        let results = memory.retrieve("nonexistent", 3).await.unwrap();
         assert!(results.is_empty());
     }
 }

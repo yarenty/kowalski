@@ -12,6 +12,8 @@ use std::collections::HashMap;
 use std::io::{self, Write};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use log::info;
+use env_logger;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -124,6 +126,7 @@ impl AgentManager {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::init();
     let cli = Cli::parse();
     let manager = AgentManager::new();
 
@@ -149,39 +152,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .await
                         .unwrap_or_else(Config::default);
                     let conv_id = agent_ref.start_conversation(&config.ollama.model);
-                    println!(
-                        "Chat session started with agent '{}'. Type /bye to end chat.",
-                        agent
-                    );
-                    println!("[DEBUG] Model in use: {}", config.ollama.model);
+                    println!("Chat session started with agent '{}'. Type /bye to end chat.", agent);
+                    println!("Model in use: {}", config.ollama.model);
                     // --- DEBUG: Print registered tools if available ---
                     let any_agent = agent_ref.as_any();
                     if let Some(data_agent) = any_agent.downcast_ref::<DataAgent>() {
                         let tools = data_agent.list_tools().await;
-                        println!("[DEBUG] Registered tools:");
+                        info!("Registered tools:");
                         for (name, desc) in tools {
-                            println!("  - {}: {}", name, desc);
+                            info!("  - {}: {}", name, desc);
                         }
                     } else if let Some(academic_agent) = any_agent.downcast_ref::<AcademicAgent>() {
                         let tools = academic_agent.list_tools().await;
-                        println!("[DEBUG] Registered tools:");
+                        info!("Registered tools:");
                         for (name, desc) in tools {
-                            println!("  - {}: {}", name, desc);
+                            info!("  - {}: {}", name, desc);
                         }
                     } else if let Some(code_agent) = any_agent.downcast_ref::<CodeAgent>() {
                         let tools = code_agent.list_tools().await;
-                        println!("[DEBUG] Registered tools:");
+                        info!("Registered tools:");
                         for (name, desc) in tools {
-                            println!("  - {}: {}", name, desc);
+                            info!("  - {}: {}", name, desc);
                         }
                     } else if let Some(web_agent) = any_agent.downcast_ref::<WebAgent>() {
                         let tools = web_agent.list_tools().await;
-                        println!("[DEBUG] Registered tools:");
+                        info!("Registered tools:");
                         for (name, desc) in tools {
-                            println!("  - {}: {}", name, desc);
+                            info!("  - {}: {}", name, desc);
                         }
                     } else {
-                        println!("[DEBUG] Tool listing not available for this agent type.");
+                        info!("Tool listing not available for this agent type.");
                     }
                     // --- END DEBUG ---
                     chat_loop(agent_ref, conv_id).await?;
@@ -208,11 +208,7 @@ async fn chat_loop(
     conv_id: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let agent_name = agent.name().to_lowercase();
-    println!(
-        "[DEBUG] Agent name: '{}', is_web_agent: {}",
-        agent_name,
-        agent_name.contains("web")
-    );
+    println!("Agent name: '{}'", agent_name);
 
     loop {
         print!("You: ");
@@ -225,13 +221,13 @@ async fn chat_loop(
         }
 
         // Always use tool-calling chat method
-        println!("[DEBUG] Using tool-calling chat method");
+        info!("Using tool-calling chat method");
         match chat_with_tools(agent, &conv_id, &input).await {
             Ok(_) => {
-                println!("[DEBUG] Tool-calling chat completed successfully");
+                info!("Tool-calling chat completed successfully");
             }
             Err(e) => {
-                eprintln!("[DEBUG] Tool-calling chat failed: {}", e);
+                eprintln!("Tool-calling chat failed: {}", e);
                 // Optionally fallback to regular chat
                 use_regular_chat(agent, &conv_id, &input).await?;
             }
@@ -343,41 +339,38 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
                                 .await
                                 .unwrap_or_else(Config::default);
                             let conv_id = agent_ref.start_conversation(&config.ollama.model);
-                            println!(
-                                "Chat session started with agent '{}'. Type /bye to end chat.",
-                                name
-                            );
-                            println!("[DEBUG] Model in use: {}", config.ollama.model);
+                            info!("Chat session started with agent '{}'. Type /bye to end chat.", name);
+                            info!("[DEBUG] Model in use: {}", config.ollama.model);
                             // --- DEBUG: Print registered tools if available ---
                             let any_agent = agent_ref.as_any();
                             if let Some(data_agent) = any_agent.downcast_ref::<DataAgent>() {
                                 let tools = data_agent.list_tools().await;
-                                println!("[DEBUG] Registered tools:");
+                                info!("[DEBUG] Registered tools:");
                                 for (name, desc) in tools {
-                                    println!("  - {}: {}", name, desc);
+                                    info!("  - {}: {}", name, desc);
                                 }
                             } else if let Some(academic_agent) =
                                 any_agent.downcast_ref::<AcademicAgent>()
                             {
                                 let tools = academic_agent.list_tools().await;
-                                println!("[DEBUG] Registered tools:");
+                                info!("[DEBUG] Registered tools:");
                                 for (name, desc) in tools {
-                                    println!("  - {}: {}", name, desc);
+                                    info!("  - {}: {}", name, desc);
                                 }
                             } else if let Some(code_agent) = any_agent.downcast_ref::<CodeAgent>() {
                                 let tools = code_agent.list_tools().await;
-                                println!("[DEBUG] Registered tools:");
+                                info!("[DEBUG] Registered tools:");
                                 for (name, desc) in tools {
-                                    println!("  - {}: {}", name, desc);
+                                    info!("  - {}: {}", name, desc);
                                 }
                             } else if let Some(web_agent) = any_agent.downcast_ref::<WebAgent>() {
                                 let tools = web_agent.list_tools().await;
-                                println!("[DEBUG] Registered tools:");
+                                info!("[DEBUG] Registered tools:");
                                 for (name, desc) in tools {
-                                    println!("  - {}: {}", name, desc);
+                                    info!("  - {}: {}", name, desc);
                                 }
                             } else {
-                                println!("[DEBUG] Tool listing not available for this agent type.");
+                                info!("[DEBUG] Tool listing not available for this agent type.");
                             }
                             // --- END DEBUG ---
                             chat_loop(agent_ref, conv_id).await?;
