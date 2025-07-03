@@ -11,7 +11,7 @@ members = [
     "kowalski-data-agent",
     "kowalski-federation",
     "kowalski-cli"
-]
+, "kowalski-memory"]
 
 
 [workspace.package]

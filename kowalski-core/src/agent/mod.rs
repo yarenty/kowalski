@@ -286,6 +286,10 @@ pub trait Agent: Send + Sync {
     fn as_any(&self) -> &dyn Any;
 }
 
+use kowalski_memory::working::WorkingMemory;
+use kowalski_memory::episodic::EpisodicBuffer;
+use kowalski_memory::semantic::SemanticStore;
+
 /// The base agent implementation that provides common functionality.
 pub struct BaseAgent {
     pub client: reqwest::Client,
@@ -294,6 +298,10 @@ pub struct BaseAgent {
     pub name: String,
     pub description: String,
     pub system_prompt: Option<String>,
+    // Memory Tiers
+    pub working_memory: WorkingMemory,
+    pub episodic_memory: EpisodicBuffer,
+    pub semantic_memory: SemanticStore,
 }
 
 impl BaseAgent {
@@ -305,6 +313,14 @@ impl BaseAgent {
 
         info!("BaseAgent created with name: {}", name);
 
+        // Initialize memory tiers
+        let working_memory = WorkingMemory::new(100); // Capacity of 100 units
+        let episodic_memory = EpisodicBuffer::new("./db/episodic_buffer")
+            .map_err(|e| KowalskiError::Initialization(format!("Failed to init episodic buffer: {}", e)))?;
+        let semantic_memory = SemanticStore::new("http://localhost:6333") // Assuming Qdrant is running here
+            .await
+            .map_err(|e| KowalskiError::Initialization(format!("Failed to init semantic store: {}", e)))?;
+
         Ok(Self {
             client,
             config,
@@ -312,6 +328,9 @@ impl BaseAgent {
             name: name.to_string(),
             description: description.to_string(),
             system_prompt: None,
+            working_memory,
+            episodic_memory,
+            semantic_memory,
         })
     }
 
@@ -350,12 +369,27 @@ impl Agent for BaseAgent {
         self.conversations.remove(id).is_some()
     }
 
+    use kowalski_memory::MemoryProvider;
+
     async fn chat_with_history(
         &mut self,
         conversation_id: &str,
         content: &str,
         role: Option<Role>,
     ) -> Result<Response, KowalskiError> {
+        // 1. RECALL: Retrieve relevant memories before calling the LLM
+        let memories = self.semantic_memory.retrieve(content).await.unwrap_or_default();
+        let memory_context = if !memories.is_empty() {
+            let concatenated_memories = memories
+                .iter()
+                .map(|m| m.content.as_str())
+                .collect::<Vec<&str>>()
+                .join("\n---\n");
+            format!("\n--- Relevant Memories ---\n{}\n--- End Memories ---", concatenated_memories)
+        } else {
+            String::new()
+        };
+
         let conversation = self
             .conversations
             .get_mut(conversation_id)
@@ -375,7 +409,10 @@ impl Agent for BaseAgent {
             }
         }
 
-        conversation.add_message("user", content);
+        // Inject memories into the user's message
+        let content_with_memory = format!("{}{}", content, memory_context);
+        conversation.add_message("user", &content_with_memory);
+
         let request = ChatRequest {
             model: conversation.model.clone(),
             messages: conversation.messages.clone(),
@@ -421,7 +458,33 @@ impl Agent for BaseAgent {
         Ok(Some(stream_response.message))
     }
 
+    use kowalski_memory::MemoryUnit;
+use std::time::{SystemTime, UNIX_EPOCH};
+
     async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {
+        // 2. STORAGE: Archive the message to the episodic buffer
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let memory_unit = MemoryUnit {
+            id: format!("{}-{}", conversation_id, timestamp),
+            timestamp,
+            content: format!("[{}] {}", role, content),
+            embedding: None, // Embeddings are generated during consolidation
+        };
+
+        // Add to Tier 1 working memory
+        if let Err(e) = self.working_memory.add(memory_unit.clone()).await {
+            eprintln!("Failed to add to working memory: {}", e);
+        }
+
+        // Add to Tier 2 episodic buffer
+        if let Err(e) = self.episodic_memory.add(memory_unit).await {
+            eprintln!("Failed to add to episodic memory: {}", e);
+        }
+
         if let Some(conversation) = self.conversations.get_mut(conversation_id) {
             conversation.add_message(role, content);
         }
