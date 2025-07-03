@@ -5,3 +5,14 @@ Cargo.lock
 .DS_Store
 db
 db/
+# benchmark tests 
+*/target/
+*/*/target/
+*/*/*/target/
+*/*/*/*/target/
+*/*/*/*/*/target/
+*/*/*/*/*/*/target/
+*/*/*/*/*/*/*/target/
+*/*/*/*/*/*/*/*/target/
+*/*/*/*/*/*/*/*/*/target/
+*/*/*/*/*/*/*/*/*/*/target/

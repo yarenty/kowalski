@@ -10,8 +10,9 @@ members = [
     "kowalski-code-agent",
     "kowalski-data-agent",
     "kowalski-federation",
-    "kowalski-cli"
-, "kowalski-memory"]
+    "kowalski-cli",
+    "kowalski-memory"
+]
 
 
 [workspace.package]
