@@ -1,54 +1,25 @@
 [package]
 name = "kowalski-memory"
-version = "0.5.1"
-edition = "2024"
-description = "Kowalski Memory Module: A Rust-based agent for interacting with Ollama models"
-license = "MIT"
-authors = ["yarenty <yarenty@gmail.com>"]
-repository = "https://github.com/yarenty/kowalski"
-homepage = "https://github.com/yarenty/kowalski"
-readme = "README.md"
-categories = [
-    "network-programming",
-    "text-processing",
-    "science",
-]
-keywords = [
-    "AI",
-    "agent",
-    "chat",
-    "llm",
-    "ollama",
-]
-
+version = "0.1.0"
+edition = "2021"
 
 [lib]
 name = "kowalski_memory"
 path = "src/lib.rs"
 
 [dependencies]
-# Tier 2: Episodic Buffer
-rocksdb = "0.23"
+# Workspace-inherited dependencies
+tokio = { workspace = true, features = ["full"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+log = { workspace = true }
+uuid = { workspace = true, optional = true }
+async-trait = { workspace = true }
 
-# Tier 3: Semantic Store (Vector DB Client)
-qdrant-client = "1.8"
-
-# Tier 3: Semantic Store (In-Memory Graph)
-petgraph = "0.8"
-
-# Core Kowalski crates (assuming they will be needed)
-# kowalski-core = { path = "../kowalski-core" }
-
-# Async runtime and serialization
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-
-# Logging
-log = "0.4"
-
-# For test data generation
-uuid = { version = "1.8.0", features = ["v4"], optional = true }
+# Crate-specific dependencies
+rocksdb = "0.22.0"
+qdrant-client = "1.8.0"
+petgraph = "0.6.4"
 
 [features]
 default = []
