@@ -21,6 +21,8 @@ graph TD
     E --> F[User receives comprehensive report];
 ```
 
+![](img/data_agent_processing.png)
+
 First, it delivered a statistical summary, providing a foundational understanding of the dataset's structure. It identified the headers, counted the rows and columns, and then broke down each column. For numerical data like 'age' and 'salary', it calculated the average, minimum, maximum, and sum. For categorical data like 'department', it identified the most common entry and counted unique values. This initial breakdown is the same process any human data scientist would follow, but it was completed in a fraction of the time.
 
 But this is where the magic truly begins. The agent didn't stop at the numbers. It leveraged its AI core to interpret these statistics and generate human-readable insights. It observed that the workforce was relatively young, with an average age of 30.5 years. It noted that the 'Engineering' department was the largest, making up half of the team, suggesting that technical expertise is a core focus for the organization.
@@ -40,6 +42,7 @@ graph TD
     B --> F[Visualization <br> Charts, Dashboards];
     B --> G[Database Integration <br> SQL, NoSQL];
 ```
+![](img/data_agent_extensions.png)
 
 Imagine a future where the agent's capabilities are not limited to CSV files. The roadmap includes extending its functionality to seamlessly process a variety of data formats, including JSON, XML, and even complex Excel spreadsheets. This will allow it to become a universal data interpreter, ready for any structured data you throw at it.
 
@@ -69,3 +72,5 @@ graph TD
         F --> J((...and more));
     end
 ```
+
+![](img/pluggable.png)

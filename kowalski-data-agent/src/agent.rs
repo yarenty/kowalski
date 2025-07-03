@@ -8,7 +8,7 @@ use kowalski_core::conversation::Conversation;
 use kowalski_core::error::KowalskiError;
 use kowalski_core::role::Role;
 use kowalski_core::tools::{Tool, ToolOutput};
-use kowalski_tools::data::CsvTool;
+use kowalski_tools::csv::CsvTool;
 use kowalski_tools::fs::FsTool;
 use reqwest::Response;
 
