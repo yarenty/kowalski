@@ -1,9 +1,9 @@
 import time
-from langchain_community.llms import Ollama
+from langchain_ollama import OllamaLLM
 from langchain_core.prompts import ChatPromptTemplate
 
 def main():
-    llm = Ollama(model="llama3.2")
+    llm = OllamaLLM(model="llama3.2")
     prompt = ChatPromptTemplate.from_messages([("user", "{input}")])
     chain = prompt | llm
 
