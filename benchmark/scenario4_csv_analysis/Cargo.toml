@@ -1,0 +1,13 @@
+[package]
+name = "benchmark_s4_kowalski"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+kowalski-core = { path = "../../../kowalski-core" }
+kowalski-data-agent = { path = "../../../kowalski-data-agent" }
+tokio = { workspace = true, features = ["full"] }
+reqwest = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
+env_logger = { workspace = true }
