@@ -1,0 +1,12 @@
+[package]
+name = "benchmark_s1_kowalski"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+kowalski-core = { path = "../../../kowalski-core" }
+tokio = { workspace = true, features = ["full"] }
+reqwest = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
+env_logger = { workspace = true }
