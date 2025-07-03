@@ -42,6 +42,7 @@ impl MemoryProvider for WorkingMemory {
     ///
     /// If the memory is at capacity, the oldest unit is removed to make space.
     async fn add(&mut self, memory: MemoryUnit) -> Result<(), String> {
+        info!("[WorkingMemory] Adding memory unit: {}", memory.id);
         debug!("Adding memory unit to working memory: {}", memory.id);
         if self.store.len() == self.capacity {
             let removed = self.store.remove(0);
@@ -53,14 +54,26 @@ impl MemoryProvider for WorkingMemory {
 
     /// Retrieves all memory units that contain the query string (case-insensitive).
     /// This is a simple text search.
-    async fn retrieve(&self, query: &str) -> Result<Vec<MemoryUnit>, String> {
-        debug!("Retrieving from working memory with query: '{}'", query);
-        let lower_query = query.to_lowercase();
-        let results = self.store
-            .iter()
-            .filter(|unit| unit.content.to_lowercase().contains(&lower_query))
-            .cloned()
-            .collect();
+    async fn retrieve(&self, query: &str, retrieval_limit: usize) -> Result<Vec<MemoryUnit>, String> {
+        info!("[WorkingMemory][RETRIEVE] Query: '{}'", query);
+        for unit in &self.store {
+            info!("[WorkingMemory][RETRIEVE] Stored: '{}'", unit.content);
+        }
+        let lower_query = query.to_lowercase().trim().to_string();
+        let query_words: Vec<&str> = lower_query.split_whitespace().collect();
+        let mut results = Vec::new();
+        for unit in &self.store {
+            let content = unit.content.to_lowercase();
+            if query_words.iter().any(|w| content.contains(w)) {
+                results.push(unit.clone());
+            }
+        }
+        // Limit to retrieval_limit
+        let results = if results.len() > retrieval_limit {
+            results[results.len() - retrieval_limit..].to_vec()
+        } else {
+            results
+        };
         Ok(results)
     }
 
@@ -69,7 +82,7 @@ impl MemoryProvider for WorkingMemory {
     async fn search(&self, query: MemoryQuery) -> Result<Vec<MemoryUnit>, String> {
         debug!("Searching working memory with query: {:?}", query);
         // For working memory, a simple text search is usually sufficient.
-        self.retrieve(&query.text_query).await
+        self.retrieve(&query.text_query, query.top_k).await
     }
 }
 
@@ -123,7 +136,7 @@ mod tests {
         memory.add(create_test_unit("Another message")).await.unwrap();
         memory.add(create_test_unit("HELLO again")).await.unwrap();
 
-        let results = memory.retrieve("hello").await.unwrap();
+        let results = memory.retrieve("hello", 3).await.unwrap();
         assert_eq!(results.len(), 2);
         assert!(results.iter().any(|m| m.content == "Hello world"));
         assert!(results.iter().any(|m| m.content == "HELLO again"));
@@ -134,7 +147,7 @@ mod tests {
         let mut memory = WorkingMemory::new(5);
         memory.add(create_test_unit("A test message")).await.unwrap();
 
-        let results = memory.retrieve("xyz").await.unwrap();
+        let results = memory.retrieve("xyz", 3).await.unwrap();
         assert!(results.is_empty());
     }
 

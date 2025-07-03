@@ -2,12 +2,18 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Core configuration for the Kowalski system
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Ollama configuration
     pub ollama: OllamaConfig,
     /// Chat configuration
     pub chat: ChatConfig,
+    /// Maximum number of memories to retrieve from working memory
+    pub working_memory_retrieval_limit: usize,
+    /// Maximum number of memories to retrieve from episodic memory
+    pub episodic_memory_retrieval_limit: usize,
+    /// Maximum number of memories to retrieve from semantic memory
+    pub semantic_memory_retrieval_limit: usize,
     /// Additional configurations from other agents
     #[serde(flatten)]
     pub additional: HashMap<String, serde_json::Value>,
@@ -86,6 +92,19 @@ pub trait ConfigExt {
     fn set_additional<T: serde::Serialize>(&mut self, key: &str, value: T) {
         if let Ok(json) = serde_json::to_value(value) {
             self.core_mut().additional.insert(key.to_string(), json);
+        }
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            ollama: OllamaConfig::default(),
+            chat: ChatConfig::default(),
+            working_memory_retrieval_limit: 3,
+            episodic_memory_retrieval_limit: 3,
+            semantic_memory_retrieval_limit: 3,
+            additional: HashMap::new(),
         }
     }
 }

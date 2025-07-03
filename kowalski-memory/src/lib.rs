@@ -21,8 +21,8 @@ pub trait MemoryProvider {
     /// Adds a memory unit to the store.
     async fn add(&mut self, memory: MemoryUnit) -> Result<(), String>;
 
-    /// Retrieves a set of memories based on a query.
-    async fn retrieve(&self, query: &str) -> Result<Vec<MemoryUnit>, String>;
+    /// Retrieves a set of memories based on a query, limited to retrieval_limit.
+    async fn retrieve(&self, query: &str, retrieval_limit: usize) -> Result<Vec<MemoryUnit>, String>;
 
     /// A more advanced retrieval method using a structured query.
     async fn search(&self, query: MemoryQuery) -> Result<Vec<MemoryUnit>, String>;

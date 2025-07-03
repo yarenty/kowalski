@@ -5,9 +5,12 @@ use crate::{MemoryProvider, MemoryUnit, MemoryQuery};
 use async_trait::async_trait;
 use log::{debug, info, error, warn};
 use petgraph::graph::{Graph, NodeIndex};
-use qdrant_client::qdrant::{PointStruct, SearchPoints, Condition, Filter, FieldCondition, Match, Value};
+use petgraph::visit::EdgeRef;
+use qdrant_client::qdrant::{PointStruct, SearchPoints, Condition, Filter, FieldCondition, Match, Value, VectorsOutput};
 use qdrant_client::Qdrant;
 use std::collections::HashMap;
+use tokio::sync::OnceCell;
+
 
 const QDRANT_COLLECTION_NAME: &str = "kowalski_memory";
 
@@ -31,7 +34,7 @@ impl SemanticStore {
     /// * `qdrant_url` - The URL for the running Qdrant instance (e.g., "http://localhost:6333").
     pub async fn new(qdrant_url: &str) -> Result<Self, String> {
         info!("Initializing semantic store with Qdrant URL: {}", qdrant_url);
-        let vector_db = Qdrant::from_url(qdrant_url).build().await.map_err(|e| {
+        let vector_db = Qdrant::from_url(qdrant_url).build().map_err(|e| {
             error!("Failed to connect to Qdrant: {}", e);
             e.to_string()
         })?;
@@ -68,8 +71,8 @@ impl MemoryProvider for SemanticStore {
 
         // Add to vector store if an embedding exists
         if let Some(embedding) = &memory.embedding {
-            let point = PointStruct::new(memory.id.clone(), embedding.clone(), Default::default());
-            self.vector_db.upsert_points(QDRANT_COLLECTION_NAME, None, vec![point], None).await.map_err(|e| e.to_string())?;
+            let point = PointStruct::new(memory.id.clone(), embedding.clone(), qdrant_client::Payload::default());
+            self.vector_db.upsert_points(qdrant_client::qdrant::UpsertPointsBuilder::new(QDRANT_COLLECTION_NAME, vec![point])).await.map_err(|e| e.to_string())?;
             info!("Added memory unit {} to Qdrant collection.", memory.id);
         }
 
@@ -88,25 +91,29 @@ impl MemoryProvider for SemanticStore {
 
     /// `retrieve` is not the primary search method for this store. It performs a simple
     /// metadata search in Qdrant. Use `search` for semantic vector search.
-    async fn retrieve(&self, query: &str) -> Result<Vec<MemoryUnit>, String> {
+    async fn retrieve(&self, query: &str, _retrieval_limit: usize) -> Result<Vec<MemoryUnit>, String> {
         warn!("Using retrieve on SemanticStore performs a simple metadata search, not a semantic vector search.");
         let filter = Filter::must([
             Condition::matches("content", query.to_string())
         ]);
-        let points = self.vector_db.scroll(&qdrant_client::qdrant::ScrollPoints {
-            collection_name: QDRANT_COLLECTION_NAME.to_string(),
-            filter: Some(filter),
-            ..Default::default()
-        }).await.map_err(|e| e.to_string())?;
+        let points = self.vector_db.scroll(
+            qdrant_client::qdrant::ScrollPointsBuilder::new(QDRANT_COLLECTION_NAME)
+                .filter(filter)
+                .with_payload(true)
+        ).await.map_err(|e| e.to_string())?;
 
         // This part is complex as we don't store the full MemoryUnit in Qdrant.
         // In a real system, you'd fetch the full unit from another store (like Tier 2)
         // using the retrieved IDs. For now, we return a simplified unit.
-        let results = points.result.into_iter().map(|p| MemoryUnit {
-            id: p.id.unwrap().to_string(),
-            content: "Retrieved from Qdrant by metadata filter".to_string(),
-            timestamp: 0,
-            embedding: Some(p.vectors.unwrap().to_vec()),
+        let results = points.result.into_iter().map(|p| {
+            let vectors = p.vectors.unwrap();
+            println!("DEBUG: vectors struct = {:?}", vectors);
+            MemoryUnit {
+                id: format!("{:?}", p.id.unwrap()),
+                content: "Retrieved from Qdrant by metadata filter".to_string(),
+                timestamp: 0,
+                embedding: None, // temporarily set to None for debugging
+            }
         }).collect();
 
         Ok(results)
@@ -119,22 +126,19 @@ impl MemoryProvider for SemanticStore {
 
         // 1. Vector Search
         if let Some(vector) = &query.vector_query {
-            let search_points = SearchPoints {
-                collection_name: QDRANT_COLLECTION_NAME.to_string(),
-                vector: vector.clone(),
-                limit: query.top_k as u64,
-                with_payload: Some(true.into()),
-                ..Default::default()
-            };
-            let search_result = self.vector_db.search_points(&search_points).await.map_err(|e| e.to_string())?;
+            let search_points = qdrant_client::qdrant::SearchPointsBuilder::new(QDRANT_COLLECTION_NAME, vector.clone(), query.top_k as u64)
+                .with_payload(true);
+            let search_result = self.vector_db.search_points(search_points).await.map_err(|e| e.to_string())?;
             info!("Found {} results from vector search.", search_result.result.len());
             // Again, creating simplified MemoryUnits from results
             for point in search_result.result {
-                 results.push(MemoryUnit {
-                    id: point.id.unwrap().to_string(),
+                let vectors = point.vectors.unwrap();
+                println!("DEBUG: vectors struct = {:?}", vectors);
+                results.push(MemoryUnit {
+                    id: format!("{:?}", point.id.unwrap()),
                     content: format!("Retrieved from vector search (score: {})", point.score),
                     timestamp: 0,
-                    embedding: Some(point.vectors.unwrap().to_vec()),
+                    embedding: None, // temporarily set to None for debugging
                 });
             }
         }
@@ -160,6 +164,14 @@ impl MemoryProvider for SemanticStore {
     }
 }
 
+static SEMANTIC_STORE: OnceCell<SemanticStore> = OnceCell::const_new();
+
+/// Get or initialize the singleton SemanticStore asynchronously.
+pub async fn get_or_init_semantic_store(qdrant_url: &str) -> Result<&'static SemanticStore, String> {
+    SEMANTIC_STORE
+        .get_or_try_init(|| SemanticStore::new(qdrant_url))
+        .await
+}
 
 #[cfg(test)]
 mod tests {
