@@ -14,6 +14,17 @@ use serde_json::json;
 use std::any::Any;
 use std::collections::HashMap;
 use std::io::{self, Write};
+use kowalski_memory::working::WorkingMemory;
+use kowalski_memory::episodic::EpisodicBuffer;
+use kowalski_memory::semantic::SemanticStore;
+use kowalski_memory::MemoryProvider;
+use kowalski_memory::MemoryUnit;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::Mutex;
+use log::debug;
+use log::error;
+use log::warn;
+use std::collections::HashSet;
 
 pub mod types;
 
@@ -79,26 +90,15 @@ pub trait Agent: Send + Sync {
         const MAX_ITERATIONS: usize = 5; // Prevent infinite loops
         let mut last_tool_call: Option<(String, serde_json::Value)> = None;
 
-        println!(
-            "[DEBUG] Starting chat_with_tools for input: '{}'",
-            user_input
-        );
+        debug!("Starting chat_with_tools for input: '{}'", user_input);
 
         while iteration_count < MAX_ITERATIONS {
             iteration_count += 1;
-            println!("[DEBUG] === ITERATION {} ===", iteration_count);
-            println!("[DEBUG] Current input: '{}'", current_input);
-
-            //TODO: remove me - ... need some sleep today
-            // // Only add the user message on the first iteration
-            // if first_iteration {
-            //     self.add_message(conversation_id, "user", &current_input).await;
-            //     println!("[DEBUG] Added user message to conversation");
-            //     first_iteration = false;
-            // }
+            debug!(" === ITERATION {} ===", iteration_count);
+            debug!("Current input: '{}'", current_input);
 
             // Get response from LLM
-            println!("[DEBUG] Calling LLM...");
+            debug!("Calling LLM...");
             let response = self
                 .chat_with_history(conversation_id, &current_input, None)
                 .await?;
@@ -107,7 +107,7 @@ pub trait Agent: Send + Sync {
             let mut buffer = String::new();
 
             // Process streaming response
-            println!("[DEBUG] Processing streaming response...");
+            debug!("Processing streaming response...");
             while let Some(chunk) = stream.next().await {
                 match chunk {
                     Ok(bytes) => {
@@ -124,17 +124,17 @@ pub trait Agent: Send + Sync {
                         }
                     }
                     Err(e) => {
-                        eprintln!("\nError: {}", e);
+                        error!("\nError: {}", e);
                         return Err(KowalskiError::Server(e.to_string()));
                     }
                 }
             }
-            println!(); // New line after response
-            println!("[DEBUG] Full LLM response: '{}'", buffer);
+            println!("");
+            debug!("Full LLM response: '{}'", buffer);
 
             // Try to extract JSON from mixed text response
-            println!(
-                "[DEBUG] ❌ Failed to parse entire response as tool call, trying to extract JSON..."
+            debug!(
+                "❌ Failed to parse entire response as tool call, trying to extract JSON..."
             );
             if let Some(json_start) = buffer.find('{') {
                 // Find the first valid JSON object only
@@ -155,23 +155,23 @@ pub trait Agent: Send + Sync {
                 }
                 if let Some(json_end) = end_idx {
                     let json_str = &buffer[json_start..=json_end];
-                    println!("[DEBUG] Extracted first JSON object: {}", json_str);
+                    debug!("Extracted first JSON object: {}", json_str);
                     if let Ok(tool_call) = serde_json::from_str::<ToolCall>(json_str) {
                         // Detect repeated tool calls
                         let tool_call_key = (tool_call.name.clone(), tool_call.parameters.clone());
                         if let Some(last) = &last_tool_call {
                             if *last == tool_call_key {
-                                println!(
-                                    "[DEBUG] Detected repeated tool call. Breaking loop to prevent infinite tool call loop."
+                                debug!(
+                                    "Detected repeated tool call. Breaking loop to prevent infinite tool call loop."
                                 );
                                 break;
                             }
                         }
                         last_tool_call = Some(tool_call_key.clone());
-                        println!("[DEBUG] ✅ Tool call successfully parsed from extracted JSON!");
-                        println!("[DEBUG] Tool: {}", tool_call.name);
-                        println!("[DEBUG] Parameters: {}", tool_call.parameters);
-                        println!("[DEBUG] Reasoning: {:?}", tool_call.reasoning);
+                        debug!("✅ Tool call successfully parsed from extracted JSON!");
+                        debug!("Tool: {}", tool_call.name);
+                        debug!("Parameters: {}", tool_call.parameters);
+                        debug!("Reasoning: {:?}", tool_call.reasoning);
                         let tool_result = match self
                             .execute_tool(&tool_call.name, &tool_call.parameters)
                             .await
@@ -179,7 +179,7 @@ pub trait Agent: Send + Sync {
                             Ok(output) => output.result.to_string(),
                             Err(e) => {
                                 let err_msg = format!("{}", e);
-                                println!("[DEBUG] Tool execution failed: {}", err_msg);
+                                debug!("Tool execution failed: {}", err_msg);
                                 // Tool chaining: if csv_tool is called with an unsupported task, try fs_tool get_file_contents then csv_tool process_csv
                                 if tool_call.name == "csv_tool"
                                     && tool_call
@@ -191,8 +191,8 @@ pub trait Agent: Send + Sync {
                                     if let Some(path) =
                                         tool_call.parameters.get("path").and_then(|v| v.as_str())
                                     {
-                                        println!(
-                                            "[DEBUG] Tool chaining: Detected csv_tool with read_file. Chaining fs_tool get_file_contents then csv_tool process_csv."
+                                        debug!(
+                                            "Tool chaining: Detected csv_tool with read_file. Chaining fs_tool get_file_contents then csv_tool process_csv."
                                         );
                                         // Step 1: fs_tool get_file_contents
                                         let fs_params = serde_json::json!({"task": "get_file_contents", "path": path});
@@ -232,12 +232,12 @@ pub trait Agent: Send + Sync {
                             format!("Tool result for {}: {}", tool_call.name, tool_result);
                         self.add_message(conversation_id, "assistant", &tool_message)
                             .await;
-                        println!("[DEBUG] Added tool result to conversation");
+                        debug!("Added tool result to conversation");
                         current_input = format!("Based on the tool result: {}", tool_result);
-                        println!("[DEBUG] Continuing with new input: '{}'", current_input);
+                        debug!("Continuing with new input: '{}'", current_input);
                         continue;
                     } else {
-                        println!("[DEBUG] ❌ Failed to parse extracted JSON as tool call");
+                        debug!("❌ Failed to parse extracted JSON as tool call");
                     }
                 }
             }
@@ -246,10 +246,10 @@ pub trait Agent: Send + Sync {
             final_response = buffer;
             self.add_message(conversation_id, "assistant", &final_response)
                 .await;
-            println!("[DEBUG] ✅ Final response set: '{}'", final_response);
+            debug!("✅ Final response set: '{}'", final_response);
 
             if let Some(tool_call) = rule_based_tool_call(user_input) {
-                println!("[DEBUG] Rule-based tool call triggered: {:?}", tool_call);
+                debug!("Rule-based tool call triggered: {:?}", tool_call);
                 let tool_result = self
                     .execute_tool(&tool_call.name, &tool_call.parameters)
                     .await;
@@ -259,7 +259,7 @@ pub trait Agent: Send + Sync {
                 };
                 self.add_message(conversation_id, "assistant", &tool_result_str)
                     .await;
-                println!("[DEBUG] Rule-based tool result: {}", tool_result_str);
+                debug!("Rule-based tool result: {}", tool_result_str);
                 return Ok(tool_result_str);
             }
 
@@ -267,11 +267,11 @@ pub trait Agent: Send + Sync {
         }
 
         if iteration_count >= MAX_ITERATIONS {
-            println!("[WARNING] Reached maximum iterations, returning current response");
+            warn!("Reached maximum iterations, returning current response");
         }
 
-        println!(
-            "[DEBUG] chat_with_tools completed after {} iterations",
+        debug!(
+            "chat_with_tools completed after {} iterations",
             iteration_count
         );
         Ok(final_response)
@@ -294,6 +294,10 @@ pub struct BaseAgent {
     pub name: String,
     pub description: String,
     pub system_prompt: Option<String>,
+    // Memory Tiers
+    pub working_memory: WorkingMemory,
+    pub episodic_memory: &'static tokio::sync::Mutex<kowalski_memory::episodic::EpisodicBuffer>,
+    pub semantic_memory: &'static kowalski_memory::semantic::SemanticStore,
 }
 
 impl BaseAgent {
@@ -305,6 +309,15 @@ impl BaseAgent {
 
         info!("BaseAgent created with name: {}", name);
 
+        // Initialize memory tiers
+        let working_memory = WorkingMemory::new(100); // Capacity of 100 units
+        let episodic_memory = kowalski_memory::episodic::get_or_init_episodic_buffer("./db/episodic_buffer")
+            .await
+            .map_err(|e| KowalskiError::Initialization(format!("Failed to init episodic buffer: {}", e)))?;
+        let semantic_memory = kowalski_memory::semantic::get_or_init_semantic_store("http://localhost:6333")
+            .await
+            .map_err(|e| KowalskiError::Initialization(format!("Failed to init semantic store: {}", e)))?;
+
         Ok(Self {
             client,
             config,
@@ -312,6 +325,9 @@ impl BaseAgent {
             name: name.to_string(),
             description: description.to_string(),
             system_prompt: None,
+            working_memory,
+            episodic_memory,
+            semantic_memory,
         })
     }
 
@@ -356,6 +372,36 @@ impl Agent for BaseAgent {
         content: &str,
         role: Option<Role>,
     ) -> Result<Response, KowalskiError> {
+        // Retrieve from all memory tiers
+        let working_memories = self.working_memory.retrieve(content, self.config.working_memory_retrieval_limit).await.unwrap_or_default();
+        info!("Retrieved {} results from working memory", working_memories.len());
+
+        let episodic_memories = self.episodic_memory.lock().await.retrieve(content, self.config.episodic_memory_retrieval_limit).await.unwrap_or_default();
+        info!("Retrieved {} results from episodic memory", episodic_memories.len());
+
+        let semantic_memories = self.semantic_memory.retrieve(content, self.config.semantic_memory_retrieval_limit).await.unwrap_or_default();
+        info!("Retrieved {} results from semantic memory", semantic_memories.len());
+
+        // Combine all memories, deduplicate by id
+        let mut seen_ids = HashSet::new();
+        let mut all_memories = Vec::new();
+        for m in working_memories.into_iter().chain(episodic_memories).chain(semantic_memories) {
+            if seen_ids.insert(m.id.clone()) {
+                all_memories.push(m);
+            }
+        }
+
+        let memory_context = if !all_memories.is_empty() {
+            let concatenated_memories = all_memories
+                .iter()
+                .map(|m| m.content.as_str())
+                .collect::<Vec<&str>>()
+                .join("\n---\n");
+            format!("\n--- Relevant Memories ---\n{}\n--- End Memories ---", concatenated_memories)
+        } else {
+            String::new()
+        };
+
         let conversation = self
             .conversations
             .get_mut(conversation_id)
@@ -375,7 +421,10 @@ impl Agent for BaseAgent {
             }
         }
 
-        conversation.add_message("user", content);
+        // Inject memories into the user's message
+        let content_with_memory = format!("{}{}", content, memory_context);
+        conversation.add_message("user", &content_with_memory);
+
         let request = ChatRequest {
             model: conversation.model.clone(),
             messages: conversation.messages.clone(),
@@ -422,6 +471,29 @@ impl Agent for BaseAgent {
     }
 
     async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {
+        // 2. STORAGE: Archive the message to the episodic buffer
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let memory_unit = MemoryUnit {
+            id: format!("{}-{}", conversation_id, timestamp),
+            timestamp,
+            content: format!("[{}] {}", role, content),
+            embedding: None, // Embeddings are generated during consolidation
+        };
+
+        // Add to Tier 1 working memory
+        if let Err(e) = self.working_memory.add(memory_unit.clone()).await {
+            eprintln!("Failed to add to working memory: {}", e);
+        }
+
+        // Add to Tier 2 episodic buffer
+        if let Err(e) = self.episodic_memory.lock().await.add(memory_unit).await {
+            eprintln!("Failed to add to episodic memory: {}", e);
+        }
+
         if let Some(conversation) = self.conversations.get_mut(conversation_id) {
             conversation.add_message(role, content);
         }

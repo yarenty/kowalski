@@ -1,0 +1,47 @@
+[package]
+name = "kowalski-memory"
+version = "0.5.1"
+edition = "2024"
+description = "Kowalski Memory Module: A Rust-based agent for interacting with Ollama models"
+license = "MIT"
+authors = ["yarenty <yarenty@gmail.com>"]
+repository = "https://github.com/yarenty/kowalski"
+homepage = "https://github.com/yarenty/kowalski"
+readme = "README.md"
+categories = [
+    "network-programming",
+    "text-processing",
+    "science",
+]
+keywords = [
+    "AI",
+    "agent",
+    "chat",
+    "llm",
+    "ollama",
+]
+
+
+[lib]
+name = "kowalski_memory"
+path = "src/lib.rs"
+
+[dependencies]
+# Workspace-inherited dependencies
+tokio = { workspace = true, features = ["full", "sync"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+log = { workspace = true }
+async-trait = { workspace = true }
+uuid = { workspace = true}
+
+# Crate-specific dependencies
+rocksdb = "0.23"
+qdrant-client = "1.8.0"
+petgraph = "0.8"
+rand = "0.9.1"
+once_cell = "1.18"
+
+
+[dev-dependencies]
+tempfile = "3.10.1"
