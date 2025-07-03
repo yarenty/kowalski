@@ -20,7 +20,7 @@ impl SemanticStore {
 
 #[async_trait::async_trait]
 impl MemoryProvider for SemanticStore {
-    async fn add(&self, memory: MemoryUnit) -> Result<(), String> {
+    async fn add(&mut self, memory: MemoryUnit) -> Result<(), String> {
         // Implementation would add embeddings to Qdrant and structured data to petgraph.
         unimplemented!()
     }

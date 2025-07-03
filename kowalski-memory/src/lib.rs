@@ -3,6 +3,7 @@ pub mod episodic;
 pub mod semantic;
 
 use serde::{Deserialize, Serialize};
+use async_trait::async_trait;
 
 /// Represents a single unit of memory, which could be a message, a fact, or a summary.
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -15,13 +16,12 @@ pub struct MemoryUnit {
 
 /// The core trait for any memory system in Kowalski.
 /// Defines the essential operations for storing and retrieving memories.
-#[async_trait::async_trait]
+#[async_trait]
 pub trait MemoryProvider {
     /// Adds a memory unit to the store.
-    async fn add(&self, memory: MemoryUnit) -> Result<(), String>;
+    async fn add(&mut self, memory: MemoryUnit) -> Result<(), String>;
 
     /// Retrieves a set of memories based on a query.
-    /// The query could be a simple string or a more complex query structure.
     async fn retrieve(&self, query: &str) -> Result<Vec<MemoryUnit>, String>;
 
     /// A more advanced retrieval method using a structured query.
@@ -29,7 +29,7 @@ pub trait MemoryProvider {
 }
 
 /// A structured query for more advanced memory retrieval.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MemoryQuery {
     pub text_query: String,
     pub vector_query: Option<Vec<f32>>,
