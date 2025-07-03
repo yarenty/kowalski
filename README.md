@@ -161,8 +161,12 @@ agent.add_message(&conv_id, "user", "Hello, world!").await;
 - **Location:** `kowalski-data-agent/`
 - **Run:**  
   ```bash
-  cargo run --release --bin kowalski-data-agent -- --file data.csv
-  ```
+  cargo run --release 
+
+  create data
+  chat data-agent
+  using csv tool could you investigate content and give me insight about domain_structure.csv file?
+ ```
 - **Features:** CSV analysis, statistics, summaries.
 
 ### Web Agent
