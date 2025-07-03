@@ -3,6 +3,10 @@ name = "kowalski-memory"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "kowalski_memory"
+path = "src/lib.rs"
+
 [dependencies]
 # Tier 2: Episodic Buffer
 rocksdb = "0.23"

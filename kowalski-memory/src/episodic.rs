@@ -19,7 +19,7 @@ impl EpisodicBuffer {
 
 #[async_trait::async_trait]
 impl MemoryProvider for EpisodicBuffer {
-    async fn add(&self, memory: MemoryUnit) -> Result<(), String> {
+    async fn add(&mut self, memory: MemoryUnit) -> Result<(), String> {
         // Implementation would serialize and store the memory unit in RocksDB.
         unimplemented!()
     }

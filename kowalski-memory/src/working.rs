@@ -16,7 +16,7 @@ impl WorkingMemory {
 
 #[async_trait::async_trait]
 impl MemoryProvider for WorkingMemory {
-    async fn add(&self, memory: MemoryUnit) -> Result<(), String> {
+    async fn add(&mut self, memory: MemoryUnit) -> Result<(), String> {
         // Implementation would add to the in-memory vector, handling capacity limits.
         unimplemented!()
     }
