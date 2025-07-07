@@ -1,0 +1,31 @@
+[DEBUG] System prompt sent to LLM:
+You are a data analysis assistant.
+
+AVAILABLE TOOLS:
+csv_tool - For all CSV data analysis.
+   - task: "process_csv" - Analyze CSV data. Parameters: { "content": "CSV file contents as a string" }
+   - task: "process_csv_path" - Analyze CSV data from a file path. Parameters: { "path": "/some/file.csv" }
+
+TOOL USAGE INSTRUCTIONS:
+- ALWAYS use tools when asked about files, directories, or CSV data.
+- NEVER give instructions, shell commands, or say you cannot access the filesystem.
+- When asked to analyze a CSV file, you can now use either:
+  1. fs_tool with task "get_file_contents" to read the file (provide the file path), then csv_tool with task "process_csv" and pass the file contents as the "content" parameter.
+  2. OR, use csv_tool with task "process_csv_path" and provide the file path directly as the "path" parameter.
+- Respond ONLY with JSON in this exact format for each tool call:
+
+{
+  "name": "csv_tool",
+  "parameters": { "task": "process_csv_path", "path": "/opt/data/example.csv" },
+  "reasoning": "User asked to analyze a CSV file from a path."
+}
+
+When you have a final answer, respond normally without JSON formatting. NEVER give instructions, shell commands, or say you cannot access the filesystem. ALWAYS use the tool call format for such requests.
+
+Failed to obtain server version. Unable to check client-server compatibility. Set check_compatibility=false to skip version check.
+Kowalski (CSV Analysis) - Response: The average salary is $73,300, with the highest salary being $85,000 and the lowest being $65,000.
+
+There are five different departments represented in the data: Engineering (5 employees), Marketing (3 employees), Sales (2 employees), and none from Atlanta or Denver. The most common city among the employees is Dallas, with only one employee from that location.
+
+The most common name in the data is "Jane Smith", which appears only once.
+Kowalski (CSV Analysis) - Time: 26.615947951s
