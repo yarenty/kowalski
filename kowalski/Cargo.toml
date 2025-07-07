@@ -1,6 +1,6 @@
 [package]
 name = "kowalski"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 description = "Kowalski: A Rust-based agent for interacting with Ollama models"
 license = "MIT"
@@ -22,14 +22,14 @@ keywords = [
 ]
 
 [dependencies]
-kowalski-core = { path = "../kowalski-core", version = "0.5.1" }
-kowalski-agent-template = { path = "../kowalski-agent-template", version = "0.5.1" }
-kowalski-tools = { path = "../kowalski-tools", version = "0.5.1" }
-kowalski-federation = { path = "../kowalski-federation", version = "0.5.1" }
-kowalski-academic-agent = { path = "../kowalski-academic-agent", version = "0.5.1" }
-kowalski-data-agent = { path = "../kowalski-data-agent", version = "0.5.1" }
-kowalski-code-agent = { path = "../kowalski-code-agent", version = "0.5.1" }
-kowalski-web-agent = { path = "../kowalski-web-agent", version = "0.5.1" }
+kowalski-core = { path = "../kowalski-core", version = "0.5.2" }
+kowalski-agent-template = { path = "../kowalski-agent-template", version = "0.5.2" }
+kowalski-tools = { path = "../kowalski-tools", version = "0.5.2" }
+kowalski-federation = { path = "../kowalski-federation", version = "0.5.2" }
+kowalski-academic-agent = { path = "../kowalski-academic-agent", version = "0.5.2" }
+kowalski-data-agent = { path = "../kowalski-data-agent", version = "0.5.2" }
+kowalski-code-agent = { path = "../kowalski-code-agent", version = "0.5.2" }
+kowalski-web-agent = { path = "../kowalski-web-agent", version = "0.5.2" }
 
 [lib]
 name = "kowalski"

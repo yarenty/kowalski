@@ -1,7 +1,7 @@
 // Tier 1: Working Memory (The Scratchpad)
 // This is a simple, volatile, in-memory store for the agent's current context.
 
-use crate::{MemoryProvider, MemoryUnit, MemoryQuery};
+use crate::{MemoryProvider, MemoryQuery, MemoryUnit};
 use async_trait::async_trait;
 use log::{debug, info};
 
@@ -22,7 +22,10 @@ impl WorkingMemory {
     /// * `capacity` - The maximum number of `MemoryUnit`s to hold.
     pub fn new(capacity: usize) -> Self {
         info!("Initializing working memory with capacity: {}", capacity);
-        Self { store: Vec::with_capacity(capacity), capacity }
+        Self {
+            store: Vec::with_capacity(capacity),
+            capacity,
+        }
     }
 
     /// Returns the current number of units in memory.
@@ -46,7 +49,10 @@ impl MemoryProvider for WorkingMemory {
         debug!("Adding memory unit to working memory: {}", memory.id);
         if self.store.len() == self.capacity {
             let removed = self.store.remove(0);
-            debug!("Working memory at capacity. Removed oldest unit: {}", removed.id);
+            debug!(
+                "Working memory at capacity. Removed oldest unit: {}",
+                removed.id
+            );
         }
         self.store.push(memory);
         Ok(())
@@ -54,7 +60,11 @@ impl MemoryProvider for WorkingMemory {
 
     /// Retrieves all memory units that contain the query string (case-insensitive).
     /// This is a simple text search.
-    async fn retrieve(&self, query: &str, retrieval_limit: usize) -> Result<Vec<MemoryUnit>, String> {
+    async fn retrieve(
+        &self,
+        query: &str,
+        retrieval_limit: usize,
+    ) -> Result<Vec<MemoryUnit>, String> {
         info!("[WorkingMemory][RETRIEVE] Query: '{}'", query);
         for unit in &self.store {
             info!("[WorkingMemory][RETRIEVE] Stored: '{}'", unit.content);
@@ -86,7 +96,6 @@ impl MemoryProvider for WorkingMemory {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -96,7 +105,8 @@ mod tests {
     fn create_test_unit(content: &str) -> MemoryUnit {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap().as_secs();
+            .unwrap()
+            .as_secs();
         MemoryUnit {
             id: uuid::Uuid::new_v4().to_string(),
             timestamp,
@@ -133,7 +143,10 @@ mod tests {
     async fn test_retrieve_simple() {
         let mut memory = WorkingMemory::new(5);
         memory.add(create_test_unit("Hello world")).await.unwrap();
-        memory.add(create_test_unit("Another message")).await.unwrap();
+        memory
+            .add(create_test_unit("Another message"))
+            .await
+            .unwrap();
         memory.add(create_test_unit("HELLO again")).await.unwrap();
 
         let results = memory.retrieve("hello", 3).await.unwrap();
@@ -145,7 +158,10 @@ mod tests {
     #[tokio::test]
     async fn test_retrieve_no_results() {
         let mut memory = WorkingMemory::new(5);
-        memory.add(create_test_unit("A test message")).await.unwrap();
+        memory
+            .add(create_test_unit("A test message"))
+            .await
+            .unwrap();
 
         let results = memory.retrieve("xyz", 3).await.unwrap();
         assert!(results.is_empty());
@@ -154,7 +170,10 @@ mod tests {
     #[tokio::test]
     async fn test_search_delegates_to_retrieve() {
         let mut memory = WorkingMemory::new(5);
-        memory.add(create_test_unit("This is a search test")).await.unwrap();
+        memory
+            .add(create_test_unit("This is a search test"))
+            .await
+            .unwrap();
 
         let query = MemoryQuery {
             text_query: "search".to_string(),

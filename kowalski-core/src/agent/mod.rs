@@ -7,24 +7,21 @@ use crate::role::Role;
 use crate::tools::{ToolCall, ToolOutput};
 use async_trait::async_trait;
 use futures::StreamExt;
+use kowalski_memory::MemoryProvider;
+use kowalski_memory::MemoryUnit;
+use kowalski_memory::working::WorkingMemory;
+use log::debug;
+use log::error;
 use log::info;
+use log::warn;
 use reqwest::Response;
 use serde_json;
 use serde_json::json;
 use std::any::Any;
 use std::collections::HashMap;
-use std::io::{self, Write};
-use kowalski_memory::working::WorkingMemory;
-use kowalski_memory::episodic::EpisodicBuffer;
-use kowalski_memory::semantic::SemanticStore;
-use kowalski_memory::MemoryProvider;
-use kowalski_memory::MemoryUnit;
-use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::Mutex;
-use log::debug;
-use log::error;
-use log::warn;
 use std::collections::HashSet;
+use std::io::{self, Write};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub mod types;
 
@@ -133,9 +130,7 @@ pub trait Agent: Send + Sync {
             debug!("Full LLM response: '{}'", buffer);
 
             // Try to extract JSON from mixed text response
-            debug!(
-                "❌ Failed to parse entire response as tool call, trying to extract JSON..."
-            );
+            debug!("❌ Failed to parse entire response as tool call, trying to extract JSON...");
             if let Some(json_start) = buffer.find('{') {
                 // Find the first valid JSON object only
                 let mut brace_count = 0;
@@ -297,12 +292,13 @@ pub struct BaseAgent {
     // Memory Tiers
     pub working_memory: WorkingMemory,
     pub episodic_memory: &'static tokio::sync::Mutex<kowalski_memory::episodic::EpisodicBuffer>,
-    pub semantic_memory: &'static kowalski_memory::semantic::SemanticStore,
+    pub semantic_memory: &'static tokio::sync::Mutex<kowalski_memory::semantic::SemanticStore>,
 }
 
 impl BaseAgent {
     pub async fn new(config: Config, name: &str, description: &str) -> Result<Self, KowalskiError> {
         let client = reqwest::ClientBuilder::new()
+            .http1_only()
             .pool_max_idle_per_host(0)
             .build()
             .map_err(KowalskiError::Request)?;
@@ -311,12 +307,18 @@ impl BaseAgent {
 
         // Initialize memory tiers
         let working_memory = WorkingMemory::new(100); // Capacity of 100 units
-        let episodic_memory = kowalski_memory::episodic::get_or_init_episodic_buffer("./db/episodic_buffer")
-            .await
-            .map_err(|e| KowalskiError::Initialization(format!("Failed to init episodic buffer: {}", e)))?;
-        let semantic_memory = kowalski_memory::semantic::get_or_init_semantic_store("http://localhost:6333")
-            .await
-            .map_err(|e| KowalskiError::Initialization(format!("Failed to init semantic store: {}", e)))?;
+        let episodic_memory =
+            kowalski_memory::episodic::get_or_init_episodic_buffer("./db/episodic_buffer")
+                .await
+                .map_err(|e| {
+                    KowalskiError::Initialization(format!("Failed to init episodic buffer: {}", e))
+                })?;
+        let semantic_memory =
+            kowalski_memory::semantic::get_or_init_semantic_store("http://localhost:6334")
+                .await
+                .map_err(|e| {
+                    KowalskiError::Initialization(format!("Failed to init semantic store: {}", e))
+                })?;
 
         Ok(Self {
             client,
@@ -373,19 +375,48 @@ impl Agent for BaseAgent {
         role: Option<Role>,
     ) -> Result<Response, KowalskiError> {
         // Retrieve from all memory tiers
-        let working_memories = self.working_memory.retrieve(content, self.config.working_memory_retrieval_limit).await.unwrap_or_default();
-        info!("Retrieved {} results from working memory", working_memories.len());
+        let working_memories = self
+            .working_memory
+            .retrieve(content, self.config.working_memory_retrieval_limit)
+            .await
+            .unwrap_or_default();
+        info!(
+            "Retrieved {} results from working memory",
+            working_memories.len()
+        );
 
-        let episodic_memories = self.episodic_memory.lock().await.retrieve(content, self.config.episodic_memory_retrieval_limit).await.unwrap_or_default();
-        info!("Retrieved {} results from episodic memory", episodic_memories.len());
+        let episodic_memories = self
+            .episodic_memory
+            .lock()
+            .await
+            .retrieve(content, self.config.episodic_memory_retrieval_limit)
+            .await
+            .unwrap_or_default();
+        info!(
+            "Retrieved {} results from episodic memory",
+            episodic_memories.len()
+        );
 
-        let semantic_memories = self.semantic_memory.retrieve(content, self.config.semantic_memory_retrieval_limit).await.unwrap_or_default();
-        info!("Retrieved {} results from semantic memory", semantic_memories.len());
+        let semantic_memories = self
+            .semantic_memory
+            .lock()
+            .await
+            .retrieve(content, self.config.semantic_memory_retrieval_limit)
+            .await
+            .unwrap_or_default();
+        info!(
+            "Retrieved {} results from semantic memory",
+            semantic_memories.len()
+        );
 
         // Combine all memories, deduplicate by id
         let mut seen_ids = HashSet::new();
         let mut all_memories = Vec::new();
-        for m in working_memories.into_iter().chain(episodic_memories).chain(semantic_memories) {
+        for m in working_memories
+            .into_iter()
+            .chain(episodic_memories)
+            .chain(semantic_memories)
+        {
             if seen_ids.insert(m.id.clone()) {
                 all_memories.push(m);
             }
@@ -397,7 +428,10 @@ impl Agent for BaseAgent {
                 .map(|m| m.content.as_str())
                 .collect::<Vec<&str>>()
                 .join("\n---\n");
-            format!("\n--- Relevant Memories ---\n{}\n--- End Memories ---", concatenated_memories)
+            format!(
+                "\n--- Relevant Memories ---\n{}\n--- End Memories ---",
+                concatenated_memories
+            )
         } else {
             String::new()
         };

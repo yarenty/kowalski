@@ -4,6 +4,29 @@
 
 All notable changes to this project will be documented in this file, or at least we'll try to remember to do so.
 
+## [0.5.2] - 2024-07-06
+
+> "Version 0.5.2: Now with a memory like an elephant (but less likely to trample your data)."
+
+### 🧠 Added
+- **Memory Module: The Brain Arrives!**
+  - Introduced the shiny new `kowalski-memory` module, giving agents the power to remember, forget, and reminisce about the good old days (i.e., previous prompts).
+  - Supports **all 3 types of memory**:
+    - **Episodic Memory:** For remembering what just happened ("Did I already answer that?").
+    - **Semantic Memory:** For storing facts, concepts, and trivia ("Paris is the capital of France, and so is every other AI's favorite example.").
+    - **Working Memory:** For short-term, in-the-moment reasoning ("What was I doing again?").
+  - Modular, extensible, and ready for future memory experiments (or existential crises).
+
+### 🏁 Benchmarking: Kowalski vs. LangChain
+- **Initial Benchmark Suite:**
+  - Added a set of benchmarking scenarios to compare Kowalski's performance and reasoning against LangChain.
+  - Benchmarks cover simple LLM calls, tool use, memory retrieval, and CSV analysis.
+  - Results logged for both frameworks—let the games (and the bragging) begin!
+
+### 🛠️ Improved
+- Documentation updates for the new memory module and benchmarking process.
+- Minor bug fixes and performance tweaks (because every release needs a few of these).
+
 ## [0.5.1] - 2024-07-01
 
 > "Version 0.5.1: Now with 42% more reactivity and a filesystem that actually listens to you."
@@ -28,8 +51,6 @@ All notable changes to this project will be documented in this file, or at least
 - Enhanced agent orchestration logic for better multi-step tool use.
 - Unified tool API across all agent modules for easier extension and maintenance.
 - Documentation updates for new tools and agent capabilities.
-
-
 
 ## [0.5.0] - 2024-06-29
 
@@ -114,7 +135,6 @@ All notable changes to this project will be documented in this file, or at least
 
 > "The best time to write a changelog is when you make the changes. The second best time is right before a release when you've forgotten everything you did." - Ancient Developer Proverb
 
-
 ### 🎭 Added
 - **New Agents** (because one AI personality wasn't enough):
   - `GeneralAgent`: Your friendly neighborhood AI with a dash of sass
@@ -173,8 +193,6 @@ All notable changes to this project will be documented in this file, or at least
 - Proof that we could make it work
 - A lot of hopes and dreams
 
-
-
 > "Change is inevitable, except from a vending machine." - Robert C. Gallagher
 
 > "Version numbers are like birthdays - they keep increasing but nothing really changes." - A Cynical Developer
@@ -227,7 +245,8 @@ All notable changes to this project will be documented in this file, or at least
 > "Documentation is like true love - it exists, but it's hard to find." - A Documentation Writer
 > "The only thing worse than no documentation is wrong documentation." - A Frustrated Developer
 
-
-
+[0.5.2]: https://github.com/yarenty/kowalski/releases/tag/0.5.2 
+[0.5.1]: https://github.com/yarenty/kowalski/releases/tag/0.5.1 
+[0.5.0]: https://github.com/yarenty/kowalski/releases/tag/0.5.0 
 [0.2.0]: https://github.com/yarenty/kowalski/releases/tag/0.2.0 
 [0.1.0]: https://github.com/yarenty/kowalski/releases/tag/0.1.0 

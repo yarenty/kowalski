@@ -1,0 +1,18 @@
+[package]
+name = "benchmark_s1_kowalski"
+version = "0.1.0"
+edition = "2021"
+
+[workspace] # Empty workspace table to make this a workspace root
+
+[[bin]]
+name = "benchmark_s1_kowalski"
+path = "run_kowalski.rs"
+
+[dependencies]
+kowalski-core = { path = "../../kowalski-core" }
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+serde_json = "1.0"
+futures = "0.3"
+env_logger = "0.11"
