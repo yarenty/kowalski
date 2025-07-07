@@ -6,11 +6,11 @@ use async_trait::async_trait;
 use log::{debug, error, info, warn};
 use petgraph::graph::{Graph, NodeIndex};
 use petgraph::visit::EdgeRef;
+use qdrant_client::Payload;
 use qdrant_client::Qdrant;
-use qdrant_client::qdrant::{
-    Condition, FieldCondition, Filter, Match, PointStruct, SearchPoints, Value, VectorsOutput,
-};
+use qdrant_client::qdrant::{Condition, Filter, PointStruct};
 use std::collections::HashMap;
+use tokio::sync::Mutex;
 use tokio::sync::OnceCell;
 
 const QDRANT_COLLECTION_NAME: &str = "kowalski_memory";
@@ -34,10 +34,7 @@ impl SemanticStore {
     ///
     /// * `qdrant_url` - The URL for the running Qdrant instance (e.g., "http://localhost:6333").
     pub async fn new(qdrant_url: &str) -> Result<Self, String> {
-        info!(
-            "Initializing semantic store with Qdrant URL: {}",
-            qdrant_url
-        );
+        info!("Initializing semantic memory with Qdrant at {}", qdrant_url);
         let vector_db = Qdrant::from_url(qdrant_url).build().map_err(|e| {
             error!("Failed to connect to Qdrant: {}", e);
             e.to_string()
@@ -75,11 +72,7 @@ impl MemoryProvider for SemanticStore {
 
         // Add to vector store if an embedding exists
         if let Some(embedding) = &memory.embedding {
-            let point = PointStruct::new(
-                memory.id.clone(),
-                embedding.clone(),
-                qdrant_client::Payload::default(),
-            );
+            let point = PointStruct::new(memory.id.clone(), embedding.clone(), Payload::default());
             self.vector_db
                 .upsert_points(qdrant_client::qdrant::UpsertPointsBuilder::new(
                     QDRANT_COLLECTION_NAME,
@@ -215,14 +208,14 @@ impl MemoryProvider for SemanticStore {
     }
 }
 
-static SEMANTIC_STORE: OnceCell<SemanticStore> = OnceCell::const_new();
+static SEMANTIC_STORE: OnceCell<Mutex<SemanticStore>> = OnceCell::const_new();
 
 /// Get or initialize the singleton SemanticStore asynchronously.
 pub async fn get_or_init_semantic_store(
     qdrant_url: &str,
-) -> Result<&'static SemanticStore, String> {
+) -> Result<&'static Mutex<SemanticStore>, String> {
     SEMANTIC_STORE
-        .get_or_try_init(|| SemanticStore::new(qdrant_url))
+        .get_or_try_init(|| async { Ok(Mutex::new(SemanticStore::new(qdrant_url).await?)) })
         .await
 }
 
