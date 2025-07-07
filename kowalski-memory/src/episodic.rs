@@ -49,6 +49,25 @@ impl EpisodicBuffer {
         })?;
         Ok(Self { db })
     }
+
+    pub async fn retrieve_all(&self) -> Result<Vec<MemoryUnit>, String> {
+        let mut memories = Vec::new();
+        let iter = self.db.iterator(IteratorMode::Start);
+        for item in iter {
+            match item {
+                Ok((_key, value)) => match serde_json::from_slice::<MemoryUnit>(&value) {
+                    Ok(unit) => memories.push(unit),
+                    Err(e) => error!("Failed to deserialize memory unit from DB: {}", e),
+                },
+                Err(e) => error!("Error during RocksDB iteration: {}", e),
+            }
+        }
+        Ok(memories)
+    }
+
+    pub async fn delete(&mut self, id: &str) -> Result<(), String> {
+        self.db.delete(id.as_bytes()).map_err(|e| e.to_string())
+    }
 }
 
 static EPISODIC_BUFFER: OnceCell<Mutex<EpisodicBuffer>> = OnceCell::const_new();
