@@ -9,8 +9,6 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use kowalski_memory::MemoryProvider;
 use kowalski_memory::MemoryUnit;
-use kowalski_memory::episodic::EpisodicBuffer;
-use kowalski_memory::semantic::SemanticStore;
 use kowalski_memory::working::WorkingMemory;
 use log::debug;
 use log::error;
@@ -24,7 +22,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::{self, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::Mutex;
 
 pub mod types;
 
@@ -295,12 +292,13 @@ pub struct BaseAgent {
     // Memory Tiers
     pub working_memory: WorkingMemory,
     pub episodic_memory: &'static tokio::sync::Mutex<kowalski_memory::episodic::EpisodicBuffer>,
-    pub semantic_memory: &'static kowalski_memory::semantic::SemanticStore,
+    pub semantic_memory: &'static tokio::sync::Mutex<kowalski_memory::semantic::SemanticStore>,
 }
 
 impl BaseAgent {
     pub async fn new(config: Config, name: &str, description: &str) -> Result<Self, KowalskiError> {
         let client = reqwest::ClientBuilder::new()
+            .http1_only()
             .pool_max_idle_per_host(0)
             .build()
             .map_err(KowalskiError::Request)?;
@@ -401,6 +399,8 @@ impl Agent for BaseAgent {
 
         let semantic_memories = self
             .semantic_memory
+            .lock()
+            .await
             .retrieve(content, self.config.semantic_memory_retrieval_limit)
             .await
             .unwrap_or_default();
