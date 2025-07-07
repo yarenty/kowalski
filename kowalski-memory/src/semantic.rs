@@ -12,6 +12,8 @@ use qdrant_client::qdrant::{Condition, Filter, PointStruct};
 use std::collections::HashMap;
 use tokio::sync::Mutex;
 use tokio::sync::OnceCell;
+use serde_json::json;
+use uuid::Uuid;
 
 const QDRANT_COLLECTION_NAME: &str = "kowalski_memory";
 
@@ -72,7 +74,16 @@ impl MemoryProvider for SemanticStore {
 
         // Add to vector store if an embedding exists
         if let Some(embedding) = &memory.embedding {
-            let point = PointStruct::new(memory.id.clone(), embedding.clone(), Payload::default());
+            let generated_uuid = Uuid::new_v4().to_string();
+            // Store the original custom ID in the payload
+            let mut payload_map = serde_json::Map::new();
+            payload_map.insert("custom_id".to_string(), json!(memory.id.clone()));
+            let payload: Payload = serde_json::Value::Object(payload_map).try_into().unwrap_or_else(|_| Payload::default());
+            let point = PointStruct::new(
+                generated_uuid,
+                embedding.clone(),
+                payload,
+            );
             self.vector_db
                 .upsert_points(qdrant_client::qdrant::UpsertPointsBuilder::new(
                     QDRANT_COLLECTION_NAME,
@@ -114,7 +125,7 @@ impl MemoryProvider for SemanticStore {
         warn!(
             "Using retrieve on SemanticStore performs a simple metadata search, not a semantic vector search."
         );
-        let filter = Filter::must([Condition::matches("content", query.to_string())]);
+        let filter = Filter::must([Condition::matches("custom_id", query.to_string())]);
         let points = self
             .vector_db
             .scroll(
@@ -134,8 +145,11 @@ impl MemoryProvider for SemanticStore {
             .map(|p| {
                 let vectors = p.vectors.unwrap();
                 println!("DEBUG: vectors struct = {:?}", vectors);
+                let custom_id = p.payload.get("custom_id")
+                    .and_then(|v| v.as_str())
+                    .map_or(String::new(), |v| v.to_string());
                 MemoryUnit {
-                    id: format!("{:?}", p.id.unwrap()),
+                    id: custom_id,
                     content: "Retrieved from Qdrant by metadata filter".to_string(),
                     timestamp: 0,
                     embedding: None, // temporarily set to None for debugging
@@ -172,8 +186,11 @@ impl MemoryProvider for SemanticStore {
             for point in search_result.result {
                 let vectors = point.vectors.unwrap();
                 println!("DEBUG: vectors struct = {:?}", vectors);
+                let custom_id = point.payload.get("custom_id")
+                    .and_then(|v| v.as_str())
+                    .map_or(String::new(), |v| v.to_string());
                 results.push(MemoryUnit {
-                    id: format!("{:?}", point.id.unwrap()),
+                    id: custom_id,
                     content: format!("Retrieved from vector search (score: {})", point.score),
                     timestamp: 0,
                     embedding: None, // temporarily set to None for debugging

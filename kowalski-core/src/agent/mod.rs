@@ -314,7 +314,7 @@ impl BaseAgent {
                     KowalskiError::Initialization(format!("Failed to init episodic buffer: {}", e))
                 })?;
         let semantic_memory =
-            kowalski_memory::semantic::get_or_init_semantic_store("http://localhost:6333")
+            kowalski_memory::semantic::get_or_init_semantic_store("http://localhost:6334")
                 .await
                 .map_err(|e| {
                     KowalskiError::Initialization(format!("Failed to init semantic store: {}", e))
