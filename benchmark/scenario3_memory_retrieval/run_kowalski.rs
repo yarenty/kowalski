@@ -3,6 +3,8 @@ use kowalski_core::agent::{Agent, BaseAgent};
 use kowalski_core::config::Config;
 use kowalski_memory::{MemoryProvider, MemoryUnit};
 use tokio::time::Instant;
+use reqwest;
+use serde_json;
 
 async fn process_stream_response(mut response: reqwest::Response) -> Result<String, String> {
     let mut buffer = String::new();
@@ -27,6 +29,27 @@ async fn process_stream_response(mut response: reqwest::Response) -> Result<Stri
     Ok(buffer)
 }
 
+async fn get_ollama_embedding(text: &str) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
+    let client = reqwest::Client::new();
+    let response = client
+        .post("http://localhost:11434/api/embeddings")
+        .json(&serde_json::json!({
+            "model": "llama3.2",
+            "prompt": text
+        }))
+        .send()
+        .await?;
+
+    let json: serde_json::Value = response.json().await?;
+    let embedding = json["embedding"]
+        .as_array()
+        .ok_or("No embedding in response")?
+        .iter()
+        .map(|v| v.as_f64().unwrap_or(0.0) as f32)
+        .collect();
+    Ok(embedding)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
@@ -37,20 +60,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Pre-populate semantic memory for testing
     // NOTE: This requires Qdrant to be running and the collection 'kowalski_memory' to exist.
-    // The embedding vector size (4 in this example) must match Qdrant's collection config.
+    // The embedding vector size must match Qdrant's collection config.
+    let content1 = "Kowalski is a high-performance, Rust-based framework for building AI agents.";
+    let content2 = "Rust offers memory safety, concurrency without GIL, and high performance.";
+    let embedding1 = get_ollama_embedding(content1).await?;
+    let embedding2 = get_ollama_embedding(content2).await?;
     let memory_unit1 = MemoryUnit {
         id: "proj_kowalski_desc".to_string(),
         timestamp: 1678886400, // Example timestamp
-        content: "Kowalski is a high-performance, Rust-based framework for building AI agents."
-            .to_string(),
-        embedding: Some(vec![0.1, 0.2, 0.3, 0.4]), // Dummy embedding
+        content: content1.to_string(),
+        embedding: Some(embedding1),
     };
     let memory_unit2 = MemoryUnit {
         id: "rust_benefits".to_string(),
         timestamp: 1678886500,
-        content: "Rust offers memory safety, concurrency without GIL, and high performance."
-            .to_string(),
-        embedding: Some(vec![0.5, 0.6, 0.7, 0.8]), // Dummy embedding
+        content: content2.to_string(),
+        embedding: Some(embedding2),
     };
     agent
         .semantic_memory
