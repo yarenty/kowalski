@@ -1,6 +1,6 @@
 [package]
 name = "kowalski-core"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 description = "Kowalski Core Module: A Rust-based agent for interacting with Ollama models"
 license = "MIT"
