@@ -1,4 +1,5 @@
 use clap::Parser;
+use env_logger;
 use futures::StreamExt;
 use kowalski_academic_agent::AcademicAgent;
 use kowalski_code_agent::CodeAgent;
@@ -7,13 +8,12 @@ use kowalski_core::config::Config;
 use kowalski_core::tools::ToolCall;
 use kowalski_data_agent::DataAgent;
 use kowalski_web_agent::WebAgent;
+use log::info;
 use serde_json::json;
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use log::info;
-use env_logger;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -152,7 +152,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .await
                         .unwrap_or_else(Config::default);
                     let conv_id = agent_ref.start_conversation(&config.ollama.model);
-                    println!("Chat session started with agent '{}'. Type /bye to end chat.", agent);
+                    println!(
+                        "Chat session started with agent '{}'. Type /bye to end chat.",
+                        agent
+                    );
                     println!("Model in use: {}", config.ollama.model);
                     // --- DEBUG: Print registered tools if available ---
                     let any_agent = agent_ref.as_any();
@@ -339,7 +342,10 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
                                 .await
                                 .unwrap_or_else(Config::default);
                             let conv_id = agent_ref.start_conversation(&config.ollama.model);
-                            info!("Chat session started with agent '{}'. Type /bye to end chat.", name);
+                            info!(
+                                "Chat session started with agent '{}'. Type /bye to end chat.",
+                                name
+                            );
                             info!("[DEBUG] Model in use: {}", config.ollama.model);
                             // --- DEBUG: Print registered tools if available ---
                             let any_agent = agent_ref.as_any();

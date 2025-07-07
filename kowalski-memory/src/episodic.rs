@@ -1,11 +1,11 @@
 // Tier 2: Episodic Buffer (The Journal)
 // A persistent, chronological log of recent conversations using RocksDB.
 
-use crate::{MemoryProvider, MemoryUnit, MemoryQuery};
+use crate::{MemoryProvider, MemoryQuery, MemoryUnit};
 use async_trait::async_trait;
-use log::{debug, info, error};
-use rocksdb::{DB, Options, IteratorMode};
-use tokio::sync::{OnceCell, Mutex};
+use log::{debug, error, info};
+use rocksdb::{DB, IteratorMode, Options};
+use tokio::sync::{Mutex, OnceCell};
 
 /// A persistent, chronological memory store using RocksDB.
 ///
@@ -51,7 +51,9 @@ impl EpisodicBuffer {
 static EPISODIC_BUFFER: OnceCell<Mutex<EpisodicBuffer>> = OnceCell::const_new();
 
 /// Get or initialize the singleton EpisodicBuffer asynchronously, wrapped in a Mutex for safe mutable access.
-pub async fn get_or_init_episodic_buffer(path: &str) -> Result<&'static Mutex<EpisodicBuffer>, String> {
+pub async fn get_or_init_episodic_buffer(
+    path: &str,
+) -> Result<&'static Mutex<EpisodicBuffer>, String> {
     EPISODIC_BUFFER
         .get_or_try_init(|| async move { Ok(Mutex::new(EpisodicBuffer::new(path)?)) })
         .await
@@ -82,7 +84,11 @@ impl MemoryProvider for EpisodicBuffer {
     /// This performs a full scan of the database, which can be slow on large datasets.
     /// It is intended for retrieving recent, related conversational context, not for
     /// large-scale semantic search.
-    async fn retrieve(&self, query: &str, retrieval_limit: usize) -> Result<Vec<MemoryUnit>, String> {
+    async fn retrieve(
+        &self,
+        query: &str,
+        retrieval_limit: usize,
+    ) -> Result<Vec<MemoryUnit>, String> {
         info!("[EpisodicBuffer][RETRIEVE] Query: '{}'", query);
         let iter = self.db.iterator(IteratorMode::Start);
         let lower_query = query.to_lowercase().trim().to_string();
@@ -90,18 +96,16 @@ impl MemoryProvider for EpisodicBuffer {
         let mut results = Vec::new();
         for item in iter {
             match item {
-                Ok((_key, value)) => {
-                    match serde_json::from_slice::<MemoryUnit>(&value) {
-                        Ok(unit) => {
-                            info!("[EpisodicBuffer][RETRIEVE] Stored: '{}'", unit.content);
-                            let content = unit.content.to_lowercase();
-                            if query_words.iter().any(|w| content.contains(w)) {
-                                results.push(unit);
-                            }
+                Ok((_key, value)) => match serde_json::from_slice::<MemoryUnit>(&value) {
+                    Ok(unit) => {
+                        info!("[EpisodicBuffer][RETRIEVE] Stored: '{}'", unit.content);
+                        let content = unit.content.to_lowercase();
+                        if query_words.iter().any(|w| content.contains(w)) {
+                            results.push(unit);
                         }
-                        Err(e) => error!("Failed to deserialize memory unit from DB: {}", e),
                     }
-                }
+                    Err(e) => error!("Failed to deserialize memory unit from DB: {}", e),
+                },
                 Err(e) => error!("Error during RocksDB iteration: {}", e),
             }
         }
@@ -131,7 +135,8 @@ mod tests {
     fn create_test_unit(id: &str, content: &str) -> MemoryUnit {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap().as_secs();
+            .unwrap()
+            .as_secs();
         MemoryUnit {
             id: id.to_string(),
             timestamp,
@@ -159,7 +164,7 @@ mod tests {
     async fn test_persistence() {
         let dir = tempdir().unwrap();
         let path = dir.path().to_str().unwrap();
-        
+
         // Create a DB and add an item
         {
             let mut memory = EpisodicBuffer::new(path).unwrap();
@@ -182,9 +187,18 @@ mod tests {
         let path = dir.path().to_str().unwrap();
         let mut memory = EpisodicBuffer::new(path).unwrap();
 
-        memory.add(create_test_unit("id1", "test one")).await.unwrap();
-        memory.add(create_test_unit("id2", "another test")).await.unwrap();
-        memory.add(create_test_unit("id3", "something else")).await.unwrap();
+        memory
+            .add(create_test_unit("id1", "test one"))
+            .await
+            .unwrap();
+        memory
+            .add(create_test_unit("id2", "another test"))
+            .await
+            .unwrap();
+        memory
+            .add(create_test_unit("id3", "something else"))
+            .await
+            .unwrap();
 
         let results = memory.retrieve("test", 3).await.unwrap();
         assert_eq!(results.len(), 2);
