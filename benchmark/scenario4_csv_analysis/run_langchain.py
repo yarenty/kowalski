@@ -1,10 +1,10 @@
 import time
 import pandas as pd
-from langchain_community.llms import Ollama
+from langchain_ollama import OllamaLLM
 from langchain_experimental.agents import create_pandas_dataframe_agent
 
 def main():
-    llm = Ollama(model="llama3.2")
+    llm = OllamaLLM(model="llama3.2")
 
     csv_data = """name,age,city,salary,department
 John Doe,30,New York,75000,Engineering
@@ -22,10 +22,17 @@ Henry Taylor,34,Dallas,78000,Engineering"""
     df = pd.read_csv(pd.io.common.StringIO(csv_data))
 
     # Create the pandas dataframe agent
-    agent = create_pandas_dataframe_agent(llm, df, verbose=False)
+    agent = create_pandas_dataframe_agent(
+        llm, df, verbose=False, allow_dangerous_code=True, handle_parsing_errors=True
+    )
 
     start_time = time.time()
-    response = agent.invoke({"input": "Analyze this data and provide key insights about salaries and departments."})
+    # response = agent.invoke({"input": "Analyze this data and provide key insights about salaries and departments."})
+    response = agent.invoke(
+        {"input": "Analyze this data and provide key insights about salaries and departments."},
+        max_iterations=20,  # Increase as needed
+        max_execution_time=300  # Increase as needed (in seconds)
+    )
     end_time = time.time()
     elapsed = end_time - start_time
 
