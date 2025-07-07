@@ -1,0 +1,13 @@
+Line 1: This is the first line of the example file.
+Line 2: This file is used for benchmarking the fs_tool.
+Line 3: It contains more than 10 lines to ensure the tool's limit works.
+Line 4: Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+Line 5: Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+Line 6: Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.
+Line 7: Nisi ut aliquip ex ea commodo consequat.
+Line 8: Duis aute irure dolor in reprehenderit in voluptate velit esse cillum.
+Line 9: Dolore eu fugiat nulla pariatur.
+Line 10: Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia.
+Line 11: Deserunt mollit anim id est laborum.
+Line 12: This is the twelfth line.
+Line 13: And the last line for this example file.

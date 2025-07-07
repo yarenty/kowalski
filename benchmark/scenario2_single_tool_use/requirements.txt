@@ -1,0 +1,4 @@
+langchain
+langchain-community
+langchain-core
+langchain-ollama

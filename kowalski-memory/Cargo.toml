@@ -1,6 +1,6 @@
 [package]
 name = "kowalski-memory"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 description = "Kowalski Memory Module: A Rust-based agent for interacting with Ollama models"
 license = "MIT"
@@ -34,10 +34,12 @@ serde_json = { workspace = true }
 log = { workspace = true }
 async-trait = { workspace = true }
 uuid = { workspace = true}
+reqwest = { workspace = true }
+
 
 # Crate-specific dependencies
 rocksdb = "0.23"
-qdrant-client = "1.8.0"
+qdrant-client = "1.14.0"
 petgraph = "0.8"
 rand = "0.9.1"
 once_cell = "1.18"

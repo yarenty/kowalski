@@ -1,9 +1,9 @@
-pub mod working;
 pub mod episodic;
 pub mod semantic;
+pub mod working;
 
-use serde::{Deserialize, Serialize};
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 
 /// Represents a single unit of memory, which could be a message, a fact, or a summary.
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -22,7 +22,11 @@ pub trait MemoryProvider {
     async fn add(&mut self, memory: MemoryUnit) -> Result<(), String>;
 
     /// Retrieves a set of memories based on a query, limited to retrieval_limit.
-    async fn retrieve(&self, query: &str, retrieval_limit: usize) -> Result<Vec<MemoryUnit>, String>;
+    async fn retrieve(
+        &self,
+        query: &str,
+        retrieval_limit: usize,
+    ) -> Result<Vec<MemoryUnit>, String>;
 
     /// A more advanced retrieval method using a structured query.
     async fn search(&self, query: MemoryQuery) -> Result<Vec<MemoryUnit>, String>;

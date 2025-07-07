@@ -1,0 +1,4 @@
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/site-packages/langchain_experimental/agents/agent_toolkits/pandas/base.py:283: UserWarning: Received additional kwargs {'handle_parsing_errors': True} which are no longer supported.
+  warnings.warn(
+LangChain (CSV Analysis) - Response: Agent stopped due to iteration limit or time limit.
+LangChain (CSV Analysis) - Time: 123.4998 seconds
