@@ -2,3 +2,4 @@ langchain
 langchain-community
 langchain-core
 chromadb
+langchain-ollama

@@ -1,5 +1,5 @@
 import time
-from langchain_community.llms import Ollama
+from langchain_ollama import OllamaLLM
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain.chains import RetrievalQA
@@ -17,7 +17,7 @@ def main():
     ]
     vectorstore = Chroma.from_documents(docs, embeddings)
 
-    llm = Ollama(model="llama3.2")
+    llm = OllamaLLM(model="llama3.2")
     qa_chain = RetrievalQA.from_chain_type(llm=llm, retriever=vectorstore.as_retriever())
 
     start_time = time.time()
