@@ -34,6 +34,8 @@ serde_json = { workspace = true }
 log = { workspace = true }
 async-trait = { workspace = true }
 uuid = { workspace = true}
+reqwest = { workspace = true }
+
 
 # Crate-specific dependencies
 rocksdb = "0.23"
