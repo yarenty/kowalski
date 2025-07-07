@@ -1,0 +1,12 @@
+/opt/ml/kowalski/benchmark/scenario3_memory_retrieval/run_langchain.py:10: LangChainDeprecationWarning: The class `OllamaEmbeddings` was deprecated in LangChain 0.3.1 and will be removed in 1.0.0. An updated version of the class exists in the :class:`~langchain-ollama package and should be used instead. To use it run `pip install -U :class:`~langchain-ollama` and import as `from :class:`~langchain_ollama import OllamaEmbeddings``.
+  embeddings = OllamaEmbeddings(model="llama3.2")
+LangChain (Memory Retrieval) - Response: Kowalski is a high-performance, Rust-based framework for building AI agents. It leverages the strengths of the Rust programming language to provide several key benefits for building and optimizing AI agents.
+
+One of the primary advantages of using Kowalski is its emphasis on memory safety. As a Rust-based framework, it inherits Rust's reputation for providing robust memory safety guarantees, which helps prevent common errors such as buffer overflows or data corruption that can be devastating in high-performance applications like AI agents. This ensures that the code is reliable and less prone to crashes.
+
+Another significant benefit of Kowalski is its support for concurrency without the need for a Global Interpreter Lock (GIL). While many concurrent programming frameworks rely on the GIL to manage access to shared resources, Rust's ownership system provides a built-in mechanism for ensuring thread safety without needing an explicit lock. This allows AI agents developed with Kowalski to take full advantage of multi-core processors and achieve higher performance.
+
+Lastly, Kowalski's use of Rust also provides high-performance capabilities. The language itself is designed to be efficient in terms of memory usage and execution speed, making it well-suited for the demanding computations required by AI agents. By building on top of this foundation, Kowalski can deliver optimized performance for tasks like decision-making, perception, and action selection.
+
+Overall, the combination of Rust's memory safety features, concurrency capabilities, and high-performance potential makes Kowalski an attractive choice for developers looking to build efficient and reliable AI agents.
+LangChain (Memory Retrieval) - Time: 32.2748 seconds
