@@ -59,6 +59,11 @@ enum Commands {
     List,
     /// List active agents
     Agents,
+    /// Consolidate memory - move from episodic history into semantic memory
+    Consolidate {
+        #[clap(long)]
+        delete: bool,
+    },
 }
 
 struct AgentManager {
@@ -130,6 +135,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     let manager = AgentManager::new();
 
+    use kowalski_memory::consolidation::Consolidator;
+
     match cli.command {
         Some(Commands::Create {
             agent_type,
@@ -197,6 +204,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::List) => list_agents()?,
         Some(Commands::Agents) => manager.list_agents().await?,
+        Some(Commands::Consolidate { delete }) => {
+            let mut consolidator = Consolidator::new("./db/episodic_buffer", "http://localhost:6334").await?;
+            consolidator.run(delete).await?;
+        }
         None => {
             // Enter REPL mode if no subcommand is provided
             println!("Kowalski CLI Interactive Mode. Type 'help' for commands.");

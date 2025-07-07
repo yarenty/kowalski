@@ -1,6 +1,7 @@
 pub mod episodic;
 pub mod semantic;
 pub mod working;
+pub mod consolidation;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

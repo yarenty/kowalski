@@ -30,6 +30,7 @@ kowalski-academic-agent = { path = "../kowalski-academic-agent", version = "0.5.
 kowalski-data-agent = { path = "../kowalski-data-agent", version = "0.5.2" }
 kowalski-code-agent = { path = "../kowalski-code-agent", version = "0.5.2" }
 kowalski-web-agent = { path = "../kowalski-web-agent", version = "0.5.2" }
+kowalski-memory = { path = "../kowalski-memory", version = "0.5.2" }
 chrono = "0.4"
 clap = { version = "4.5", features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
