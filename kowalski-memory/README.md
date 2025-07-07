@@ -83,6 +83,17 @@ curl -X PUT http://localhost:6333/collections/kowalski_memory \
             "distance": "Cosine"
         }
     }'
+
+# For real
+ curl -X PUT "http://localhost:6333/collections/kowalski_memory"  \ 
+         -H "Content-Type: application/json" \
+         -d '{
+       "vectors": {
+         "size": 3072,
+         "distance": "Cosine"
+       }
+     }'
+{"result":true,"status":"ok","time":0.053068822}⏎    
 ```
 
 **To check if it worked:** You should see `{"result":true,"status":"ok"}`. You can also visit the Qdrant Web UI in your browser at `http://localhost:6333/dashboard` to see the new collection.
