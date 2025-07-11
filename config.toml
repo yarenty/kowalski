@@ -1,13 +1,20 @@
 [ollama]
-base_url = "http://127.0.0.1:11434"
-default_model = "mistral-small"
+host = "localhost"
+port = 11434
+model = "llama3.2"
 
 [chat]
 temperature = 0.7
 max_tokens = 512
 stream = true
 
-
 [search]
 provider = "bing"
 api_key = ""  # DuckDuckGo doesn't require an API key
+
+[qdrant]
+http_url = "http://localhost:6333"
+grpc_url = "http://localhost:6334"
+
+[memory]
+episodic_path = "db/episodic_buffer"

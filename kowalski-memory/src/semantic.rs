@@ -27,6 +27,7 @@ pub struct SemanticStore {
     graph_db: Graph<String, String>,
     // A helper map to quickly find graph nodes by their string identifier
     graph_nodes: HashMap<String, NodeIndex>,
+    qdrant_url: String,
 }
 
 impl SemanticStore {
@@ -42,13 +43,11 @@ impl SemanticStore {
             e.to_string()
         })?;
 
-        // In a real application, you might want to ensure the collection exists.
-        // For simplicity, we assume it's created beforehand.
-
         Ok(Self {
             vector_db,
             graph_db: Graph::new(),
             graph_nodes: HashMap::new(),
+            qdrant_url: qdrant_url.to_string(),
         })
     }
 
@@ -227,12 +226,12 @@ impl MemoryProvider for SemanticStore {
 
 static SEMANTIC_STORE: OnceCell<Mutex<SemanticStore>> = OnceCell::const_new();
 
-/// Get or initialize the singleton SemanticStore asynchronously.
+/// Get or initialize the singleton SemanticStore asynchronously, wrapped in a Mutex for safe mutable access.
 pub async fn get_or_init_semantic_store(
     qdrant_url: &str,
 ) -> Result<&'static Mutex<SemanticStore>, String> {
     SEMANTIC_STORE
-        .get_or_try_init(|| async { Ok(Mutex::new(SemanticStore::new(qdrant_url).await?)) })
+        .get_or_try_init(|| async move { Ok(Mutex::new(SemanticStore::new(qdrant_url).await?)) })
         .await
 }
 
