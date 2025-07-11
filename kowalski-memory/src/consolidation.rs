@@ -6,6 +6,12 @@ use log::{info, debug};
 use reqwest;
 use serde_json;
 
+/// Trait for memory consolidation strategies ("Weavers")
+#[async_trait::async_trait]
+pub trait MemoryWeaver {
+    async fn run(&mut self, delete_original: bool) -> Result<(), Box<dyn Error>>;
+}
+
 pub struct Consolidator {
     episodic_memory: EpisodicBuffer,
     semantic_memory: SemanticStore,
@@ -43,7 +49,44 @@ impl Consolidator {
         })
     }
 
-    pub async fn run(&mut self, delete_original: bool) -> Result<(), Box<dyn Error>> {
+    async fn summarize_with_llm(&self, content: &str) -> Result<String, Box<dyn Error>> {
+        let client = reqwest::Client::new();
+        let response = client
+            .post("http://localhost:11434/api/generate")
+            .json(&serde_json::json!({
+                "model": "llama3.2",
+                "prompt": format!("Summarize the following text:\n\n{}", content),
+                "stream": false
+            }))
+            .send()
+            .await?;
+
+        let json: serde_json::Value = response.json().await?;
+        let summary = json["response"].as_str().unwrap_or("").to_string();
+        Ok(summary)
+    }
+
+    async fn create_graph_with_llm(&self, content: &str) -> Result<String, Box<dyn Error>> {
+        let client = reqwest::Client::new();
+        let response = client
+            .post("http://localhost:11434/api/generate")
+            .json(&serde_json::json!({
+                "model": "llama3.2",
+                "prompt": format!("Create a graph representation of the following text in the format {{ \"subject\": \"...\", \"predicate\": \"...\", \"object\": \"...\" }}:\n\n{}", content),
+                "stream": false
+            }))
+            .send()
+            .await?;
+
+        let json: serde_json::Value = response.json().await?;
+        let graph = json["response"].as_str().unwrap_or("").to_string();
+        Ok(graph)
+    }
+}
+
+#[async_trait::async_trait]
+impl MemoryWeaver for Consolidator {
+    async fn run(&mut self, delete_original: bool) -> Result<(), Box<dyn Error>> {
         info!("Starting memory consolidation process...");
 
         let memories_to_process = self.episodic_memory.retrieve_all().await?;
@@ -51,7 +94,7 @@ impl Consolidator {
         for memory in memories_to_process {
             info!("Processing memory: {}", memory.id);
 
-            // Mock LLM call to generate summary and graph
+            // LLM call to generate summary and graph
             let summary = self.summarize_with_llm(&memory.content).await?;
             let graph_representation = self.create_graph_with_llm(&memory.content).await?;
 
@@ -91,40 +134,6 @@ impl Consolidator {
 
         info!("Memory consolidation process finished.");
         Ok(())
-    }
-
-    async fn summarize_with_llm(&self, content: &str) -> Result<String, Box<dyn Error>> {
-        let client = reqwest::Client::new();
-        let response = client
-            .post("http://localhost:11434/api/generate")
-            .json(&serde_json::json!({
-                "model": "llama3.2",
-                "prompt": format!("Summarize the following text:\n\n{}", content),
-                "stream": false
-            }))
-            .send()
-            .await?;
-
-        let json: serde_json::Value = response.json().await?;
-        let summary = json["response"].as_str().unwrap_or("").to_string();
-        Ok(summary)
-    }
-
-    async fn create_graph_with_llm(&self, content: &str) -> Result<String, Box<dyn Error>> {
-        let client = reqwest::Client::new();
-        let response = client
-            .post("http://localhost:11434/api/generate")
-            .json(&serde_json::json!({
-                "model": "llama3.2",
-                "prompt": format!("Create a graph representation of the following text in the format {{ \"subject\": \"...\", \"predicate\": \"...\", \"object\": \"...\" }}:\n\n{}", content),
-                "stream": false
-            }))
-            .send()
-            .await?;
-
-        let json: serde_json::Value = response.json().await?;
-        let graph = json["response"].as_str().unwrap_or("").to_string();
-        Ok(graph)
     }
 }
 
