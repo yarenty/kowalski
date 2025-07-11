@@ -1,6 +1,6 @@
-use kowalski_core::agent::Agent;
 use kowalski_core::config::Config;
 use kowalski_web_agent::WebAgent;
+use kowalski_core::agent::Agent;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
