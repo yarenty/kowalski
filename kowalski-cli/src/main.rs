@@ -205,9 +205,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::List) => list_agents()?,
         Some(Commands::Agents) => manager.list_agents().await?,
         Some(Commands::Consolidate { delete }) => {
-            let episodic_path = "kowalski-memory/episodic_db";
-            let qdrant_url = "http://localhost:6333";
-            let mut weaver = Consolidator::new(episodic_path, qdrant_url).await?;
+            let config = Config::default();
+            let episodic_path = &config.memory.episodic_path;
+            let qdrant_url = &config.qdrant.http_url;
+            let ollama_host = &config.ollama.host;
+            let ollama_port = config.ollama.port;
+            let ollama_model = &config.ollama.model;
+            let mut weaver = Consolidator::new(episodic_path, qdrant_url, ollama_host, ollama_port, ollama_model).await?;
             weaver.run(delete).await?;
             println!("Memory consolidation complete.");
         }

@@ -8,6 +8,10 @@ pub struct Config {
     pub ollama: OllamaConfig,
     /// Chat configuration
     pub chat: ChatConfig,
+    /// Qdrant configuration
+    pub qdrant: QdrantConfig,
+    /// Memory configuration
+    pub memory: MemoryConfig,
     /// Maximum number of memories to retrieve from working memory
     pub working_memory_retrieval_limit: usize,
     /// Maximum number of memories to retrieve from episodic memory
@@ -72,6 +76,40 @@ impl Default for ChatConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QdrantConfig {
+    pub http_url: String,
+    pub grpc_url: String,
+    #[serde(flatten)]
+    pub additional: HashMap<String, serde_json::Value>,
+}
+
+impl Default for QdrantConfig {
+    fn default() -> Self {
+        Self {
+            http_url: "http://localhost:6333".to_string(),
+            grpc_url: "http://localhost:6334".to_string(),
+            additional: HashMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryConfig {
+    pub episodic_path: String,
+    #[serde(flatten)]
+    pub additional: HashMap<String, serde_json::Value>,
+}
+
+impl Default for MemoryConfig {
+    fn default() -> Self {
+        Self {
+            episodic_path: "kowalski-memory/episodic_db".to_string(),
+            additional: HashMap::new(),
+        }
+    }
+}
+
 /// Trait for extending configuration with additional settings
 pub trait ConfigExt {
     /// Get a reference to the core configuration
@@ -101,6 +139,8 @@ impl Default for Config {
         Self {
             ollama: OllamaConfig::default(),
             chat: ChatConfig::default(),
+            qdrant: QdrantConfig::default(),
+            memory: MemoryConfig::default(),
             working_memory_retrieval_limit: 3,
             episodic_memory_retrieval_limit: 3,
             semantic_memory_retrieval_limit: 3,

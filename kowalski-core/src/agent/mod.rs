@@ -308,13 +308,18 @@ impl BaseAgent {
         // Initialize memory tiers
         let working_memory = WorkingMemory::new(100); // Capacity of 100 units
         let episodic_memory =
-            kowalski_memory::episodic::get_or_init_episodic_buffer("./db/episodic_buffer")
-                .await
-                .map_err(|e| {
-                    KowalskiError::Initialization(format!("Failed to init episodic buffer: {}", e))
-                })?;
+            kowalski_memory::episodic::get_or_init_episodic_buffer(
+                &config.memory.episodic_path,
+                &config.ollama.host,
+                config.ollama.port,
+                &config.ollama.model,
+            )
+            .await
+            .map_err(|e| {
+                KowalskiError::Initialization(format!("Failed to init episodic buffer: {}", e))
+            })?;
         let semantic_memory =
-            kowalski_memory::semantic::get_or_init_semantic_store("http://localhost:6334")
+            kowalski_memory::semantic::get_or_init_semantic_store(&config.qdrant.http_url)
                 .await
                 .map_err(|e| {
                     KowalskiError::Initialization(format!("Failed to init semantic store: {}", e))
