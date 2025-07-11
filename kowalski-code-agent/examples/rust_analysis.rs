@@ -107,25 +107,16 @@ fn main() {
     println!("\n📝 Rust Code to Analyze:");
     println!("{}", rust_code);
 
-    // Analyze the Rust code
-    let analysis_result = code_agent.analyze_rust(rust_code).await?;
-
-    println!("\n📊 Rust Analysis Results:");
-    println!("Language: {}", analysis_result.language);
-    println!(
-        "Metrics: {}",
-        serde_json::to_string_pretty(&analysis_result.metrics)?
-    );
-    println!("Suggestions: {:?}", analysis_result.suggestions);
-    println!("Rust Issues: {:?}", analysis_result.issues);
+    // Analyze the Rust code using tool-calling
+    let analysis_input = format!(r#"{{"name": "rust_analysis", "parameters": {{"content": {}}}}}"#, serde_json::to_string(rust_code)?);
+    let analysis_result = code_agent.chat_with_tools(&conversation_id, &analysis_input).await?;
+    println!("\n📊 Rust Analysis Results:\n{}", analysis_result);
 
     // Ask the agent to analyze the code
     let analysis_prompt = format!(
-        "Please analyze this Rust code and provide insights:\n\n{}\n\nAnalysis results:\nMetrics: {}\nSuggestions: {:?}\nRust Issues: {:?}",
+        "Please analyze this Rust code and provide insights:\n\n{}\n\nAnalysis results:\n{}\n",
         rust_code,
-        serde_json::to_string_pretty(&analysis_result.metrics)?,
-        analysis_result.suggestions,
-        analysis_result.issues
+        analysis_result
     );
 
     let mut response = code_agent
