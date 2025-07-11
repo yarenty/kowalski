@@ -101,7 +101,7 @@ When the agent needs to access its long-term memory to inform a response, it use
 
 `kowalski-memory` crate.
 
-*   define `Memory` and `Recall` traits.
+*   `Memory` and `Recall` traits.
 *   use Rust `rocksdb` for the embedded Tier 2 store.
 *   use `qdrant-client` for interacting with the Vector DB.
 *   The Memory Weaver - an asynchronous `tokio` background task, ensuring it doesn't block the main agent loop.

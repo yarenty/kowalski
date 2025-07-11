@@ -15,46 +15,51 @@ pub trait MemoryWeaver {
 pub struct Consolidator {
     episodic_memory: EpisodicBuffer,
     semantic_memory: SemanticStore,
-}
-
-/// Utility: Get Ollama embedding for a string
-async fn get_ollama_embedding(text: &str) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
-    let client = reqwest::Client::new();
-    let response = client
-        .post("http://localhost:11434/api/embeddings")
-        .json(&serde_json::json!({
-            "model": "llama3.2",
-            "prompt": text
-        }))
-        .send()
-        .await?;
-
-    let json: serde_json::Value = response.json().await?;
-    let embedding = json["embedding"]
-        .as_array()
-        .ok_or("No embedding in response")?
-        .iter()
-        .map(|v| v.as_f64().unwrap_or(0.0) as f32)
-        .collect();
-    Ok(embedding)
+    ollama_host: String,
+    ollama_port: u16,
+    ollama_model: String,
 }
 
 impl Consolidator {
-    pub async fn new(episodic_path: &str, qdrant_url: &str) -> Result<Self, Box<dyn Error>> {
-        let episodic_memory = EpisodicBuffer::new(episodic_path)?;
+    pub async fn new(episodic_path: &str, qdrant_url: &str, ollama_host: &str, ollama_port: u16, ollama_model: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let episodic_memory = EpisodicBuffer::new(episodic_path, ollama_host, ollama_port, ollama_model)?;
         let semantic_memory = SemanticStore::new(qdrant_url).await?;
         Ok(Self {
             episodic_memory,
             semantic_memory,
+            ollama_host: ollama_host.to_string(),
+            ollama_port,
+            ollama_model: ollama_model.to_string(),
         })
     }
 
-    async fn summarize_with_llm(&self, content: &str) -> Result<String, Box<dyn Error>> {
+    async fn get_ollama_embedding(&self, text: &str) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
         let client = reqwest::Client::new();
         let response = client
-            .post("http://localhost:11434/api/generate")
+            .post(format!("http://{}:{}/api/embeddings", self.ollama_host, self.ollama_port))
             .json(&serde_json::json!({
-                "model": "llama3.2",
+                "model": self.ollama_model,
+                "prompt": text
+            }))
+            .send()
+            .await?;
+
+        let json: serde_json::Value = response.json().await?;
+        let embedding = json["embedding"]
+            .as_array()
+            .ok_or("No embedding in response")?
+            .iter()
+            .map(|v| v.as_f64().unwrap_or(0.0) as f32)
+            .collect();
+        Ok(embedding)
+    }
+
+    async fn summarize_with_llm(&self, content: &str) -> Result<String, Box<dyn std::error::Error>> {
+        let client = reqwest::Client::new();
+        let response = client
+            .post(format!("http://{}:{}/api/generate", self.ollama_host, self.ollama_port))
+            .json(&serde_json::json!({
+                "model": self.ollama_model,
                 "prompt": format!("Summarize the following text:\n\n{}", content),
                 "stream": false
             }))
@@ -66,12 +71,12 @@ impl Consolidator {
         Ok(summary)
     }
 
-    async fn create_graph_with_llm(&self, content: &str) -> Result<String, Box<dyn Error>> {
+    async fn create_graph_with_llm(&self, content: &str) -> Result<String, Box<dyn std::error::Error>> {
         let client = reqwest::Client::new();
         let response = client
-            .post("http://localhost:11434/api/generate")
+            .post(format!("http://{}:{}/api/generate", self.ollama_host, self.ollama_port))
             .json(&serde_json::json!({
-                "model": "llama3.2",
+                "model": self.ollama_model,
                 "prompt": format!("Create a graph representation of the following text in the format {{ \"subject\": \"...\", \"predicate\": \"...\", \"object\": \"...\" }}:\n\n{}", content),
                 "stream": false
             }))
@@ -86,7 +91,7 @@ impl Consolidator {
 
 #[async_trait::async_trait]
 impl MemoryWeaver for Consolidator {
-    async fn run(&mut self, delete_original: bool) -> Result<(), Box<dyn Error>> {
+    async fn run(&mut self, delete_original: bool) -> Result<(), Box<dyn std::error::Error>> {
         info!("Starting memory consolidation process...");
 
         let memories_to_process = self.episodic_memory.retrieve_all().await?;
@@ -101,8 +106,8 @@ impl MemoryWeaver for Consolidator {
             debug!("Generated Summary: {}", summary);
             debug!("Generated Graph: {}", graph_representation);
 
-            let summary_embedding = get_ollama_embedding(&summary).await.ok();
-            let graph_embedding = get_ollama_embedding(&graph_representation).await.ok();
+            let summary_embedding = self.get_ollama_embedding(&summary).await.ok();
+            let graph_embedding = self.get_ollama_embedding(&graph_representation).await.ok();
 
             // Create new memory units for the summary and graph
             let summary_memory = MemoryUnit {
