@@ -15,6 +15,8 @@ use std::io::{self, Write};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use kowalski_memory::consolidation::{Consolidator, MemoryWeaver};
+
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Cli {
@@ -135,8 +137,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     let manager = AgentManager::new();
 
-    use kowalski_memory::consolidation::Consolidator;
-
     match cli.command {
         Some(Commands::Create {
             agent_type,
@@ -205,8 +205,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::List) => list_agents()?,
         Some(Commands::Agents) => manager.list_agents().await?,
         Some(Commands::Consolidate { delete }) => {
-            let mut consolidator = Consolidator::new("./db/episodic_buffer", "http://localhost:6334").await?;
-            consolidator.run(delete).await?;
+            let episodic_path = "kowalski-memory/episodic_db";
+            let qdrant_url = "http://localhost:6333";
+            let mut weaver = Consolidator::new(episodic_path, qdrant_url).await?;
+            weaver.run(delete).await?;
+            println!("Memory consolidation complete.");
         }
         None => {
             // Enter REPL mode if no subcommand is provided
