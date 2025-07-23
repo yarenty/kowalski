@@ -269,8 +269,8 @@ async fn chat_with_tools(
     input: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Use the agent's chat_with_tools method directly
-    let response = agent.chat_with_tools(conv_id, input).await?;
-    print!("{}", response);
+    let _response = agent.chat_with_tools(conv_id, input).await?;
+    // print!("{}", response); //this was already printed in chat_with_tools
     io::stdout().flush()?;
     Ok(())
 }
@@ -327,7 +327,7 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
         let mut parts = input.split_whitespace();
         let cmd = parts.next().unwrap_or("");
         match cmd {
-            "exit" | "quit" => {
+            "exit" | "quit"| "bye" | "/bye" => {
                 println!("Exiting Kowalski CLI.");
                 break;
             }
@@ -337,7 +337,7 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
                 println!("  chat <name>: Chat with an agent");
                 println!("  list: List available agent types");
                 println!("  agents: List active agents");
-                println!("  exit | quit: Exit the CLI");
+                println!("  bye | /bye : Exit the CLI");
             }
             "create" => {
                 let agent_type = parts.next();
