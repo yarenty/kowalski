@@ -45,4 +45,11 @@ rocksdb = "0.23"
 qdrant-client = "1.14.0"
 petgraph = "0.8"
 rand = "0.9.1"
-once_cell = "1.18" 
+once_cell = "1.18"
+
+# Dependencies from kowalski-agent-template
+bytes = "1.5"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace"] }
+regex = "1.10"
+markdown = "1.0"

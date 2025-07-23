@@ -27,8 +27,9 @@
 //! ```
 //!
 //! ```rust,no_run
-//! use kowalski::core::agent::{Agent, BaseAgent};
-//! use kowalski::agent_template::builder::AgentBuilder;
+/
+/! use kowalski::core::agent::{Agent, BaseAgent};
+//! use kowalski::core::template::builder::AgentBuilder;
 //! use kowalski::core::config::Config;
 //! use kowalski::core::error::KowalskiError;
 //!
@@ -43,7 +44,7 @@
 //! ```
 
 // Re-export core components
-pub use kowalski_agent_template as agent_template;
+
 pub use kowalski_core as core;
 pub use kowalski_tools as tools;
 
@@ -76,11 +77,12 @@ pub use crate::core::{
     memory::semantic::SemanticStore,
     memory::{MemoryProvider, MemoryUnit, working::WorkingMemory},
     role::Role,
+    template::TemplateAgent,
+    template::builder::AgentBuilder,
+    template::default::DefaultTemplate,
     tool_chain::ToolChain,
     tools::{ParameterType, Tool, ToolCall, ToolInput, ToolOutput, ToolParameter},
 };
-
-pub use crate::agent_template::builder::AgentBuilder;
 
 // Re-export error types
 pub use crate::core::error::KowalskiError;

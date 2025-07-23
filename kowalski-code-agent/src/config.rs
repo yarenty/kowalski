@@ -1,5 +1,5 @@
-use kowalski_agent_template::config::TemplateAgentConfig;
 use kowalski_core::config::Config;
+use kowalski_core::template::config::TemplateAgentConfig;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

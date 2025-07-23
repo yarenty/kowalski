@@ -3,7 +3,6 @@ resolver = "3"
 members = [
     "kowalski",
     "kowalski-core",
-    "kowalski-agent-template",
     "kowalski-tools",
     "kowalski-academic-agent",
     "kowalski-web-agent",

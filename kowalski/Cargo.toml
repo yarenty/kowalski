@@ -24,7 +24,7 @@ keywords = [
 [dependencies]
 # Core components are non-optional
 kowalski-core = { path = "../kowalski-core", version = "0.6.0" }
-kowalski-agent-template = { path = "../kowalski-agent-template", version = "0.6.0" }
+
 kowalski-tools = { path = "../kowalski-tools", version = "0.6.0" }
 
 # Optional agents
