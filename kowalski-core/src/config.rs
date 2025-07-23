@@ -104,7 +104,7 @@ pub struct MemoryConfig {
 impl Default for MemoryConfig {
     fn default() -> Self {
         Self {
-            episodic_path: "kowalski-memory/episodic_db".to_string(),
+            episodic_path: "../target/episodic_db".to_string(), //just for testing!
             additional: HashMap::new(),
         }
     }
