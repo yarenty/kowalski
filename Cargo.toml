@@ -10,13 +10,12 @@ members = [
     "kowalski-code-agent",
     "kowalski-data-agent",
     "kowalski-federation",
-    "kowalski-cli",
-    "kowalski-memory"
+    "kowalski-cli"
 ]
 
 
 [workspace.package]
-version = "0.5.2"
+version = "0.6.0"
 edition = "2024"
 description = "A Rust-based agent for interacting with Ollama models"
 license = "MIT"
