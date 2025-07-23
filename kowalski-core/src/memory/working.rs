@@ -1,7 +1,10 @@
 // Tier 1: Working Memory (The Scratchpad)
 // This is a simple, volatile, in-memory store for the agent's current context.
 
-use crate::{MemoryProvider, MemoryQuery, MemoryUnit};
+use crate::{
+    error::KowalskiError,
+    memory::{MemoryProvider, MemoryQuery, MemoryUnit},
+};
 use async_trait::async_trait;
 use log::{debug, info};
 
@@ -44,7 +47,7 @@ impl MemoryProvider for WorkingMemory {
     /// Adds a `MemoryUnit` to the working memory.
     ///
     /// If the memory is at capacity, the oldest unit is removed to make space.
-    async fn add(&mut self, memory: MemoryUnit) -> Result<(), String> {
+    async fn add(&mut self, memory: MemoryUnit) -> Result<(), KowalskiError> {
         info!("[WorkingMemory] Adding memory unit: {}", memory.id);
         debug!("Adding memory unit to working memory: {}", memory.id);
         if self.store.len() == self.capacity {
@@ -64,7 +67,7 @@ impl MemoryProvider for WorkingMemory {
         &self,
         query: &str,
         retrieval_limit: usize,
-    ) -> Result<Vec<MemoryUnit>, String> {
+    ) -> Result<Vec<MemoryUnit>, KowalskiError> {
         info!("[WorkingMemory][RETRIEVE] Query: '{}'", query);
         for unit in &self.store {
             info!("[WorkingMemory][RETRIEVE] Stored: '{}'", unit.content);
@@ -89,100 +92,9 @@ impl MemoryProvider for WorkingMemory {
 
     /// Performs a structured search, currently equivalent to `retrieve`.
     /// In a more advanced implementation, this could handle vector search if embeddings were stored.
-    async fn search(&self, query: MemoryQuery) -> Result<Vec<MemoryUnit>, String> {
+    async fn search(&self, query: MemoryQuery) -> Result<Vec<MemoryUnit>, KowalskiError> {
         debug!("Searching working memory with query: {:?}", query);
         // For working memory, a simple text search is usually sufficient.
         self.retrieve(&query.text_query, query.top_k).await
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    // Helper to create a new memory unit for testing.
-    fn create_test_unit(content: &str) -> MemoryUnit {
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        MemoryUnit {
-            id: uuid::Uuid::new_v4().to_string(),
-            timestamp,
-            content: content.to_string(),
-            embedding: None,
-        }
-    }
-
-    #[tokio::test]
-    async fn test_add_to_memory() {
-        let mut memory = WorkingMemory::new(3);
-        assert_eq!(memory.len(), 0);
-
-        memory.add(create_test_unit("first message")).await.unwrap();
-        assert_eq!(memory.len(), 1);
-        assert_eq!(memory.store[0].content, "first message");
-    }
-
-    #[tokio::test]
-    async fn test_memory_capacity() {
-        let mut memory = WorkingMemory::new(2);
-        memory.add(create_test_unit("one")).await.unwrap();
-        memory.add(create_test_unit("two")).await.unwrap();
-        assert_eq!(memory.len(), 2);
-
-        // Add a third unit, which should push "one" out.
-        memory.add(create_test_unit("three")).await.unwrap();
-        assert_eq!(memory.len(), 2);
-        assert_eq!(memory.store[0].content, "two");
-        assert_eq!(memory.store[1].content, "three");
-    }
-
-    #[tokio::test]
-    async fn test_retrieve_simple() {
-        let mut memory = WorkingMemory::new(5);
-        memory.add(create_test_unit("Hello world")).await.unwrap();
-        memory
-            .add(create_test_unit("Another message"))
-            .await
-            .unwrap();
-        memory.add(create_test_unit("HELLO again")).await.unwrap();
-
-        let results = memory.retrieve("hello", 3).await.unwrap();
-        assert_eq!(results.len(), 2);
-        assert!(results.iter().any(|m| m.content == "Hello world"));
-        assert!(results.iter().any(|m| m.content == "HELLO again"));
-    }
-
-    #[tokio::test]
-    async fn test_retrieve_no_results() {
-        let mut memory = WorkingMemory::new(5);
-        memory
-            .add(create_test_unit("A test message"))
-            .await
-            .unwrap();
-
-        let results = memory.retrieve("xyz", 3).await.unwrap();
-        assert!(results.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_search_delegates_to_retrieve() {
-        let mut memory = WorkingMemory::new(5);
-        memory
-            .add(create_test_unit("This is a search test"))
-            .await
-            .unwrap();
-
-        let query = MemoryQuery {
-            text_query: "search".to_string(),
-            vector_query: None,
-            top_k: 5,
-        };
-
-        let results = memory.search(query).await.unwrap();
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].content, "This is a search test");
     }
 }

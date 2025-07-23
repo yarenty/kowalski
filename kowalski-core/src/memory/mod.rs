@@ -1,10 +1,12 @@
+pub mod consolidation;
 pub mod episodic;
 pub mod semantic;
 pub mod working;
-pub mod consolidation;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+
+use crate::error::KowalskiError;
 
 /// Represents a single unit of memory, which could be a message, a fact, or a summary.
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -20,17 +22,17 @@ pub struct MemoryUnit {
 #[async_trait]
 pub trait MemoryProvider {
     /// Adds a memory unit to the store.
-    async fn add(&mut self, memory: MemoryUnit) -> Result<(), String>;
+    async fn add(&mut self, memory: MemoryUnit) -> Result<(), KowalskiError>;
 
     /// Retrieves a set of memories based on a query, limited to retrieval_limit.
     async fn retrieve(
         &self,
         query: &str,
         retrieval_limit: usize,
-    ) -> Result<Vec<MemoryUnit>, String>;
+    ) -> Result<Vec<MemoryUnit>, KowalskiError>;
 
     /// A more advanced retrieval method using a structured query.
-    async fn search(&self, query: MemoryQuery) -> Result<Vec<MemoryUnit>, String>;
+    async fn search(&self, query: MemoryQuery) -> Result<Vec<MemoryUnit>, KowalskiError>;
 }
 
 /// A structured query for more advanced memory retrieval.

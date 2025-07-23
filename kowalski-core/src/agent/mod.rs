@@ -3,13 +3,13 @@ use crate::config::Config;
 use crate::conversation::Conversation;
 use crate::conversation::Message;
 use crate::error::KowalskiError;
+use crate::memory::MemoryProvider;
+use crate::memory::MemoryUnit;
+use crate::memory::working::WorkingMemory;
 use crate::role::Role;
 use crate::tools::{ToolCall, ToolOutput};
 use async_trait::async_trait;
 use futures::StreamExt;
-use kowalski_memory::MemoryProvider;
-use kowalski_memory::MemoryUnit;
-use kowalski_memory::working::WorkingMemory;
 use log::debug;
 use log::error;
 use log::info;
@@ -126,7 +126,7 @@ pub trait Agent: Send + Sync {
                     }
                 }
             }
-            println!("");
+            println!();
             debug!("Full LLM response: '{}'", buffer);
 
             // Try to extract JSON from mixed text response
@@ -291,8 +291,8 @@ pub struct BaseAgent {
     pub system_prompt: Option<String>,
     // Memory Tiers
     pub working_memory: WorkingMemory,
-    pub episodic_memory: &'static tokio::sync::Mutex<kowalski_memory::episodic::EpisodicBuffer>,
-    pub semantic_memory: &'static tokio::sync::Mutex<kowalski_memory::semantic::SemanticStore>,
+    pub episodic_memory: &'static tokio::sync::Mutex<crate::memory::episodic::EpisodicBuffer>,
+    pub semantic_memory: &'static tokio::sync::Mutex<crate::memory::semantic::SemanticStore>,
 }
 
 impl BaseAgent {
@@ -307,19 +307,18 @@ impl BaseAgent {
 
         // Initialize memory tiers
         let working_memory = WorkingMemory::new(100); // Capacity of 100 units
-        let episodic_memory =
-            kowalski_memory::episodic::get_or_init_episodic_buffer(
-                &config.memory.episodic_path,
-                &config.ollama.host,
-                config.ollama.port,
-                &config.ollama.model,
-            )
-            .await
-            .map_err(|e| {
-                KowalskiError::Initialization(format!("Failed to init episodic buffer: {}", e))
-            })?;
+        let episodic_memory = crate::memory::episodic::get_or_init_episodic_buffer(
+            &config.memory.episodic_path,
+            &config.ollama.host,
+            config.ollama.port,
+            &config.ollama.model,
+        )
+        .await
+        .map_err(|e| {
+            KowalskiError::Initialization(format!("Failed to init episodic buffer: {}", e))
+        })?;
         let semantic_memory =
-            kowalski_memory::semantic::get_or_init_semantic_store(&config.qdrant.http_url)
+            crate::memory::semantic::get_or_init_semantic_store(&config.qdrant.http_url)
                 .await
                 .map_err(|e| {
                     KowalskiError::Initialization(format!("Failed to init semantic store: {}", e))
