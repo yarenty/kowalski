@@ -1,6 +1,6 @@
 [package]
 name = "kowalski-cli"
-version = "0.5.2"
+version = "0.6.0"
 edition = "2024"
 description = "Kowalski CLI Interface: A Rust-based agent for interacting with Ollama models"
 license = "MIT"
@@ -22,15 +22,14 @@ keywords = [
 ]
 
 [dependencies]
-kowalski-core = { path = "../kowalski-core", version = "0.5.2" }
-kowalski-agent-template = { path = "../kowalski-agent-template", version = "0.5.2" }
-kowalski-tools = { path = "../kowalski-tools", version = "0.5.2" }
-kowalski-federation = { path = "../kowalski-federation", version = "0.5.2" }
-kowalski-academic-agent = { path = "../kowalski-academic-agent", version = "0.5.2" }
-kowalski-data-agent = { path = "../kowalski-data-agent", version = "0.5.2" }
-kowalski-code-agent = { path = "../kowalski-code-agent", version = "0.5.2" }
-kowalski-web-agent = { path = "../kowalski-web-agent", version = "0.5.2" }
-kowalski-memory = { path = "../kowalski-memory", version = "0.5.2" }
+kowalski-core = { path = "../kowalski-core", version = "0.6.0" }
+kowalski-agent-template = { path = "../kowalski-agent-template", version = "0.6.0" }
+kowalski-tools = { path = "../kowalski-tools", version = "0.6.0" }
+kowalski-federation = { path = "../kowalski-federation", version = "0.6.0" }
+kowalski-academic-agent = { path = "../kowalski-academic-agent", version = "0.6.0" }
+kowalski-data-agent = { path = "../kowalski-data-agent", version = "0.6.0" }
+kowalski-code-agent = { path = "../kowalski-code-agent", version = "0.6.0" }
+kowalski-web-agent = { path = "../kowalski-web-agent", version = "0.6.0" }
 chrono = "0.4"
 clap = { version = "4.5", features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }

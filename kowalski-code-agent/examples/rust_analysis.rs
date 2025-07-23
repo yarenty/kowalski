@@ -108,15 +108,19 @@ fn main() {
     println!("{}", rust_code);
 
     // Analyze the Rust code using tool-calling
-    let analysis_input = format!(r#"{{"name": "rust_analysis", "parameters": {{"content": {}}}}}"#, serde_json::to_string(rust_code)?);
-    let analysis_result = code_agent.chat_with_tools(&conversation_id, &analysis_input).await?;
+    let analysis_input = format!(
+        r#"{{"name": "rust_analysis", "parameters": {{"content": {}}}}}"#,
+        serde_json::to_string(rust_code)?
+    );
+    let analysis_result = code_agent
+        .chat_with_tools(&conversation_id, &analysis_input)
+        .await?;
     println!("\n📊 Rust Analysis Results:\n{}", analysis_result);
 
     // Ask the agent to analyze the code
     let analysis_prompt = format!(
         "Please analyze this Rust code and provide insights:\n\n{}\n\nAnalysis results:\n{}\n",
-        rust_code,
-        analysis_result
+        rust_code, analysis_result
     );
 
     let mut response = code_agent
