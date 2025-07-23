@@ -24,7 +24,7 @@ keywords = [
 [dependencies]
 kowalski-core = { path = "../kowalski-core", version = "0.6.0" }
 kowalski-tools = { path = "../kowalski-tools", version = "0.6.0" }
-kowalski-agent-template = { path = "../kowalski-agent-template", version = "0.6.0" }
+
 tokio = { workspace = true }
 reqwest = { workspace = true }
 chrono = { workspace = true }
