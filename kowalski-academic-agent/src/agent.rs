@@ -1,7 +1,7 @@
 use crate::config::AcademicAgentConfig;
 use async_trait::async_trait;
 use kowalski_agent_template::TemplateAgent;
-use kowalski_agent_template::templates::general::GeneralTemplate;
+use kowalski_agent_template::default::DefaultTemplate;
 use kowalski_core::agent::Agent;
 use kowalski_core::config::Config;
 use kowalski_core::conversation::Conversation;
@@ -66,7 +66,7 @@ When you need to use a tool, respond with JSON in this exact format:
 When you have a final answer, respond normally without JSON formatting."#
             .to_string();
         let system_prompt_clone = system_prompt.clone();
-        let builder = GeneralTemplate::create_agent(tools, Some(system_prompt), Some(0.7))
+        let builder = DefaultTemplate::create_agent(tools, Some(system_prompt), Some(0.7))
             .await
             .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
         let mut agent = builder.build().await?;
