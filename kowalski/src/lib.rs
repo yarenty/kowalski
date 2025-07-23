@@ -27,8 +27,7 @@
 //! ```
 //!
 //! ```rust,no_run
-/
-/! use kowalski::core::agent::{Agent, BaseAgent};
+//! use kowalski::core::agent::{Agent, BaseAgent};
 //! use kowalski::core::template::builder::AgentBuilder;
 //! use kowalski::core::config::Config;
 //! use kowalski::core::error::KowalskiError;
@@ -36,8 +35,7 @@
 //! #[tokio::main]
 //! async fn main() -> Result<(), KowalskiError> {
 //!     // Create a basic agent
-//!     let agent = AgentBuilder::new()
-//!         .with_model("llama2")
+//!     let agent = AgentBuilder::new().await
 //!         .build().await?;
 //!     Ok(())
 //! }
