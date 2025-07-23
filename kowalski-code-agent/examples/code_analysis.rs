@@ -28,7 +28,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Analyze the code using tool-calling
     let analysis_input = r#"{"name": "rust_analysis", "parameters": {"content": "fn calculate_factorial(n: u32) -> u32 { if n <= 1 { return 1; } n * calculate_factorial(n - 1) } fn main() { let result = calculate_factorial(5); println!(\"Factorial of 5 is: {}\", result); }"}}"#;
-    let analysis_result = code_agent.chat_with_tools(&conversation_id, analysis_input).await?;
+    let analysis_result = code_agent
+        .chat_with_tools(&conversation_id, analysis_input)
+        .await?;
     // Print the analysis result as a string
     println!("\n📊 Analysis Results:\n{}", analysis_result);
 
