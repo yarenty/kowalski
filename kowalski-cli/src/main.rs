@@ -1,5 +1,4 @@
 use clap::Parser;
-use env_logger;
 use futures::StreamExt;
 use kowalski_academic_agent::AcademicAgent;
 use kowalski_code_agent::CodeAgent;
@@ -15,7 +14,7 @@ use std::io::{self, Write};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use kowalski_memory::consolidation::{Consolidator, MemoryWeaver};
+use kowalski_core::memory::consolidation::{Consolidator, MemoryWeaver};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -211,7 +210,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let ollama_host = &config.ollama.host;
             let ollama_port = config.ollama.port;
             let ollama_model = &config.ollama.model;
-            let mut weaver = Consolidator::new(episodic_path, qdrant_url, ollama_host, ollama_port, ollama_model).await?;
+            let mut weaver = Consolidator::new(
+                episodic_path,
+                qdrant_url,
+                ollama_host,
+                ollama_port,
+                ollama_model,
+            )
+            .await?;
             weaver.run(delete).await?;
             println!("Memory consolidation complete.");
         }

@@ -1,6 +1,6 @@
 [package]
 name = "kowalski-web-agent"
-version = "0.5.2"
+version = "0.6.0"
 edition = "2024"
 description = "Kowalski Web Agent: A Rust-based agent for interacting with Ollama models"
 license = "MIT"
@@ -22,9 +22,9 @@ keywords = [
 ]
 
 [dependencies]
-kowalski-core = { path = "../kowalski-core", version = "0.5.2" }
-kowalski-tools = { path = "../kowalski-tools", version = "0.5.2" }
-kowalski-agent-template = { path = "../kowalski-agent-template", version = "0.5.2" }
+kowalski-core = { path = "../kowalski-core", version = "0.6.0" }
+kowalski-tools = { path = "../kowalski-tools", version = "0.6.0" }
+kowalski-agent-template = { path = "../kowalski-agent-template", version = "0.6.0" }
 tokio = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }

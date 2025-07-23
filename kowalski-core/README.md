@@ -38,6 +38,7 @@ kowalski-core/
 ├── conversation/  # Conversation and message types
 ├── error.rs       # Unified error types
 ├── logging/       # Logging utilities
+├── memory/        # Multi-tiered memory system
 ├── model/         # Model management and selection
 ├── role/          # Role, audience, preset, and style abstractions
 ├── tool_chain.rs  # Tool chain orchestration
@@ -70,7 +71,15 @@ agent.add_message(&conv_id, "user", "Hello, world!").await;
 
 ---
 
-### 2. Conversation Management
+### 2. Memory System
+
+`kowalski-core` includes a sophisticated, multi-tiered memory system that gives agents a robust and scalable memory, moving beyond simple conversation history to enable true learning and context retention.
+
+For a detailed explanation of the memory architecture, please see [MEMORY_ARCHITECTURE.md](./MEMORY_ARCHITECTURE.md).
+
+---
+
+### 3. Conversation Management
 
 Manages conversation history, messages, and tool calls.
 
@@ -86,7 +95,7 @@ for msg in conv.get_messages() {
 
 ---
 
-### 3. Tool & Tool Chain System
+### 4. Tool & Tool Chain System
 
 Defines the `Tool` trait for pluggable tools and the `ToolChain` for orchestrating tool execution.
 
@@ -111,7 +120,7 @@ chain.register_tool(Box::new(EchoTool));
 
 ---
 
-### 4. Model Management
+### 5. Model Management
 
 Handles model listing, existence checks, and pulling models from a server.
 
@@ -124,7 +133,7 @@ let models = manager.list_models().await?;
 
 ---
 
-### 5. Roles, Audiences, Presets, Styles
+### 6. Roles, Audiences, Presets, Styles
 
 Allows agents to assume different personas and communication styles.
 
@@ -139,7 +148,7 @@ let role = Role::new("Teacher", "Explains concepts simply")
 
 ---
 
-### 6. Configuration
+### 7. Configuration
 
 Flexible, extensible configuration system for agents and tools.
 
@@ -152,7 +161,7 @@ println!("Ollama host: {}", config.ollama.host);
 
 ---
 
-### 7. Error Handling
+### 8. Error Handling
 
 Unified error type for all core operations.
 

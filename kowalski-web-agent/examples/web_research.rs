@@ -1,8 +1,5 @@
 use env_logger;
-use kowalski_core::{
-    agent::Agent,
-    config::Config,
-};
+use kowalski_core::{agent::Agent, config::Config};
 use kowalski_web_agent::agent::WebAgent;
 
 use log::info;
@@ -23,7 +20,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Perform a web search using tool-calling
     let search_input = r#"{"name": "web_search", "parameters": {"query": "AI"}}"#;
-    let search_results = web_agent.chat_with_tools(&conversation_id, search_input).await?;
+    let search_results = web_agent
+        .chat_with_tools(&conversation_id, search_input)
+        .await?;
     println!("\n📑 Search Results:\n{}", search_results);
 
     // Example: Scrape a page (if you have a URL)
@@ -46,7 +45,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Since search_results is now a string, we'll just print it.
     // If the intent was to process a single result from a vector, the original code would need to be adapted.
     // For now, we'll just print the search_results string.
-    println!("\n🌐 Processing search results (as a string): {}", search_results);
+    println!(
+        "\n🌐 Processing search results (as a string): {}",
+        search_results
+    );
 
     // The original code had a detailed processing of the first result, including page fetching and summary generation.
     // This part of the logic needs to be re-evaluated based on the new `search_results` format.
