@@ -1,7 +1,7 @@
 use crate::config::DataAgentConfig;
 use async_trait::async_trait;
 use kowalski_agent_template::TemplateAgent;
-use kowalski_agent_template::templates::general::GeneralTemplate;
+use kowalski_agent_template::default::DefaultTemplate;
 use kowalski_core::agent::Agent;
 use kowalski_core::config::Config;
 use kowalski_core::conversation::Conversation;
@@ -31,37 +31,52 @@ impl DataAgent {
         let fs_tool = FsTool::new();
         let tools: Vec<Box<dyn Tool + Send + Sync>> = vec![Box::new(csv_tool), Box::new(fs_tool)];
 
-        let system_prompt = r#"You are a data analysis assistant.
+        // Dynamically build AVAILABLE TOOLS section
+        let mut available_tools_section = String::from("AVAILABLE TOOLS:\n");
+        for tool in &tools {
+            available_tools_section.push_str(&format!(
+                "{} - {}\n",
+                tool.name(),
+                tool.description()
+            ));
+            for param in tool.parameters() {
+                available_tools_section.push_str(&format!(
+                    "   - parameter: \"{}\" - {} (type: {:?}, required: {})\n",
+                    param.name, param.description, param.parameter_type, param.required
+                ));
+            }
+        }
 
-AVAILABLE TOOLS:
-csv_tool - For all CSV data analysis.
-   - task: "process_csv" - Analyze CSV data. Parameters: { "content": "CSV file contents as a string" }
-   - task: "process_csv_path" - Analyze CSV data from a file path. Parameters: { "path": "/some/file.csv" }
+        let system_prompt = format!(
+            r#"You are a data analysis assistant.
+
+{}
 
 TOOL USAGE INSTRUCTIONS:
 - ALWAYS use tools when asked about files, directories, or CSV data.
 - NEVER give instructions, shell commands, or say you cannot access the filesystem.
 - When asked to analyze a CSV file, you can now use either:
-  1. fs_tool with task "get_file_contents" to read the file (provide the file path), then csv_tool with task "process_csv" and pass the file contents as the "content" parameter.
-  2. OR, use csv_tool with task "process_csv_path" and provide the file path directly as the "path" parameter.
+  1. fs_tool with task \"get_file_contents\" to read the file (provide the file path), then csv_tool with task \"process_csv\" and pass the file contents as the \"content\" parameter.
+  2. OR, use csv_tool with task \"process_csv_path\" and provide the file path directly as the \"path\" parameter.
 - Respond ONLY with JSON in this exact format for each tool call:
 
-{
+{{
   "name": "csv_tool",
-  "parameters": { "task": "process_csv_path", "path": "/opt/data/example.csv" },
+  "parameters": {{ "task": "process_csv_path", "path": "/opt/data/example.csv" }},
   "reasoning": "User asked to analyze a CSV file from a path."
-}
+}}
 
 When you have a final answer, respond normally without JSON formatting. NEVER give instructions, shell commands, or say you cannot access the filesystem. ALWAYS use the tool call format for such requests.
-"#
-            .to_string();
+"#,
+            available_tools_section
+        );
         let system_prompt_clone = system_prompt.clone();
         println!(
             "[DEBUG] System prompt sent to LLM:\n{}",
             system_prompt_clone
         );
 
-        let builder = GeneralTemplate::create_agent(tools, Some(system_prompt), Some(0.7))
+        let builder = DefaultTemplate::create_agent(tools, Some(system_prompt), Some(0.7))
             .await
             .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
         let mut agent = builder.build().await?;

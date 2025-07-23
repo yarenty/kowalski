@@ -3,9 +3,9 @@ use kowalski_core::tools::Tool;
 use kowalski_tools::document::PdfTool;
 use kowalski_tools::web::WebSearchTool;
 
-pub struct GeneralTemplate;
+pub struct DefaultTemplate;
 
-impl GeneralTemplate {
+impl DefaultTemplate {
     /// Creates a new general-purpose agent with customizable tools
     pub async fn create_agent(
         tools: Vec<Box<dyn Tool + Send + Sync>>,
@@ -47,7 +47,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_general_template_default() {
-        let builder = GeneralTemplate::create_default_agent().await;
+        let builder = DefaultTemplate::create_default_agent().await;
         assert!(builder.is_ok());
 
         if let Ok(builder) = builder {
@@ -63,7 +63,7 @@ mod tests {
         let prompt = "You are a specialized assistant for web research.";
 
         let builder =
-            GeneralTemplate::create_agent(tools, Some(prompt.to_string()), Some(0.5)).await;
+            DefaultTemplate::create_agent(tools, Some(prompt.to_string()), Some(0.5)).await;
         assert!(builder.is_ok());
 
         if let Ok(builder) = builder {
