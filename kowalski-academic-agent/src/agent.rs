@@ -1,12 +1,12 @@
 use crate::config::AcademicAgentConfig;
 use async_trait::async_trait;
-use kowalski_agent_template::TemplateAgent;
-use kowalski_agent_template::default::DefaultTemplate;
 use kowalski_core::agent::Agent;
 use kowalski_core::config::Config;
 use kowalski_core::conversation::Conversation;
 use kowalski_core::error::KowalskiError;
 use kowalski_core::role::Role;
+use kowalski_core::template::TemplateAgent;
+use kowalski_core::template::default::DefaultTemplate;
 use kowalski_core::tools::{Tool, ToolOutput};
 use kowalski_tools::document::PdfTool;
 use kowalski_tools::fs::FsTool;

@@ -6,6 +6,7 @@ pub mod logging;
 pub mod memory;
 pub mod model;
 pub mod role;
+pub mod template;
 pub mod tool_chain;
 pub mod tools;
 
