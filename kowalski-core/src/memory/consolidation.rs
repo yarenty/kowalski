@@ -1,10 +1,11 @@
-use crate::episodic::EpisodicBuffer;
-use crate::semantic::SemanticStore;
-use crate::{MemoryUnit, MemoryProvider};
-use std::error::Error;
-use log::{info, debug};
+use crate::{
+    error::KowalskiError,
+    memory::{MemoryProvider, MemoryUnit, episodic::EpisodicBuffer, semantic::SemanticStore},
+};
+use log::{debug, info};
 use reqwest;
 use serde_json;
+use std::error::Error;
 
 /// Trait for memory consolidation strategies ("Weavers")
 #[async_trait::async_trait]
@@ -21,8 +22,15 @@ pub struct Consolidator {
 }
 
 impl Consolidator {
-    pub async fn new(episodic_path: &str, qdrant_url: &str, ollama_host: &str, ollama_port: u16, ollama_model: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let episodic_memory = EpisodicBuffer::new(episodic_path, ollama_host, ollama_port, ollama_model)?;
+    pub async fn new(
+        episodic_path: &str,
+        qdrant_url: &str,
+        ollama_host: &str,
+        ollama_port: u16,
+        ollama_model: &str,
+    ) -> Result<Self, KowalskiError> {
+        let episodic_memory =
+            EpisodicBuffer::new(episodic_path, ollama_host, ollama_port, ollama_model)?;
         let semantic_memory = SemanticStore::new(qdrant_url).await?;
         Ok(Self {
             episodic_memory,
@@ -33,10 +41,13 @@ impl Consolidator {
         })
     }
 
-    async fn get_ollama_embedding(&self, text: &str) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
+    async fn get_ollama_embedding(&self, text: &str) -> Result<Vec<f32>, KowalskiError> {
         let client = reqwest::Client::new();
         let response = client
-            .post(format!("http://{}:{}/api/embeddings", self.ollama_host, self.ollama_port))
+            .post(format!(
+                "http://{}:{}/api/embeddings",
+                self.ollama_host, self.ollama_port
+            ))
             .json(&serde_json::json!({
                 "model": self.ollama_model,
                 "prompt": text
@@ -47,17 +58,22 @@ impl Consolidator {
         let json: serde_json::Value = response.json().await?;
         let embedding = json["embedding"]
             .as_array()
-            .ok_or("No embedding in response")?
+            .ok_or(KowalskiError::Memory(
+                "No embedding in response".to_string(),
+            ))?
             .iter()
             .map(|v| v.as_f64().unwrap_or(0.0) as f32)
             .collect();
         Ok(embedding)
     }
 
-    async fn summarize_with_llm(&self, content: &str) -> Result<String, Box<dyn std::error::Error>> {
+    async fn summarize_with_llm(&self, content: &str) -> Result<String, KowalskiError> {
         let client = reqwest::Client::new();
         let response = client
-            .post(format!("http://{}:{}/api/generate", self.ollama_host, self.ollama_port))
+            .post(format!(
+                "http://{}:{}/api/generate",
+                self.ollama_host, self.ollama_port
+            ))
             .json(&serde_json::json!({
                 "model": self.ollama_model,
                 "prompt": format!("Summarize the following text:\n\n{}", content),
@@ -71,7 +87,7 @@ impl Consolidator {
         Ok(summary)
     }
 
-    async fn create_graph_with_llm(&self, content: &str) -> Result<String, Box<dyn std::error::Error>> {
+    async fn create_graph_with_llm(&self, content: &str) -> Result<String, KowalskiError> {
         let client = reqwest::Client::new();
         let response = client
             .post(format!("http://{}:{}/api/generate", self.ollama_host, self.ollama_port))
@@ -91,7 +107,7 @@ impl Consolidator {
 
 #[async_trait::async_trait]
 impl MemoryWeaver for Consolidator {
-    async fn run(&mut self, delete_original: bool) -> Result<(), Box<dyn std::error::Error>> {
+    async fn run(&mut self, delete_original: bool) -> Result<(), Box<dyn Error>> {
         info!("Starting memory consolidation process...");
 
         let memories_to_process = self.episodic_memory.retrieve_all().await?;
@@ -141,5 +157,3 @@ impl MemoryWeaver for Consolidator {
         Ok(())
     }
 }
-
-// Need to add `retrieve_all` and `delete` to `EpisodicBuffer`

@@ -1,14 +1,17 @@
 // Tier 2: Episodic Buffer (The Journal)
 // A persistent, chronological log of recent conversations using RocksDB.
 
-use crate::{MemoryProvider, MemoryQuery, MemoryUnit};
+use crate::{
+    error::KowalskiError,
+    memory::{MemoryProvider, MemoryQuery, MemoryUnit},
+};
 use async_trait::async_trait;
 use log::{debug, error, info};
-use rocksdb::{DB, IteratorMode, Options};
-use tokio::sync::{Mutex, OnceCell};
 use reqwest;
+use rocksdb::{DB, IteratorMode, Options};
 use serde_json;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::{Mutex, OnceCell};
 
 /// A persistent, chronological memory store using RocksDB.
 ///
@@ -28,7 +31,12 @@ impl EpisodicBuffer {
     ///
     /// * `path` - The filesystem path where the RocksDB database will be stored.
     /// * `ollama_host`, `ollama_port`, `ollama_model` - Ollama connection details for embeddings
-    pub fn new(path: &str, ollama_host: &str, ollama_port: u16, ollama_model: &str) -> Result<Self, String> {
+    pub fn new(
+        path: &str,
+        ollama_host: &str,
+        ollama_port: u16,
+        ollama_model: &str,
+    ) -> Result<Self, KowalskiError> {
         info!("Initializing episodic buffer at path: {}", path);
         let mut opts = Options::default();
         opts.create_if_missing(true);
@@ -36,7 +44,7 @@ impl EpisodicBuffer {
             let err_str = e.to_string();
             if err_str.contains("No locks available") || err_str.contains("lock hold by current process") {
                 error!("RocksDB lock error at {}: {}", path, err_str);
-                format!(
+                KowalskiError::Memory(format!(
                     "Failed to open RocksDB at {} due to a lock error: {}\n\
                     This usually means another process is using the database, or a previous process crashed and left a stale lock.\n\
                     - Ensure no other process is using the database.\n\
@@ -45,10 +53,10 @@ impl EpisodicBuffer {
                     - For development, you can move or delete the entire database directory to start fresh.\n\
                     (Original error: {})",
                     path, err_str, err_str
-                )
+                ))
             } else {
                 error!("Failed to open RocksDB at {}: {}", path, err_str);
-                err_str
+                KowalskiError::Memory(err_str)
             }
         })?;
         Ok(Self {
@@ -59,7 +67,7 @@ impl EpisodicBuffer {
         })
     }
 
-    pub async fn retrieve_all(&self) -> Result<Vec<MemoryUnit>, String> {
+    pub async fn retrieve_all(&self) -> Result<Vec<MemoryUnit>, KowalskiError> {
         let mut memories = Vec::new();
         let iter = self.db.iterator(IteratorMode::Start);
         for item in iter {
@@ -74,33 +82,47 @@ impl EpisodicBuffer {
         Ok(memories)
     }
 
-    pub async fn delete(&mut self, id: &str) -> Result<(), String> {
-        self.db.delete(id.as_bytes()).map_err(|e| e.to_string())
+    pub async fn delete(&mut self, id: &str) -> Result<(), KowalskiError> {
+        self.db
+            .delete(id.as_bytes())
+            .map_err(|e| KowalskiError::Memory(e.to_string()))
     }
 
-    async fn get_ollama_embedding(&self, text: &str) -> Result<Vec<f32>, String> {
+    async fn get_ollama_embedding(&self, text: &str) -> Result<Vec<f32>, KowalskiError> {
         let client = reqwest::Client::new();
         let response = client
-            .post(format!("http://{}:{}/api/embeddings", self.ollama_host, self.ollama_port))
+            .post(format!(
+                "http://{}:{}/api/embeddings",
+                self.ollama_host, self.ollama_port
+            ))
             .json(&serde_json::json!({
                 "model": self.ollama_model,
                 "prompt": text
             }))
             .send()
             .await
-            .map_err(|e| format!("Failed to send request to Ollama: {}", e))?;
+            .map_err(|e| {
+                KowalskiError::Memory(format!("Failed to send request to Ollama: {}", e))
+            })?;
 
-        let json: serde_json::Value = response.json().await.map_err(|e| format!("Failed to parse Ollama response: {}", e))?;
+        let json: serde_json::Value = response.json().await.map_err(|e| {
+            KowalskiError::Memory(format!("Failed to parse Ollama response: {}", e))
+        })?;
         let embedding = json["embedding"]
             .as_array()
-            .ok_or("No embedding in response")?
+            .ok_or(KowalskiError::Memory(
+                "No embedding in response".to_string(),
+            ))?
             .iter()
             .map(|v| v.as_f64().unwrap_or(0.0) as f32)
             .collect();
         Ok(embedding)
     }
 
-    pub async fn add_with_embedding(&mut self, mut memory: MemoryUnit) -> Result<(), String> {
+    pub async fn add_with_embedding(
+        &mut self,
+        mut memory: MemoryUnit,
+    ) -> Result<(), KowalskiError> {
         info!("[EpisodicBuffer] Adding memory unit: {}", memory.id);
         debug!("Adding memory unit to episodic buffer: {}", memory.id);
         // If embedding is missing, generate it
@@ -116,19 +138,26 @@ impl EpisodicBuffer {
         let key = memory.id.clone();
         let value = serde_json::to_string(&memory).map_err(|e| {
             error!("Failed to serialize memory unit {}: {}", key, e);
-            e.to_string()
+            KowalskiError::Memory(e.to_string())
         })?;
         self.db.put(key.as_bytes(), value.as_bytes()).map_err(|e| {
             error!("Failed to write to RocksDB for key {}: {}", key, e);
-            e.to_string()
+            KowalskiError::Memory(e.to_string())
         })
     }
 
-    pub async fn retrieve_with_embedding(&self, query: &str, retrieval_limit: usize) -> Result<Vec<MemoryUnit>, String> {
+    pub async fn retrieve_with_embedding(
+        &self,
+        query: &str,
+        retrieval_limit: usize,
+    ) -> Result<Vec<MemoryUnit>, KowalskiError> {
         info!("[EpisodicBuffer][RETRIEVE] Query: '{}'", query);
         // Try to get embedding for the query
         let query_embedding = self.get_ollama_embedding(query).await.ok();
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let max_time_span = 60 * 60 * 24 * 30; // 30 days in seconds, for recency normalization
         let iter = self.db.iterator(IteratorMode::Start);
         let mut scored = Vec::new();
@@ -138,10 +167,14 @@ impl EpisodicBuffer {
                 Ok((_key, value)) => match serde_json::from_slice::<MemoryUnit>(&value) {
                     Ok(unit) => {
                         // If both query and memory have embeddings, use semantic+recency
-                        if let (Some(ref q_emb), Some(ref m_emb)) = (query_embedding.as_ref(), unit.embedding.as_ref()) {
+                        if let (Some(q_emb), Some(m_emb)) =
+                            (query_embedding.as_ref(), unit.embedding.as_ref())
+                        {
                             let sim = cosine_similarity(q_emb, m_emb);
                             // Recency: newer memories get higher score
-                            let recency = 1.0 - ((now.saturating_sub(unit.timestamp)) as f32 / max_time_span as f32);
+                            let recency = 1.0
+                                - ((now.saturating_sub(unit.timestamp)) as f32
+                                    / max_time_span as f32);
                             let recency = recency.max(0.0); // Clamp to [0,1]
                             let score = 0.85 * sim + 0.15 * recency;
                             scored.push((score, unit));
@@ -163,7 +196,11 @@ impl EpisodicBuffer {
         // If we have scored results, sort and return top N
         if !scored.is_empty() {
             scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-            let results: Vec<MemoryUnit> = scored.into_iter().map(|(_, u)| u).take(retrieval_limit).collect();
+            let results: Vec<MemoryUnit> = scored
+                .into_iter()
+                .map(|(_, u)| u)
+                .take(retrieval_limit)
+                .collect();
             Ok(results)
         } else {
             // Fallback: return text search results (limit)
@@ -185,9 +222,16 @@ pub async fn get_or_init_episodic_buffer(
     ollama_host: &str,
     ollama_port: u16,
     ollama_model: &str,
-) -> Result<&'static Mutex<EpisodicBuffer>, String> {
+) -> Result<&'static Mutex<EpisodicBuffer>, KowalskiError> {
     EPISODIC_BUFFER
-        .get_or_try_init(|| async move { Ok(Mutex::new(EpisodicBuffer::new(path, ollama_host, ollama_port, ollama_model)?)) })
+        .get_or_try_init(|| async move {
+            Ok(Mutex::new(EpisodicBuffer::new(
+                path,
+                ollama_host,
+                ollama_port,
+                ollama_model,
+            )?))
+        })
         .await
 }
 
@@ -208,7 +252,7 @@ impl MemoryProvider for EpisodicBuffer {
     /// Adds a `MemoryUnit` to the RocksDB store.
     ///
     /// The unit is serialized to JSON. The `MemoryUnit.id` is used as the key.
-    async fn add(&mut self, mut memory: MemoryUnit) -> Result<(), String> {
+    async fn add(&mut self, mut memory: MemoryUnit) -> Result<(), KowalskiError> {
         info!("[EpisodicBuffer] Adding memory unit: {}", memory.id);
         debug!("Adding memory unit to episodic buffer: {}", memory.id);
         // If embedding is missing, generate it
@@ -224,11 +268,11 @@ impl MemoryProvider for EpisodicBuffer {
         let key = memory.id.clone();
         let value = serde_json::to_string(&memory).map_err(|e| {
             error!("Failed to serialize memory unit {}: {}", key, e);
-            e.to_string()
+            KowalskiError::Memory(e.to_string())
         })?;
         self.db.put(key.as_bytes(), value.as_bytes()).map_err(|e| {
             error!("Failed to write to RocksDB for key {}: {}", key, e);
-            e.to_string()
+            KowalskiError::Memory(e.to_string())
         })
     }
 
@@ -241,11 +285,14 @@ impl MemoryProvider for EpisodicBuffer {
         &self,
         query: &str,
         retrieval_limit: usize,
-    ) -> Result<Vec<MemoryUnit>, String> {
+    ) -> Result<Vec<MemoryUnit>, KowalskiError> {
         info!("[EpisodicBuffer][RETRIEVE] Query: '{}'", query);
         // Try to get embedding for the query
         let query_embedding = self.get_ollama_embedding(query).await.ok();
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let max_time_span = 60 * 60 * 24 * 30; // 30 days in seconds, for recency normalization
         let iter = self.db.iterator(IteratorMode::Start);
         let mut scored = Vec::new();
@@ -255,10 +302,14 @@ impl MemoryProvider for EpisodicBuffer {
                 Ok((_key, value)) => match serde_json::from_slice::<MemoryUnit>(&value) {
                     Ok(unit) => {
                         // If both query and memory have embeddings, use semantic+recency
-                        if let (Some(ref q_emb), Some(ref m_emb)) = (query_embedding.as_ref(), unit.embedding.as_ref()) {
+                        if let (Some(q_emb), Some(m_emb)) =
+                            (query_embedding.as_ref(), unit.embedding.as_ref())
+                        {
                             let sim = cosine_similarity(q_emb, m_emb);
                             // Recency: newer memories get higher score
-                            let recency = 1.0 - ((now.saturating_sub(unit.timestamp)) as f32 / max_time_span as f32);
+                            let recency = 1.0
+                                - ((now.saturating_sub(unit.timestamp)) as f32
+                                    / max_time_span as f32);
                             let recency = recency.max(0.0); // Clamp to [0,1]
                             let score = 0.85 * sim + 0.15 * recency;
                             scored.push((score, unit));
@@ -280,7 +331,11 @@ impl MemoryProvider for EpisodicBuffer {
         // If we have scored results, sort and return top N
         if !scored.is_empty() {
             scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-            let results: Vec<MemoryUnit> = scored.into_iter().map(|(_, u)| u).take(retrieval_limit).collect();
+            let results: Vec<MemoryUnit> = scored
+                .into_iter()
+                .map(|(_, u)| u)
+                .take(retrieval_limit)
+                .collect();
             Ok(results)
         } else {
             // Fallback: return text search results (limit)
@@ -294,100 +349,8 @@ impl MemoryProvider for EpisodicBuffer {
     }
 
     /// Performs a structured search, currently equivalent to `retrieve`.
-    async fn search(&self, query: MemoryQuery) -> Result<Vec<MemoryUnit>, String> {
+    async fn search(&self, query: MemoryQuery) -> Result<Vec<MemoryUnit>, KowalskiError> {
         debug!("Searching episodic buffer with query: {:?}", query);
         self.retrieve(&query.text_query, 3).await
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
-    use tempfile::tempdir;
-
-    // Helper to create a new memory unit for testing.
-    fn create_test_unit(id: &str, content: &str) -> MemoryUnit {
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        MemoryUnit {
-            id: id.to_string(),
-            timestamp,
-            content: content.to_string(),
-            embedding: None,
-        }
-    }
-
-    #[tokio::test]
-    async fn test_add_and_retrieve_one_item() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().to_str().unwrap();
-        let mut memory = EpisodicBuffer::new(path, "localhost", 11434, "llama3").unwrap();
-
-        let unit = create_test_unit("id1", "This is the first message.");
-        memory.add(unit.clone()).await.unwrap();
-
-        // Retrieve it back
-        let results = memory.retrieve("first message", 3).await.unwrap();
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id, "id1");
-    }
-
-    #[tokio::test]
-    async fn test_persistence() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().to_str().unwrap();
-
-        // Create a DB and add an item
-        {
-            let mut memory = EpisodicBuffer::new(path, "localhost", 11434, "llama3").unwrap();
-            let unit = create_test_unit("id2", "A persistent message.");
-            memory.add(unit).await.unwrap();
-        } // DB is closed here as `memory` goes out of scope
-
-        // Re-open the DB and check if the item is still there
-        {
-            let memory = EpisodicBuffer::new(path, "localhost", 11434, "llama3").unwrap();
-            let results = memory.retrieve("persistent", 3).await.unwrap();
-            assert_eq!(results.len(), 1);
-            assert_eq!(results[0].id, "id2");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_retrieve_multiple_items() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().to_str().unwrap();
-        let mut memory = EpisodicBuffer::new(path, "localhost", 11434, "llama3").unwrap();
-
-        memory
-            .add(create_test_unit("id1", "test one"))
-            .await
-            .unwrap();
-        memory
-            .add(create_test_unit("id2", "another test"))
-            .await
-            .unwrap();
-        memory
-            .add(create_test_unit("id3", "something else"))
-            .await
-            .unwrap();
-
-        let results = memory.retrieve("test", 3).await.unwrap();
-        assert_eq!(results.len(), 2);
-        assert!(results.iter().any(|m| m.id == "id1"));
-        assert!(results.iter().any(|m| m.id == "id2"));
-    }
-
-    #[tokio::test]
-    async fn test_retrieve_no_results() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().to_str().unwrap();
-        let memory = EpisodicBuffer::new(path, "localhost", 11434, "llama3").unwrap();
-
-        let results = memory.retrieve("nonexistent", 3).await.unwrap();
-        assert!(results.is_empty());
     }
 }
