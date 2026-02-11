@@ -9,7 +9,7 @@ use kowalski_core::template::TemplateAgent;
 use kowalski_core::template::default::DefaultTemplate;
 use kowalski_core::tools::{Tool, ToolOutput};
 use kowalski_tools::web::{WebScrapeTool, WebSearchTool};
-use reqwest::Response;
+
 use serde::{Deserialize, Serialize};
 
 /// WebAgent: A specialized agent for web-related tasks
@@ -132,7 +132,7 @@ impl Agent for WebAgent {
         conversation_id: &str,
         content: &str,
         role: Option<Role>,
-    ) -> Result<Response, KowalskiError> {
+    ) -> Result<String, KowalskiError> {
         self.agent
             .base_mut()
             .chat_with_history(conversation_id, content, role)

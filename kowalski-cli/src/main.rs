@@ -283,23 +283,8 @@ async fn use_regular_chat(
     // Regular chat for non-web agents
     agent.add_message(conv_id, "user", input).await;
     let response = agent.chat_with_history(conv_id, input.trim(), None).await?;
-    let mut stream = response.bytes_stream();
-    while let Some(chunk) = stream.next().await {
-        match chunk {
-            Ok(bytes) => {
-                if let Ok(Some(message)) = agent.process_stream_response(conv_id, &bytes).await {
-                    if !message.content.is_empty() {
-                        print!("{}", message.content);
-                        io::stdout().flush()?;
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("\nError: {}", e);
-                break;
-            }
-        }
-    }
+    println!("{}", response);
+    io::stdout().flush()?;
     println!();
     agent.add_message(conv_id, "assistant", input).await;
     Ok(())

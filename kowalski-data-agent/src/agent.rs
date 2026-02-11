@@ -10,7 +10,7 @@ use kowalski_core::template::default::DefaultTemplate;
 use kowalski_core::tools::{Tool, ToolOutput};
 use kowalski_tools::csv::CsvTool;
 use kowalski_tools::fs::FsTool;
-use reqwest::Response;
+
 
 /// DataAgent: A specialized agent for data analysis and processing tasks
 /// This agent is built on top of the TemplateAgent and provides data-specific functionality
@@ -144,7 +144,7 @@ impl Agent for DataAgent {
         conversation_id: &str,
         content: &str,
         role: Option<Role>,
-    ) -> Result<Response, KowalskiError> {
+    ) -> Result<String, KowalskiError> {
         self.agent
             .base_mut()
             .chat_with_history(conversation_id, content, role)
