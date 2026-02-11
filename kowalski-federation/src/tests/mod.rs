@@ -15,8 +15,12 @@ async fn test_agent_registry() {
 
     // Create test agents
     let config = Config::default();
-    let mut agent1 = BaseAgent::new(config.clone(), "agent1", "Test agent 1").unwrap();
-    let mut agent2 = BaseAgent::new(config.clone(), "agent2", "Test agent 2").unwrap();
+    
+    let (wm1, em1, sm1) = kowalski_core::memory::helpers::create_memory_providers(&config).await.unwrap();
+    let mut agent1 = BaseAgent::new(config.clone(), "agent1", "Test agent 1", wm1, em1, sm1).await.unwrap(); // Fixed: added await
+    
+    let (wm2, em2, sm2) = kowalski_core::memory::helpers::create_memory_providers(&config).await.unwrap();
+    let mut agent2 = BaseAgent::new(config.clone(), "agent2", "Test agent 2", wm2, em2, sm2).await.unwrap(); // Fixed: added await
 
     // Register agents
     let agent1 = Arc::new(agent1);
@@ -75,7 +79,8 @@ async fn test_federation_message() {
 #[tokio::test]
 async fn test_federated_agent() {
     let config = Config::default();
-    let mut agent = BaseAgent::new(config, "test-agent", "Test federated agent").unwrap();
+    let (wm, em, sm) = kowalski_core::memory::helpers::create_memory_providers(&config).await.unwrap();
+    let mut agent = BaseAgent::new(config, "test-agent", "Test federated agent", wm, em, sm).await.unwrap(); // Fixed: added await
 
     assert_eq!(agent.federation_id(), "test-agent");
     assert_eq!(agent.federation_role(), FederationRole::Worker);

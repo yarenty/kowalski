@@ -3,6 +3,8 @@ pub mod episodic;
 pub mod semantic;
 pub mod working;
 pub mod helpers;
+#[cfg(test)]
+mod tests;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

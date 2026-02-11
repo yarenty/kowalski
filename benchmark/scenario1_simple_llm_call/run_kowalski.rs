@@ -33,7 +33,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     let config = Config::default();
-    let mut agent = BaseAgent::new(config, "BenchmarkAgent", "").await?;
+    let (wm, em, sm) = kowalski_core::memory::helpers::create_memory_providers(&config).await?;
+    let mut agent = BaseAgent::new(config, "BenchmarkAgent", "", wm, em, sm).await?;
     let conversation_id = agent.start_conversation("llama3.2");
 
     let start_time = Instant::now();
