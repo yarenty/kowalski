@@ -11,7 +11,7 @@ use kowalski_core::tools::{Tool, ToolOutput};
 use kowalski_tools::document::PdfTool;
 use kowalski_tools::fs::FsTool;
 use kowalski_tools::web::WebSearchTool;
-use reqwest::Response;
+
 
 /// AcademicAgent: A specialized agent for academic tasks
 /// This agent is built on top of the TemplateAgent and provides academic-specific functionality
@@ -121,7 +121,7 @@ impl Agent for AcademicAgent {
         conversation_id: &str,
         content: &str,
         role: Option<Role>,
-    ) -> Result<Response, KowalskiError> {
+    ) -> Result<String, KowalskiError> {
         self.agent
             .base_mut()
             .chat_with_history(conversation_id, content, role)

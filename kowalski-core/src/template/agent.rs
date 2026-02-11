@@ -26,7 +26,11 @@ impl TemplateAgent {
     /// Creates a new TemplateAgent with the specified configuration
     pub async fn new(config: Config) -> Result<Self, KowalskiError> {
         use crate::memory::helpers::create_memory_providers;
+        use crate::llm::create_llm_provider;
         
+        // Create LLM provider
+        let llm_provider = create_llm_provider(&config)?;
+
         let (working_memory, episodic_memory, semantic_memory) = 
             create_memory_providers(&config).await?;
         
@@ -34,6 +38,7 @@ impl TemplateAgent {
             config.clone(),
             "Template Agent",
             "A base implementation for building specialized agents",
+            llm_provider,
             working_memory,
             episodic_memory,
             semantic_memory,
