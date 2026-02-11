@@ -16,7 +16,8 @@ pub struct BenchmarkAgent {
 #[async_trait]
 impl Agent for BenchmarkAgent {
     async fn new(config: Config) -> Result<Self, KowalskiError> {
-        Ok(Self { base_agent: BaseAgent::new(config, "BenchmarkAgent", "").await? })
+        let (wm, em, sm) = kowalski_core::memory::helpers::create_memory_providers(&config).await?;
+        Ok(Self { base_agent: BaseAgent::new(config, "BenchmarkAgent", "", wm, em, sm).await? })
     }
 
     fn start_conversation(&mut self, model: &str) -> String {
