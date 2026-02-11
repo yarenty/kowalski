@@ -23,11 +23,25 @@ pub struct AgentBuilder {
 impl AgentBuilder {
     /// Creates a new AgentBuilder with default configuration
     pub async fn new() -> Self {
+        use crate::memory::helpers::create_memory_providers;
+        
         let config = TemplateAgentConfig::default();
+        let default_config = Config::default();
+        
+        let (working_memory, episodic_memory, semantic_memory): (
+            std::sync::Arc<tokio::sync::Mutex<dyn crate::memory::MemoryProvider + Send + Sync>>,
+            std::sync::Arc<tokio::sync::Mutex<dyn crate::memory::MemoryProvider + Send + Sync>>,
+            std::sync::Arc<tokio::sync::Mutex<dyn crate::memory::MemoryProvider + Send + Sync>>,
+        ) = create_memory_providers(&default_config).await
+            .expect("Failed to create memory providers");
+        
         let base = BaseAgent::new(
-            Config::default(),
+            default_config,
             "Template Agent",
             "A base implementation for building specialized agents",
+            working_memory,
+            episodic_memory,
+            semantic_memory,
         )
         .await
         .expect("Failed to create base agent");

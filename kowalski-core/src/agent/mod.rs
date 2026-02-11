@@ -289,14 +289,21 @@ pub struct BaseAgent {
     pub name: String,
     pub description: String,
     pub system_prompt: Option<String>,
-    // Memory Tiers
-    pub working_memory: WorkingMemory,
-    pub episodic_memory: &'static tokio::sync::Mutex<crate::memory::episodic::EpisodicBuffer>,
-    pub semantic_memory: &'static tokio::sync::Mutex<crate::memory::semantic::SemanticStore>,
+    // Memory Tiers - now using dependency injection
+    pub working_memory: std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>,
+    pub episodic_memory: std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>,
+    pub semantic_memory: std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>,
 }
 
 impl BaseAgent {
-    pub async fn new(config: Config, name: &str, description: &str) -> Result<Self, KowalskiError> {
+    pub async fn new(
+        config: Config,
+        name: &str,
+        description: &str,
+        working_memory: std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>,
+        episodic_memory: std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>,
+        semantic_memory: std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>,
+    ) -> Result<Self, KowalskiError> {
         let client = reqwest::ClientBuilder::new()
             .http1_only()
             .pool_max_idle_per_host(0)
@@ -304,25 +311,6 @@ impl BaseAgent {
             .map_err(KowalskiError::Request)?;
 
         info!("BaseAgent created with name: {}", name);
-
-        // Initialize memory tiers
-        let working_memory = WorkingMemory::new(100); // Capacity of 100 units
-        let episodic_memory = crate::memory::episodic::get_or_init_episodic_buffer(
-            &config.memory.episodic_path,
-            &config.ollama.host,
-            config.ollama.port,
-            &config.ollama.model,
-        )
-        .await
-        .map_err(|e| {
-            KowalskiError::Initialization(format!("Failed to init episodic buffer: {}", e))
-        })?;
-        let semantic_memory =
-            crate::memory::semantic::get_or_init_semantic_store(&config.qdrant.http_url)
-                .await
-                .map_err(|e| {
-                    KowalskiError::Initialization(format!("Failed to init semantic store: {}", e))
-                })?;
 
         Ok(Self {
             client,
@@ -349,7 +337,32 @@ impl BaseAgent {
 #[async_trait]
 impl Agent for BaseAgent {
     async fn new(config: Config) -> Result<Self, KowalskiError> {
-        Self::new(config, "Base Agent", "A basic agent implementation").await
+        // Create memory providers
+        let working_memory = std::sync::Arc::new(tokio::sync::Mutex::new(
+            WorkingMemory::new(100)
+        )) as std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>;
+        
+        let episodic_memory = std::sync::Arc::new(tokio::sync::Mutex::new(
+            crate::memory::episodic::EpisodicBuffer::new(
+                &config.memory.episodic_path,
+                &config.ollama.host,
+                config.ollama.port,
+                &config.ollama.model,
+            )?
+        )) as std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>;
+        
+        let semantic_memory = std::sync::Arc::new(tokio::sync::Mutex::new(
+            crate::memory::semantic::SemanticStore::new(&config.qdrant.http_url).await?
+        )) as std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>;
+        
+        Self::new(
+            config,
+            "Base Agent",
+            "A basic agent implementation",
+            working_memory,
+            episodic_memory,
+            semantic_memory,
+        ).await
     }
 
     fn start_conversation(&mut self, model: &str) -> String {
@@ -381,6 +394,8 @@ impl Agent for BaseAgent {
         // Retrieve from all memory tiers
         let working_memories = self
             .working_memory
+            .lock()
+            .await
             .retrieve(content, self.config.working_memory_retrieval_limit)
             .await
             .unwrap_or_default();
@@ -523,7 +538,7 @@ impl Agent for BaseAgent {
         };
 
         // Add to Tier 1 working memory
-        if let Err(e) = self.working_memory.add(memory_unit.clone()).await {
+        if let Err(e) = self.working_memory.lock().await.add(memory_unit.clone()).await {
             eprintln!("Failed to add to working memory: {}", e);
         }
 
