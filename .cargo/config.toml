@@ -1,0 +1,11 @@
+[target.x86_64-apple-darwin]
+# Linker optimization: avoiding dsymutil by using split-debuginfo
+# This significantly speeds up incremental builds on macOS
+rustflags = ["-C", "split-debuginfo=unpacked"]
+
+[target.aarch64-apple-darwin]
+# Same for Apple Silicon
+rustflags = ["-C", "split-debuginfo=unpacked"]
+
+# Optional: Use zld if installed (uncomment if you have zld: brew install michaeleisel/zld/zld)
+# rustflags = ["-C", "link-arg=-fuse-ld=/usr/local/bin/zld", "-C", "split-debuginfo=unpacked"]

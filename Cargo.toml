@@ -76,3 +76,18 @@ dirs = "6.0"
 
 # Optional dependencies
 uuid = { version = "1", features = ["v4", "serde"] }
+
+# Build Optimizations
+[profile.dev]
+opt-level = 0
+debug = 0 # optimize for speed
+strip = "debuginfo"
+
+[profile.dev.package."*"]
+opt-level = 3 # dependencies are optimized like release
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
