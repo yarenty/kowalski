@@ -46,12 +46,13 @@ pub trait Agent: Send + Sync {
     fn delete_conversation(&mut self, id: &str) -> bool;
 
     /// Chats with history
+    /// Chats with history
     async fn chat_with_history(
         &mut self,
         conversation_id: &str,
         content: &str,
         role: Option<Role>,
-    ) -> Result<Response, KowalskiError>;
+    ) -> Result<String, KowalskiError>;
 
     /// Processes a stream response
     async fn process_stream_response(
@@ -96,37 +97,17 @@ pub trait Agent: Send + Sync {
 
             // Get response from LLM
             debug!("Calling LLM...");
-            let response = self
+            let response_text = self
                 .chat_with_history(conversation_id, &current_input, None)
                 .await?;
 
-            let mut stream = response.bytes_stream();
-            let mut buffer = String::new();
-
-            // Process streaming response
-            debug!("Processing streaming response...");
-            while let Some(chunk) = stream.next().await {
-                match chunk {
-                    Ok(bytes) => {
-                        if let Ok(Some(message)) =
-                            self.process_stream_response(conversation_id, &bytes).await
-                        {
-                            if !message.content.is_empty() {
-                                print!("{}", message.content);
-                                io::stdout()
-                                    .flush()
-                                    .map_err(|e| KowalskiError::Server(e.to_string()))?;
-                                buffer.push_str(&message.content);
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        error!("\nError: {}", e);
-                        return Err(KowalskiError::Server(e.to_string()));
-                    }
-                }
-            }
-            println!();
+            // Print response (simulate streaming effect or just print)
+            println!("{}", response_text);
+            io::stdout()
+                .flush()
+                .map_err(|e| KowalskiError::Server(e.to_string()))?;
+            
+            let mut buffer = response_text.clone();
             debug!("Full LLM response: '{}'", buffer);
 
             // Try to extract JSON from mixed text response
@@ -289,6 +270,8 @@ pub struct BaseAgent {
     pub name: String,
     pub description: String,
     pub system_prompt: Option<String>,
+    // LLM Provider
+    pub llm_provider: std::sync::Arc<dyn crate::llm::LLMProvider>,
     // Memory Tiers - now using dependency injection
     pub working_memory: std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>,
     pub episodic_memory: std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>,
@@ -300,6 +283,7 @@ impl BaseAgent {
         config: Config,
         name: &str,
         description: &str,
+        llm_provider: std::sync::Arc<dyn crate::llm::LLMProvider>,
         working_memory: std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>,
         episodic_memory: std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>,
         semantic_memory: std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>,
@@ -319,6 +303,7 @@ impl BaseAgent {
             name: name.to_string(),
             description: description.to_string(),
             system_prompt: None,
+            llm_provider,
             working_memory,
             episodic_memory,
             semantic_memory,
@@ -337,6 +322,21 @@ impl BaseAgent {
 #[async_trait]
 impl Agent for BaseAgent {
     async fn new(config: Config) -> Result<Self, KowalskiError> {
+        // Initialize LLM Provider based on config
+        let llm_provider: std::sync::Arc<dyn crate::llm::LLMProvider> = match config.llm.provider.as_str() {
+            "openai" => {
+                let api_key = config.llm.openai_api_key.clone()
+                    .ok_or(KowalskiError::Configuration("OpenAI API key missing".to_string()))?;
+                std::sync::Arc::new(crate::llm::OpenAIProvider::new(&api_key))
+            },
+            "ollama" | _ => {
+                std::sync::Arc::new(crate::llm::OllamaProvider::new(
+                    &config.ollama.host,
+                    config.ollama.port,
+                ))
+            }
+        };
+
         // Create memory providers
         let working_memory = std::sync::Arc::new(tokio::sync::Mutex::new(
             WorkingMemory::new(100)
@@ -345,9 +345,7 @@ impl Agent for BaseAgent {
         let episodic_memory = std::sync::Arc::new(tokio::sync::Mutex::new(
             crate::memory::episodic::EpisodicBuffer::new(
                 &config.memory.episodic_path,
-                &config.ollama.host,
-                config.ollama.port,
-                &config.ollama.model,
+                llm_provider.clone(),
             )?
         )) as std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>;
         
@@ -359,6 +357,7 @@ impl Agent for BaseAgent {
             config,
             "Base Agent",
             "A basic agent implementation",
+            llm_provider,
             working_memory,
             episodic_memory,
             semantic_memory,
@@ -390,7 +389,7 @@ impl Agent for BaseAgent {
         conversation_id: &str,
         content: &str,
         role: Option<Role>,
-    ) -> Result<Response, KowalskiError> {
+    ) -> Result<String, KowalskiError> {
         // Retrieve from all memory tiers
         let working_memories = self
             .working_memory
@@ -478,29 +477,10 @@ impl Agent for BaseAgent {
         let content_with_memory = format!("{}{}", content, memory_context);
         conversation.add_message("user", &content_with_memory);
 
-        let request = ChatRequest {
-            model: conversation.model.clone(),
-            messages: conversation.messages.clone(),
-            stream: true,
-            temperature: self.config.chat.temperature,
-            max_tokens: self.config.chat.max_tokens as usize,
-            tools: None,
-        };
-
-        let response = self
-            .client
-            .post(format!(
-                "http://{}:{}/api/chat",
-                self.config.ollama.host, self.config.ollama.port
-            ))
-            .json(&request)
-            .send()
+        // Delegate to LLM Provider
+        let response = self.llm_provider
+            .chat(&conversation.model, &conversation.messages)
             .await?;
-
-        if !response.status().is_success() {
-            let error_text = response.text().await?;
-            return Err(KowalskiError::Server(error_text));
-        }
 
         Ok(response)
     }

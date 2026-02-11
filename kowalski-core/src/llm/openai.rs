@@ -1,16 +1,29 @@
 use super::provider::LLMProvider;
-use crate::error::KowalskiError;
 use crate::conversation::Message;
+use crate::error::KowalskiError;
+use async_openai::{
+    config::OpenAIConfig,
+    types::{
+        ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
+        ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs,
+        CreateChatCompletionRequestArgs, CreateEmbeddingRequestArgs,
+    },
+    Client,
+};
 use async_trait::async_trait;
 
 pub struct OpenAIProvider {
-    api_key: String,
+    client: Client<OpenAIConfig>,
+    embedding_model: String,
 }
 
 impl OpenAIProvider {
     pub fn new(api_key: &str) -> Self {
+        let config = OpenAIConfig::new().with_api_key(api_key);
+        let client = Client::with_config(config);
         Self {
-            api_key: api_key.to_string(),
+            client,
+            embedding_model: "text-embedding-3-small".to_string(),
         }
     }
 }
@@ -18,13 +31,77 @@ impl OpenAIProvider {
 #[async_trait]
 impl LLMProvider for OpenAIProvider {
     async fn chat(&self, model: &str, messages: &[Message]) -> Result<String, KowalskiError> {
-        // TODO: Implement actual chat logic using async-openai
-        Ok("OpenAI response stub".to_string())
+        let mut openai_messages: Vec<ChatCompletionRequestMessage> = Vec::new();
+
+        for msg in messages {
+            match msg.role.as_str() {
+                "system" => {
+                    openai_messages.push(ChatCompletionRequestMessage::System(
+                        ChatCompletionRequestSystemMessageArgs::default()
+                            .content(msg.content.clone())
+                            .build()
+                            .map_err(|e| KowalskiError::Initialization(format!("OpenAI message error: {}", e)))?,
+                    ));
+                }
+                "user" => {
+                    openai_messages.push(ChatCompletionRequestMessage::User(
+                        ChatCompletionRequestUserMessageArgs::default()
+                            .content(msg.content.clone())
+                            .build()
+                            .map_err(|e| KowalskiError::Initialization(format!("OpenAI message error: {}", e)))?,
+                    ));
+                }
+                "assistant" => {
+                    openai_messages.push(ChatCompletionRequestMessage::Assistant(
+                        ChatCompletionRequestAssistantMessageArgs::default()
+                            .content(msg.content.clone())
+                            .build()
+                            .map_err(|e| KowalskiError::Initialization(format!("OpenAI message error: {}", e)))?,
+                    ));
+                }
+                _ => {
+                    // Default to user for unknown roles
+                    openai_messages.push(ChatCompletionRequestMessage::User(
+                        ChatCompletionRequestUserMessageArgs::default()
+                            .content(format!("[{}] {}", msg.role, msg.content))
+                            .build()
+                            .map_err(|e| KowalskiError::Initialization(format!("OpenAI message error: {}", e)))?,
+                    ));
+                }
+            }
+        }
+
+        let request = CreateChatCompletionRequestArgs::default()
+            .model(model)
+            .messages(openai_messages)
+            .build()
+            .map_err(|e| KowalskiError::Initialization(format!("OpenAI request error: {}", e)))?;
+
+        let response = self.client.chat().create(request).await
+            .map_err(|e| KowalskiError::Server(format!("OpenAI API error: {}", e)))?;
+
+        let content = response.choices.first()
+            .and_then(|choice| choice.message.content.clone())
+            .ok_or(KowalskiError::Server("No content in OpenAI response".to_string()))?;
+
+        Ok(content)
     }
 
     async fn embed(&self, text: &str) -> Result<Vec<f32>, KowalskiError> {
-        // TODO: Implement actual embedding logic
-        Ok(vec![0.0; 1536])
+        let request = CreateEmbeddingRequestArgs::default()
+            .model(&self.embedding_model)
+            .input(text)
+            .build()
+            .map_err(|e| KowalskiError::Initialization(format!("OpenAI embedding error: {}", e)))?;
+
+        let response = self.client.embeddings().create(request).await
+            .map_err(|e| KowalskiError::Memory(format!("OpenAI embedding API error: {}", e)))?;
+
+        let embedding = response.data.first()
+            .map(|data| data.embedding.clone())
+            .ok_or(KowalskiError::Memory("No embedding in OpenAI response".to_string()))?;
+
+        Ok(embedding)
     }
 
     fn supports_streaming(&self) -> bool {
