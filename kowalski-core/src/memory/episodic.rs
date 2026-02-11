@@ -19,9 +19,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Memory units are stored as key-value pairs, where the key is the `MemoryUnit.id`.
 pub struct EpisodicBuffer {
     db: DB,
-    ollama_host: String,
-    ollama_port: u16,
-    ollama_model: String,
+    llm_provider: std::sync::Arc<dyn crate::llm::LLMProvider>,
 }
 
 impl EpisodicBuffer {
@@ -30,12 +28,10 @@ impl EpisodicBuffer {
     /// # Arguments
     ///
     /// * `path` - The filesystem path where the RocksDB database will be stored.
-    /// * `ollama_host`, `ollama_port`, `ollama_model` - Ollama connection details for embeddings
+    /// * `llm_provider` - Provider for generating embeddings
     pub fn new(
         path: &str,
-        ollama_host: &str,
-        ollama_port: u16,
-        ollama_model: &str,
+        llm_provider: std::sync::Arc<dyn crate::llm::LLMProvider>,
     ) -> Result<Self, KowalskiError> {
         info!("Initializing episodic buffer at path: {}", path);
         let mut opts = Options::default();
@@ -61,9 +57,7 @@ impl EpisodicBuffer {
         })?;
         Ok(Self {
             db,
-            ollama_host: ollama_host.to_string(),
-            ollama_port,
-            ollama_model: ollama_model.to_string(),
+            llm_provider,
         })
     }
 
@@ -88,36 +82,7 @@ impl EpisodicBuffer {
             .map_err(|e| KowalskiError::Memory(e.to_string()))
     }
 
-    async fn get_ollama_embedding(&self, text: &str) -> Result<Vec<f32>, KowalskiError> {
-        let client = reqwest::Client::new();
-        let response = client
-            .post(format!(
-                "http://{}:{}/api/embeddings",
-                self.ollama_host, self.ollama_port
-            ))
-            .json(&serde_json::json!({
-                "model": self.ollama_model,
-                "prompt": text
-            }))
-            .send()
-            .await
-            .map_err(|e| {
-                KowalskiError::Memory(format!("Failed to send request to Ollama: {}", e))
-            })?;
 
-        let json: serde_json::Value = response.json().await.map_err(|e| {
-            KowalskiError::Memory(format!("Failed to parse Ollama response: {}", e))
-        })?;
-        let embedding = json["embedding"]
-            .as_array()
-            .ok_or(KowalskiError::Memory(
-                "No embedding in response".to_string(),
-            ))?
-            .iter()
-            .map(|v| v.as_f64().unwrap_or(0.0) as f32)
-            .collect();
-        Ok(embedding)
-    }
 
     pub async fn add_with_embedding(
         &mut self,
@@ -127,7 +92,7 @@ impl EpisodicBuffer {
         debug!("Adding memory unit to episodic buffer: {}", memory.id);
         // If embedding is missing, generate it
         if memory.embedding.is_none() {
-            match self.get_ollama_embedding(&memory.content).await {
+            match self.llm_provider.embed(&memory.content).await {
                 Ok(embedding) => memory.embedding = Some(embedding),
                 Err(e) => {
                     error!("Failed to get embedding for memory {}: {}", memory.id, e);
@@ -153,7 +118,7 @@ impl EpisodicBuffer {
     ) -> Result<Vec<MemoryUnit>, KowalskiError> {
         info!("[EpisodicBuffer][RETRIEVE] Query: '{}'", query);
         // Try to get embedding for the query
-        let query_embedding = self.get_ollama_embedding(query).await.ok();
+        let query_embedding = self.llm_provider.embed(query).await.ok();
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()

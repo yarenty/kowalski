@@ -18,9 +18,30 @@ pub struct Config {
     pub episodic_memory_retrieval_limit: usize,
     /// Maximum number of memories to retrieve from semantic memory
     pub semantic_memory_retrieval_limit: usize,
+    /// LLM configuration (new)
+    #[serde(default)]
+    pub llm: LLMConfig,
     /// Additional configurations from other agents
     #[serde(flatten)]
     pub additional: HashMap<String, serde_json::Value>,
+}
+
+/// Configuration for generic LLM settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LLMConfig {
+    /// The provider to use: "ollama", "openai", etc.
+    pub provider: String,
+    /// OpenAI API key (if using openai provider)
+    pub openai_api_key: Option<String>,
+}
+
+impl Default for LLMConfig {
+    fn default() -> Self {
+        Self {
+            provider: "ollama".to_string(),
+            openai_api_key: std::env::var("OPENAI_API_KEY").ok(),
+        }
+    }
 }
 
 /// Configuration for Ollama integration
@@ -138,6 +159,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             ollama: OllamaConfig::default(),
+            llm: LLMConfig::default(),
             chat: ChatConfig::default(),
             qdrant: QdrantConfig::default(),
             memory: MemoryConfig::default(),
