@@ -9,3 +9,7 @@ rustflags = ["-C", "split-debuginfo=unpacked"]
 
 # Optional: Use zld if installed (uncomment if you have zld: brew install michaeleisel/zld/zld)
 # rustflags = ["-C", "link-arg=-fuse-ld=/usr/local/bin/zld", "-C", "split-debuginfo=unpacked"]
+
+[build]
+rustc-wrapper = "sccache"
+
