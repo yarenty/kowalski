@@ -14,8 +14,7 @@ use qdrant_client::Qdrant;
 use qdrant_client::qdrant::{Condition, Filter, PointStruct};
 use serde_json::json;
 use std::collections::HashMap;
-use tokio::sync::Mutex;
-use tokio::sync::OnceCell;
+// Removed OnceCell - no longer using singleton pattern
 use uuid::Uuid;
 
 const QDRANT_COLLECTION_NAME: &str = "kowalski_memory";
@@ -230,13 +229,5 @@ impl MemoryProvider for SemanticStore {
     }
 }
 
-static SEMANTIC_STORE: OnceCell<Mutex<SemanticStore>> = OnceCell::const_new();
-
-/// Get or initialize the singleton SemanticStore asynchronously, wrapped in a Mutex for safe mutable access.
-pub async fn get_or_init_semantic_store(
-    qdrant_url: &str,
-) -> Result<&'static Mutex<SemanticStore>, KowalskiError> {
-    SEMANTIC_STORE
-        .get_or_try_init(|| async move { Ok(Mutex::new(SemanticStore::new(qdrant_url).await?)) })
-        .await
-}
+// Singleton pattern removed - use dependency injection instead
+// Create instances with SemanticStore::new() and inject via Arc<dyn MemoryProvider>

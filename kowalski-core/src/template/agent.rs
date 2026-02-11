@@ -25,10 +25,18 @@ pub trait TaskHandler: Send + Sync {
 impl TemplateAgent {
     /// Creates a new TemplateAgent with the specified configuration
     pub async fn new(config: Config) -> Result<Self, KowalskiError> {
+        use crate::memory::helpers::create_memory_providers;
+        
+        let (working_memory, episodic_memory, semantic_memory) = 
+            create_memory_providers(&config).await?;
+        
         let base = BaseAgent::new(
             config.clone(),
             "Template Agent",
             "A base implementation for building specialized agents",
+            working_memory,
+            episodic_memory,
+            semantic_memory,
         )
         .await?;
         let template_config = TemplateAgentConfig::from(config);

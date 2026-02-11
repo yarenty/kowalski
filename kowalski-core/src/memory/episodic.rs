@@ -11,7 +11,7 @@ use reqwest;
 use rocksdb::{DB, IteratorMode, Options};
 use serde_json;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::{Mutex, OnceCell};
+// Removed OnceCell - no longer using singleton pattern
 
 /// A persistent, chronological memory store using RocksDB.
 ///
@@ -214,26 +214,8 @@ impl EpisodicBuffer {
     }
 }
 
-static EPISODIC_BUFFER: OnceCell<Mutex<EpisodicBuffer>> = OnceCell::const_new();
-
-/// Get or initialize the singleton EpisodicBuffer asynchronously, wrapped in a Mutex for safe mutable access.
-pub async fn get_or_init_episodic_buffer(
-    path: &str,
-    ollama_host: &str,
-    ollama_port: u16,
-    ollama_model: &str,
-) -> Result<&'static Mutex<EpisodicBuffer>, KowalskiError> {
-    EPISODIC_BUFFER
-        .get_or_try_init(|| async move {
-            Ok(Mutex::new(EpisodicBuffer::new(
-                path,
-                ollama_host,
-                ollama_port,
-                ollama_model,
-            )?))
-        })
-        .await
-}
+// Singleton pattern removed - use dependency injection instead
+// Create instances with EpisodicBuffer::new() and inject via Arc<dyn MemoryProvider>
 
 /// Utility: Cosine similarity between two vectors
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
