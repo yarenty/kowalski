@@ -1,9 +1,8 @@
-use crate::agent::{Agent, BaseAgent};
+use crate::agent::BaseAgent;
 use crate::config::Config;
-use crate::memory::MemoryProvider;
 use crate::memory::MemoryUnit;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+// use std::sync::Arc;
+// use tokio::sync::Mutex;
 use tempfile::tempdir;
 
 #[tokio::test]

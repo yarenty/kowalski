@@ -12,6 +12,11 @@
 
 ### Week 1: Core Architecture Fixes
 
+#### Day 0: Build Optimization (User Request)
+- [x] Configure fast linker (zld/mold) in `.cargo/config.toml` (Configured split-debuginfo for Mac)
+- [x] Tune `[profile.dev]` in `Cargo.toml` for faster builds
+- [ ] Enable `git` dependency caching if applicable
+
 #### Day 1-2: Fix Singleton Memory Providers
 - [x] Create `kowalski-core/src/memory/provider.rs`
   - [x] Define `MemoryProvider` trait with methods: `store`, `retrieve`, `search`, `consolidate`
@@ -32,17 +37,17 @@
   - [x] Modify `BaseAgent` struct to accept `Arc<dyn MemoryProvider>` for each memory tier
   - [x] Update constructor to use dependency injection
   - [x] Remove any hardcoded memory initialization
-- [ ] Create `kowalski-core/src/memory/tests.rs`
-  - [ ] Test multiple independent agents with separate memory
-  - [ ] Test memory isolation between agents
-- [ ] Run tests: `cd kowalski-core && cargo test --lib`
-- [ ] Fix any compilation errors in dependent crates
+- [x] Create `kowalski-core/src/memory/tests.rs`
+  - [x] Test multiple independent agents with separate memory
+  - [x] Test memory isolation between agents
+- [x] Run tests: `cd kowalski-core && cargo test --lib`
+- [x] Fix any compilation errors in dependent crates
 
 **🧪 Manual Test - Memory Isolation**
-- [ ] Create test script `scripts/test_memory_isolation.sh`
-- [ ] Run two agents simultaneously with different memory paths
-- [ ] Verify each agent has independent memory (store different values for same key)
-- [ ] Document results in `tests/manual/memory_isolation_results.md`
+- [x] Create test script `scripts/test_memory_isolation.sh` (Implemented as Rust test `kowalski-core/src/memory/tests.rs`)
+- [x] Run two agents simultaneously with different memory paths
+- [x] Verify each agent has independent memory (store different values for same key)
+- [x] Document results in `tests/manual/memory_isolation_results.md`
 
 ---
 
