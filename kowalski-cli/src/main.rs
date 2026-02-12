@@ -21,6 +21,10 @@ use kowalski_core::memory::consolidation::{Consolidator, MemoryWeaver};
 struct Cli {
     #[clap(subcommand)]
     command: Option<Commands>,
+
+    /// Start in interactive mode
+    #[clap(short, long)]
+    interactive: bool,
 }
 
 #[derive(Parser, Debug)]
@@ -135,6 +139,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
     let cli = Cli::parse();
     let manager = AgentManager::new();
+
+    if cli.interactive {
+        println!("Starting Kowalski in interactive mode...");
+        manager.create_agent("default".to_string(), "web", None, None).await?;
+        let mut agents_guard = manager.get_agent_mut("default").await.unwrap();
+        if let Some(agent) = agents_guard.remove("default") {
+            let mut session = kowalski_cli::interactive::InteractiveSession::new(agent, "llama3");
+            session.run().await?;
+            return Ok(());
+        }
+    }
 
     match cli.command {
         Some(Commands::Create {

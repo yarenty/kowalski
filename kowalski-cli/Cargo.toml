@@ -49,4 +49,6 @@ tower-http = { workspace = true }
 url = { workspace = true }
 regex = { workspace = true }
 markdown = { workspace = true }
+rustyline = "13.0"
+colored = "2.1"
 
