@@ -177,6 +177,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_tool_execution() {
+        let manager = ToolManager::new();
+        manager.register(MockTool);
+        
+        let input = ToolInput::new(
+            "mock_task".to_string(),
+            "test content".to_string(),
+            serde_json::json!({"input": "test"})
+        );
+        
+        let result = manager.execute("mock_tool", input).await.unwrap();
+        assert_eq!(result.result["status"], "success");
+    }
+
+    #[tokio::test]
+    async fn test_generate_tool_descriptions() {
+        let manager = ToolManager::new();
+        manager.register(MockTool);
+        
+        let descriptions = manager.generate_tool_descriptions().await;
+        assert!(descriptions.contains("mock_tool: A mock tool for testing"));
+    }
+
+    #[tokio::test]
     async fn test_generate_json_schema() {
         let manager = ToolManager::new();
         manager.register(MockTool);

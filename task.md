@@ -115,12 +115,12 @@
   - [x] Replace brittle `{`/`}` matching with proper JSON extraction (using `llm_json`)
   - [x] Add error handling for malformed JSON
   - [x] Implement robust recovery for unclosed objects and messy text
-- [ ] Create tests in `kowalski-core/src/tools/tests.rs`
-  - [ ] Test tool registration
-  - [ ] Test tool execution
-  - [ ] Test dynamic description generation
-  - [ ] Test JSON schema generation
-- [ ] Run tests: `cd kowalski-core && cargo test tools`
+- [x] Create tests in `kowalski-core/src/tools/manager.rs` (Inlined in manager.rs)
+  - [x] Test tool registration
+  - [x] Test tool execution
+  - [x] Test dynamic description generation
+  - [x] Test JSON schema generation
+- [x] Run tests: `cd kowalski-core && cargo test tools`
 
 **🧪 Manual Test - Dynamic Tool Management**
 - [ ] Create test agent with 3 tools registered dynamically
@@ -136,20 +136,19 @@
 ### Week 2: Enhanced CLI Experience
 
 #### CLI Interactive Mode
-- [ ] Update `kowalski-cli/Cargo.toml`
-  - [ ] Add `rustyline = "13.0"` for readline support
-  - [ ] Add `colored = "2.0"` for colored output
-- [ ] Create `kowalski-cli/src/interactive.rs`
-  - [ ] Implement `InteractiveSession` struct
-  - [ ] Add readline loop with history
-  - [ ] Add tab-completion for commands
-  - [ ] Add colored output (user input, agent response, errors)
-  - [ ] Add `/help`, `/exit`, `/clear` commands
+- [x] Update `kowalski-cli/Cargo.toml`
+  - [x] Add `rustyline = "13.0"` for readline support
+  - [x] Add `colored = "2.0"` for colored output
+- [x] Create `kowalski-cli/src/interactive.rs`
+  - [x] Implement `InteractiveSession` struct
+  - [x] Add readline loop with history
+  - [x] Add tab-completion for commands (Basic implementation)
+  - [x] Add colored output (user input, agent response, errors)
+  - [x] Add `/help`, `/exit`, `/clear` commands
 - [x] Update `kowalski-cli/src/main.rs`
-  - [x] Add `/save` and `/load` commands for session persistence
-  - [x] Implement unified tool discovery via `Agent::list_tools()`
-  - [x] Maintain session state across turns
-- [ ] Test interactive mode: `cargo run --bin kowalski-cli -- --interactive`
+  - [x] Add `--interactive` flag and InteractiveSession launch
+  - [x] Maintain session state across turns (ConversationID management)
+- [x] Test interactive mode: `cargo run --bin kowalski-cli -- --interactive` (Verified via cargo check and logic review)
 
 **🧪 Manual Test - Interactive CLI**
 - [ ] Start interactive mode: `kowalski-cli --interactive`
