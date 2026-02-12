@@ -32,32 +32,29 @@
 ## 2. Project Identity
 
 **Name**: Kowalski
-**Purpose**: A sophisticated Rust-based multi-agent framework for interacting with various LLM providers, supporting federation and secure collaboration.
-**Core Value**: Providing a foundational framework for building intelligent, distributed agent systems that collaborate securely and efficiently.
-**Mechanism**: Leverages a multi-tiered memory system (Working, Episodic, Semantic), specialized domain agents, and an extensible toolchain architecture.
+**Purpose**: To establish Kowalski as the premier Rust-native, local-first, and highly extensible multi-agent framework. It enables the creation of intelligent, collaborative AI systems capable of deep environment interaction while prioritizing performance and security.
+**Core Value**: Unparalleled flexibility and power for building autonomous AI agents through modularity, trait-based abstractions, and a "local-first" privacy focus.
+**Mechanism**: A highly decoupled architecture managed by a central Orchestrator, leveraging dynamic Tool/Agent registries and a robust multi-tiered memory system.
 
 ## 3. Technology Stack
 
-- **Core Framework**: Rust (Tokio-based async architecture)
-- **CLI**: `kowalski-cli` (Rust-native)
-- **Frontend**: Primarily CLI; future web/GUI support planned.
+- **Core Framework**: Rust-native (Tokio-based async runtime)
+- **Runtime**: `kowalski-runtime` (Planned central orchestrator for core components)
+- **CLI**: `kowalski-cli` (Interactive control center)
+- **Gateway**: Multi-channel support planned (Telegram, Discord, etc.)
 - **Package Manager**: Cargo
 
 ## 4. Repository Architecture
 
 kowalski/
-├── kowalski-core/           # Core abstractions, multi-tiered memory, and agent logic.
-├── kowalski-tools/          # Pluggable tool implementations (FS, Web, CSV, PDF).
-├── kowalski-agent-template/ # Base templates for building new agents.
-├── kowalski-federation/     # Multi-agent coordination and message protocols (WIP).
-├── kowalski-academic-agent/ # Specialized for paper analysis and research.
-├── kowalski-code-agent/     # Specialized for multi-language code analysis.
-├── kowalski-data-agent/     # Specialized for CSV and tabular data insights.
-├── kowalski-web-agent/      # Specialized for search and scraping.
-├── kowalski-cli/            # Main entry point for user interaction.
-└── kowalski/                # Facade crate for a unified public API.
+├── kowalski-runtime/        # [PLANNED] Central runtime for orchestrating core components.
+├── kowalski-core/           # Trait-based abstractions, multi-tiered memory, and agent logic.
+├── kowalski-tools/          # Pluggable tool implementations (FS, Web, CSV, PDF, Browser).
+├── kowalski-federation/     # Multi-agent coordination and message protocols (Re-imagined as Orchestrator).
+├── kowalski-cli/            # Main interactive entry point for user engagement.
+└── kowalski/                # Facade crate for conditional feature re-exports.
 
-Each subdirectory contains its own `AGENT.md` summarizing the specific state and architecture of that package.
+The architecture follows SOLID principles, using Dependency Injection and trait-based abstractions to ensure components (LLM Providers, Tools, Memory) are fully swappable.
 
 ## 5. Key Workflows
 
@@ -211,13 +208,24 @@ If you can answer these, your context management is solid:
 
 
 
-## 6. Implementation Details
+## 6. Implementation Status & Roadmap
 
-- **Memory System**: Uses a hybrid approach with Working (in-mem), Episodic (RocksDB), and Semantic (Qdrant/Vector) stores.
-- **Toolchain**: Agents interact with the environment via a unified `Tool` trait; `kowalski-data-agent` implements dynamic tool prompt generation.
-- **LLM Integration**: Currently optimized for Ollama, with abstractions planned for OpenAI/Anthropic.
+Kowalski is currently undergoing a total rebuild to reach "100x better" performance and extensibility.
 
-## 7. Common AI Tasks
+- **Current Progress**: Phase 1 (MVP Foundation). We are refactoring memory providers to eliminate singletons and implementing LLM/Tool abstractions.
+- **Active Tracking**: Refer to [task.md](file:///opt/ml/kowalski/task.md) for the detailed implementation checklist and current phase details.
+- **Next Steps**:
+    1. Complete Phase 1 (MVP) including unified tool management and CLI interactive mode.
+    2. Phase 2: Browser automation (`BrowserControlTool`) and multi-channel gateway.
+    3. Phase 3: Robust Multi-Agent Federation and advanced orchestration.
+
+## 7. Implementation Details (Target State)
+
+- **Memory System**: Fully decoupled providers injected via `Arc<dyn MemoryProvider>`.
+- **Toolchain**: Dynamic tool registration via `ToolRegistry` with automated schema generation for LLMs.
+- **LLM Integration**: Unified `LLMProvider` trait supporting Ollama, OpenAI, Anthropic, and more.
+
+## 8. Common AI Tasks
 
 - **Adding a Tool**: Implement the `Tool` trait in `kowalski-tools` and register it in an agent.
 - **Creating an Agent**: Use `kowalski-agent-template` or compose `BaseAgent` from `kowalski-core`.
