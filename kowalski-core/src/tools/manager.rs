@@ -100,4 +100,20 @@ impl ToolManager {
         }
         descriptions
     }
+
+    /// List all registered tools (name, description)
+    pub async fn list_tools(&self) -> Vec<(String, String)> {
+        let tools_snapshot: Vec<Arc<Mutex<dyn Tool>>> = if let Ok(tools) = self.tools.read() {
+             tools.values().cloned().collect()
+        } else {
+            return Vec::new();
+        };
+
+        let mut result = Vec::new();
+        for tool in tools_snapshot {
+            let tool_guard = tool.lock().await;
+            result.push((tool_guard.name().to_string(), tool_guard.description().to_string()));
+        }
+        result
+    }
 }

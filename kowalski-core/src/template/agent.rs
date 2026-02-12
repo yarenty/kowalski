@@ -13,7 +13,7 @@ use tokio::sync::RwLock;
 pub struct TemplateAgent {
     base: BaseAgent,
     config: TemplateAgentConfig,
-    pub tool_chain: Arc<RwLock<Vec<Box<dyn Tool + Send + Sync>>>>,
+    // tool_chain removed in favor of base.tool_manager
     pub task_handlers: Arc<RwLock<HashMap<String, Box<dyn TaskHandler>>>>,
 }
 
@@ -46,13 +46,11 @@ impl TemplateAgent {
         )
         .await?;
         let template_config = TemplateAgentConfig::from(config);
-        let tool_chain = Arc::new(RwLock::new(Vec::new()));
         let task_handlers = Arc::new(RwLock::new(HashMap::new()));
 
         Ok(Self {
             base,
             config: template_config,
-            tool_chain,
             task_handlers,
         })
     }
@@ -84,12 +82,12 @@ impl TemplateAgent {
     }
 
     /// Registers a tool with the agent
+    /// Registers a tool with the agent
     pub async fn register_tool(
         &self,
         tool: Box<dyn Tool + Send + Sync>,
     ) -> Result<(), KowalskiError> {
-        let mut tools = self.tool_chain.write().await;
-        tools.push(tool);
+        self.base.tool_manager.register_boxed(tool);
         Ok(())
     }
 
@@ -108,33 +106,73 @@ impl TemplateAgent {
         tool_name: &str,
         tool_input: &serde_json::Value,
     ) -> Result<ToolOutput, KowalskiError> {
-        let mut tools = self.tool_chain.write().await;
-        if let Some(tool) = tools.iter_mut().find(|t| t.name() == tool_name) {
-            let tool_input_struct = ToolInput {
-                task_type: tool_name.to_string(),
-                content: "".to_string(),
-                parameters: tool_input.clone(),
-            };
-            tool.execute(tool_input_struct).await
-        } else {
-            Err(KowalskiError::ToolExecution(format!(
-                "Tool '{}' not found",
-                tool_name
-            )))
-        }
+        // Delegate to base agent which uses ToolManager
+        // But here we might want to convert Value to ToolInput?
+        // BaseAgent::execute_tool already does that handling (lines 508+ in agent/mod.rs)
+        // Wait, `execute_tool` in TemplateAgent was likely calling internal `tool.execute`.
+        // Now we call `self.base.execute_tool(...)`.
+        // `BaseAgent` implements specific `execute_tool`.
+        // Does `BaseAgent` struct have `execute_tool` method?
+        // `impl Agent for BaseAgent` has it.
+        // `TemplateAgent` holds `base: BaseAgent`.
+        // We can call `self.base.tool_manager.execute(...)`.
+        // But we need to construct `ToolInput`.
+        
+        // Replicating BaseAgent logic:
+        let task_type = tool_input
+            .get("task")
+            .and_then(|v| v.as_str())
+            .unwrap_or("default")
+            .to_string();
+        let content = tool_input
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let input = crate::tools::ToolInput::new(task_type, content, tool_input.clone());
+        self.base.tool_manager.execute(tool_name, input).await
     }
 
     /// Executes a task using the appropriate tool or handler
+    /// Executes a task using the appropriate tool or handler
     pub async fn execute_task(&self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
-        // First try to find a matching tool
-        let mut tools = self.tool_chain.write().await;
-        for tool in tools.iter_mut() {
-            // Try to execute the tool and check if it succeeds
-            match tool.execute(input.clone()).await {
-                Ok(output) => return Ok(output),
-                Err(_) => continue,
+        // First try to find a matching tool via ToolManager
+        // ToolManager::execute requires tool name. 
+        // Here we don't have tool name, just TaskType?
+        // `ToolInput` has `task_type`.
+        // Old logic iterated ALL tools and tried to execute.
+        // `ToolManager` is Map-based (by tool name).
+        // It doesn't support "try all tools".
+        // 
+        // We need to deprecate this "try everything" approach or implement a way to map task->tool.
+        // `ToolChain` supported this.
+        // `ToolManager` should support task handler mapping?
+        //
+        // If we want to keep `execute_task` working, we need `ToolManager` to support it.
+        // For now, let's say "Not supported" or iterate if we must.
+        // `ToolManager::list_tools` gives names. Then we can try execute?
+        // But `execute` requires name.
+        // 
+        // If `DataAgent` relies on this...
+        // `DataAgent` doesn't call `execute_task` explicitly in what I saw.
+        // The Prompt says "Use tool...".
+        // `chat_with_tools` calls `execute_tool` (by name).
+        //
+        // So `execute_task` might be legacy `TaskHandler` stuff.
+        // I will comment it out or return error for now to encourage explicit tool use.
+        // Or iterate `tool_manager.list_tools()` keys.
+        
+        let tools = self.base.tool_manager.list_tools().await;
+        for (name, _) in tools {
+            // This is inefficient but mimics old behavior.
+            // But we need to call `execute` which takes `ToolInput`.
+            // `execute` finds tool by name.
+            if let Ok(output) = self.base.tool_manager.execute(&name, input.clone()).await {
+                 return Ok(output);
             }
         }
+
 
         // If no tool matches, try to find a task handler
         let handlers = self.task_handlers.read().await;
@@ -150,10 +188,6 @@ impl TemplateAgent {
 
     /// Lists all registered tools (name, description)
     pub async fn list_tools(&self) -> Vec<(String, String)> {
-        let tools = self.tool_chain.read().await;
-        tools
-            .iter()
-            .map(|t| (t.name().to_string(), t.description().to_string()))
-            .collect()
+        self.base.tool_manager.list_tools().await
     }
 }
