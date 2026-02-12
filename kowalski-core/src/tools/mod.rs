@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 
+pub mod manager;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolParameter {
     pub name: String,
@@ -104,5 +106,27 @@ pub struct ToolOutput {
 impl ToolOutput {
     pub fn new(result: serde_json::Value, metadata: Option<serde_json::Value>) -> Self {
         Self { result, metadata }
+    }
+}
+
+#[async_trait::async_trait]
+impl<T: Tool + ?Sized> Tool for Box<T> {
+    async fn execute(
+        &mut self,
+        input: ToolInput,
+    ) -> Result<ToolOutput, crate::error::KowalskiError> {
+        (**self).execute(input).await
+    }
+
+    fn name(&self) -> &str {
+        (**self).name()
+    }
+
+    fn description(&self) -> &str {
+        (**self).description()
+    }
+
+    fn parameters(&self) -> Vec<ToolParameter> {
+        (**self).parameters()
     }
 }

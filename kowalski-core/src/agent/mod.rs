@@ -104,7 +104,7 @@ pub trait Agent: Send + Sync {
                 .flush()
                 .map_err(|e| KowalskiError::Server(e.to_string()))?;
             
-            let mut buffer = response_text.clone();
+            let buffer = response_text.clone();
             debug!("Full LLM response: '{}'", buffer);
 
             // Try to extract JSON from mixed text response
@@ -273,6 +273,8 @@ pub struct BaseAgent {
     pub working_memory: std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>,
     pub episodic_memory: std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>,
     pub semantic_memory: std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>,
+    // Tool Manager
+    pub tool_manager: crate::tools::manager::ToolManager,
 }
 
 impl BaseAgent {
@@ -284,6 +286,7 @@ impl BaseAgent {
         working_memory: std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>,
         episodic_memory: std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>,
         semantic_memory: std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>,
+        tool_manager: crate::tools::manager::ToolManager,
     ) -> Result<Self, KowalskiError> {
         let client = reqwest::ClientBuilder::new()
             .http1_only()
@@ -304,6 +307,7 @@ impl BaseAgent {
             working_memory,
             episodic_memory,
             semantic_memory,
+            tool_manager,
         })
     }
 
@@ -358,6 +362,7 @@ impl Agent for BaseAgent {
             working_memory,
             episodic_memory,
             semantic_memory,
+            crate::tools::manager::ToolManager::new(),
         ).await
     }
 
@@ -498,6 +503,27 @@ impl Agent for BaseAgent {
         }
 
         Ok(Some(stream_response.message))
+    }
+
+    async fn execute_tool(
+        &mut self,
+        tool_name: &str,
+        tool_input: &serde_json::Value,
+    ) -> Result<ToolOutput, KowalskiError> {
+        let task_type = tool_input
+            .get("task")
+            .and_then(|v| v.as_str())
+            .unwrap_or("default")
+            .to_string();
+        let content = tool_input
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let input = crate::tools::ToolInput::new(task_type, content, tool_input.clone());
+
+        self.tool_manager.execute(tool_name, input).await
     }
 
     async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {

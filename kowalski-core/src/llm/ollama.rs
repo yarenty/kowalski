@@ -1,5 +1,5 @@
 use super::provider::LLMProvider;
-use crate::agent::types::{ChatRequest, StreamResponse};
+use crate::agent::types::ChatRequest;
 use crate::conversation::Message;
 use crate::error::KowalskiError;
 use async_trait::async_trait;

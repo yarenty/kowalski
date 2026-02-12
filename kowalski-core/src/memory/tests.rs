@@ -20,7 +20,7 @@ async fn test_memory_isolation() {
     
     let (wm1, em1, sm1) = crate::memory::helpers::create_memory_providers(&config1).await.unwrap();
     let llm_provider1 = crate::llm::create_llm_provider(&config1).unwrap();
-    let mut agent1 = BaseAgent::new(config1, "agent1", "Test Agent 1", llm_provider1, wm1, em1.clone(), sm1).await.unwrap();
+    let mut agent1 = BaseAgent::new(config1, "agent1", "Test Agent 1", llm_provider1, wm1, em1.clone(), sm1, crate::tools::manager::ToolManager::new()).await.unwrap();
 
     // Agent 2 setup
     let mut config2 = config.clone();
@@ -28,7 +28,7 @@ async fn test_memory_isolation() {
     
     let (wm2, em2, sm2) = crate::memory::helpers::create_memory_providers(&config2).await.unwrap();
     let llm_provider2 = crate::llm::create_llm_provider(&config2).unwrap();
-    let mut agent2 = BaseAgent::new(config2, "agent2", "Test Agent 2", llm_provider2, wm2, em2.clone(), sm2).await.unwrap();
+    let mut agent2 = BaseAgent::new(config2, "agent2", "Test Agent 2", llm_provider2, wm2, em2.clone(), sm2, crate::tools::manager::ToolManager::new()).await.unwrap();
 
     // 1. Test Working Memory Isolation
     println!("Testing Working Memory Isolation...");
