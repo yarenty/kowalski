@@ -163,6 +163,18 @@ impl Agent for WebAgent {
         self.agent.execute_tool(tool_name, tool_input).await
     }
 
+    async fn list_tools(&self) -> Vec<(String, String)> {
+        self.agent.list_tools().await
+    }
+
+    fn export_conversation(&self, id: &str) -> Result<String, KowalskiError> {
+        self.agent.base().export_conversation(id)
+    }
+
+    fn import_conversation(&mut self, json_str: &str) -> Result<String, KowalskiError> {
+        self.agent.base_mut().import_conversation(json_str)
+    }
+
     fn name(&self) -> &str {
         "Web Agent"
     }

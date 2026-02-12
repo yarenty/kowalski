@@ -61,6 +61,12 @@ pub trait Agent: Send + Sync {
     /// Adds a message to a conversation
     async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str);
 
+    /// Exports a conversation to a JSON string
+    fn export_conversation(&self, id: &str) -> Result<String, KowalskiError>;
+
+    /// Imports a conversation from a JSON string, returns the new conversation ID
+    fn import_conversation(&mut self, json: &str) -> Result<String, KowalskiError>;
+
     /// Executes a tool with the given name and input.
     async fn execute_tool(
         &mut self,
@@ -190,7 +196,11 @@ pub trait Agent: Send + Sync {
         Ok(final_response)
     }
 
-    /// Gets the agent's name
+    /// Lists tools available to this agent
+    async fn list_tools(&self) -> Vec<(String, String)> {
+        Vec::new()
+    }
+
     fn name(&self) -> &str;
 
     /// Gets the agent's description
@@ -493,6 +503,22 @@ impl Agent for BaseAgent {
         if let Some(conversation) = self.conversations.get_mut(conversation_id) {
             conversation.add_message(role, content);
         }
+    }
+
+    fn export_conversation(&self, id: &str) -> Result<String, KowalskiError> {
+        let conversation = self
+            .conversations
+            .get(id)
+            .ok_or_else(|| KowalskiError::ConversationNotFound(id.to_string()))?;
+        serde_json::to_string(conversation).map_err(KowalskiError::Json)
+    }
+
+    fn import_conversation(&mut self, json_str: &str) -> Result<String, KowalskiError> {
+        let conversation: crate::conversation::Conversation =
+            serde_json::from_str(json_str).map_err(KowalskiError::Json)?;
+        let id = conversation.id.clone();
+        self.conversations.insert(id.clone(), conversation);
+        Ok(id)
     }
 
     fn name(&self) -> &str {
