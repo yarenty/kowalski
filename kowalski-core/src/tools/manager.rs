@@ -34,34 +34,7 @@ impl ToolManager {
     /// Register a boxed tool (useful for dynamic dispatch)
     pub fn register_boxed(&self, tool: Box<dyn Tool>) {
         if let Ok(mut tools) = self.tools.write() {
-             // We can't easily move Box<dyn Tool> into Arc<Mutex<dyn Tool>> without reallocation/wrapping?
-             // Actually Mutex::new takes specific type.
-             // We can wrap Box<dyn Tool> in Mutex? No, Mutex<T>. 
-             // We want Mutex<dyn Tool>.
-             // Use Arc::new(Mutex::new(tool)) where tool is the Box?
-             // Arc::new(Mutex::new(tool)) creates Arc<Mutex<Box<dyn Tool>>>. 
-             // We want Arc<Mutex<dyn Tool>>.
-             // Typically we can't coerce Mutex<Box<dyn Tool>> to Mutex<dyn Tool>.
-             //
-             // The `register` method taking `T: Tool` works because we create `Mutex<T>` which coerces to `Mutex<dyn Tool>` behind Arc?
-             // `Arc<Mutex<T>>` -> `Arc<Mutex<dyn Tool>>`. Yes, if we cast properly.
-             // 
-             // Let's stick to `register<T>` for now.
-             // If we need to register existing `Box<dyn Tool>`, we might need unsafe or specific handling.
-             // Or update the map to hold `Arc<Mutex<Box<dyn Tool>>>`? No, duplicate indirection.
-             //
-             // For now, `register<T>` covers static cases. 
-             // The legacy `ToolChain` used `Vec<Box<dyn Tool>>`.
-             // We might need to iterate over them.
-             
-             // Let's implement `register_arc` if we already have one.
-             // Or just `register_tool` which takes `Arc<Mutex<dyn Tool>>`.
-             tools.insert(tool.name().to_string(), Arc::new(Mutex::new(tool)) as Arc<Mutex<dyn Tool>>); 
-             // This cast works if `tool` is `Box<dyn Tool>`? 
-             // `Mutex::new(box)` -> `Mutex<Box<dyn Tool>>`.
-             // `Box<dyn Tool>` implements `Tool`? (Usually strictly distinct, but with impl Tool for Box<dyn Tool> maybe).
-             //
-             // I'll check if `impl Tool for Box<dyn Tool>` exists. If not, I should add it to `tools/mod.rs`.
+             tools.insert(tool.name().to_string(), Arc::new(Mutex::new(tool)));
         }
     }
     
@@ -161,5 +134,58 @@ impl ToolManager {
         }
 
         serde_json::Value::Array(functions)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tools::{ToolParameter, ParameterType};
+    use async_trait::async_trait;
+
+    struct MockTool;
+
+    #[async_trait]
+    impl Tool for MockTool {
+        async fn execute(&mut self, _input: ToolInput) -> Result<ToolOutput, KowalskiError> {
+            Ok(ToolOutput::new(serde_json::json!({"status": "success"}), None))
+        }
+
+        fn name(&self) -> &str { "mock_tool" }
+        fn description(&self) -> &str { "A mock tool for testing" }
+        fn parameters(&self) -> Vec<ToolParameter> {
+            vec![
+                ToolParameter {
+                    name: "input".to_string(),
+                    description: "test input".to_string(),
+                    required: true,
+                    default_value: None,
+                    parameter_type: ParameterType::String,
+                }
+            ]
+        }
+    }
+
+    #[tokio::test]
+    async fn test_tool_manager_registration() {
+        let manager = ToolManager::new();
+        manager.register(MockTool);
+        
+        let tools = manager.list_tools().await;
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].0, "mock_tool");
+    }
+
+    #[tokio::test]
+    async fn test_generate_json_schema() {
+        let manager = ToolManager::new();
+        manager.register(MockTool);
+        
+        let schema = manager.generate_json_schema().await;
+        let schema_array = schema.as_array().unwrap();
+        
+        assert_eq!(schema_array.len(), 1);
+        assert_eq!(schema_array[0]["function"]["name"], "mock_tool");
+        assert_eq!(schema_array[0]["function"]["parameters"]["required"][0], "input");
     }
 }

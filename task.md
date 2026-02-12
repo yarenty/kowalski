@@ -96,7 +96,7 @@
   - [x] Implement `register(&mut self, tool: Arc<dyn Tool>)` method
   - [x] Implement `execute(&self, tool_name: &str, input: ToolInput)` method
   - [x] Implement `generate_tool_descriptions(&self) -> String` for LLM prompts
-  - [ ] Implement `generate_json_schema(&self) -> serde_json::Value` for function calling
+  - [x] Implement `generate_json_schema(&self) -> serde_json::Value` for function calling
 - [x] Update `kowalski-core/src/tools/mod.rs`
   - [x] Re-export `ToolManager`
   - [x] Ensure `Tool` trait is properly defined
@@ -112,9 +112,9 @@
   - [x] Refactor `chat_with_tools` to use `tool_manager.generate_tool_descriptions()`
   - [x] Update tool execution to use `tool_manager.execute()`
 - [x] Improve JSON parsing in `kowalski-core/src/agent/mod.rs`
-  - [x] Replace brittle `{`/`}` matching with proper JSON extraction
+  - [x] Replace brittle `{`/`}` matching with proper JSON extraction (using `llm_json`)
   - [x] Add error handling for malformed JSON
-  - [ ] Consider using `serde_json::from_str` with better error recovery
+  - [x] Implement robust recovery for unclosed objects and messy text
 - [ ] Create tests in `kowalski-core/src/tools/tests.rs`
   - [ ] Test tool registration
   - [ ] Test tool execution
@@ -145,10 +145,10 @@
   - [ ] Add tab-completion for commands
   - [ ] Add colored output (user input, agent response, errors)
   - [ ] Add `/help`, `/exit`, `/clear` commands
-- [ ] Update `kowalski-cli/src/main.rs`
-  - [ ] Add `--interactive` flag
-  - [ ] Wire up interactive mode
-  - [ ] Maintain session state across turns
+- [x] Update `kowalski-cli/src/main.rs`
+  - [x] Add `/save` and `/load` commands for session persistence
+  - [x] Implement unified tool discovery via `Agent::list_tools()`
+  - [x] Maintain session state across turns
 - [ ] Test interactive mode: `cargo run --bin kowalski-cli -- --interactive`
 
 **🧪 Manual Test - Interactive CLI**
