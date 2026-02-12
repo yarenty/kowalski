@@ -31,21 +31,15 @@ impl DataAgent {
         let fs_tool = FsTool::new();
         let tools: Vec<Box<dyn Tool + Send + Sync>> = vec![Box::new(csv_tool), Box::new(fs_tool)];
 
-        // Dynamically build AVAILABLE TOOLS section
-        let mut available_tools_section = String::from("AVAILABLE TOOLS:\n");
-        for tool in &tools {
-            available_tools_section.push_str(&format!(
-                "{} - {}\n",
-                tool.name(),
-                tool.description()
-            ));
-            for param in tool.parameters() {
-                available_tools_section.push_str(&format!(
-                    "   - parameter: \"{}\" - {} (type: {:?}, required: {})\n",
-                    param.name, param.description, param.parameter_type, param.required
-                ));
-            }
-        }
+        // Create the agent first with the tools
+        // We pass None for system prompt initially, then set it after generating descriptions
+        let builder = DefaultTemplate::create_agent(tools, None, Some(0.7))
+            .await
+            .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
+        let mut agent = builder.build().await?;
+
+        // Generate tool descriptions dynamically from the agent's ToolManager
+        let available_tools_section = agent.base().tool_manager.generate_tool_descriptions().await;
 
         let system_prompt = format!(
             r#"You are a data analysis assistant.
@@ -76,10 +70,6 @@ When you have a final answer, respond normally without JSON formatting. NEVER gi
             system_prompt_clone
         );
 
-        let builder = DefaultTemplate::create_agent(tools, Some(system_prompt), Some(0.7))
-            .await
-            .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
-        let mut agent = builder.build().await?;
         // Ensure the system prompt is set on the base agent
         agent.base_mut().set_system_prompt(&system_prompt_clone);
         Ok(Self {
