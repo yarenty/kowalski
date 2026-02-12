@@ -32,19 +32,19 @@ impl AcademicAgent {
         let tools: Vec<Box<dyn Tool + Send + Sync>> =
             vec![Box::new(search_tool), Box::new(pdf_tool), Box::new(fs_tool)];
 
-        let system_prompt = r#"You are an academic research assistant. You can search for papers, process PDF files, and interact with the filesystem.
+        // Create the agent first without a system prompt
+        let builder = DefaultTemplate::create_agent(tools, None, Some(0.7))
+            .await
+            .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
+        let mut agent = builder.build().await?;
 
-AVAILABLE TOOLS:
-1. web_search - Search the web for academic papers.
-   - parameters: { "query": "search query" }
-2. pdf_tool - Process a PDF file from a given path.
-   - parameters: { "file_path": "/path/to/file.pdf", "extract_text": true, "extract_metadata": false, "extract_images": false }
-3. fs_tool - Filesystem operations (list directories, find files, read file contents).
-   - task: "list_dir" - List files and directories in a given path. Parameters: { "path": "/some/dir" }
-   - task: "find_files" - Recursively find files matching a pattern. Parameters: { "dir": "/some/dir", "pattern": ".pdf" }
-   - task: "get_file_contents" - Get the full contents of a file. Parameters: { "path": "/some/file.txt" }
-   - task: "get_file_first_lines" - Get the first N lines of a file. Parameters: { "path": "/some/file.txt", "num_lines": 10 }
-   - task: "get_file_last_lines" - Get the last N lines of a file. Parameters: { "path": "/some/file.txt", "num_lines": 10 }
+        // Generate tool descriptions dynamically from the agent's ToolManager
+        let available_tools_section = agent.base().tool_manager.generate_tool_descriptions().await;
+
+        let system_prompt = format!(
+            r#"You are an academic research assistant. You can search for papers, process PDF files, and interact with the filesystem.
+
+{}
 
 TOOL USAGE INSTRUCTIONS:
 - Use "web_search" to find papers on a topic.
@@ -54,22 +54,20 @@ TOOL USAGE INSTRUCTIONS:
 
 RESPONSE FORMAT:
 When you need to use a tool, respond with JSON in this exact format:
-{
+{{
   "name": "fs_tool",
-  "parameters": {
+  "parameters": {{
     "task": "list_dir",
     "path": "/some/dir"
-  },
+  }},
   "reasoning": "I need to list the contents of this directory."
-}
+}}
 
-When you have a final answer, respond normally without JSON formatting."#
-            .to_string();
+When you have a final answer, respond normally without JSON formatting."#,
+            available_tools_section
+        );
         let system_prompt_clone = system_prompt.clone();
-        let builder = DefaultTemplate::create_agent(tools, Some(system_prompt), Some(0.7))
-            .await
-            .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
-        let mut agent = builder.build().await?;
+        
         // Ensure the system prompt is set on the base agent
         agent.base_mut().set_system_prompt(&system_prompt_clone);
         Ok(Self {
