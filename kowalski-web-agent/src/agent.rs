@@ -44,12 +44,19 @@ impl WebAgent {
         let tools: Vec<Box<dyn Tool + Send + Sync>> =
             vec![Box::new(search_tool), Box::new(scrape_tool)];
 
-        // Enhanced system prompt that explicitly encourages tool usage
-        let system_prompt = r#"You are a web research assistant specialized in finding and analyzing online information. 
+        // Create the agent first without a system prompt
+        let builder = DefaultTemplate::create_agent(tools, None, Some(0.7))
+            .await
+            .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
+        let mut agent = builder.build().await?;
 
-AVAILABLE TOOLS:
-1. web_search - Search the web for information. Use this when you need to find current information, news, or general knowledge.
-2. web_scrape - Scrape content from a specific URL. Use this when you have a URL and need to extract its content.
+        // Generate tool descriptions dynamically from the agent's ToolManager
+        let available_tools_section = agent.base().tool_manager.generate_tool_descriptions().await;
+
+        let system_prompt = format!(
+            r#"You are a web research assistant specialized in finding and analyzing online information. 
+
+{}
 
 TOOL USAGE INSTRUCTIONS:
 - ALWAYS use tools when asked about current events, recent information, or anything that requires up-to-date data
@@ -59,28 +66,19 @@ TOOL USAGE INSTRUCTIONS:
 
 RESPONSE FORMAT:
 When you need to use a tool, respond with JSON in this exact format:
-{
+{{
   "name": "web_search",
-  "parameters": { "query": "your search query here" },
+  "parameters": {{ "query": "your search query here" }},
   "reasoning": "why you're using this tool"
-}
-
-or
-
-{
-  "name": "web_scrape", 
-  "parameters": { "url": "https://example.com" },
-  "reasoning": "why you're scraping this URL"
-}
+}}
 
 When you have a final answer, respond normally without JSON formatting.
 
-Remember: Use tools proactively to provide accurate, up-to-date information!"#.to_string();
+Remember: Use tools proactively to provide accurate, up-to-date information!"#,
+            available_tools_section
+        );
         let system_prompt_clone = system_prompt.clone();
-        let builder = DefaultTemplate::create_agent(tools, Some(system_prompt), Some(0.7))
-            .await
-            .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
-        let mut agent = builder.build().await?;
+
         // Ensure the system prompt is set on the base agent
         agent.base_mut().set_system_prompt(&system_prompt_clone);
         Ok(Self {
