@@ -204,7 +204,7 @@ impl MemoryProvider for EpisodicBuffer {
         debug!("Adding memory unit to episodic buffer: {}", memory.id);
         // If embedding is missing, generate it
         if memory.embedding.is_none() {
-            match self.get_ollama_embedding(&memory.content).await {
+            match self.llm_provider.embed(&memory.content).await {
                 Ok(embedding) => memory.embedding = Some(embedding),
                 Err(e) => {
                     error!("Failed to get embedding for memory {}: {}", memory.id, e);
@@ -235,7 +235,7 @@ impl MemoryProvider for EpisodicBuffer {
     ) -> Result<Vec<MemoryUnit>, KowalskiError> {
         info!("[EpisodicBuffer][RETRIEVE] Query: '{}'", query);
         // Try to get embedding for the query
-        let query_embedding = self.get_ollama_embedding(query).await.ok();
+        let query_embedding = self.llm_provider.embed(query).await.ok();
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()

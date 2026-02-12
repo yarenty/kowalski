@@ -16,92 +16,44 @@ pub trait MemoryWeaver {
 pub struct Consolidator {
     episodic_memory: EpisodicBuffer,
     semantic_memory: SemanticStore,
-    ollama_host: String,
-    ollama_port: u16,
-    ollama_model: String,
+    llm_provider: std::sync::Arc<dyn crate::llm::LLMProvider>,
+    model: String,
 }
 
 impl Consolidator {
     pub async fn new(
         episodic_path: &str,
         qdrant_url: &str,
-        ollama_host: &str,
-        ollama_port: u16,
-        ollama_model: &str,
+        llm_provider: std::sync::Arc<dyn crate::llm::LLMProvider>,
+        model: &str,
     ) -> Result<Self, KowalskiError> {
         let episodic_memory =
-            EpisodicBuffer::new(episodic_path, ollama_host, ollama_port, ollama_model)?;
+            EpisodicBuffer::new(episodic_path, llm_provider.clone())?;
         let semantic_memory = SemanticStore::new(qdrant_url).await?;
         Ok(Self {
             episodic_memory,
             semantic_memory,
-            ollama_host: ollama_host.to_string(),
-            ollama_port,
-            ollama_model: ollama_model.to_string(),
+            llm_provider,
+            model: model.to_string(),
         })
     }
 
-    async fn get_ollama_embedding(&self, text: &str) -> Result<Vec<f32>, KowalskiError> {
-        let client = reqwest::Client::new();
-        let response = client
-            .post(format!(
-                "http://{}:{}/api/embeddings",
-                self.ollama_host, self.ollama_port
-            ))
-            .json(&serde_json::json!({
-                "model": self.ollama_model,
-                "prompt": text
-            }))
-            .send()
-            .await?;
-
-        let json: serde_json::Value = response.json().await?;
-        let embedding = json["embedding"]
-            .as_array()
-            .ok_or(KowalskiError::Memory(
-                "No embedding in response".to_string(),
-            ))?
-            .iter()
-            .map(|v| v.as_f64().unwrap_or(0.0) as f32)
-            .collect();
-        Ok(embedding)
-    }
-
     async fn summarize_with_llm(&self, content: &str) -> Result<String, KowalskiError> {
-        let client = reqwest::Client::new();
-        let response = client
-            .post(format!(
-                "http://{}:{}/api/generate",
-                self.ollama_host, self.ollama_port
-            ))
-            .json(&serde_json::json!({
-                "model": self.ollama_model,
-                "prompt": format!("Summarize the following text:\n\n{}", content),
-                "stream": false
-            }))
-            .send()
-            .await?;
-
-        let json: serde_json::Value = response.json().await?;
-        let summary = json["response"].as_str().unwrap_or("").to_string();
-        Ok(summary)
+        let prompt = format!("Summarize the following text:\n\n{}", content);
+        let messages = vec![crate::conversation::Message {
+            role: crate::conversation::Role::User,
+            content: prompt,
+        }];
+        self.llm_provider.chat(&self.model, &messages).await
     }
 
     async fn create_graph_with_llm(&self, content: &str) -> Result<String, KowalskiError> {
-        let client = reqwest::Client::new();
-        let response = client
-            .post(format!("http://{}:{}/api/generate", self.ollama_host, self.ollama_port))
-            .json(&serde_json::json!({
-                "model": self.ollama_model,
-                "prompt": format!("Create a graph representation of the following text in the format {{ \"subject\": \"...\", \"predicate\": \"...\", \"object\": \"...\" }}:\n\n{}", content),
-                "stream": false
-            }))
-            .send()
-            .await?;
-
-        let json: serde_json::Value = response.json().await?;
-        let graph = json["response"].as_str().unwrap_or("").to_string();
-        Ok(graph)
+        let prompt = format!("Create a graph representation of the following text in the format {{ \"subject\": \"...\", \"predicate\": \"...\", \"object\": \"...\" }}:\n\n{}", content);
+        let messages = vec![crate::conversation::Message {
+            role: crate::conversation::Role::User,
+            content: prompt,
+        }];
+        self.llm_provider.chat(&self.model, &messages).await
     }
 }
 
@@ -122,8 +74,8 @@ impl MemoryWeaver for Consolidator {
             debug!("Generated Summary: {}", summary);
             debug!("Generated Graph: {}", graph_representation);
 
-            let summary_embedding = self.get_ollama_embedding(&summary).await.ok();
-            let graph_embedding = self.get_ollama_embedding(&graph_representation).await.ok();
+            let summary_embedding = self.llm_provider.embed(&summary).await.ok();
+            let graph_embedding = self.llm_provider.embed(&graph_representation).await.ok();
 
             // Create new memory units for the summary and graph
             let summary_memory = MemoryUnit {

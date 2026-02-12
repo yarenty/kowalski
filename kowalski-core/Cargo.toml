@@ -53,7 +53,7 @@ tower = "0.5"
 tower-http = { version = "0.6", features = ["trace"] }
 regex = "1.10"
 markdown = "1.0"
-async-openai = "0.32.4"
+async-openai = { version = "0.32.4", features = ["default"] }
 
 [dev-dependencies]
 tempfile = "3.25.0"

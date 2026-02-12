@@ -18,11 +18,10 @@ pub async fn create_memory_providers(
 ) -> Result<(MemoryProviderArc, MemoryProviderArc, MemoryProviderArc), KowalskiError> {
     let working_memory = Arc::new(Mutex::new(WorkingMemory::new(100))) as MemoryProviderArc;
 
+    let llm_provider = crate::llm::create_llm_provider(config)?;
     let episodic_memory = Arc::new(Mutex::new(EpisodicBuffer::new(
         &config.memory.episodic_path,
-        &config.ollama.host,
-        config.ollama.port,
-        &config.ollama.model,
+        llm_provider,
     )?)) as MemoryProviderArc;
 
     let semantic_memory =
