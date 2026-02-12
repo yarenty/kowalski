@@ -42,6 +42,7 @@ impl TemplateAgent {
             working_memory,
             episodic_memory,
             semantic_memory,
+            crate::tools::manager::ToolManager::new(),
         )
         .await?;
         let template_config = TemplateAgentConfig::from(config);

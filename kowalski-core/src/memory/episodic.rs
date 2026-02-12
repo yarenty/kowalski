@@ -7,7 +7,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use log::{debug, error, info};
-use reqwest;
+
 use rocksdb::{DB, IteratorMode, Options};
 use serde_json;
 use std::time::{SystemTime, UNIX_EPOCH};

@@ -7,6 +7,7 @@ use std::sync::Arc;
 type TaskHandlerFn = Arc<dyn Fn(&str) -> bool + Send + Sync>;
 
 /// A chain of tools that can be executed in sequence
+#[deprecated(note = "Use crate::tools::manager::ToolManager instead")]
 pub struct ToolChain {
     /// The tools in the chain
     tools: Vec<Box<dyn Tool + Send + Sync>>,
