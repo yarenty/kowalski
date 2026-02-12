@@ -3,8 +3,6 @@ use crate::{
     memory::{MemoryProvider, MemoryUnit, episodic::EpisodicBuffer, semantic::SemanticStore},
 };
 use log::{debug, info};
-use reqwest;
-use serde_json;
 use std::error::Error;
 
 /// Trait for memory consolidation strategies ("Weavers")
@@ -41,8 +39,9 @@ impl Consolidator {
     async fn summarize_with_llm(&self, content: &str) -> Result<String, KowalskiError> {
         let prompt = format!("Summarize the following text:\n\n{}", content);
         let messages = vec![crate::conversation::Message {
-            role: crate::conversation::Role::User,
+            role: "user".to_string(),
             content: prompt,
+            tool_calls: None,
         }];
         self.llm_provider.chat(&self.model, &messages).await
     }
@@ -50,8 +49,9 @@ impl Consolidator {
     async fn create_graph_with_llm(&self, content: &str) -> Result<String, KowalskiError> {
         let prompt = format!("Create a graph representation of the following text in the format {{ \"subject\": \"...\", \"predicate\": \"...\", \"object\": \"...\" }}:\n\n{}", content);
         let messages = vec![crate::conversation::Message {
-            role: crate::conversation::Role::User,
+            role: "user".to_string(),
             content: prompt,
+            tool_calls: None,
         }];
         self.llm_provider.chat(&self.model, &messages).await
     }

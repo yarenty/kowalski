@@ -4,9 +4,12 @@ use crate::error::KowalskiError;
 use async_openai::{
     config::OpenAIConfig,
     types::{
-        ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
-        ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs,
-        CreateChatCompletionRequestArgs, CreateEmbeddingRequestArgs,
+        chat::{
+            ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
+            ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs,
+            CreateChatCompletionRequestArgs,
+        },
+        embeddings::CreateEmbeddingRequestArgs,
     },
     Client,
 };
