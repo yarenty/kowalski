@@ -1,4 +1,4 @@
-use crate::agent::types::{ChatRequest, StreamResponse};
+use crate::agent::types::StreamResponse;
 use crate::config::Config;
 use crate::conversation::Conversation;
 use crate::conversation::Message;
@@ -9,12 +9,9 @@ use crate::memory::working::WorkingMemory;
 use crate::role::Role;
 use crate::tools::{ToolCall, ToolOutput};
 use async_trait::async_trait;
-use futures::StreamExt;
 use log::debug;
-use log::error;
 use log::info;
 use log::warn;
-use reqwest::Response;
 use serde_json;
 use serde_json::json;
 use std::any::Any;

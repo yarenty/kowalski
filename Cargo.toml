@@ -65,7 +65,7 @@ env_logger = "0.11"
 url = "2.5.0"
 regex = "1.10"
 markdown = "1.0"
-bytes = "1.5"
+bytes = "1.11"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace"] }
 
