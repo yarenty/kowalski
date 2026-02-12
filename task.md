@@ -91,26 +91,26 @@
 ---
 
 #### Day 5-7: Unified Tool Management
-- [ ] Create `kowalski-core/src/tools/manager.rs`
-  - [ ] Implement `ToolManager` struct with `HashMap<String, Arc<dyn Tool>>`
-  - [ ] Implement `register(&mut self, tool: Arc<dyn Tool>)` method
-  - [ ] Implement `execute(&self, tool_name: &str, input: ToolInput)` method
-  - [ ] Implement `generate_tool_descriptions(&self) -> String` for LLM prompts
+- [x] Create `kowalski-core/src/tools/manager.rs`
+  - [x] Implement `ToolManager` struct with `HashMap<String, Arc<Mutex<dyn Tool>>>`
+  - [x] Implement `register(&mut self, tool: Arc<dyn Tool>)` method
+  - [x] Implement `execute(&self, tool_name: &str, input: ToolInput)` method
+  - [x] Implement `generate_tool_descriptions(&self) -> String` for LLM prompts
   - [ ] Implement `generate_json_schema(&self) -> serde_json::Value` for function calling
-- [ ] Update `kowalski-core/src/tools/mod.rs`
-  - [ ] Re-export `ToolManager`
-  - [ ] Ensure `Tool` trait is properly defined
-- [ ] Remove/deprecate `kowalski-core/src/tool_chain.rs`
-  - [ ] Mark as deprecated or remove entirely
-  - [ ] Update any references to use `ToolManager` instead
-- [ ] Update `kowalski-tools/src/lib.rs`
-  - [ ] Remove duplicate `ToolParameter` and `ParameterType` definitions
-  - [ ] Import from `kowalski-core` instead
-- [ ] Update `kowalski-core/src/agent/mod.rs`
-  - [ ] Add `tool_manager: Arc<ToolManager>` field to `BaseAgent`
-  - [ ] Update constructor to accept `ToolManager`
-  - [ ] Refactor `chat_with_tools` to use `tool_manager.generate_tool_descriptions()`
-  - [ ] Update tool execution to use `tool_manager.execute()`
+- [x] Update `kowalski-core/src/tools/mod.rs`
+  - [x] Re-export `ToolManager`
+  - [x] Ensure `Tool` trait is properly defined
+- [x] Remove/deprecate `kowalski-core/src/tool_chain.rs`
+  - [x] Mark as deprecated or remove entirely
+  - [x] Update any references to use `ToolManager` instead
+- [x] Update `kowalski-tools/src/lib.rs`
+  - [x] Remove duplicate `ToolParameter` and `ParameterType` definitions
+  - [x] Import from `kowalski-core` instead
+- [x] Update `kowalski-core/src/agent/mod.rs`
+  - [x] Add `tool_manager: ToolManager` field to `BaseAgent`
+  - [x] Update constructor to accept `ToolManager`
+  - [x] Refactor `chat_with_tools` to use `tool_manager.generate_tool_descriptions()`
+  - [x] Update tool execution to use `tool_manager.execute()`
 - [ ] Improve JSON parsing in `kowalski-core/src/agent/mod.rs`
   - [ ] Replace brittle `{`/`}` matching with proper JSON extraction
   - [ ] Add error handling for malformed JSON
@@ -205,19 +205,19 @@
 ### Week 3-4: Complete DataAgent
 
 #### Refactor DataAgent
-- [ ] Update `kowalski-data-agent/src/agent.rs`
-  - [ ] Remove hardcoded tool instantiation
-  - [ ] Use new `ToolManager` from `kowalski-core`
-  - [ ] Implement dependency injection for memory providers
-  - [ ] Implement dependency injection for LLM provider
-  - [ ] Support both Ollama and OpenAI via config
-- [ ] Update `kowalski-data-agent/src/config.rs`
-  - [ ] Add LLM provider selection
-  - [ ] Add OpenAI API key field
-  - [ ] Add memory paths configuration
-- [ ] Remove manual tool descriptions from prompts
-  - [ ] Use `tool_manager.generate_tool_descriptions()`
-- [ ] Run tests: `cd kowalski-data-agent && cargo test`
+- [x] Update `kowalski-data-agent/src/agent.rs`
+  - [x] Remove hardcoded tool instantiation
+  - [x] Use new `ToolManager` from `kowalski-core`
+  - [x] Implement dependency injection for memory providers
+  - [x] Implement dependency injection for LLM provider
+  - [x] Support both Ollama and OpenAI via config
+- [x] Update `kowalski-data-agent/src/config.rs`
+  - [x] Add LLM provider selection
+  - [x] Add OpenAI API key field
+  - [x] Add memory paths configuration
+- [x] Remove manual tool descriptions from prompts
+  - [x] Use `tool_manager.generate_tool_descriptions()`
+- [x] Run tests: `cd kowalski-data-agent && cargo test`
 
 **🧪 Manual Test - Refactored DataAgent**
 - [ ] Run DataAgent with Ollama: `kowalski-cli data analyze sample.csv`
