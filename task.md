@@ -111,9 +111,9 @@
   - [x] Update constructor to accept `ToolManager`
   - [x] Refactor `chat_with_tools` to use `tool_manager.generate_tool_descriptions()`
   - [x] Update tool execution to use `tool_manager.execute()`
-- [ ] Improve JSON parsing in `kowalski-core/src/agent/mod.rs`
-  - [ ] Replace brittle `{`/`}` matching with proper JSON extraction
-  - [ ] Add error handling for malformed JSON
+- [x] Improve JSON parsing in `kowalski-core/src/agent/mod.rs`
+  - [x] Replace brittle `{`/`}` matching with proper JSON extraction
+  - [x] Add error handling for malformed JSON
   - [ ] Consider using `serde_json::from_str` with better error recovery
 - [ ] Create tests in `kowalski-core/src/tools/tests.rs`
   - [ ] Test tool registration

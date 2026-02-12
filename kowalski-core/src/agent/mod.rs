@@ -107,112 +107,52 @@ pub trait Agent: Send + Sync {
             let buffer = response_text.clone();
             debug!("Full LLM response: '{}'", buffer);
 
-            // Try to extract JSON from mixed text response
-            debug!("❌ Failed to parse entire response as tool call, trying to extract JSON...");
-            if let Some(json_start) = buffer.find('{') {
-                // Find the first valid JSON object only
-                let mut brace_count = 0;
-                let mut end_idx = None;
-                for (i, c) in buffer[json_start..].char_indices() {
-                    match c {
-                        '{' => brace_count += 1,
-                        '}' => {
-                            brace_count -= 1;
-                            if brace_count == 0 {
-                                end_idx = Some(json_start + i);
-                                break;
-                            }
-                        }
-                        _ => {}
+            // Try to extract JSON from mixed text response using robust utility
+            debug!("Attempting to extract tool calls from response...");
+            let tool_calls = crate::utils::json::extract_tool_calls(&buffer);
+            
+            if !tool_calls.is_empty() {
+                // For now, we only process the first tool call found in one turn
+                let tool_call = &tool_calls[0];
+                
+                // Detect repeated tool calls
+                let tool_call_key = (tool_call.name.clone(), tool_call.parameters.clone());
+                if let Some(last) = &last_tool_call {
+                    if *last == tool_call_key {
+                        debug!(
+                            "Detected repeated tool call. Breaking loop to prevent infinite tool call loop."
+                        );
+                        break;
                     }
                 }
-                if let Some(json_end) = end_idx {
-                    let json_str = &buffer[json_start..=json_end];
-                    debug!("Extracted first JSON object: {}", json_str);
-                    if let Ok(tool_call) = serde_json::from_str::<ToolCall>(json_str) {
-                        // Detect repeated tool calls
-                        let tool_call_key = (tool_call.name.clone(), tool_call.parameters.clone());
-                        if let Some(last) = &last_tool_call {
-                            if *last == tool_call_key {
-                                debug!(
-                                    "Detected repeated tool call. Breaking loop to prevent infinite tool call loop."
-                                );
-                                break;
-                            }
-                        }
-                        last_tool_call = Some(tool_call_key.clone());
-                        debug!("✅ Tool call successfully parsed from extracted JSON!");
-                        debug!("Tool: {}", tool_call.name);
-                        debug!("Parameters: {}", tool_call.parameters);
-                        debug!("Reasoning: {:?}", tool_call.reasoning);
-                        let tool_result = match self
-                            .execute_tool(&tool_call.name, &tool_call.parameters)
-                            .await
-                        {
-                            Ok(output) => output.result.to_string(),
-                            Err(e) => {
-                                let err_msg = format!("{}", e);
-                                debug!("Tool execution failed: {}", err_msg);
-                                // Tool chaining: if csv_tool is called with an unsupported task, try fs_tool get_file_contents then csv_tool process_csv
-                                if tool_call.name == "csv_tool"
-                                    && tool_call
-                                        .parameters
-                                        .get("task")
-                                        .map(|v| v == "read_file")
-                                        .unwrap_or(false)
-                                {
-                                    if let Some(path) =
-                                        tool_call.parameters.get("path").and_then(|v| v.as_str())
-                                    {
-                                        debug!(
-                                            "Tool chaining: Detected csv_tool with read_file. Chaining fs_tool get_file_contents then csv_tool process_csv."
-                                        );
-                                        // Step 1: fs_tool get_file_contents
-                                        let fs_params = serde_json::json!({"task": "get_file_contents", "path": path});
-                                        match self.execute_tool("fs_tool", &fs_params).await {
-                                            Ok(fs_output) => {
-                                                let file_contents = fs_output
-                                                    .result
-                                                    .get("contents")
-                                                    .and_then(|v| v.as_str())
-                                                    .unwrap_or("");
-                                                // Step 2: csv_tool process_csv
-                                                let csv_params = serde_json::json!({"task": "process_csv", "content": file_contents});
-                                                match self
-                                                    .execute_tool("csv_tool", &csv_params)
-                                                    .await
-                                                {
-                                                    Ok(csv_output) => csv_output.result.to_string(),
-                                                    Err(e2) => format!(
-                                                        "Tool chaining failed at csv_tool: {}",
-                                                        e2
-                                                    ),
-                                                }
-                                            }
-                                            Err(e1) => {
-                                                format!("Tool chaining failed at fs_tool: {}", e1)
-                                            }
-                                        }
-                                    } else {
-                                        err_msg
-                                    }
-                                } else {
-                                    err_msg
-                                }
-                            }
-                        };
-                        let tool_message =
-                            format!("Tool result for {}: {}", tool_call.name, tool_result);
-                        self.add_message(conversation_id, "assistant", &tool_message)
-                            .await;
-                        debug!("Added tool result to conversation");
-                        current_input = format!("Based on the tool result: {}", tool_result);
-                        debug!("Continuing with new input: '{}'", current_input);
-                        continue;
-                    } else {
-                        debug!("❌ Failed to parse extracted JSON as tool call");
+                last_tool_call = Some(tool_call_key.clone());
+                
+                debug!("✅ Tool call successfully parsed!");
+                debug!("Tool: {}", tool_call.name);
+                debug!("Parameters: {}", tool_call.parameters);
+                debug!("Reasoning: {:?}", tool_call.reasoning);
+
+                let tool_result = match self
+                    .execute_tool(&tool_call.name, &tool_call.parameters)
+                    .await
+                {
+                    Ok(output) => output.result.to_string(),
+                    Err(e) => {
+                        let err_msg = format!("{}", e);
+                        debug!("Tool execution failed: {}", err_msg);
+                        
+                        // Basic fallback/chaining logic can be integrated here if needed
+                        err_msg
                     }
-                }
+                };
+
+                let tool_message = format!("Tool result for {}: {}", tool_call.name, tool_result);
+                self.add_message(conversation_id, "assistant", &tool_message).await;
+                debug!("Added tool result to conversation");
+                
+                current_input = format!("Based on the tool result: {}", tool_result);
+                debug!("Continuing with new input: '{}'", current_input);
+                continue;
             }
 
             // Not a tool call, this is the final answer
