@@ -36,16 +36,19 @@ impl CodeAgent {
             Box::new(rust_tool),
         ];
 
-        let system_prompt =
+        // Create the agent first without a system prompt
+        let builder = DefaultTemplate::create_agent(tools, None, Some(0.7))
+            .await
+            .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
+        let mut agent = builder.build().await?;
+
+        // Generate tool descriptions dynamically from the agent's ToolManager
+        let available_tools_section = agent.base().tool_manager.generate_tool_descriptions().await;
+
+        let system_prompt = format!(
             r#"You are a code analysis assistant. You can analyze Java, Python, and Rust code.
 
-AVAILABLE TOOLS:
-1. java_analysis - Analyzes a snippet of Java code.
-   - parameters: { "content": "java code snippet" }
-2. python_analysis - Analyzes a snippet of Python code.
-   - parameters: { "content": "python code snippet" }
-3. rust_analysis - Analyzes a snippet of Rust code.
-   - parameters: { "content": "rust code snippet" }
+{}
 
 TOOL USAGE INSTRUCTIONS:
 - Use the appropriate tool for the language you want to analyze.
@@ -53,21 +56,19 @@ TOOL USAGE INSTRUCTIONS:
 
 RESPONSE FORMAT:
 When you need to use a tool, respond with JSON in this exact format:
-{
+{{
   "name": "java_analysis",
-  "parameters": {
-    "content": "public class HelloWorld { ... }"
-  },
+  "parameters": {{
+    "content": "public class HelloWorld {{ ... }}"
+  }},
   "reasoning": "I need to analyze this Java code."
-}
+}}
 
-When you have a final answer, respond normally without JSON formatting."#
-                .to_string();
+When you have a final answer, respond normally without JSON formatting."#,
+            available_tools_section
+        );
         let system_prompt_clone = system_prompt.clone();
-        let builder = DefaultTemplate::create_agent(tools, Some(system_prompt), Some(0.7))
-            .await
-            .map_err(|e| KowalskiError::Configuration(e.to_string()))?;
-        let mut agent = builder.build().await?;
+        
         // Ensure the system prompt is set on the base agent
         agent.base_mut().set_system_prompt(&system_prompt_clone);
         Ok(Self {
