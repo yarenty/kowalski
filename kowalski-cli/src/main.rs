@@ -1,5 +1,4 @@
 use clap::Parser;
-use futures::StreamExt;
 use kowalski_academic_agent::AcademicAgent;
 use kowalski_code_agent::CodeAgent;
 use kowalski_core::agent::Agent;
@@ -10,6 +9,7 @@ use kowalski_web_agent::WebAgent;
 use log::info;
 use serde_json::json;
 use std::collections::HashMap;
+use std::fs;
 use std::io::{self, Write};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -163,36 +163,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         agent
                     );
                     println!("Model in use: {}", config.ollama.model);
-                    // --- DEBUG: Print registered tools if available ---
-                    let any_agent = agent_ref.as_any();
-                    if let Some(data_agent) = any_agent.downcast_ref::<DataAgent>() {
-                        let tools = data_agent.list_tools().await;
-                        info!("Registered tools:");
-                        for (name, desc) in tools {
-                            info!("  - {}: {}", name, desc);
-                        }
-                    } else if let Some(academic_agent) = any_agent.downcast_ref::<AcademicAgent>() {
-                        let tools = academic_agent.list_tools().await;
-                        info!("Registered tools:");
-                        for (name, desc) in tools {
-                            info!("  - {}: {}", name, desc);
-                        }
-                    } else if let Some(code_agent) = any_agent.downcast_ref::<CodeAgent>() {
-                        let tools = code_agent.list_tools().await;
-                        info!("Registered tools:");
-                        for (name, desc) in tools {
-                            info!("  - {}: {}", name, desc);
-                        }
-                    } else if let Some(web_agent) = any_agent.downcast_ref::<WebAgent>() {
-                        let tools = web_agent.list_tools().await;
+                    // Print registered tools
+                    let tools = agent_ref.list_tools().await;
+                    if !tools.is_empty() {
                         info!("Registered tools:");
                         for (name, desc) in tools {
                             info!("  - {}: {}", name, desc);
                         }
                     } else {
-                        info!("Tool listing not available for this agent type.");
+                        info!("No tools registered or tool listing not available.");
                     }
-                    // --- END DEBUG ---
+                    
                     chat_loop(agent_ref, conv_id).await?;
                 } else {
                     println!("Agent '{}' not found.", agent);
@@ -207,14 +188,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let config = Config::default();
             let episodic_path = &config.memory.episodic_path;
             let qdrant_url = &config.qdrant.http_url;
-            let ollama_host = &config.ollama.host;
-            let ollama_port = config.ollama.port;
             let ollama_model = &config.ollama.model;
+
+            // Create LLM provider for consolidation
+            let llm_provider: std::sync::Arc<dyn kowalski_core::llm::LLMProvider> =
+                std::sync::Arc::new(kowalski_core::llm::OllamaProvider::new(
+                    &config.ollama.host,
+                    config.ollama.port,
+                ));
+
             let mut weaver = Consolidator::new(
                 episodic_path,
                 qdrant_url,
-                ollama_host,
-                ollama_port,
+                llm_provider,
                 ollama_model,
             )
             .await?;
@@ -232,7 +218,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn chat_loop(
     agent: &mut Box<dyn Agent + Send + Sync>,
-    conv_id: String,
+    mut conv_id: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let agent_name = agent.name().to_lowercase();
     println!("Agent name: '{}'", agent_name);
@@ -242,9 +228,54 @@ async fn chat_loop(
         io::stdout().flush()?;
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
-        if input.trim().eq_ignore_ascii_case("/bye") {
+        let input_trimmed = input.trim();
+        
+        if input_trimmed.eq_ignore_ascii_case("/bye") {
             println!("Goodbye!");
             break;
+        }
+
+        if input_trimmed.starts_with("/save") {
+            let filename = input_trimmed.strip_prefix("/save").unwrap().trim();
+            if filename.is_empty() {
+                println!("Usage: /save <filename>");
+            } else {
+                match agent.export_conversation(&conv_id) {
+                    Ok(json) => {
+                        let _ = fs::create_dir_all("sessions");
+                        let path = format!("sessions/{}.json", filename);
+                        if let Err(e) = fs::write(&path, json) {
+                            eprintln!("Failed to write session file: {}", e);
+                        } else {
+                            println!("Conversation saved to {}", path);
+                        }
+                    }
+                    Err(e) => eprintln!("Failed to save conversation: {}", e),
+                }
+            }
+            continue;
+        }
+
+        if input_trimmed.starts_with("/load") {
+            let filename = input_trimmed.strip_prefix("/load").unwrap().trim();
+            if filename.is_empty() {
+                println!("Usage: /load <filename>");
+            } else {
+                let path = format!("sessions/{}.json", filename);
+                match fs::read_to_string(&path) {
+                    Ok(json) => {
+                        match agent.import_conversation(&json) {
+                            Ok(new_id) => {
+                                conv_id = new_id;
+                                println!("Conversation loaded. Current session ID: {}", conv_id);
+                            }
+                            Err(e) => eprintln!("Failed to import conversation: {}", e),
+                        }
+                    }
+                    Err(e) => eprintln!("Failed to read session file: {}", e),
+                }
+            }
+            continue;
         }
 
         // Always use tool-calling chat method
@@ -356,39 +387,18 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
                                 name
                             );
                             info!("[DEBUG] Model in use: {}", config.ollama.model);
-                            // --- DEBUG: Print registered tools if available ---
-                            let any_agent = agent_ref.as_any();
-                            if let Some(data_agent) = any_agent.downcast_ref::<DataAgent>() {
-                                let tools = data_agent.list_tools().await;
-                                info!("[DEBUG] Registered tools:");
-                                for (name, desc) in tools {
-                                    info!("  - {}: {}", name, desc);
-                                }
-                            } else if let Some(academic_agent) =
-                                any_agent.downcast_ref::<AcademicAgent>()
-                            {
-                                let tools = academic_agent.list_tools().await;
-                                info!("[DEBUG] Registered tools:");
-                                for (name, desc) in tools {
-                                    info!("  - {}: {}", name, desc);
-                                }
-                            } else if let Some(code_agent) = any_agent.downcast_ref::<CodeAgent>() {
-                                let tools = code_agent.list_tools().await;
-                                info!("[DEBUG] Registered tools:");
-                                for (name, desc) in tools {
-                                    info!("  - {}: {}", name, desc);
-                                }
-                            } else if let Some(web_agent) = any_agent.downcast_ref::<WebAgent>() {
-                                let tools = web_agent.list_tools().await;
+                            // Print registered tools
+                            let tools = agent_ref.list_tools().await;
+                            if !tools.is_empty() {
                                 info!("[DEBUG] Registered tools:");
                                 for (name, desc) in tools {
                                     info!("  - {}: {}", name, desc);
                                 }
                             } else {
-                                info!("[DEBUG] Tool listing not available for this agent type.");
+                                info!("[DEBUG] No tools registered or tool listing not available.");
                             }
-                            // --- END DEBUG ---
-                            chat_loop(agent_ref, conv_id).await?;
+                            
+                            chat_loop(agent_ref, conv_id.clone()).await?;
                         } else {
                             println!("Agent '{}' not found.", name);
                         }
