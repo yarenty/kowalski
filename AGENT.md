@@ -32,24 +32,32 @@
 ## 2. Project Identity
 
 **Name**: Kowalski
-**Purpose**: tbd
-**Core Value**: tbd
-**Mechanism**: tbd
+**Purpose**: A sophisticated Rust-based multi-agent framework for interacting with various LLM providers, supporting federation and secure collaboration.
+**Core Value**: Providing a foundational framework for building intelligent, distributed agent systems that collaborate securely and efficiently.
+**Mechanism**: Leverages a multi-tiered memory system (Working, Episodic, Semantic), specialized domain agents, and an extensible toolchain architecture.
 
 ## 3. Technology Stack
 
-- **Core Framework**: tbd
-- **CLI**: tbd
-- **Frontend**: tbd
-- **Package Manager**: tbd
+- **Core Framework**: Rust (Tokio-based async architecture)
+- **CLI**: `kowalski-cli` (Rust-native)
+- **Frontend**: Primarily CLI; future web/GUI support planned.
+- **Package Manager**: Cargo
 
 ## 4. Repository Architecture
 
-### Directory Structure
+kowalski/
+├── kowalski-core/           # Core abstractions, multi-tiered memory, and agent logic.
+├── kowalski-tools/          # Pluggable tool implementations (FS, Web, CSV, PDF).
+├── kowalski-agent-template/ # Base templates for building new agents.
+├── kowalski-federation/     # Multi-agent coordination and message protocols (WIP).
+├── kowalski-academic-agent/ # Specialized for paper analysis and research.
+├── kowalski-code-agent/     # Specialized for multi-language code analysis.
+├── kowalski-data-agent/     # Specialized for CSV and tabular data insights.
+├── kowalski-web-agent/      # Specialized for search and scraping.
+├── kowalski-cli/            # Main entry point for user interaction.
+└── kowalski/                # Facade crate for a unified public API.
 
-tbd
-
-each subdirectory. package contains AGENT.md - which gets summary of current state of the package
+Each subdirectory contains its own `AGENT.md` summarizing the specific state and architecture of that package.
 
 ## 5. Key Workflows
 
@@ -64,15 +72,21 @@ each subdirectory. package contains AGENT.md - which gets summary of current sta
 
 **Commands**:
 
-tbd
+- **Build**: `cargo build --release`
+- **Run CLI**: `cargo run --release --bin kowalski-cli`
+- **Run Agent**: `cargo run --release --bin kowalski-code-agent`
+- **Test**: `cargo test`
 
 ### Building
 
-tbd
+The project uses Cargo. Build the entire workspace or specific crates:
+```bash
+cargo build --release
+```
 
 ### Release
 
-tbd
+Standard Cargo release workflow. Facade crate (`kowalski`) should be updated after core components.
 
 
 
@@ -199,8 +213,12 @@ If you can answer these, your context management is solid:
 
 ## 6. Implementation Details
 
-tbd
+- **Memory System**: Uses a hybrid approach with Working (in-mem), Episodic (RocksDB), and Semantic (Qdrant/Vector) stores.
+- **Toolchain**: Agents interact with the environment via a unified `Tool` trait; `kowalski-data-agent` implements dynamic tool prompt generation.
+- **LLM Integration**: Currently optimized for Ollama, with abstractions planned for OpenAI/Anthropic.
 
 ## 7. Common AI Tasks
 
-tbd
+- **Adding a Tool**: Implement the `Tool` trait in `kowalski-tools` and register it in an agent.
+- **Creating an Agent**: Use `kowalski-agent-template` or compose `BaseAgent` from `kowalski-core`.
+- **Executing Web Search**: Use `kowalski-web-agent` or the integrated `WebSearchTool`.
