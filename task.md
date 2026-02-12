@@ -52,33 +52,33 @@
 ---
 
 #### Day 3-4: LLM Provider Abstraction
-- [ ] Create `kowalski-core/src/llm/` directory
-- [ ] Create `kowalski-core/src/llm/provider.rs`
-  - [ ] Define `LLMProvider` trait with `chat`, `embed`, `supports_streaming` methods
-  - [ ] Add comprehensive documentation
-- [ ] Create `kowalski-core/src/llm/ollama.rs`
-  - [ ] Implement `OllamaProvider` struct
-  - [ ] Implement `LLMProvider` trait for `OllamaProvider`
-  - [ ] Add constructor with base URL parameter
-  - [ ] Migrate existing Ollama code from `model/mod.rs`
-- [ ] Add OpenAI dependency to `kowalski-core/Cargo.toml`
-  - [ ] Add `async-openai = "0.18"` (or latest version)
-- [ ] Create `kowalski-core/src/llm/openai.rs`
-  - [ ] Implement `OpenAIProvider` struct
-  - [ ] Implement `LLMProvider` trait for `OpenAIProvider`
-  - [ ] Add constructor with API key parameter
-  - [ ] Implement `chat` method using OpenAI API
-  - [ ] Implement `embed` method (or stub for now)
-- [ ] Update `kowalski-core/src/llm/mod.rs`
-  - [ ] Re-export `LLMProvider`, `OllamaProvider`, `OpenAIProvider`
-- [ ] Update `kowalski-core/src/agent/mod.rs`
-  - [ ] Add `llm_provider: Arc<dyn LLMProvider>` field to `BaseAgent`
-  - [ ] Update constructor to accept LLM provider
-  - [ ] Replace direct Ollama calls with `llm_provider.chat()`
-- [ ] Create tests in `kowalski-core/src/llm/tests.rs`
-  - [ ] Test `OllamaProvider` (requires Ollama running)
-  - [ ] Test `OpenAIProvider` (mock or integration test)
-- [ ] Run tests: `cd kowalski-core && cargo test llm`
+- [x] Create `kowalski-core/src/llm/` directory
+- [x] Create `kowalski-core/src/llm/provider.rs`
+  - [x] Define `LLMProvider` trait with `chat`, `embed`, `supports_streaming` methods
+  - [x] Add comprehensive documentation
+- [x] Create `kowalski-core/src/llm/ollama.rs`
+  - [x] Implement `OllamaProvider` struct
+  - [x] Implement `LLMProvider` trait for `OllamaProvider`
+  - [x] Add constructor with base URL parameter
+  - [x] Migrate existing Ollama code from `model/mod.rs`
+- [x] Add OpenAI dependency to `kowalski-core/Cargo.toml`
+  - [x] Add `async-openai = "0.18"` (or latest version)
+- [x] Create `kowalski-core/src/llm/openai.rs`
+  - [x] Implement `OpenAIProvider` struct
+  - [x] Implement `LLMProvider` trait for `OpenAIProvider`
+  - [x] Add constructor with API key parameter
+  - [x] Implement `chat` method using OpenAI API
+  - [x] Implement `embed` method (or stub for now)
+- [x] Update `kowalski-core/src/llm/mod.rs`
+  - [x] Re-export `LLMProvider`, `OllamaProvider`, `OpenAIProvider`
+- [x] Update `kowalski-core/src/agent/mod.rs`
+  - [x] Add `llm_provider: Arc<dyn LLMProvider>` field to `BaseAgent`
+  - [x] Update constructor to accept LLM provider
+  - [x] Replace direct Ollama calls with `llm_provider.chat()`
+- [x] Create tests in `kowalski-core/src/llm/tests.rs`
+  - [x] Test `OllamaProvider` (requires Ollama running)
+  - [x] Test `OpenAIProvider` (mock or integration test)
+- [x] Run tests: `cd kowalski-core && cargo test llm`
 
 **🧪 Manual Test - LLM Provider Switching**
 - [ ] Create test config `configs/test_ollama.toml` with Ollama settings
