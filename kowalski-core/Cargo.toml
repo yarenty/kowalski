@@ -53,6 +53,7 @@ tower = "0.5"
 tower-http = { version = "0.6", features = ["trace"] }
 regex = "1.10"
 markdown = "1.0"
+llm_json = "1.0.2"
 async-openai = { version = "0.32.4", features = ["native-tls", "chat-completion", "embedding"] }
 
 [dev-dependencies]

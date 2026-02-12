@@ -116,4 +116,50 @@ impl ToolManager {
         }
         result
     }
+
+    /// Generate a JSON schema for all registered tools (OpenAI-style function calling format)
+    pub async fn generate_json_schema(&self) -> serde_json::Value {
+        let tools_snapshot: Vec<Arc<Mutex<dyn Tool>>> = if let Ok(tools) = self.tools.read() {
+             tools.values().cloned().collect()
+        } else {
+            return serde_json::json!([]);
+        };
+
+        let mut functions = Vec::new();
+        for tool in tools_snapshot {
+            let tool_guard = tool.lock().await;
+            let mut properties = serde_json::Map::new();
+            let mut required = Vec::new();
+
+            for param in tool_guard.parameters() {
+                let mut param_info = serde_json::Map::new();
+                param_info.insert("type".to_string(), serde_json::json!(format!("{:?}", param.parameter_type).to_lowercase()));
+                param_info.insert("description".to_string(), serde_json::json!(param.description));
+                
+                if let Some(default) = param.default_value {
+                    param_info.insert("default".to_string(), serde_json::json!(default));
+                }
+
+                properties.insert(param.name.clone(), serde_json::Value::Object(param_info));
+                if param.required {
+                    required.push(param.name);
+                }
+            }
+
+            functions.push(serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": tool_guard.name(),
+                    "description": tool_guard.description(),
+                    "parameters": {
+                        "type": "object",
+                        "properties": properties,
+                        "required": required
+                    }
+                }
+            }));
+        }
+
+        serde_json::Value::Array(functions)
+    }
 }
