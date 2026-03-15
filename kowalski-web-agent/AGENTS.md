@@ -1,6 +1,6 @@
-# Kowalski AI Agent Documentation
+# kowalski-web-agent AI Agent Documentation
 
-> **READ THIS FIRST**: This file serves as the single source of truth for any AI agent (Claude, Gemini, Cursor, etc.) working on the Kowalski repository. It aggregates architectural context, development workflows, and behavioral guidelines.
+> **READ THIS FIRST**: This file serves as the single source of truth for any AI agent (Claude, Gemini, Cursor, etc.) working on the `kowalski-web-agent` component of the Kowalski repository. It aggregates architectural context, development workflows, and behavioral guidelines.
 
 ## Table of Contents
 1. [Philosophy & Core Principles](#1-philosophy--core-principles)
@@ -54,11 +54,11 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 
 ## 2. Project Identity
 
-**Name**: Kowalski  
-**Purpose**: A sophisticated Rust-based multi-agent framework for interacting with various LLM providers, with built-in support for federation, secure multi-party computation, and extensible tooling architecture.  
+**Name**: kowalski-web-agent  
+**Purpose**: Specialized agent for web research, scraping, and information retrieval.  
 **Core Value Proposition**: Modular, extensible, and distributed architecture supporting standalone and federated deployments with privacy-preserving capabilities.  
 **Primary Mechanism**: Multi-agent orchestration and pluggable tools interfacing with local (Ollama) and remote LLMs.  
-**Target Users**: Developers building intelligent, distributed agent systems.  
+**Target Users**: Kowalski framework agents and developers integrating kowalski-web-agent.  
 
 ### Business Context
 - **Problem Solved**: Complexity in building and managing secure, federated multi-agent LLM systems.
@@ -343,6 +343,51 @@ See `ROADMAP.md` for latest features and future plans.
 ### Known Issues
 - Ollama models must be running contextually.
 - Multi-agent coordination overhead.
+
+---
+
+## Legacy Component Context
+
+# kowalski-web-agent: Specialized Agent for Web Research
+
+## 1. Purpose
+
+The `kowalski-web-agent` crate implements a specialized AI agent focused on retrieving and processing information from the internet. It utilizes tools for web searching, content extraction, and summarization to answer queries that require up-to-date or external knowledge. It demonstrates how to combine `kowalski-core` and web-focused tools from `kowalski-tools`.
+
+## 2. Structure
+
+The structure of `kowalski-web-agent/src` is:
+
+*   **`agent.rs`**: The core `WebAgent` implementation, wrapping a `TemplateAgent` and providing web-specific system prompts and tool configurations.
+*   **`config.rs`**: Configuration details specifically for the web agent.
+*   **`error.rs`**: Custom error types for this crate.
+*   **`lib.rs`**: Main library interface.
+
+## 3. Strengths
+
+*   **Valuable Specialization:** Web research is a fundamental capability for modern AI agents. This crate provides a clear, focused implementation of that capability.
+*   **Dynamic Tool Prompt Generation (Noted Improvement):** Unlike the `kowalski-academic-agent`, the `kowalski-web-agent` (specifically in `agent.rs`) dynamically generates the "AVAILABLE TOOLS" section of its system prompt by querying the registered tools for their definitions. This is a significant strength and a best practice that should be adopted across all agents. It makes the agent's prompt robust to changes in tool definitions.
+*   **Clear Use Case:** The system prompt effectively defines the agent's persona as an expert researcher and outlines a logical workflow (search -> extract -> synthesize).
+
+## 4. Weaknesses
+
+*   **Hardcoded Tool Creation:** Similar to other specialized agents, the tools (`WebSearchTool`, `WebScrapeTool`) are instantiated directly within `WebAgent::new`. This limits configurability without source code changes.
+*   **Limited Advanced Web Interaction:** Currently, the agent likely relies on basic HTTP requests for scraping. It lacks capabilities for interacting with complex, JavaScript-heavy single-page applications (SPAs), solving CAPTCHAs, or managing browser sessions (cookies, state).
+*   **Dependency on External Services:** `WebSearchTool` likely relies on an external API (like Brave, DuckDuckGo, or Google). Managing API keys, rate limits, and service outages adds complexity and fragility.
+*   **Potential for Context Bloat:** Web scraping can return massive amounts of text. If the agent indiscriminately feeds this text into the LLM context, it can quickly exceed token limits or degrade performance. Effective summarization or chunking mechanisms within the tools or the agent's pre-processing phase are necessary.
+
+## 5. Potential Improvements & Integration into Rebuild
+
+To elevate the capabilities of the `kowalski-web-agent` in the new architecture:
+
+*   **Configurable Tool Instantiation:** Implement a configuration-driven mechanism for instantiating tools, similar to the recommendation for `kowalski-academic-agent`.
+*   **Browser Automation Capabilities:** Integrate tools that provide headless browser control (e.g., using libraries wrapping Playwright or Puppeteer) to handle dynamic content, navigate SPAs, and perform more complex web interactions than simple scraping.
+*   **Robust Content Processing:** Enhance the tools or the agent's workflow to include robust text extraction (removing boilerplate HTML), chunking, and preliminary summarization *before* passing large web pages to the main LLM context round.
+*   **Fact-Checking and Source Verification:** Introduce functionalities (or tools) that specifically help the agent verify the credibility of sources or cross-reference information found online.
+*   **Stateful Web Sessions:** Allow the agent to maintain state across multiple web interactions (e.g., logging into a site and navigating through it), which might require specialized memory or context management.
+*   **Promote Dynamic Prompting:** Ensure the dynamic prompt generation technique used here is standard practice across the ` Kowalski` framework via the `ToolManager`.
+
+By enhancing its web interaction capabilities and managing the volume of retrieved information effectively, `kowalski-web-agent` can become a highly capable and reliable research assistant.
 
 ---
 
