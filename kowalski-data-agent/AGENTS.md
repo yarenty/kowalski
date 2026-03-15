@@ -1,6 +1,6 @@
-# Kowalski AI Agent Documentation
+# kowalski-data-agent AI Agent Documentation
 
-> **READ THIS FIRST**: This file serves as the single source of truth for any AI agent (Claude, Gemini, Cursor, etc.) working on the Kowalski repository. It aggregates architectural context, development workflows, and behavioral guidelines.
+> **READ THIS FIRST**: This file serves as the single source of truth for any AI agent (Claude, Gemini, Cursor, etc.) working on the `kowalski-data-agent` component of the Kowalski repository. It aggregates architectural context, development workflows, and behavioral guidelines.
 
 ## Table of Contents
 1. [Philosophy & Core Principles](#1-philosophy--core-principles)
@@ -54,11 +54,11 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 
 ## 2. Project Identity
 
-**Name**: Kowalski  
-**Purpose**: A sophisticated Rust-based multi-agent framework for interacting with various LLM providers, with built-in support for federation, secure multi-party computation, and extensible tooling architecture.  
+**Name**: kowalski-data-agent  
+**Purpose**: Specialized agent for data analysis, databases, and structured data handling.  
 **Core Value Proposition**: Modular, extensible, and distributed architecture supporting standalone and federated deployments with privacy-preserving capabilities.  
 **Primary Mechanism**: Multi-agent orchestration and pluggable tools interfacing with local (Ollama) and remote LLMs.  
-**Target Users**: Developers building intelligent, distributed agent systems.  
+**Target Users**: Kowalski framework agents and developers integrating kowalski-data-agent.  
 
 ### Business Context
 - **Problem Solved**: Complexity in building and managing secure, federated multi-agent LLM systems.
@@ -343,6 +343,51 @@ See `ROADMAP.md` for latest features and future plans.
 ### Known Issues
 - Ollama models must be running contextually.
 - Multi-agent coordination overhead.
+
+---
+
+## Legacy Component Context
+
+# kowalski-data-agent: Specialized Agent for Data Analysis
+
+## 1. Purpose
+
+The `kowalski-data-agent` crate provides a specialized AI agent tailored for data analysis, manipulation, and visualization tasks. It is designed to interact with tabular data (like CSVs or databases), perform statistical operations, and potentially generate code or queries to process data.
+
+## 2. Structure
+
+The structure of `kowalski-data-agent/src` follows the established pattern for specialized agents:
+
+*   **`agent.rs`**: Contains the `DataAgent` implementation, which composes a `TemplateAgent` and equips it with a specific system prompt and data-related tools.
+*   **`config.rs`**: Configuration specifics for the data agent.
+*   **`error.rs`**: Custom error definitions.
+*   **`lib.rs`**: The main library file.
+
+## 3. Strengths
+
+*   **Logical Specialization:** Data analysis is a prime use case for LLM agents. This crate clearly defines an agent for this domain.
+*   **Dynamic Tool Prompt Generation:** Like the `WebAgent`, the `DataAgent` dynamically queries registered tools to generate the "AVAILABLE TOOLS" section of its system prompt. This is a robust practice that ensures the prompt always matches the actual tool capabilities.
+*   **Clear Persona:** The system prompt establishes a strong persona ("expert data scientist and analyst") guiding the LLM's behavior and expectations.
+
+## 4. Weaknesses
+
+*   **Hardcoded Tool Instantiation:** The tools (e.g., `CsvTool` or potentially future database tools) are likely hardcoded in `DataAgent::new`, limiting runtime configurability.
+*   **Limited "Real" Analysis Capabilities (Presumably):** Based on the structure, the agent likely relies heavily on the LLM to write code (e.g., Python or SQL) to perform actual analysis, rather than executing complex analytical functions natively in Rust or through specialized math engines. This can be slow and brittle if the generated code is incorrect or if the environment lacks the necessary runtimes (like a Python interpreter).
+*   **Data Privace/Security Concerns:** If the agent is analyzing sensitive data, sending chunks of it to an external LLM provider poses significant privacy risks. Relying solely on local models (like Ollama) mitigates this, but the architecture must enforce these boundaries.
+*   **Handling Large Datasets:** LLMs have finite context windows. Feeding entire large CSV files or database dumps into the prompt is impossible. The agent needs sophisticated strategies (like sampling, querying schema metadata first, or iterative refinement) to handle large datasets effectively. It's unclear if these strategies are currently implemented robustly.
+
+## 5. Potential Improvements & Integration into Rebuild
+
+To significantly improve the `kowalski-data-agent` and align it with the new architecture:
+
+*   **Configurable Tool Instantiation:** Implement configuration-driven tool setup, as recommended for other agents.
+*   **Code Execution Environment (Crucial):** For serious data analysis, the agent needs a safe, sandboxed environment (like OpenClaw's Docker containers) to execute generated code (Python/Pandas, R, SQL) against the data. Relying *only* on the LLM's "mental math" formatting is unreliable.
+*   **Database Integration Tools:** Expand the toolkit to include robust database connection pools, schema introspection, and safe query execution tools (with protections against destructive commands if not authorized).
+*   **Data Sampling and Metadata Tools:** Implement tools specifically designed to summarize large datasets (e.g., "get column statistics", "sample 100 random rows") so the LLM can understand the data structure without needing the full dataset in its context.
+*   **Visual Output Handling:** Data analysis often produces charts. The agent needs a mechanism to handle image outputs (e.g., saving generated plots to disk and returning file paths, or potentially serving them via a built-in web viewer).
+*   **Strict Security Boundaries:** Clearly define and enforce policies regarding which data can be sent to external LLMs versus local, privacy-preserving models.
+
+By integrating a secure execution environment and providing specialized tools for navigating large datasets, the `kowalski-data-agent` can become a powerful, automated data science assistant.
 
 ---
 

@@ -1,6 +1,6 @@
-# Kowalski AI Agent Documentation
+# kowalski-code-agent AI Agent Documentation
 
-> **READ THIS FIRST**: This file serves as the single source of truth for any AI agent (Claude, Gemini, Cursor, etc.) working on the Kowalski repository. It aggregates architectural context, development workflows, and behavioral guidelines.
+> **READ THIS FIRST**: This file serves as the single source of truth for any AI agent (Claude, Gemini, Cursor, etc.) working on the `kowalski-code-agent` component of the Kowalski repository. It aggregates architectural context, development workflows, and behavioral guidelines.
 
 ## Table of Contents
 1. [Philosophy & Core Principles](#1-philosophy--core-principles)
@@ -54,11 +54,11 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 
 ## 2. Project Identity
 
-**Name**: Kowalski  
-**Purpose**: A sophisticated Rust-based multi-agent framework for interacting with various LLM providers, with built-in support for federation, secure multi-party computation, and extensible tooling architecture.  
+**Name**: kowalski-code-agent  
+**Purpose**: Specialized agent for code analysis, review, and generation.  
 **Core Value Proposition**: Modular, extensible, and distributed architecture supporting standalone and federated deployments with privacy-preserving capabilities.  
 **Primary Mechanism**: Multi-agent orchestration and pluggable tools interfacing with local (Ollama) and remote LLMs.  
-**Target Users**: Developers building intelligent, distributed agent systems.  
+**Target Users**: Kowalski framework agents and developers integrating kowalski-code-agent.  
 
 ### Business Context
 - **Problem Solved**: Complexity in building and managing secure, federated multi-agent LLM systems.
@@ -297,7 +297,7 @@ ATTEMPT 3: Broader Rethink
   → Search for solutions and best practices
   → Consider updating the plan or approach
 
-AFTER 3 FAILURES: Escalate to User
+AFTER 3 specialized failures: Escalate to User
   → Explain what you tried in detail
   → Share the specific error messages
   → Ask for guidance or clarification
@@ -343,6 +343,55 @@ See `ROADMAP.md` for latest features and future plans.
 ### Known Issues
 - Ollama models must be running contextually.
 - Multi-agent coordination overhead.
+
+---
+
+## Legacy Component Context
+
+# kowalski-code-agent: Specialized Agent for Code Analysis
+
+## 1. Purpose
+
+The `kowalski-code-agent` crate implements an AI agent specialized in understanding, analyzing, and generating code. It interacts with the local filesystem (using `kowalski-tools`) to read code repositories, answer user questions about the codebase, and assist with development tasks.
+
+## 2. Structure
+
+The structure of `kowalski-code-agent/src` follows the established pattern:
+
+*   **`agent.rs`**: Contains the `CodeAgent` implementation, heavily relying on the `FsTool` and a system prompt tailored for software engineering tasks.
+*   **`config.rs`**: Configuration for the code agent.
+*   **`error.rs`**: Custom error definitions.
+*   **`lib.rs`**: Main library interface.
+
+## 3. Strengths
+
+*   **High-Value Use Case:** AI assistance in software development (coding, debugging, explaining code) is one of the most demonstrably useful applications of LLMs today.
+*   **Targeted Persona:** The system prompt correctly positions the agent as an "expert software engineer," setting expectations for the LLM to write idiomatic code and provide logical analyses.
+*   **Functional "Hello World" for Agents:** It serves as a great starting point for developers wanting to see how Kowalski interacts with local environments.
+
+## 4. Weaknesses
+
+*   **Reliance on Basic `FsTool`:** The agent's current understanding of a codebase is limited by the `FsTool`. The `FsTool` likely only provides crude file reading/writing. It lacks semantically aware operations (like "find all implementations of this trait" or "list functions in this module").
+*   **"Blind" Navigation:** The agent has to guess file names and paths or iterate through directories sequentially. It lacks a structural overview of the workspace (like an abstract syntax tree or symbol index).
+*   **Context Exhaustion Danger:** Codebases are massive. The agent risks easily blowing its context budget if it tries to read large files or entire directories indiscriminately. There is a lack of sophisticated context window management specifically for code.
+*   **Hardcoded instantiation:** As seen in other specialized agent crates, tool and prompt configurations are hardcoded rather than dynamically managed.
+
+## 5. Potential Improvements & Integration into Rebuild
+
+To make `kowalski-code-agent` a true "expert," it needs significant upgrades, aligning strongly with the OpenClaw inspiration:
+
+*   **Implement "Loki-style" RAG:** This is the most critical improvement. The agent needs Retrieval-Augmented Generation specifically designed for code.
+    *   Integrate a code parser (like `tree-sitter`) to generate Abstract Syntax Trees (ASTs).
+    *   Create a symbol index mapping functions, structs, and variables to their locations and definitions.
+    *   Allow the agent to query this index (e.g., "Find the definition of the `User` struct") rather than simply reading files.
+*   **Advanced Code Tools:**
+    *   **Grep/Search Tool:** A tool wrapper around `ripgrep` or a similar fast search utility to let the LLM quickly find keywords across the entire project.
+    *   **AST Navigation Tools:** Tools like `get_function_signature`, `find_references`, or `list_imports`.
+*   **Read/Write Tool Refinement:** Move beyond basic `read_file`. Implement tools like `edit_file_patch` (providing unified diffs) to allow the agent to reliably modify existing files without needing to rewrite the entire content, preventing large context usage and accidental deletions.
+*   **Sandboxed Execution:** Similar to the data agent, the code agent should be able to run tests (`cargo test`) or execute scripts in a safe, sandboxed environment to verify its suggestions.
+*   **Dynamic Prompting:** Ensure the implementation relies heavily on dynamic prompt generation based on available tool definitions from a registry.
+
+By transitioning from simple file reading to semantic code understanding (RAG + ASTs), the `kowalski-code-agent` can evolve from a basic file viewer into a powerful, context-aware AI pair programmer.
 
 ---
 
