@@ -191,3 +191,95 @@ impl TemplateAgent {
         self.base.tool_manager.list_tools().await
     }
 }
+
+#[async_trait]
+impl crate::agent::Agent for TemplateAgent {
+    async fn new(config: Config) -> Result<Self, KowalskiError> {
+        TemplateAgent::new(config).await
+    }
+
+    fn start_conversation(&mut self, model: &str) -> String {
+        let system_prompt = {
+            self.base.system_prompt
+                .as_deref()
+                .unwrap_or("You are a helpful assistant.")
+                .to_string()
+        };
+        let conv_id = self.base_mut().start_conversation(model);
+        if let Some(conversation) = self.base_mut().conversations.get_mut(&conv_id) {
+            conversation.add_message("system", &system_prompt);
+        }
+        conv_id
+    }
+
+    fn get_conversation(&self, id: &str) -> Option<&crate::conversation::Conversation> {
+        self.base().get_conversation(id)
+    }
+
+    fn list_conversations(&self) -> Vec<&crate::conversation::Conversation> {
+        self.base().list_conversations()
+    }
+
+    fn delete_conversation(&mut self, id: &str) -> bool {
+        self.base_mut().delete_conversation(id)
+    }
+
+    async fn chat_with_history(
+        &mut self,
+        conversation_id: &str,
+        content: &str,
+        role: Option<crate::role::Role>,
+    ) -> Result<String, KowalskiError> {
+        self.base_mut()
+            .chat_with_history(conversation_id, content, role)
+            .await
+    }
+
+    async fn process_stream_response(
+        &mut self,
+        conversation_id: &str,
+        chunk: &[u8],
+    ) -> Result<Option<crate::conversation::Message>, KowalskiError> {
+        self.base_mut()
+            .process_stream_response(conversation_id, chunk)
+            .await
+    }
+
+    async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {
+        self.base_mut()
+            .add_message(conversation_id, role, content)
+            .await;
+    }
+
+    async fn execute_tool(
+        &mut self,
+        tool_name: &str,
+        tool_input: &serde_json::Value,
+    ) -> Result<ToolOutput, KowalskiError> {
+        self.execute_tool(tool_name, tool_input).await
+    }
+
+    async fn list_tools(&self) -> Vec<(String, String)> {
+        self.list_tools().await
+    }
+
+    fn export_conversation(&self, id: &str) -> Result<String, KowalskiError> {
+        self.base().export_conversation(id)
+    }
+
+    fn import_conversation(&mut self, json_str: &str) -> Result<String, KowalskiError> {
+        self.base_mut().import_conversation(json_str)
+    }
+
+    fn name(&self) -> &str {
+        "Template Agent"
+    }
+
+    fn description(&self) -> &str {
+        "A generic template agent wrapper."
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}

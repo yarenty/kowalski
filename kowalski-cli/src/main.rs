@@ -1,11 +1,7 @@
 use clap::Parser;
-use kowalski_academic_agent::AcademicAgent;
-use kowalski_code_agent::CodeAgent;
 use kowalski_core::agent::Agent;
 use kowalski_core::config::Config;
 use kowalski_core::tools::ToolCall;
-use kowalski_data_agent::DataAgent;
-use kowalski_web_agent::WebAgent;
 use log::info;
 use serde_json::json;
 use std::collections::HashMap;
@@ -92,7 +88,7 @@ impl AgentManager {
         &self,
         config_path: &str,
     ) -> Result<String, Box<dyn std::error::Error>> {
-        use crate::config::AgentConfig;
+        use kowalski_cli::config::AgentConfig;
         use std::path::Path;
 
         let agent_config = AgentConfig::load_from_file(Path::new(config_path))
@@ -122,16 +118,13 @@ impl AgentManager {
         _temperature: Option<f32>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let config = Config::default();
-        let agent: Box<dyn Agent + Send + Sync> = match agent_type {
-            "web" => Box::new(WebAgent::new(config.clone()).await?),
-            "academic" => Box::new(AcademicAgent::new(config.clone()).await?),
-            "code" => Box::new(CodeAgent::new(config.clone()).await?),
-            "data" => Box::new(DataAgent::new(config.clone()).await?),
-            _ => {
-                eprintln!("Unknown agent type: {}", agent_type);
-                return Ok(());
-            }
-        };
+        use kowalski_core::template::default::DefaultTemplate;
+        let builder = DefaultTemplate::create_agent(vec![], None, Some(0.7))
+            .await?;
+        let mut template_agent = builder.build().await?;
+        template_agent.base_mut().set_system_prompt(&format!("Starting generic agent (was requested type: {})", agent_type));
+        
+        let agent: Box<dyn Agent + Send + Sync> = Box::new(template_agent);
         self.agents.write().await.insert(name.clone(), agent);
         self.configs.write().await.insert(name, config);
         Ok(())

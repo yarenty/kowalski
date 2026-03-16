@@ -5,15 +5,9 @@
 //!
 //! ## Core Components
 //! - **Core**: Basic agent infrastructure and types (`kowalski-core`)
-//! - **Memory**: Multi-tiered memory system (`kowalski-memory`)
-//! - **Agent Template**: Templates for building custom agents (`kowalski-agent-template`)
 //! - **Tools**: Various tools for web scraping, data processing, and more (`kowalski-tools`)
 //!
-//! ## Optional Features (Specialized Agents and more)
-//! - **`academic`**: Research and academic paper analysis (`kowalski-academic-agent`)
-//! - **`code`**: Code analysis, refactoring, and generation (`kowalski-code-agent`)
-//! - **`data`**: Data analysis and processing (`kowalski-data-agent`)
-//! - **`web`**: Web research and information gathering (`kowalski-web-agent`)
+//! ## Optional Features
 //! - **`federation`**: Multi-agent coordination and communication (`kowalski-federation`)
 //! - **`cli`**: Command-line interface (`kowalski-cli`)
 //!
@@ -23,7 +17,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! kowalski = { version = "0.5.2", features = ["web", "code"] }
+//! kowalski = { version = "0.5.2" }
 //! ```
 //!
 //! ```rust,no_run
@@ -45,19 +39,6 @@
 
 pub use kowalski_core as core;
 pub use kowalski_tools as tools;
-
-// Re-export optional agents
-#[cfg(feature = "academic")]
-pub use kowalski_academic_agent as academic_agent;
-
-#[cfg(feature = "code")]
-pub use kowalski_code_agent as code_agent;
-
-#[cfg(feature = "data")]
-pub use kowalski_data_agent as data_agent;
-
-#[cfg(feature = "web")]
-pub use kowalski_web_agent as web_agent;
 
 // Re-export optional federation and CLI
 #[cfg(feature = "federation")]
