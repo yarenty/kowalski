@@ -3,8 +3,6 @@ resolver = "3"
 members = [
     "kowalski",
     "kowalski-core",
-    "kowalski-tools",
-    "kowalski-federation",
     "kowalski-cli"
 ]
 
