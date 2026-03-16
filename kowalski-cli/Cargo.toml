@@ -51,4 +51,5 @@ regex = { workspace = true }
 markdown = { workspace = true }
 rustyline = "13.0"
 colored = "2.1"
+toml = "0.8"
 

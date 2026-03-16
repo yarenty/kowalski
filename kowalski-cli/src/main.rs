@@ -25,6 +25,10 @@ struct Cli {
     /// Start in interactive mode
     #[clap(short, long)]
     interactive: bool,
+
+    /// Path to a configuration file (.toml) to load an agent
+    #[clap(short, long)]
+    config: Option<String>,
 }
 
 #[derive(Parser, Debug)]
@@ -84,6 +88,32 @@ impl AgentManager {
         }
     }
 
+    async fn create_agent_from_config(
+        &self,
+        config_path: &str,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        use crate::config::AgentConfig;
+        use std::path::Path;
+
+        let agent_config = AgentConfig::load_from_file(Path::new(config_path))
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+        
+        println!("Loading agent '{}' of type '{}'...", agent_config.name, agent_config.agent_type);
+        
+        self.create_agent(
+            agent_config.name.clone(),
+            &agent_config.agent_type,
+            agent_config.system_prompt.as_deref(),
+            agent_config.temperature,
+        ).await?;
+
+        // If tools are specified, we might need a way to register them after creation
+        // but for now create_agent uses default tools for each type.
+        // In the future, we'll use tool_manager directly.
+
+        Ok(agent_config.name)
+    }
+
     async fn create_agent(
         &self,
         name: String,
@@ -140,11 +170,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     let manager = AgentManager::new();
 
+    let mut active_agent_name = None;
+
+    if let Some(config_path) = &cli.config {
+        match manager.create_agent_from_config(config_path).await {
+            Ok(name) => active_agent_name = Some(name),
+            Err(e) => {
+                eprintln!("Error loading config: {}", e);
+                return Err(e);
+            }
+        }
+    }
+
     if cli.interactive {
         println!("Starting Kowalski in interactive mode...");
-        manager.create_agent("default".to_string(), "web", None, None).await?;
-        let mut agents_guard = manager.get_agent_mut("default").await.unwrap();
-        if let Some(agent) = agents_guard.remove("default") {
+        let agent_name = active_agent_name.unwrap_or_else(|| {
+            // Fallback to default if no config provided
+            "default".to_string()
+        });
+
+        if manager.get_agent_mut(&agent_name).await.is_none() {
+            manager.create_agent(agent_name.clone(), "web", None, None).await?;
+        }
+
+        let mut agents_guard = manager.get_agent_mut(&agent_name).await.unwrap();
+        if let Some(agent) = agents_guard.remove(&agent_name) {
             let mut session = kowalski_cli::interactive::InteractiveSession::new(agent, "llama3");
             session.run().await?;
             return Ok(());
@@ -157,12 +207,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             prompt,
             temperature,
             name,
-            config: _,
+            config,
         }) => {
-            let name = name.unwrap_or_else(|| format!("{}-agent", agent_type));
-            manager
-                .create_agent(name, &agent_type, prompt.as_deref(), temperature)
-                .await?
+            if let Some(config_path) = config {
+                manager.create_agent_from_config(&config_path).await?;
+            } else {
+                let name = name.unwrap_or_else(|| format!("{}-agent", agent_type));
+                manager
+                    .create_agent(name, &agent_type, prompt.as_deref(), temperature)
+                    .await?;
+            }
         }
         Some(Commands::Chat { agent, .. }) => {
             let agents_guard = manager.get_agent_mut(&agent).await;
