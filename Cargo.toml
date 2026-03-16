@@ -4,10 +4,6 @@ members = [
     "kowalski",
     "kowalski-core",
     "kowalski-tools",
-    "kowalski-academic-agent",
-    "kowalski-web-agent",
-    "kowalski-code-agent",
-    "kowalski-data-agent",
     "kowalski-federation",
     "kowalski-cli"
 ]
