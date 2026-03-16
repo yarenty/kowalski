@@ -71,8 +71,8 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 
 ### Architectural Patterns
 - **Actor Model**: Agent abstractions and isolated execution contexts
-- **Federated Architecture**: Multi-agent orchestration and secure computation
-- **Pluggable Architecture**: Extensible toolchain and provider support
+- **Generic Architecture**: Multi-purpose agent abstraction built on extensible configurations
+- **Pluggable Architecture**: Extensible toolchain via MCP (upcoming) support
 
 ### Design Patterns in Use
 - **Repository Pattern**: For data access abstraction
@@ -118,29 +118,18 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ### Directory Layout
 ```
 kowalski/
-├── kowalski-core/           # Core agent abstractions, conversation, roles, config, toolchain
-├── kowalski-tools/          # Pluggable tools (code, data, web, document, etc.)
-├── kowalski-agent-template/ # Agent builder, base agent, and templates
-├── kowalski-federation/     # Multi-agent orchestration (WIP)
+├── kowalski-core/           # Core agent abstractions, conversation, roles, config
 ├── kowalski-cli/            # Command-line interface
-├── kowalski-academic-agent/ # Academic research agent
-├── kowalski-code-agent/     # Code analysis agent
-├── kowalski-data-agent/     # Data analysis agent
-└── kowalski-web-agent/      # Web research agent
+├── migrations/
+│   └── legacy_prompts/      # Salvaged system prompts and configurations from legacy specialized agents
+└── resources/               # Configs, tokenizer, etc.
 ```
 
 ### Component-Specific Documentation
 **⚠️ CRITICAL**: Each major component contains its own `AGENTS.md` file with detailed information:
 
 - [kowalski-core/AGENTS.md](kowalski-core/AGENTS.md)
-- [kowalski-tools/AGENTS.md](kowalski-tools/AGENTS.md)
-- [kowalski-agent-template/AGENTS.md](kowalski-agent-template/AGENTS.md)
-- [kowalski-federation/AGENTS.md](kowalski-federation/AGENTS.md)
 - [kowalski-cli/AGENTS.md](kowalski-cli/AGENTS.md)
-- [kowalski-academic-agent/AGENTS.md](kowalski-academic-agent/AGENTS.md)
-- [kowalski-code-agent/AGENTS.md](kowalski-code-agent/AGENTS.md)
-- [kowalski-data-agent/AGENTS.md](kowalski-data-agent/AGENTS.md)
-- [kowalski-web-agent/AGENTS.md](kowalski-web-agent/AGENTS.md)
 
 **Rule**: Before making changes to any component, **always read its specific AGENTS.md first** to understand:
 - Component architecture and responsibilities
@@ -150,9 +139,8 @@ kowalski/
 - Technology-specific considerations
 
 ### Service Architecture
-- **Agent Workers**: Independent processing units
-- **Federation Hub**: Orchestrates communication and tasks (WIP)
-- **Tool Proxies**: Interfaces to external services and utilities
+- **Agent Workers**: Independent processing units utilizing the `TemplateAgent` structure
+- **Tool Proxies**: Interfaces to external services and utilities (via upcoming MCP integration)
 
 ---
 
@@ -331,14 +319,14 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-Active development. Core, Tools, and specialized agents (Academic, Code, Data, Web) are operational. Federation is WIP.
+Active rebuilding. Legacy specialized agents and tool crates have been consolidated. Core functionality is centralized in `kowalski-core` and exposed through `kowalski-cli`.
 
 ### Roadmap
 See `ROADMAP.md` for latest features and future plans.
 
 ### Technical Debt
-- Tools are currently monolithic, pending refactor into granular tool crates.
-- Federation protocol finalization.
+- Tool definitions are being migrated to Model Context Protocol (MCP).
+- Legacy prompts are staged in `migrations/legacy_prompts/` pending config-based loading.
 
 ### Known Issues
 - Ollama models must be running contextually.

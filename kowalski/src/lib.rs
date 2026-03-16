@@ -8,7 +8,6 @@
 //! - **Tools**: Various tools for web scraping, data processing, and more (`kowalski-tools`)
 //!
 //! ## Optional Features
-//! - **`federation`**: Multi-agent coordination and communication (`kowalski-federation`)
 //! - **`cli`**: Command-line interface (`kowalski-cli`)
 //!
 //! ## Usage
@@ -38,12 +37,8 @@
 // Re-export core components
 
 pub use kowalski_core as core;
-pub use kowalski_tools as tools;
 
-// Re-export optional federation and CLI
-#[cfg(feature = "federation")]
-pub use kowalski_federation as federation;
-
+// Re-export optional CLI
 #[cfg(feature = "cli")]
 pub use kowalski_cli as cli;
 

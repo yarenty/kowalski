@@ -20,15 +20,10 @@ Kowalski is designed as a foundational framework for building intelligent, distr
 
 ```
 kowalski/
-├── kowalski-core/           # Core agent abstractions, conversation, roles, config, toolchain
-├── kowalski-tools/          # Pluggable tools (code, data, web, document, etc.)
-├── kowalski-agent-template/ # Agent builder, base agent, and templates
-├── kowalski-federation/     # Multi-agent orchestration (WIP)
-├── kowalski-academic-agent/ # Academic research agent
-├── kowalski-code-agent/     # Code analysis agent
-├── kowalski-data-agent/     # Data analysis agent
-├── kowalski-web-agent/      # Web research agent
+├── kowalski-core/           # Core agent abstractions, conversation, roles, config, templates
 ├── kowalski-cli/            # Command-line interface
+├── migrations/
+│   └── legacy_prompts/      # Stashed prompts from legacy specialized agents
 ├── resources/               # Configs, tokenizer, etc.
 └── ...                      # Examples, docs, etc.
 ```
@@ -39,32 +34,13 @@ kowalski/
 
 ### **kowalski-core**
 - Foundational types, agent abstractions, conversation, roles, configuration, error handling, toolchain logic.
+- Includes `TemplateAgent` for building configurable agents.
 - Designed for extensibility and async-first operation.
 - [See details](./kowalski-core/README.md)
 
-### **kowalski-tools**
-- Pluggable tools for code, data, web, and document analysis.
-- Includes CSV, code (Java/Python/Rust), web search, web scraping, PDF tools, and more.
-- **Upcoming:** Will be refactored into even more granular, independent tool modules for easier extension and maintenance.
-- [See details](./kowalski-tools/README.md)
-
-### **kowalski-agent-template**
-- Agent builder, base agent, and ready-to-use templates (general, research, etc.).
-- Makes it easy to compose new agents with custom tools and prompts.
-- [See details](./kowalski-agent-template/README.md)
-
-### **kowalski-federation**
-- **Work in Progress:** Multi-agent orchestration, registry, and protocols.
-- Current focus: agent registration, task delegation, message passing.
-- **Decisions to make:** Protocol selection (A2A, ACP, MCP, or custom), security, scalability, and extensibility.
-- [See details](./kowalski-federation/README.md)
-
-### **Specific Agents**
-- **kowalski-academic-agent:** Academic research, PDF analysis, citation extraction.
-- **kowalski-code-agent:** Code analysis, metrics, suggestions for Java/Python/Rust.
-- **kowalski-data-agent:** Data/CSV analysis, statistics, summaries.
-- **kowalski-web-agent:** Web search, scraping, and research.
-- Each agent is a separate crate with its own README and examples.
+### **kowalski-cli**
+- The main command-line interface for Kowalski.
+- Provides a unified REPL and command set to interact with the core agent framework.
 
 ---
 
@@ -138,47 +114,17 @@ agent.add_message(&conv_id, "user", "Hello, world!").await;
 
 ## 🤖 Existing Agents & How to Run
 
-### Academic Agent
+Kowalski formerly utilized dedicated agent crates (`kowalski-web-agent`, `kowalski-code-agent`, etc.). These have been unified into a single `TemplateAgent` located in `kowalski-core`.
 
-- **Location:** `kowalski-academic-agent/`
-- **Run:**  
-  ```bash
-  cargo run --release --bin kowalski-academic-agent -- --file paper.pdf
-  ```
-- **Features:** PDF analysis, citation extraction, academic summarization.
+To run specific agent functional "personas" (like `web` or `code`), you can supply the persona name to the CLI, which will load the respective system prompt and configuration dynamically:
 
-### Code Agent
+```bash
+cargo run --release --bin kowalski-cli
+kowalski> create code
+kowalski> chat code-agent
+```
 
-- **Location:** `kowalski-code-agent/`
-- **Run:**  
-  ```bash
-  cargo run --release --bin kowalski-code-agent -- --file main.rs
-  ```
-- **Features:** Code metrics, suggestions, multi-language support.
-
-### Data Agent
-
-- **Location:** `kowalski-data-agent/`
-- **Run:**  
-  ```bash
-  cargo run --release 
-
-  create data
-  chat data-agent
-  using csv tool could you investigate content and give me insight about domain_structure.csv file?
- ```
-- **Features:** CSV analysis, statistics, summaries.
-
-### Web Agent
-
-- **Location:** `kowalski-web-agent/`
-- **Run:**  
-  ```bash
-  cargo run --release --bin kowalski-web-agent -- --query "latest AI news"
-  ```
-- **Features:** Web search, scraping, summarization.
-
-- **See each agent's README for more details and output examples.**
+Legacy prompt configurations are currently stored in `migrations/legacy_prompts/`.
 
 ---
 

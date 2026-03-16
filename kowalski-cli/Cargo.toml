@@ -24,8 +24,6 @@ keywords = [
 [dependencies]
 kowalski-core = { path = "../kowalski-core", version = "0.6.0" }
 
-kowalski-tools = { path = "../kowalski-tools", version = "0.6.0" }
-kowalski-federation = { path = "../kowalski-federation", version = "0.6.0" }
 
 chrono = "0.4"
 clap = { version = "4.5", features = ["derive"] }
