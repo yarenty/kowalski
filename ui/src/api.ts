@@ -133,11 +133,15 @@ export function openFederationEventSource(
 export async function chatStream(
   message: string,
   onEvent: (ev: ChatStreamEvent) => void,
+  options?: { toolsStream?: boolean },
 ): Promise<void> {
   const res = await fetch(`${base}/api/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({
+      message,
+      ...(options?.toolsStream ? { tools_stream: true } : {}),
+    }),
   });
   if (!res.ok) {
     const text = await res.text();
