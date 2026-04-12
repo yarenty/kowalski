@@ -146,6 +146,8 @@ Legacy prompt configurations are currently stored in `migrations/legacy_prompts/
 
 - [CHANGELOG.md](./CHANGELOG.md)
 - [ROADMAP.md](./ROADMAP.md)
+- **[TODO.md](./TODO.md)** — manual & end-to-end verification (operator checklist)
+- [rebuild_tasks/STATUS.md](./rebuild_tasks/STATUS.md) — WP snapshot vs repo
 - [Each module's README](./kowalski-core/README.md), etc.
 
 ---
