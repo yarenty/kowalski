@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, onUnmounted, ref, watch } from "vue";
 import {
   api,
   chatStream,
+  openFederationEventSource,
   type AgentsResponse,
   type Doctor,
   type Health,
@@ -11,7 +12,7 @@ import {
   type SessionsResponse,
 } from "./api";
 
-const tab = ref<"home" | "mcp" | "chat">("home");
+const tab = ref<"home" | "mcp" | "chat" | "federation">("home");
 
 const health = ref<Health | null>(null);
 const healthErr = ref<string | null>(null);
@@ -39,6 +40,64 @@ const sessionId = ref<string | null>(null);
 const chatBusy = ref(false);
 const resetBusy = ref(false);
 const chatErr = ref<string | null>(null);
+
+const fedTopic = ref("federation");
+const fedTaskId = ref("demo-1");
+const fedInstruction = ref("Smoke test");
+const fedCap = ref("chat");
+const fedResult = ref<string | null>(null);
+const fedErr = ref<string | null>(null);
+const fedBusy = ref(false);
+const fedLines = ref<string[]>([]);
+const fedEs = ref<EventSource | null>(null);
+
+function fedDisconnect() {
+  fedEs.value?.close();
+  fedEs.value = null;
+}
+
+function fedConnect() {
+  fedDisconnect();
+  fedLines.value = [];
+  const es = openFederationEventSource(
+    fedTopic.value,
+    (data) => {
+      try {
+        const j = JSON.parse(data) as unknown;
+        fedLines.value = [
+          ...fedLines.value.slice(-99),
+          JSON.stringify(j, null, 2),
+        ];
+      } catch {
+        fedLines.value = [...fedLines.value.slice(-99), data];
+      }
+    },
+    () => {},
+  );
+  fedEs.value = es;
+}
+
+async function fedDelegate() {
+  fedBusy.value = true;
+  fedErr.value = null;
+  fedResult.value = null;
+  try {
+    const r = await api.federationDelegate({
+      task_id: fedTaskId.value.trim() || "task",
+      instruction: fedInstruction.value.trim() || "…",
+      capability: fedCap.value.trim() || "chat",
+    });
+    fedResult.value = JSON.stringify(r, null, 2);
+  } catch (e) {
+    fedErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    fedBusy.value = false;
+  }
+}
+
+watch(tab, (t) => {
+  if (t !== "federation") fedDisconnect();
+});
 
 async function loadHealth() {
   healthErr.value = null;
@@ -168,6 +227,10 @@ onMounted(() => {
   void loadAgents();
   void loadSessions();
 });
+
+onUnmounted(() => {
+  fedDisconnect();
+});
 </script>
 
 <template>
@@ -195,6 +258,13 @@ onMounted(() => {
         </button>
         <button type="button" :class="{ active: tab === 'chat' }" @click="tab = 'chat'">
           Chat
+        </button>
+        <button
+          type="button"
+          :class="{ active: tab === 'federation' }"
+          @click="tab = 'federation'"
+        >
+          Federation
         </button>
       </nav>
     </header>
@@ -228,6 +298,44 @@ onMounted(() => {
         <p v-if="doctorErr" class="err">{{ doctorErr }}</p>
       </section>
 
+      <section v-else-if="tab === 'federation'" class="panel">
+        <h2>Federation</h2>
+        <p class="hint">
+          In-process ACL via <code>GET /api/federation/stream</code> (SSE) and
+          <code>POST /api/federation/delegate</code>. Connect the stream, then delegate — you should
+          see one <code>AclEnvelope</code> per event.
+        </p>
+        <p>
+          <label class="lbl">Topic</label>
+          <input v-model="fedTopic" class="inp" type="text" />
+        </p>
+        <p>
+          <button type="button" class="primary" @click="fedConnect">Connect stream</button>
+          <button type="button" @click="fedDisconnect">Disconnect</button>
+        </p>
+        <pre class="json fed-log">{{ fedLines.length ? fedLines.join("\n\n") : "(no events yet)" }}</pre>
+        <h3>Delegate (ranked match)</h3>
+        <p>
+          <label class="lbl">task_id</label>
+          <input v-model="fedTaskId" class="inp" type="text" />
+        </p>
+        <p>
+          <label class="lbl">instruction</label>
+          <input v-model="fedInstruction" class="inp" type="text" />
+        </p>
+        <p>
+          <label class="lbl">capability</label>
+          <input v-model="fedCap" class="inp" type="text" />
+        </p>
+        <p>
+          <button type="button" class="primary" :disabled="fedBusy" @click="fedDelegate">
+            {{ fedBusy ? "Delegating…" : "POST /api/federation/delegate" }}
+          </button>
+        </p>
+        <pre v-if="fedResult" class="json">{{ fedResult }}</pre>
+        <p v-if="fedErr" class="err">{{ fedErr }}</p>
+      </section>
+
       <section v-else-if="tab === 'mcp'" class="panel">
         <h2>MCP</h2>
         <p>
@@ -244,7 +352,7 @@ onMounted(() => {
         <p v-if="pingErr" class="err">{{ pingErr }}</p>
       </section>
 
-      <section v-else class="panel">
+      <section v-else-if="tab === 'chat'" class="panel">
         <h2>Chat</h2>
         <p class="hint">
           One in-process agent + Ollama via <code>POST /api/chat</code> or SSE
@@ -384,5 +492,27 @@ code {
   padding: 0.15rem 0.4rem;
   border-radius: 4px;
   font-size: 0.88em;
+}
+.lbl {
+  display: block;
+  font-size: 0.8rem;
+  color: #8b92a5;
+  margin-bottom: 0.25rem;
+}
+.inp {
+  width: 100%;
+  max-width: 28rem;
+  box-sizing: border-box;
+  background: #1a1d26;
+  border: 1px solid #3d4658;
+  color: #e8e8ec;
+  border-radius: 6px;
+  padding: 0.4rem 0.55rem;
+  font: inherit;
+}
+.fed-log {
+  max-height: 14rem;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>
