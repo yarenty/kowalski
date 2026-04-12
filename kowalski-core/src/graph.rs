@@ -2,6 +2,26 @@
 
 use crate::error::KowalskiError;
 
+/// AGE `cypher()` requires graph names as SQL **literals**, not prepared parameters (`$1::name`).
+/// Allow only safe identifier-style names to avoid injection when embedding in SQL.
+#[cfg(feature = "postgres")]
+fn validate_age_graph_name(name: &str) -> Result<(), KowalskiError> {
+    if name.is_empty() || name.len() > 63 {
+        return Err(KowalskiError::Configuration(
+            "invalid AGE graph name (length)".into(),
+        ));
+    }
+    let ok = name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_');
+    if !ok {
+        return Err(KowalskiError::Configuration(
+            "invalid AGE graph name (use letters, digits, underscore only)".into(),
+        ));
+    }
+    Ok(())
+}
+
 /// Report whether `vector` and `age` extensions are installed.
 #[cfg(feature = "postgres")]
 pub async fn postgres_graph_status(database_url: &str) -> Result<serde_json::Value, KowalskiError> {
@@ -74,14 +94,25 @@ pub async fn postgres_age_cypher(
         .await
         .map_err(|e| KowalskiError::Configuration(format!("age search_path: {e}")))?;
 
-    let raw: Vec<Option<String>> = sqlx::query_scalar(
-        r#"SELECT (result)::text FROM cypher($1::name, $2::cstring) AS (result agtype)"#,
-    )
-    .bind(graph_name)
-    .bind(cypher)
-    .fetch_all(&mut *conn)
-    .await
-    .map_err(|e| KowalskiError::Configuration(format!("cypher execution: {e}")))?;
+    validate_age_graph_name(graph_name)?;
+
+    // Dollar-quote the Cypher body so quotes/newlines are safe; pick a tag that cannot appear in the query.
+    let mut tag = format!("ag{}", uuid::Uuid::new_v4().as_simple());
+    while cypher.contains(&format!("${}$", tag)) {
+        tag = format!("ag{}", uuid::Uuid::new_v4().as_simple());
+    }
+
+    // First argument must be a literal graph name (AGE rejects bound parameters with "a name constant is expected").
+    // Second is `$tag$cypher$tag$` (PostgreSQL dollar-quoted string).
+    let sql = format!(
+        "SELECT (result)::text FROM cypher('{}', ${}${}${}$) AS (result agtype)",
+        graph_name, tag, cypher, tag
+    );
+
+    let raw: Vec<Option<String>> = sqlx::query_scalar(&sql)
+        .fetch_all(&mut *conn)
+        .await
+        .map_err(|e| KowalskiError::Configuration(format!("cypher execution: {e}")))?;
 
     let rows: Vec<serde_json::Value> = raw.into_iter().map(|t| json!(t)).collect();
     Ok(json!({ "rows": rows }))
