@@ -105,6 +105,15 @@ impl McpClient {
         self.session_id.lock().ok().and_then(|g| g.clone())
     }
 
+    /// Clears the Streamable HTTP session id so the next request starts fresh (e.g. before dropping
+    /// the client from a hub). Underlying TCP pools are released when the last `Arc` to this client
+    /// is dropped.
+    pub fn shutdown(&self) {
+        if let Ok(mut g) = self.session_id.lock() {
+            g.take();
+        }
+    }
+
     fn apply_streamable_headers(&self, mut req: RequestBuilder) -> RequestBuilder {
         req = req.header(ACCEPT, ACCEPT_STREAMABLE);
         if let Ok(guard) = self.session_id.lock() {

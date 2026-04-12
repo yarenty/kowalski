@@ -18,5 +18,9 @@ pub use orchestrator::{DelegationOutcome, FederationOrchestrator};
 pub use pg_broker::{
     bridge_postgres_notify_to_mpsc, bridge_postgres_notify_to_mpsc_pool, pg_pool_connect, PgBroker,
 };
-pub use persist::{load_registry_into, upsert_registry_record};
+pub use persist::{
+    load_registry_into, touch_agent_heartbeat, upsert_agent_state_for_record, upsert_registry_record,
+};
+#[cfg(feature = "postgres")]
+pub use persist::{load_agent_states, AgentStateSnapshot};
 pub use registry::{AgentRecord, AgentRegistry};

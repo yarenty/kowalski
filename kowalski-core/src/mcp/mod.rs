@@ -23,9 +23,7 @@
 //!
 //! ## Follow-ups
 //!
-//! - **Legacy HTTP+SSE** (pre–Streamable HTTP): spec [backwards compatibility](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#backwards-compatibility) —
-//!   if POST `initialize` fails with 4xx, try **GET** for an SSE `endpoint` event — **not implemented yet**.
-//! - **Optional GET listener** for server-initiated messages (open SSE without a preceding POST).
+//! - **Optional GET listener** for server-initiated messages (open SSE without a preceding POST) — not implemented.
 //! - **Stdio MCP**: [`crate::mcp::stdio::McpStdioClient`] — newline JSON-RPC over a subprocess (`McpServerConfig::command`).
 //!
 //! **Prompt refresh:** [`crate::template::TemplateAgent::register_tool`] and [`crate::template::TemplateAgent::refresh_tool_prompt_appendix`] update `tool_prompt_appendix` when the tool set changes.

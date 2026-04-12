@@ -50,10 +50,12 @@ struct ApiState {
 }
 
 /// Run until SIGINT / process exit. Binds `addr` and serves under `/api/*`.
+/// When `tls` is `Some((cert_pem, key_pem))`, serves HTTPS via rustls (`axum-server`).
 pub async fn serve(
     addr: SocketAddr,
     config: Option<String>,
     ollama_url: Option<String>,
+    tls: Option<(PathBuf, PathBuf)>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let config_path = crate::ops::mcp_config_path(config.as_deref());
     let full_config = crate::ops::load_kowalski_config_for_serve(&config_path)?;
@@ -75,25 +77,22 @@ pub async fn serve(
             }
         }
     }
+    let template_agent = AgentRecord {
+        id: "template".into(),
+        capabilities: vec!["chat".into(), "mcp".into(), "llm".into()],
+    };
     federation_registry
-        .register(AgentRecord {
-            id: "template".into(),
-            capabilities: vec!["chat".into(), "mcp".into(), "llm".into()],
-        })
+        .register(template_agent.clone())
         .map_err(|e| format!("federation registry: {e}"))?;
     #[cfg(feature = "postgres")]
     if let Some(ref url) = full_config.memory.database_url {
         if kowalski_core::config::memory_uses_postgres(&full_config.memory) {
-            if let Err(e) = kowalski_core::upsert_registry_record(
-                url,
-                &AgentRecord {
-                    id: "template".into(),
-                    capabilities: vec!["chat".into(), "mcp".into(), "llm".into()],
-                },
-            )
-            .await
-            {
+            if let Err(e) = kowalski_core::upsert_registry_record(url, &template_agent).await {
                 log::warn!("federation registry upsert: {}", e);
+            }
+            if let Err(e) = kowalski_core::upsert_agent_state_for_record(url, &template_agent).await
+            {
+                log::warn!("agent_state upsert: {}", e);
             }
         }
     }
@@ -133,8 +132,10 @@ pub async fn serve(
         pg_out
     };
 
+    let scheme = if tls.is_some() { "https" } else { "http" };
     log::info!(
-        "Kowalski HTTP API at http://{} (config {}, model {})",
+        "Kowalski HTTP API at {}://{} (config {}, model {})",
+        scheme,
         addr,
         config_path.display(),
         model
@@ -165,6 +166,7 @@ pub async fn serve(
         .route("/api/federation/stream", get(get_federation_stream))
         .route("/api/federation/ws", get(get_federation_ws))
         .route("/api/federation/registry", get(get_federation_registry))
+        .route("/api/federation/heartbeat", post(post_federation_heartbeat))
         .route("/api/federation/delegate", post(post_federation_delegate))
         .route("/api/graph/status", get(get_graph_status));
     #[cfg(feature = "postgres")]
@@ -172,8 +174,16 @@ pub async fn serve(
     let app = router
         .with_state(state)
         .layer(CorsLayer::permissive());
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+
+    if let Some((cert, key)) = tls {
+        let rustls_config = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key).await?;
+        axum_server::bind_rustls(addr, rustls_config)
+            .serve(app.into_make_service())
+            .await?;
+    } else {
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        axum::serve(listener, app).await?;
+    }
     Ok(())
 }
 
@@ -447,7 +457,64 @@ struct FederationStreamQuery {
 
 async fn get_federation_registry(State(state): State<ApiState>) -> Json<serde_json::Value> {
     let agents = state.federation.registry.list();
+    #[cfg(feature = "postgres")]
+    if let Some(ref url) = state.full_config.memory.database_url {
+        if kowalski_core::config::memory_uses_postgres(&state.full_config.memory) {
+            if let Ok(states) = kowalski_core::load_agent_states(url).await {
+                let merged: Vec<serde_json::Value> = agents
+                    .iter()
+                    .map(|a| {
+                        let mut row = json!({
+                            "id": &a.id,
+                            "capabilities": &a.capabilities,
+                        });
+                        if let (Some(obj), Some(s)) = (row.as_object_mut(), states.get(&a.id)) {
+                            obj.insert(
+                                "state".into(),
+                                serde_json::to_value(s).unwrap_or_else(|_| json!({})),
+                            );
+                        }
+                        row
+                    })
+                    .collect();
+                return Json(json!({ "agents": merged }));
+            }
+        }
+    }
     Json(json!({ "agents": agents }))
+}
+
+#[derive(Deserialize)]
+struct FederationHeartbeatBody {
+    agent_id: String,
+}
+
+async fn post_federation_heartbeat(
+    State(state): State<ApiState>,
+    Json(body): Json<FederationHeartbeatBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let id = body.agent_id.trim();
+    if id.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "agent_id required".into()));
+    }
+    #[cfg(feature = "postgres")]
+    {
+        if let Some(ref url) = state.full_config.memory.database_url {
+            if kowalski_core::config::memory_uses_postgres(&state.full_config.memory) {
+                return kowalski_core::touch_agent_heartbeat(url, id)
+                    .await
+                    .map(|_| Json(json!({ "ok": true, "agent_id": id })))
+                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
+            }
+        }
+    }
+    Err((
+        StatusCode::SERVICE_UNAVAILABLE,
+        format!(
+            "Postgres memory URL not configured (config {}; build with --features postgres for heartbeat persistence)",
+            state.config_path.display()
+        ),
+    ))
 }
 
 async fn get_federation_ws(

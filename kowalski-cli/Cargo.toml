@@ -53,4 +53,5 @@ markdown = { workspace = true }
 rustyline = "13.0"
 colored = "2.1"
 toml = "0.8"
+axum-server = { version = "0.8.0", features = ["tls-rustls"] }
 

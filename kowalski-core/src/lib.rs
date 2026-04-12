@@ -22,8 +22,11 @@ pub use config::*;
 pub use error::KowalskiError;
 pub use federation::{
     check_delegate_depth, AclEnvelope, AclMessage, AgentRecord, AgentRegistry, DelegationOutcome,
-    FederationOrchestrator, load_registry_into, upsert_registry_record, MessageBroker, MpscBroker,
+    FederationOrchestrator, load_registry_into, touch_agent_heartbeat, upsert_agent_state_for_record,
+    upsert_registry_record, MessageBroker, MpscBroker,
 };
+#[cfg(feature = "postgres")]
+pub use federation::{load_agent_states, AgentStateSnapshot};
 #[cfg(feature = "postgres")]
 pub use federation::{
     bridge_postgres_notify_to_mpsc, bridge_postgres_notify_to_mpsc_pool, pg_pool_connect, PgBroker,
