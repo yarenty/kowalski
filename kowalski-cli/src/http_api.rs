@@ -1,5 +1,6 @@
 //! JSON HTTP API for the Vue operator UI (CORS-enabled for local dev).
-//! `/api/chat` and `/api/chat/stream` use one in-process `TemplateAgent` + Ollama (from config).
+//! `/api/chat` and `/api/chat/stream` use one in-process `TemplateAgent` + configured LLM (`[llm]` +
+//! `[ollama].model` — Ollama or OpenAI-compatible API).
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -10,6 +11,7 @@ use futures::Stream;
 use std::convert::Infallible;
 use tokio_stream::wrappers::ReceiverStream;
 use kowalski_core::agent::Agent;
+use kowalski_core::config::Config;
 use kowalski_core::template::agent::TemplateAgent;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -29,6 +31,7 @@ struct ApiState {
     config_path: PathBuf,
     ollama_url: Option<String>,
     model: String,
+    full_config: Config,
     chat: Arc<Mutex<ChatState>>,
 }
 
@@ -57,6 +60,7 @@ pub async fn serve(
         config_path,
         ollama_url,
         model,
+        full_config: full_config.clone(),
         chat: Arc::new(Mutex::new(ChatState { agent, conv_id })),
     };
 
@@ -114,7 +118,9 @@ async fn get_sessions(State(state): State<ApiState>) -> Json<serde_json::Value> 
 }
 
 async fn get_doctor(State(state): State<ApiState>) -> Json<crate::ops::DoctorJson> {
-    Json(crate::ops::doctor_json(state.ollama_url.clone()).await)
+    Json(
+        crate::ops::doctor_json(state.ollama_url.clone(), Some(&state.full_config)).await,
+    )
 }
 
 async fn get_mcp_servers(

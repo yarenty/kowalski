@@ -26,6 +26,11 @@ export type Health = {
 export type Doctor = {
   cli_version: string;
   ollama: { url: string; ok: boolean; detail: string };
+  llm: {
+    provider: string;
+    model: string;
+    openai_api_base: string | null;
+  };
 };
 
 export type McpServer = {

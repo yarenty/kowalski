@@ -291,25 +291,7 @@ impl Agent for BaseAgent {
     async fn new(config: Config) -> Result<Self, KowalskiError> {
         crate::db::run_memory_migrations_if_configured(&config).await?;
 
-        // Initialize LLM Provider based on config
-        let llm_provider: std::sync::Arc<dyn crate::llm::LLMProvider> =
-            match config.llm.provider.as_str() {
-                "openai" => {
-                    let api_key =
-                        config
-                            .llm
-                            .openai_api_key
-                            .clone()
-                            .ok_or(KowalskiError::Configuration(
-                                "OpenAI API key missing".to_string(),
-                            ))?;
-                    std::sync::Arc::new(crate::llm::OpenAIProvider::new(&api_key))
-                }
-                "ollama" | _ => std::sync::Arc::new(crate::llm::OllamaProvider::new(
-                    &config.ollama.host,
-                    config.ollama.port,
-                )),
-            };
+        let llm_provider = crate::llm::create_llm_provider(&config)?;
 
         // Create memory providers
         let working_memory = std::sync::Arc::new(tokio::sync::Mutex::new(WorkingMemory::new(100)))

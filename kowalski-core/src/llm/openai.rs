@@ -21,8 +21,16 @@ pub struct OpenAIProvider {
 }
 
 impl OpenAIProvider {
-    pub fn new(api_key: &str) -> Self {
-        let config = OpenAIConfig::new().with_api_key(api_key);
+    /// `api_key` may be empty for some local OpenAI-compatible servers.
+    /// `api_base` should be the full OpenAI API root (e.g. `https://api.openai.com/v1` or `http://localhost:1234/v1`).
+    pub fn new(api_key: &str, api_base: Option<&str>) -> Self {
+        let mut config = OpenAIConfig::new().with_api_key(api_key);
+        if let Some(base) = api_base {
+            let trimmed = base.trim();
+            if !trimmed.is_empty() {
+                config = config.with_api_base(trimmed);
+            }
+        }
         let client = Client::with_config(config);
         Self {
             client,
