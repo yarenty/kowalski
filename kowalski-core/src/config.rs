@@ -98,6 +98,10 @@ impl Default for ChatConfig {
     }
 }
 
+fn default_embedding_vector_dimensions() -> usize {
+    768
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryConfig {
     pub episodic_path: String,
@@ -105,6 +109,9 @@ pub struct MemoryConfig {
     /// If **`postgres://…`**, Tier 2 episodic memory uses table **`episodic_kv`** in that database (run migrations via [`crate::db::run_memory_migrations_if_configured`](crate::db::run_memory_migrations_if_configured)). Otherwise Tier 2 uses a **SQLite file** under `episodic_path` (`episodic.sqlite` or an explicit `.sqlite`/`.db` path).
     #[serde(default)]
     pub database_url: Option<String>,
+    /// Embedding width for **PostgreSQL** `semantic_memory.embedding` (`vector(N)`). Must match your embedder (e.g. **768** for Ollama `nomic-embed-text`) and the dimension in `migrations/postgres/003_semantic_memory.sql`.
+    #[serde(default = "default_embedding_vector_dimensions")]
+    pub embedding_vector_dimensions: usize,
     #[serde(flatten)]
     pub additional: HashMap<String, serde_json::Value>,
 }
@@ -114,9 +121,17 @@ impl Default for MemoryConfig {
         Self {
             episodic_path: "../target/episodic_db".to_string(), //just for testing!
             database_url: None,
+            embedding_vector_dimensions: default_embedding_vector_dimensions(),
             additional: HashMap::new(),
         }
     }
+}
+
+/// Returns true when [`MemoryConfig::database_url`] points at PostgreSQL (episodic + semantic SQL backends).
+pub fn memory_uses_postgres(memory: &MemoryConfig) -> bool {
+    memory.database_url.as_ref().is_some_and(|u| {
+        u.starts_with("postgres://") || u.starts_with("postgresql://")
+    })
 }
 
 /// Trait for extending configuration with additional settings

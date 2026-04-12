@@ -46,7 +46,11 @@ The **main direction** for the framework is:
 | **Dependency minimization** | Avoid **required** heavy or external dependencies for core workflows; keep the default path **dependency-light** so installs and edge deployments stay predictable. |
 | **Optional scale-out** | When a deployment **needs** a dedicated vector DB, hosted SQL, or cluster storage, those remain **additive**—not prerequisites for “hello world” or local dev. |
 
-Today, the semantic tier uses **in-process cosine similarity** over stored embeddings and a **`HashMap` of relation edges** for triples—**no Qdrant client** and **no graph library** in the default build. Optional SQL migrations (`sqlite:` / `postgres://`) support durable metadata and episodic-style tables without mandating a second always-on vector service.
+**Default:** the semantic tier uses **in-process cosine similarity** over stored embeddings and a **`HashMap` of relation edges** for triples—**no Qdrant client** and **no graph library** in the default build.
+
+**With `postgres://`:** Tier 3 can use **`semantic_memory`** (`vector(768)` in `003_semantic_memory.sql`) and **`semantic_relation`** via **`PostgresSemanticStore`** (`kowalski-core/src/memory/semantic_pg.rs`); chat-time **`retrieve`** embeds the user query and runs **pgvector** `<=>` ordering. Set **`memory.embedding_vector_dimensions`** to match your embedder and the migration’s `vector(N)`.
+
+Optional SQL migrations (`sqlite:` / `postgres://`) support durable metadata and episodic-style tables without mandating a separate vector-only service.
 
 ---
 

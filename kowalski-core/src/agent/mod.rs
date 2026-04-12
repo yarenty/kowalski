@@ -322,10 +322,8 @@ impl Agent for BaseAgent {
         ))
             as std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>;
 
-        let semantic_memory = std::sync::Arc::new(tokio::sync::Mutex::new(
-            crate::memory::semantic::SemanticStore::new(),
-        ))
-            as std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>;
+        let semantic_memory =
+            crate::memory::helpers::create_semantic_memory(&config, llm_provider.clone()).await?;
 
         Self::new(
             config,

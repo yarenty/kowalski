@@ -26,7 +26,9 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 /// Long-term memory: **in-memory** embedding index (cosine search) plus a **lightweight relation map**
 /// (`subject` → list of `(predicate, object)` triples). No extra crates for the relational layer—only `std::collections`.
 ///
-/// No network services required. Embeddings are compared in-process; scale is limited by RAM.
+/// When `memory.database_url` is **`postgres://…`**, use [`super::semantic_pg::PostgresSemanticStore`] instead (pgvector + SQL tables).
+///
+/// No network services required for this type. Embeddings are compared in-process; scale is limited by RAM.
 pub struct SemanticStore {
     /// Memories that include an embedding vector (used for semantic search).
     embedded_entries: Vec<MemoryUnit>,

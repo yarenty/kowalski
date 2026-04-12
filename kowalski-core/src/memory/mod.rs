@@ -2,9 +2,12 @@ pub mod consolidation;
 pub mod episodic;
 pub mod helpers;
 pub mod semantic;
+pub mod semantic_pg;
 #[cfg(test)]
 mod tests;
 pub mod working;
+
+pub use semantic_pg::PostgresSemanticStore;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
