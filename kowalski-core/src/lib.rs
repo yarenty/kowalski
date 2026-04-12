@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod config;
 pub mod db;
+pub mod federation;
 pub mod conversation;
 pub mod error;
 pub mod llm;
@@ -18,6 +19,10 @@ pub use agent::{Agent, BaseAgent, MessageHandler};
 pub use config::*;
 // pub use conversation::*; // Remove this to avoid ToolCall ambiguity
 pub use error::KowalskiError;
+pub use federation::{
+    AclEnvelope, AclMessage, AgentRecord, AgentRegistry, FederationOrchestrator, MessageBroker,
+    MpscBroker,
+};
 pub use logging::*;
 pub use mcp::{
     CallToolResponse, McpClient, McpHub, McpToolBinding, McpToolDescription, McpToolProxy,

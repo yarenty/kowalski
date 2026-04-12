@@ -127,6 +127,9 @@ pub enum KowalskiError {
 
     #[error("Config error: {0}")]
     ToolConfig(String),
+
+    #[error("Federation error: {0}")]
+    Federation(String),
 }
 
 impl From<String> for KowalskiError {
