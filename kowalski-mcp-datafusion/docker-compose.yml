@@ -1,0 +1,8 @@
+# From repo root: docker compose -f kowalski-mcp-datafusion/docker-compose.yml up --build
+services:
+  mcp-datafusion:
+    build:
+      context: ..
+      dockerfile: kowalski-mcp-datafusion/Dockerfile
+    ports:
+      - "8080:8080"

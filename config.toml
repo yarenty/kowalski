@@ -16,8 +16,9 @@ api_key = ""  # DuckDuckGo doesn't require an API key
 episodic_path = "db/episodic_buffer"
 
 # MCP servers (optional) — used by agents and: cargo run -p kowalski-cli -- mcp ping
+# DataFusion MCP (Docker): docker compose -f kowalski-mcp-datafusion/docker-compose.yml up — POST JSON-RPC to server root
 # [[mcp.servers]]
-# name = "local"
-# url = "http://127.0.0.1:8080/mcp"
-# transport = "http"
+# name = "datafusion"
+# url = "http://127.0.0.1:8080/"
+# transport = "http"   # or "sse" — both use Streamable HTTP + optional SSE responses
 # headers = { Authorization = "Bearer your-token" }

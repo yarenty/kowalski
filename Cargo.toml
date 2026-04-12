@@ -3,7 +3,8 @@ resolver = "3"
 members = [
     "kowalski",
     "kowalski-core",
-    "kowalski-cli"
+    "kowalski-cli",
+    "kowalski-mcp-datafusion",
 ]
 
 

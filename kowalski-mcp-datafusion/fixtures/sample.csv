@@ -1,0 +1,4 @@
+id,name,score,active
+1,alpha,10.5,true
+2,beta,20.0,false
+3,gamma,15.25,true

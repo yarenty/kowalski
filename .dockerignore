@@ -1,0 +1,6 @@
+target
+.git
+ui/node_modules
+ui/dist
+.idea
+db
