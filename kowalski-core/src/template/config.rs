@@ -27,6 +27,10 @@ pub struct TemplateAgentConfig {
     /// System prompt for the agent
     pub system_prompt: String,
 
+    /// Appended to the system message on new conversations when tools are registered (e.g. MCP JSON schema).
+    #[serde(default)]
+    pub tool_prompt_appendix: String,
+
     /// Whether to enable debug logging
     pub debug_logging: bool,
 }
@@ -42,6 +46,7 @@ impl Default for TemplateAgentConfig {
             verify_ssl: true,
             proxy: None,
             system_prompt: "You are a helpful assistant.".to_string(),
+            tool_prompt_appendix: String::new(),
             debug_logging: false,
         }
     }

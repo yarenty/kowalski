@@ -73,10 +73,7 @@ impl McpToolProxy {
 
 #[async_trait]
 impl Tool for McpToolProxy {
-    async fn execute(
-        &mut self,
-        input: ToolInput,
-    ) -> Result<ToolOutput, KowalskiError> {
+    async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
         self.validate_input(&input)?;
         let value = self.hub.call_tool(&self.name, &input.parameters).await?;
         Ok(ToolOutput::new(value, None))

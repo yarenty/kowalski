@@ -30,14 +30,16 @@ pub fn extract_tool_calls(input: &str) -> Vec<ToolCall> {
                         brace_count -= 1;
                         if brace_count == 0 {
                             let raw_obj: String = chars[start..=j].iter().collect();
-                            
+
                             // Try to repair and parse as ToolCall
-                            if let Ok(repaired) = repair_json(&raw_obj, &llm_json::RepairOptions::default()) {
+                            if let Ok(repaired) =
+                                repair_json(&raw_obj, &llm_json::RepairOptions::default())
+                            {
                                 if let Ok(tool_call) = serde_json::from_str::<ToolCall>(&repaired) {
                                     results.push(tool_call);
                                 }
                             }
-                            
+
                             i = j; // Move past this object
                             break;
                         }
@@ -45,7 +47,7 @@ pub fn extract_tool_calls(input: &str) -> Vec<ToolCall> {
                 }
                 j += 1;
             }
-            
+
             // If we reached the end but have unclosed braces, try to repair the whole remaining chunk
             if j == chars.len() && brace_count > 0 {
                 let raw_obj: String = chars[start..j].iter().collect();
@@ -81,7 +83,7 @@ mod tests {
         let calls = extract_tool_calls(input);
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].name, "fs_tool");
-        
+
         // Another case: messy content
         let input2 = "Messy: {name: \"fs_tool\", parameters: {task: \"list_dir\", path: \"/tmp\"}}";
         let calls2 = extract_tool_calls(input2);

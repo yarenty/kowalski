@@ -10,8 +10,8 @@ pub mod model;
 pub mod role;
 pub mod template;
 pub mod tool_chain;
-pub mod utils;
 pub mod tools;
+pub mod utils;
 
 pub use agent::*;
 pub use config::*;

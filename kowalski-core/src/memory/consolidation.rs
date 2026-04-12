@@ -25,8 +25,7 @@ impl Consolidator {
         llm_provider: std::sync::Arc<dyn crate::llm::LLMProvider>,
         model: &str,
     ) -> Result<Self, KowalskiError> {
-        let episodic_memory =
-            EpisodicBuffer::new(episodic_path, llm_provider.clone())?;
+        let episodic_memory = EpisodicBuffer::new(episodic_path, llm_provider.clone())?;
         let semantic_memory = SemanticStore::new(qdrant_url).await?;
         Ok(Self {
             episodic_memory,
@@ -47,7 +46,10 @@ impl Consolidator {
     }
 
     async fn create_graph_with_llm(&self, content: &str) -> Result<String, KowalskiError> {
-        let prompt = format!("Create a graph representation of the following text in the format {{ \"subject\": \"...\", \"predicate\": \"...\", \"object\": \"...\" }}:\n\n{}", content);
+        let prompt = format!(
+            "Create a graph representation of the following text in the format {{ \"subject\": \"...\", \"predicate\": \"...\", \"object\": \"...\" }}:\n\n{}",
+            content
+        );
         let messages = vec![crate::conversation::Message {
             role: "user".to_string(),
             content: prompt,

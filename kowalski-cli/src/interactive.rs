@@ -64,7 +64,11 @@ impl InteractiveSession {
 
                     // Process with agent
                     println!("{}", "Processing...".italic().dimmed());
-                    match self.agent.chat_with_tools(&self.conversation_id, trim_line).await {
+                    match self
+                        .agent
+                        .chat_with_tools(&self.conversation_id, trim_line)
+                        .await
+                    {
                         Ok(response) => {
                             println!("\n{}\n", response.blue());
                         }

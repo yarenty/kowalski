@@ -3,10 +3,10 @@
 
 use crate::config::Config;
 use crate::error::KowalskiError;
+use crate::memory::MemoryProvider;
 use crate::memory::episodic::EpisodicBuffer;
 use crate::memory::semantic::SemanticStore;
 use crate::memory::working::WorkingMemory;
-use crate::memory::MemoryProvider;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -24,9 +24,9 @@ pub async fn create_memory_providers(
         llm_provider,
     )?)) as MemoryProviderArc;
 
-    let semantic_memory =
-        Arc::new(Mutex::new(SemanticStore::new(&config.qdrant.http_url).await?))
-            as MemoryProviderArc;
+    let semantic_memory = Arc::new(Mutex::new(
+        SemanticStore::new(&config.qdrant.http_url).await?,
+    )) as MemoryProviderArc;
 
     Ok((working_memory, episodic_memory, semantic_memory))
 }

@@ -35,10 +35,7 @@ impl McpHub {
             let client = match McpClient::connect(&server.name, &server.url).await {
                 Ok(c) => c,
                 Err(err) => {
-                    warn!(
-                        "Failed to connect to MCP server '{}': {}",
-                        server.name, err
-                    );
+                    warn!("Failed to connect to MCP server '{}': {}", server.name, err);
                     continue;
                 }
             };
@@ -99,16 +96,12 @@ impl McpHub {
         tool_name: &str,
         args: &serde_json::Value,
     ) -> Result<serde_json::Value, KowalskiError> {
-        let binding = self
-            .tools
-            .get(tool_name)
-            .ok_or_else(|| KowalskiError::ToolExecution(format!("Unknown MCP tool {}", tool_name)))?;
+        let binding = self.tools.get(tool_name).ok_or_else(|| {
+            KowalskiError::ToolExecution(format!("Unknown MCP tool {}", tool_name))
+        })?;
 
-        let response = binding
-            .client
-            .call_tool(&binding.remote_name, args)
-            .await?;
-        Ok(response.content)
+        let response = binding.client.call_tool(&binding.remote_name, args).await?;
+        Ok(response.normalized_content())
     }
 
     pub fn into_tool_proxies(self: &Arc<Self>) -> Vec<Box<dyn Tool + Send + Sync>> {
