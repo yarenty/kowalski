@@ -123,10 +123,14 @@ Early work used **Qdrant** as a **proof of concept** for semantic (vector) memor
 ### Directory Layout
 ```
 kowalski/
-├── kowalski-core/           # Core agent abstractions, conversation, roles, config
-├── kowalski-cli/            # Command-line interface
+├── kowalski-core/           # Agents, LLM, memory, MCP, federation (in-crate)
+├── kowalski-cli/            # REPL, `serve` HTTP API, operators
+├── kowalski-mcp-datafusion/ # Optional MCP server (DataFusion SQL)
+├── ui/                      # Vue 3 operator UI (Vite)
 ├── migrations/
-│   └── legacy_prompts/      # Salvaged system prompts and configurations from legacy specialized agents
+│   ├── postgres/            # SQL migrations (Tier 2/3 + federation tables)
+│   └── legacy_prompts/      # Salvaged prompts from legacy specialized agents
+├── rebuild_tasks/           # Historical WP notes; live backlog is LEFTOVERS.md / TODO.md
 └── resources/               # Configs, tokenizer, etc.
 ```
 

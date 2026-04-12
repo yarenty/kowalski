@@ -42,7 +42,8 @@ impl FederationOrchestrator {
     }
 
     /// Best-ranked agent for `required_capability` receives a [`AclMessage::TaskDelegate`]
-    /// (see [`AgentRegistry::find_ranked_by_capability`]).
+    /// (see [`AgentRegistry::find_ranked_by_capability`]; exact capability match wins over substring).
+    /// The name `delegate_first_match` is historical; the first candidate is the **highest-ranked** match.
     /// Returns the chosen agent id and envelope, or `None` if no match.
     pub async fn delegate_first_match(
         &self,

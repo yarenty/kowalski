@@ -117,6 +117,12 @@ enum Commands {
         /// Ollama base URL for `/api/doctor` (default http://127.0.0.1:11434)
         #[clap(long)]
         ollama_url: Option<String>,
+        /// TLS certificate (PEM). Must be set together with `--tls-key`.
+        #[clap(long, value_name = "PEM")]
+        tls_cert: Option<std::path::PathBuf>,
+        /// TLS private key (PEM). Must be set together with `--tls-cert`.
+        #[clap(long, value_name = "PEM")]
+        tls_key: Option<std::path::PathBuf>,
     },
 }
 
@@ -505,11 +511,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             bind,
             config,
             ollama_url,
+            tls_cert,
+            tls_key,
         }) => {
             let addr: std::net::SocketAddr = bind.parse().map_err(|e| {
                 format!("Invalid --bind {:?}: {}", bind, e)
             })?;
-            kowalski_cli::http_api::serve(addr, config, ollama_url).await?;
+            let tls = match (tls_cert, tls_key) {
+                (Some(c), Some(k)) => Some((c, k)),
+                (None, None) => None,
+                _ => {
+                    return Err(
+                        "--tls-cert and --tls-key must be set together (or both omitted)"
+                            .into(),
+                    );
+                }
+            };
+            kowalski_cli::http_api::serve(addr, config, ollama_url, tls).await?;
         },
         Some(Commands::Consolidate { delete }) => {
             let config = Config::default();

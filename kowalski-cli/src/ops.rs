@@ -50,6 +50,47 @@ pub struct DoctorJson {
     pub ollama: OllamaProbeJson,
     /// From `[llm]` + `[ollama].model` (no API keys).
     pub llm: LlmDoctorJson,
+    /// Non-secret operator hints (MCP count, Postgres flag, config deltas vs defaults).
+    pub operator: DoctorOperatorJson,
+}
+
+/// Printable summary for `/api/doctor` and CLI `doctor`.
+#[derive(Debug, Clone, Serialize)]
+pub struct DoctorOperatorJson {
+    pub mcp_servers_configured: usize,
+    pub postgres_memory_configured: bool,
+    /// Short labels for settings that differ from [`Config::default`] (no secret values).
+    pub config_divergence: Vec<String>,
+    /// How to observe Streamable HTTP MCP session ids after a server connects.
+    pub mcp_streamable_session_note: &'static str,
+}
+
+/// High-signal differences versus [`Config::default`] (for operators comparing deployments).
+pub fn config_divergence_lines(c: &Config) -> Vec<String> {
+    let d = Config::default();
+    let mut v = Vec::new();
+    if c.ollama.model != d.ollama.model {
+        v.push("ollama.model".into());
+    }
+    if c.ollama.host != d.ollama.host || c.ollama.port != d.ollama.port {
+        v.push("ollama host/port".into());
+    }
+    if c.memory.database_url.is_some() {
+        v.push("memory.database_url set".into());
+    }
+    if c.memory.episodic_path != d.memory.episodic_path {
+        v.push("memory.episodic_path".into());
+    }
+    if !c.mcp.servers.is_empty() {
+        v.push(format!("mcp.servers: {}", c.mcp.servers.len()));
+    }
+    if c.llm.provider != d.llm.provider {
+        v.push("llm.provider".into());
+    }
+    if c.llm.openai_api_base != d.llm.openai_api_base {
+        v.push("llm.openai_api_base".into());
+    }
+    v
 }
 
 /// Non-secret LLM routing snapshot for `/api/doctor`.
@@ -181,10 +222,17 @@ pub async fn doctor_json(ollama_base: Option<String>, config: Option<&Config>) -
         model: c.ollama.model.clone(),
         openai_api_base: c.llm.openai_api_base.clone(),
     };
+    let operator = DoctorOperatorJson {
+        mcp_servers_configured: c.mcp.servers.len(),
+        postgres_memory_configured: kowalski_core::config::memory_uses_postgres(&c.memory),
+        config_divergence: config_divergence_lines(&c),
+        mcp_streamable_session_note: "After initialize, Streamable HTTP MCP session ids are available via `McpClient::session_id()` (and `McpClient::shutdown()` clears the session).",
+    };
     DoctorJson {
         cli_version: env!("CARGO_PKG_VERSION").to_string(),
         ollama,
         llm,
+        operator,
     }
 }
 
@@ -269,6 +317,13 @@ pub async fn run_doctor(ollama_base: Option<String>) -> Result<(), Box<dyn std::
         println!("Ollama: {} — {}", j.ollama.detail, j.ollama.url);
     } else {
         println!("Ollama: unreachable ({}) — {}", j.ollama.url, j.ollama.detail);
+    }
+    println!(
+        "Operator: MCP servers in config = {}, postgres memory URL = {}",
+        j.operator.mcp_servers_configured, j.operator.postgres_memory_configured
+    );
+    if !j.operator.config_divergence.is_empty() {
+        println!("Config vs defaults: {}", j.operator.config_divergence.join(", "));
     }
     Ok(())
 }
