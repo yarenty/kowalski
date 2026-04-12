@@ -5,8 +5,9 @@ Cargo.lock
 .idea
 .idea/
 .DS_Store
-db
-db/
+# Local DB/data dir at repo root only (do not use plain `db` — it ignores **/db e.g. kowalski-core/src/db/)
+/db
+/db/
 # benchmark tests 
 */target/
 */*/target/
