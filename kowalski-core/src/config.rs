@@ -216,7 +216,8 @@ pub struct McpConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpServerConfig {
     pub name: String,
-    /// Base URL of the MCP server (JSON-RPC endpoint or HTTP transport root)
+    /// Base URL for HTTP/SSE; ignored for `stdio` (use `command`).
+    #[serde(default)]
     pub url: String,
     /// Preferred transport, defaults to SSE as per spec
     #[serde(default)]
@@ -224,6 +225,9 @@ pub struct McpServerConfig {
     /// Optional static headers (e.g., auth tokens)
     #[serde(default)]
     pub headers: HashMap<String, String>,
+    /// argv for [`McpTransport::Stdio`] (program + args).
+    #[serde(default)]
+    pub command: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -231,6 +235,8 @@ pub struct McpServerConfig {
 pub enum McpTransport {
     Sse,
     Http,
+    /// Subprocess MCP (newline-delimited JSON-RPC on stdin/stdout).
+    Stdio,
 }
 
 impl Default for McpTransport {

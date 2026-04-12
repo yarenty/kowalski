@@ -6,6 +6,8 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::sse::{Event, Sse};
 use axum::extract::Query;
+use axum::extract::ws::{WebSocket, WebSocketUpgrade};
+use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use futures::Stream;
@@ -63,12 +65,38 @@ pub async fn serve(
 
     let federation_broker = Arc::new(MpscBroker::new());
     let federation_registry = Arc::new(AgentRegistry::new());
+    #[cfg(feature = "postgres")]
+    if let Some(ref url) = full_config.memory.database_url {
+        if kowalski_core::config::memory_uses_postgres(&full_config.memory) {
+            if let Err(e) =
+                kowalski_core::load_registry_into(&federation_registry, url).await
+            {
+                log::warn!("federation registry DB load: {}", e);
+            }
+        }
+    }
     federation_registry
         .register(AgentRecord {
             id: "template".into(),
             capabilities: vec!["chat".into(), "mcp".into(), "llm".into()],
         })
         .map_err(|e| format!("federation registry: {e}"))?;
+    #[cfg(feature = "postgres")]
+    if let Some(ref url) = full_config.memory.database_url {
+        if kowalski_core::config::memory_uses_postgres(&full_config.memory) {
+            if let Err(e) = kowalski_core::upsert_registry_record(
+                url,
+                &AgentRecord {
+                    id: "template".into(),
+                    capabilities: vec!["chat".into(), "mcp".into(), "llm".into()],
+                },
+            )
+            .await
+            {
+                log::warn!("federation registry upsert: {}", e);
+            }
+        }
+    }
     let mut federation = FederationOrchestrator::new(
         federation_registry.clone(),
         federation_broker.clone(),
@@ -135,8 +163,10 @@ pub async fn serve(
         .route("/api/chat/stream", post(post_chat_stream))
         .route("/api/chat/reset", post(post_chat_reset))
         .route("/api/federation/stream", get(get_federation_stream))
+        .route("/api/federation/ws", get(get_federation_ws))
         .route("/api/federation/registry", get(get_federation_registry))
         .route("/api/federation/delegate", post(post_federation_delegate))
+        .route("/api/graph/status", get(get_graph_status))
         .with_state(state)
         .layer(CorsLayer::permissive());
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -268,13 +298,12 @@ async fn post_chat(
     }))
 }
 
-/// SSE (`text/event-stream`): one JSON object per `data:` line — `start`, `assistant` or `error`, then `done`.
-/// Token streaming is not wired in core yet; the assistant payload is sent once when the turn completes.
+/// SSE (`text/event-stream`): `start`, then `token` deltas from the LLM (no tool-calling loop), optional final `assistant` echo, then `done`.
 async fn post_chat_stream(
     State(state): State<ApiState>,
     Json(body): Json<ChatBody>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(16);
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(256);
     let msg = body.message.trim().to_string();
     let api = state.clone();
     tokio::spawn(async move {
@@ -294,28 +323,65 @@ async fn post_chat_stream(
         {
             return;
         }
-        let result = {
+        let prep = {
             let mut guard = api.chat.lock().await;
-            guard.agent.chat_with_tools(&conv_id, &msg).await
+            guard.agent.prepare_stream_turn(&conv_id, &msg).await
         };
-        match result {
-            Ok(reply) => {
-                let payload = json!({ "type": "assistant", "content": reply });
-                let _ = tx
-                    .send(Ok(Event::default().data(payload.to_string())))
-                    .await;
-            }
+        let (model, messages, llm) = match prep {
+            Ok(x) => x,
             Err(e) => {
                 let payload = json!({ "type": "error", "message": e.to_string() });
                 let _ = tx
                     .send(Ok(Event::default().data(payload.to_string())))
                     .await;
+                let _ = tx
+                    .send(Ok(Event::default().data(r#"{"type":"done"}"#.to_string())))
+                    .await;
+                return;
+            }
+        };
+        let mut full = String::new();
+        let mut stream = llm.chat_stream(&model, messages);
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(delta) => {
+                    if !delta.is_empty() {
+                        full.push_str(&delta);
+                        let payload = json!({ "type": "token", "content": delta });
+                        if tx
+                            .send(Ok(Event::default().data(payload.to_string())))
+                            .await
+                            .is_err()
+                        {
+                            return;
+                        }
+                    }
+                }
+                Err(e) => {
+                    let payload = json!({ "type": "error", "message": e.to_string() });
+                    let _ = tx
+                        .send(Ok(Event::default().data(payload.to_string())))
+                        .await;
+                    let _ = tx
+                        .send(Ok(Event::default().data(r#"{"type":"done"}"#.to_string())))
+                        .await;
+                    return;
+                }
             }
         }
+        {
+            let mut guard = api.chat.lock().await;
+            guard
+                .agent
+                .add_message(&conv_id, "assistant", &full)
+                .await;
+        }
+        let summary = json!({ "type": "assistant", "content": full });
         let _ = tx
-            .send(Ok(
-                Event::default().data(r#"{"type":"done"}"#.to_string()),
-            ))
+            .send(Ok(Event::default().data(summary.to_string())))
+            .await;
+        let _ = tx
+            .send(Ok(Event::default().data(r#"{"type":"done"}"#.to_string())))
             .await;
     });
     Sse::new(ReceiverStream::new(rx))
@@ -329,6 +395,61 @@ struct FederationStreamQuery {
 async fn get_federation_registry(State(state): State<ApiState>) -> Json<serde_json::Value> {
     let agents = state.federation.registry.list();
     Json(json!({ "agents": agents }))
+}
+
+async fn get_federation_ws(
+    ws: WebSocketUpgrade,
+    State(state): State<ApiState>,
+    Query(q): Query<FederationStreamQuery>,
+) -> impl IntoResponse {
+    let topic = q.topic.unwrap_or_else(|| "federation".to_string());
+    ws.on_upgrade(move |socket| federation_ws_task(socket, state, topic))
+}
+
+async fn federation_ws_task(mut socket: WebSocket, state: ApiState, topic: String) {
+    let mut rx = state.federation_broker.subscribe(&topic, 64);
+    loop {
+        tokio::select! {
+            m = rx.recv() => {
+                let Some(env) = m else { break };
+                let text = serde_json::to_string(&env).unwrap_or_else(|_| "{}".to_string());
+                if socket
+                    .send(axum::extract::ws::Message::text(text))
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+            ws_msg = socket.recv() => {
+                match ws_msg {
+                    Some(Ok(axum::extract::ws::Message::Close(_))) | None => break,
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
+async fn get_graph_status(State(state): State<ApiState>) -> Json<serde_json::Value> {
+    #[cfg(feature = "postgres")]
+    {
+        if let Some(ref url) = state.full_config.memory.database_url {
+            if kowalski_core::config::memory_uses_postgres(&state.full_config.memory) {
+                return match kowalski_core::postgres_graph_status(url).await {
+                    Ok(v) => Json(v),
+                    Err(e) => Json(json!({ "error": e.to_string() })),
+                };
+            }
+        }
+    }
+    Json(json!({
+        "postgres": false,
+        "vector_extension": false,
+        "age_extension": false,
+        "config_path": state.config_path.display().to_string(),
+        "note": "Configure memory.database_url and build with --features postgres for live extension probes."
+    }))
 }
 
 /// SSE: one JSON [`AclEnvelope`] per `data:` line (same topic as in-process broker).

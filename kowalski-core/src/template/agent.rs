@@ -226,6 +226,24 @@ impl TemplateAgent {
     pub async fn list_tools(&self) -> Vec<(String, String)> {
         self.base.tool_manager.list_tools().await
     }
+
+    /// Prepare [`crate::llm::LLMProvider::chat_stream`] after the same context injection as chat (memories + user turn).
+    pub async fn prepare_stream_turn(
+        &mut self,
+        conversation_id: &str,
+        user: &str,
+    ) -> Result<
+        (
+            String,
+            Vec<crate::conversation::Message>,
+            std::sync::Arc<dyn crate::llm::LLMProvider>,
+        ),
+        KowalskiError,
+    > {
+        self.base_mut()
+            .prepare_stream_turn(conversation_id, user, None)
+            .await
+    }
 }
 
 #[async_trait]

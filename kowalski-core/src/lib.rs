@@ -2,6 +2,7 @@ pub mod agent;
 pub mod config;
 pub mod db;
 pub mod federation;
+pub mod graph;
 pub mod conversation;
 pub mod error;
 pub mod llm;
@@ -21,15 +22,17 @@ pub use config::*;
 pub use error::KowalskiError;
 pub use federation::{
     check_delegate_depth, AclEnvelope, AclMessage, AgentRecord, AgentRegistry, DelegationOutcome,
-    FederationOrchestrator, MessageBroker, MpscBroker,
+    FederationOrchestrator, load_registry_into, upsert_registry_record, MessageBroker, MpscBroker,
 };
 #[cfg(feature = "postgres")]
 pub use federation::{
     bridge_postgres_notify_to_mpsc, bridge_postgres_notify_to_mpsc_pool, pg_pool_connect, PgBroker,
 };
+pub use graph::postgres_graph_status;
 pub use logging::*;
 pub use mcp::{
-    CallToolResponse, McpClient, McpHub, McpToolBinding, McpToolDescription, McpToolProxy,
+    CallToolResponse, McpClient, McpConnection, McpHub, McpStdioClient, McpToolBinding,
+    McpToolDescription, McpToolProxy,
 };
 pub use model::ModelManager;
 pub use model::*;

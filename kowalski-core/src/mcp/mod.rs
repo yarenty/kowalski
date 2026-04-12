@@ -26,7 +26,7 @@
 //! - **Legacy HTTP+SSE** (pre–Streamable HTTP): spec [backwards compatibility](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#backwards-compatibility) —
 //!   if POST `initialize` fails with 4xx, try **GET** for an SSE `endpoint` event — **not implemented yet**.
 //! - **Optional GET listener** for server-initiated messages (open SSE without a preceding POST).
-//! - **Stdio MCP** (`connect_stdio`) — deferred per `task_plan.md` at the repo root.
+//! - **Stdio MCP**: [`crate::mcp::stdio::McpStdioClient`] — newline JSON-RPC over a subprocess (`McpServerConfig::command`).
 //!
 //! **Prompt refresh:** [`crate::template::TemplateAgent::register_tool`] and [`crate::template::TemplateAgent::refresh_tool_prompt_appendix`] update `tool_prompt_appendix` when the tool set changes.
 //!
@@ -36,10 +36,12 @@
 
 pub mod client;
 pub mod hub;
+pub mod stdio;
 pub mod tool;
 pub mod types;
 
 pub use client::McpClient;
-pub use hub::{McpHub, McpToolBinding};
+pub use hub::{McpConnection, McpHub, McpToolBinding};
+pub use stdio::McpStdioClient;
 pub use tool::McpToolProxy;
 pub use types::{CallToolResponse, McpToolDescription};

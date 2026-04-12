@@ -39,7 +39,7 @@ tracing-subscriber = { version = "0.3" }
 env_logger = "0.11"
 tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["sync"] }
-axum = { workspace = true }
+axum = { workspace = true, features = ["ws"] }
 reqwest = { workspace = true }
 async-trait = { workspace = true }
 log = { workspace = true }

@@ -17,7 +17,7 @@ use kowalski_core::memory::consolidation::{Consolidator, MemoryWeaver};
     author,
     version,
     about = "Kowalski CLI — agents, memory, and MCP operators.",
-    long_about = "Operators: `config check`, `db migrate`, `doctor`, `mcp ping`, `mcp tools`, `federation ping-notify` (with `--features postgres`), `serve` (see --help on each)."
+    long_about = "Operators: `run`, `config check`, `db migrate`, `doctor`, `mcp ping`, `mcp tools`, `federation ping-notify` (with `--features postgres`), `serve` (see --help on each)."
 )]
 struct Cli {
     #[clap(subcommand)]
@@ -94,6 +94,12 @@ enum Commands {
         /// Ollama base URL (default http://127.0.0.1:11434)
         #[clap(long)]
         ollama_url: Option<String>,
+    },
+    /// Interactive orchestrator REPL (`TemplateAgent` + `chat_with_tools`)
+    Run {
+        /// Config TOML (default ./config.toml)
+        #[clap(short, long)]
+        config: Option<String>,
     },
     /// Federation operators (Postgres `NOTIFY` smoke test when built with `--features postgres`)
     Federation {
@@ -315,36 +321,53 @@ async fn run_mcp_tools(config_path: Option<&str>) -> Result<(), Box<dyn std::err
     );
 
     for server in &mcp.servers {
+        let loc = if server.url.trim().is_empty() {
+            server.command.join(" ")
+        } else {
+            server.url.clone()
+        };
         println!(
             "[{}] {} ({})",
             server.name,
-            server.url,
+            loc,
             match server.transport {
                 kowalski_core::config::McpTransport::Http => "http",
                 kowalski_core::config::McpTransport::Sse => "sse",
+                kowalski_core::config::McpTransport::Stdio => "stdio",
             }
         );
-        match kowalski_core::mcp::McpClient::connect_server(server).await {
-            Ok(client) => {
-                if let Some(sid) = client.session_id() {
-                    println!("  Session: {}", sid);
-                }
-                match client.list_tools().await {
-                    Ok(tools) => {
-                        if tools.is_empty() {
-                            println!("  (no tools reported)");
-                        }
-                        for t in &tools {
-                            let desc = t.description.trim();
-                            let short = if desc.len() > 120 {
-                                format!("{}…", &desc[..120])
-                            } else {
-                                desc.to_string()
-                            };
-                            println!("  • {} — {}", t.name, short);
-                        }
+        let tools_result = if matches!(
+            server.transport,
+            kowalski_core::config::McpTransport::Stdio
+        ) {
+            match kowalski_core::McpStdioClient::connect(server).await {
+                Ok(c) => c.list_tools().await,
+                Err(e) => Err(e),
+            }
+        } else {
+            match kowalski_core::mcp::McpClient::connect_server(server).await {
+                Ok(client) => {
+                    if let Some(sid) = client.session_id() {
+                        println!("  Session: {}", sid);
                     }
-                    Err(e) => println!("  Error: {}", e),
+                    client.list_tools().await
+                }
+                Err(e) => Err(e),
+            }
+        };
+        match tools_result {
+            Ok(tools) => {
+                if tools.is_empty() {
+                    println!("  (no tools reported)");
+                }
+                for t in &tools {
+                    let desc = t.description.trim();
+                    let short = if desc.len() > 120 {
+                        format!("{}…", &desc[..120])
+                    } else {
+                        desc.to_string()
+                    };
+                    println!("  • {} — {}", t.name, short);
                 }
             }
             Err(e) => println!("  FAILED: {}", e),
@@ -470,6 +493,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::Doctor { ollama_url }) => {
             kowalski_cli::ops::run_doctor(ollama_url).await?;
         },
+        Some(Commands::Run { config }) => {
+            kowalski_cli::run_ops::run_orchestrator(config.as_deref()).await?;
+        }
         Some(Commands::Federation { command }) => match command {
             FederationCommands::PingNotify { config } => {
                 kowalski_cli::federation_ops::run_ping_notify(config.as_deref()).await?;

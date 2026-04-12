@@ -4,7 +4,7 @@ pub mod provider;
 
 pub use ollama::OllamaProvider;
 pub use openai::OpenAIProvider;
-pub use provider::LLMProvider;
+pub use provider::{chat_stream_single_chunk, LLMProvider, TokenStream};
 
 use crate::config::Config;
 use crate::error::KowalskiError;
