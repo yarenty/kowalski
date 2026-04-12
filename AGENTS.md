@@ -130,7 +130,7 @@ kowalski/
 ├── migrations/
 │   ├── postgres/            # SQL migrations (Tier 2/3 + federation tables)
 │   └── legacy_prompts/      # Salvaged prompts from legacy specialized agents
-├── rebuild_tasks/           # Historical WP notes; live backlog is LEFTOVERS.md / TODO.md
+├── docs/                    # Architecture articles and design notes
 └── resources/               # Configs, tokenizer, etc.
 ```
 
@@ -388,7 +388,7 @@ See [`ROADMAP.md`](ROADMAP.md) (root and per-crate **`ROADMAP.md`** where presen
 
 | ❌ Don't | ✅ Do Instead |
 |----------|---------------|
-| Use temporary notes for persistence | Create structured files (task.md, findings.md) |
+| Use temporary notes for persistence | Create structured files (`task.md`, `TODO.md`) |
 | State goals once and forget | Re-read plans before major decisions |
 | Hide errors and retry silently | Log all errors with resolution details |
 | Stuff everything in context | Store large content in organized files |
