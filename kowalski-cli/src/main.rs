@@ -69,6 +69,21 @@ enum Commands {
         #[clap(long)]
         delete: bool,
     },
+    /// Model Context Protocol helpers
+    Mcp {
+        #[clap(subcommand)]
+        command: McpCommands,
+    },
+}
+
+#[derive(Parser, Debug)]
+enum McpCommands {
+    /// Run initialize + tools/list against each server in [mcp] (from config TOML)
+    Ping {
+        /// TOML file containing an [mcp] section (default: ./config.toml)
+        #[clap(short, long)]
+        config: Option<String>,
+    },
 }
 
 struct AgentManager {
@@ -163,6 +178,50 @@ impl AgentManager {
     }
 }
 
+async fn run_mcp_ping(config_path: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    use kowalski_cli::config::load_mcp_config_from_file;
+    use std::path::Path;
+
+    let path = config_path
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| Path::new("config.toml").to_path_buf());
+    let mcp = load_mcp_config_from_file(&path)?;
+    if mcp.servers.is_empty() {
+        println!(
+            "No MCP servers under [mcp] in {}. Add [[mcp.servers]] entries (see comments in config.toml).",
+            path.display()
+        );
+        return Ok(());
+    }
+
+    println!(
+        "MCP ping — {} ({} server(s))\n",
+        path.display(),
+        mcp.servers.len()
+    );
+
+    for server in &mcp.servers {
+        print!(
+            "  {} <{}> [{}] ... ",
+            server.name,
+            server.url,
+            match server.transport {
+                kowalski_core::config::McpTransport::Http => "http",
+                kowalski_core::config::McpTransport::Sse => "sse",
+            }
+        );
+        io::stdout().flush()?;
+        match kowalski_core::mcp::McpClient::connect_server(server).await {
+            Ok(client) => match client.list_tools().await {
+                Ok(tools) => println!("OK — {} tool(s)", tools.len()),
+                Err(e) => println!("partial — tools/list: {}", e),
+            },
+            Err(e) => println!("FAILED — {}", e),
+        }
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
@@ -254,6 +313,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::List) => list_agents()?,
         Some(Commands::Agents) => manager.list_agents().await?,
+        Some(Commands::Mcp { command }) => match command {
+            McpCommands::Ping {
+                config: config_path,
+            } => {
+                run_mcp_ping(config_path.as_deref()).await?;
+            }
+        },
         Some(Commands::Consolidate { delete }) => {
             let config = Config::default();
             let episodic_path = &config.memory.episodic_path;

@@ -18,3 +18,10 @@ grpc_url = "http://localhost:6334"
 
 [memory]
 episodic_path = "db/episodic_buffer"
+
+# MCP servers (optional) — used by agents and: cargo run -p kowalski-cli -- mcp ping
+# [[mcp.servers]]
+# name = "local"
+# url = "http://127.0.0.1:8080/mcp"
+# transport = "http"
+# headers = { Authorization = "Bearer your-token" }
