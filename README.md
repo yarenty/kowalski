@@ -12,6 +12,8 @@ A sophisticated Rust-based multi-agent framework for interacting with various LL
 ## 🌟 Vision & Architecture
 Kowalski is designed as a foundational framework for building intelligent, distributed agent systems that can collaborate securely and efficiently. The architecture supports both standalone operation and federated deployments with advanced privacy-preserving capabilities.
 
+**Operational philosophy:** Prefer **simple, robust defaults** with **minimal moving parts** (fewer required services and dependencies). Early work used **Qdrant** as a **proof of concept** for vector memory; the ongoing direction is **dependency-light** core paths—see [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md).
+
 ![Architecture](docs/img/architecture_v01.png)
 
 

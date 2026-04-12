@@ -6,6 +6,8 @@ A command-line interface for the Kowalski AI agent framework, providing easy acc
 
 The Kowalski CLI provides a comprehensive command-line interface for interacting with AI agents, managing models, and performing various AI-powered tasks. It serves as the main entry point for users who prefer command-line tools over programmatic APIs.
 
+**Note:** The framework aims for **few required services** and **few dependencies** in the default path. **Qdrant** appeared only as an **early PoC** for vector memory; see [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../docs/DESIGN_MEMORY_AND_DEPENDENCIES.md).
+
 ## Features
 
 - **Multi-Agent Support**: Access to all Kowalski agents (academic, code, data, web)

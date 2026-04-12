@@ -227,7 +227,7 @@ For each scenario, we will implement the logic in both Kowalski (Rust) and LangC
 
 1.  **Define Specific Inputs:** For each scenario, create concrete input data (e.g., specific jokes, a standardized CSV file, a set of memory units).
 2.  **Implement Benchmark Scripts:** Write the full, runnable code for each scenario in both Kowalski and LangChain.
-3.  **Set Up Test Environment:** Ensure Ollama is running with `llama3.2` and Qdrant is configured for memory benchmarks.
+3.  **Set Up Test Environment:** Ensure Ollama is running with `llama3.2`. Memory benchmarks use the **in-process** semantic path (Qdrant was **PoC-only**; see [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../docs/DESIGN_MEMORY_AND_DEPENDENCIES.md)).
 4.  **Execute Benchmarks:** Run the tests under varying load conditions.
 5.  **Analyze and Report:** Collect, process, and visualize the results.
 

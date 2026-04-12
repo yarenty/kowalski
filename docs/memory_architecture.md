@@ -2,6 +2,8 @@
 
 **A Design for Short-Term Recall, Long-Term Knowledge, and Autonomous Consolidation**
 
+> **Design note:** **Qdrant** appeared in an **early proof of concept** for vector-backed semantic memory. The **ongoing goal** is a **simple, robust, dependency-light** stack with **few moving parts**—see [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](DESIGN_MEMORY_AND_DEPENDENCIES.md).
+
 ---
 
 ## 1. High-Level Philosophy: Mimicking Human Memory
@@ -60,9 +62,9 @@ graph TD
 
 ### Tier 3: Long-Term Semantic Store (The Library)
 *   **Purpose:** To store distilled, permanent knowledge. This is the agent's true "brain." It doesn't store conversations verbatim; it stores the *meaning* extracted from them.
-*   **Storage Technology:** A dual-component system:
-    1.  **Vector Database (e.g., Qdrant, Weaviate, Pinecone):** This is the core of semantic retrieval. Every piece of knowledge is converted into a vector embedding. This allows the agent to find relevant memories based on conceptual similarity, not just keywords.
-    2.  **(Optional but powerful) Graph Database (e.g., Neo4j, or a Rust-native graph DB):** For storing structured relationships between entities (e.g., "User A *works on* Project X," "Project X *uses* Rust"). This allows for complex, relational queries that vector search alone cannot handle.
+*   **Storage Technology:** Typically a **dual-component** system:
+    1.  **Vector / semantic retrieval:** Embeddings enable recall by **conceptual similarity**. Kowalski **explored external vector DBs (e.g. Qdrant) as PoC**; the **default direction** is **in-process** similarity and **minimal external dependencies**—see [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](DESIGN_MEMORY_AND_DEPENDENCIES.md).
+    2.  **(Optional but powerful) Graph layer:** For structured relationships; `petgraph` can model edges without a separate server.
 *   **Characteristics:** Slower than other tiers, but offers powerful query capabilities. Designed for permanent storage.
 *   **Management:** Data is added to this tier exclusively through the **Memory Consolidation Process**.
 
@@ -103,7 +105,7 @@ When the agent needs to access its long-term memory to inform a response, it use
 
 *   `Memory` and `Recall` traits.
 *   use Rust `rocksdb` for the embedded Tier 2 store.
-*   use `qdrant-client` for interacting with the Vector DB.
+*   Vector retrieval defaults to **in-process** paths; external services are **optional** (see [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](DESIGN_MEMORY_AND_DEPENDENCIES.md)).
 *   The Memory Weaver - an asynchronous `tokio` background task, ensuring it doesn't block the main agent loop.
 
 By designing memory as a multi-tiered, actively managed system, we move beyond simple chat history and create the foundation for a truly intelligent and continuously learning AI agent.

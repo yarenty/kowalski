@@ -22,6 +22,8 @@ This document outlines the key technological, business, and strategic pillars of
 
 *   **Forward-Looking Feature: Federation Layer.** The built-in design for multi-agent orchestration is a forward-looking feature that addresses the next frontier of AI: collaborative, distributed intelligence.
 
+*   **Operational simplicity:** The stack aims for **robust defaults** with **minimal moving parts**—fewer mandatory services and dependencies in core workflows. Early memory work used **Qdrant** as a **proof of concept**; the direction is **dependency-light** operation—see [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](DESIGN_MEMORY_AND_DEPENDENCIES.md).
+
 ---
 
 ## 2. Business Perspective

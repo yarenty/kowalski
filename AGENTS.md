@@ -89,6 +89,10 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 - **Performance**: Async-first using Tokio
 - **Monitoring**: Built-in activity tracking and LLM observability
 
+### Memory stack and dependencies (design)
+
+Early work used **Qdrant** as a **proof of concept** for semantic (vector) memory. The **product direction** is a **simple, robust, dependency-light** default: **minimize moving parts and failure points** (fewer mandatory daemons and network services), favor **in-process and embedded** storage for core paths, and keep **optional** backends (SQL, hosted vectors, etc.) truly optional. Canonical rationale: [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md).
+
 ---
 
 ## 4. Technology Stack
