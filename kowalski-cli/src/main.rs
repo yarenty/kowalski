@@ -635,7 +635,7 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
                 println!("  kowalski-cli config check [config.toml]");
                 println!("  kowalski-cli db migrate [--url] [-c config.toml]");
                 println!("  kowalski-cli doctor [--ollama-url URL]");
-                println!("  kowalski-cli serve [--bind 127.0.0.1:3000] [-c config.toml]  — JSON API: /api/sessions, /api/chat, /api/federation/stream (SSE), /api/federation/delegate, …");
+                println!("  kowalski-cli serve …  — /api/federation/registry, /api/federation/stream (SSE), /api/federation/delegate; with --features postgres + memory.database_url, LISTEN kowalski_federation → broker");
             }
             "create" => {
                 let agent_type = parts.next();

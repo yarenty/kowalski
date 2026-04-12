@@ -72,6 +72,26 @@ pub async fn serve(
     federation.default_topic = "federation".into();
     let federation = Arc::new(federation);
 
+    #[cfg(feature = "postgres")]
+    {
+        if kowalski_core::config::memory_uses_postgres(&full_config.memory) {
+            if let Some(ref url) = full_config.memory.database_url {
+                match kowalski_core::bridge_postgres_notify_to_mpsc(
+                    url,
+                    "kowalski_federation",
+                    federation_broker.clone(),
+                )
+                .await
+                {
+                    Ok(()) => log::info!(
+                        "Federation: Postgres LISTEN kowalski_federation → in-process broker (SSE)"
+                    ),
+                    Err(e) => log::warn!("Federation Postgres bridge: {}", e),
+                }
+            }
+        }
+    }
+
     log::info!(
         "Kowalski HTTP API at http://{} (config {}, model {})",
         addr,
@@ -100,6 +120,7 @@ pub async fn serve(
         .route("/api/chat/stream", post(post_chat_stream))
         .route("/api/chat/reset", post(post_chat_reset))
         .route("/api/federation/stream", get(get_federation_stream))
+        .route("/api/federation/registry", get(get_federation_registry))
         .route("/api/federation/delegate", post(post_federation_delegate))
         .with_state(state)
         .layer(CorsLayer::permissive());
@@ -272,6 +293,11 @@ async fn post_chat_stream(
 #[derive(Deserialize)]
 struct FederationStreamQuery {
     topic: Option<String>,
+}
+
+async fn get_federation_registry(State(state): State<ApiState>) -> Json<serde_json::Value> {
+    let agents = state.federation.registry.list();
+    Json(json!({ "agents": agents }))
 }
 
 /// SSE: one JSON [`AclEnvelope`] per `data:` line (same topic as in-process broker).

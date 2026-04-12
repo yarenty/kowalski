@@ -14,5 +14,5 @@ pub use acl::{check_delegate_depth, AclEnvelope, AclMessage};
 pub use broker::{MessageBroker, MpscBroker};
 pub use orchestrator::FederationOrchestrator;
 #[cfg(feature = "postgres")]
-pub use pg_broker::PgBroker;
+pub use pg_broker::{bridge_postgres_notify_to_mpsc, PgBroker};
 pub use registry::{AgentRecord, AgentRegistry};

@@ -6,6 +6,7 @@ import {
   openFederationEventSource,
   type AgentsResponse,
   type Doctor,
+  type FederationRegistryResponse,
   type Health,
   type McpPingResult,
   type McpServer,
@@ -50,6 +51,18 @@ const fedErr = ref<string | null>(null);
 const fedBusy = ref(false);
 const fedLines = ref<string[]>([]);
 const fedEs = ref<EventSource | null>(null);
+const fedRegistry = ref<FederationRegistryResponse | null>(null);
+const fedRegistryErr = ref<string | null>(null);
+
+async function loadFederationRegistry() {
+  fedRegistryErr.value = null;
+  try {
+    fedRegistry.value = await api.federationRegistry();
+  } catch (e) {
+    fedRegistry.value = null;
+    fedRegistryErr.value = e instanceof Error ? e.message : String(e);
+  }
+}
 
 function fedDisconnect() {
   fedEs.value?.close();
@@ -97,6 +110,7 @@ async function fedDelegate() {
 
 watch(tab, (t) => {
   if (t !== "federation") fedDisconnect();
+  else void loadFederationRegistry();
 });
 
 async function loadHealth() {
@@ -302,9 +316,18 @@ onUnmounted(() => {
         <h2>Federation</h2>
         <p class="hint">
           In-process ACL via <code>GET /api/federation/stream</code> (SSE) and
-          <code>POST /api/federation/delegate</code>. Connect the stream, then delegate — you should
-          see one <code>AclEnvelope</code> per event.
+          <code>POST /api/federation/delegate</code>. With
+          <code>kowalski-cli --features postgres</code> and <code>memory.database_url</code>,
+          NOTIFY on channel <code>kowalski_federation</code> is also forwarded to this broker. Connect
+          the stream, then delegate — you should see one <code>AclEnvelope</code> per event.
         </p>
+        <p>
+          <button type="button" class="primary" @click="loadFederationRegistry">
+            Refresh registry
+          </button>
+        </p>
+        <pre v-if="fedRegistry" class="json">{{ JSON.stringify(fedRegistry, null, 2) }}</pre>
+        <p v-if="fedRegistryErr" class="err">{{ fedRegistryErr }}</p>
         <p>
           <label class="lbl">Topic</label>
           <input v-model="fedTopic" class="inp" type="text" />

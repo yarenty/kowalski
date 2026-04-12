@@ -98,3 +98,23 @@ impl MessageBroker for PgBroker {
         Ok(())
     }
 }
+
+/// `LISTEN` on `notify_channel` and republish JSON [`AclEnvelope`]s into the in-process
+/// [`super::broker::MpscBroker`] (e.g. so `serve` SSE clients see cross-process NOTIFY).
+pub async fn bridge_postgres_notify_to_mpsc(
+    database_url: &str,
+    notify_channel: &str,
+    local: std::sync::Arc<super::broker::MpscBroker>,
+) -> Result<(), KowalskiError> {
+    let pool = PgPool::connect(database_url)
+        .await
+        .map_err(|e| KowalskiError::Federation(format!("PgPool::connect: {e}")))?;
+    let pg = PgBroker::new(pool, notify_channel);
+    let mut rx = pg.subscribe(256)?;
+    tokio::spawn(async move {
+        while let Some(env) = rx.recv().await {
+            let _ = local.publish_to_topic(&env).await;
+        }
+    });
+    Ok(())
+}
