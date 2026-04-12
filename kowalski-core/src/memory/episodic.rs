@@ -55,10 +55,7 @@ impl EpisodicBuffer {
                 KowalskiError::Memory(err_str)
             }
         })?;
-        Ok(Self {
-            db,
-            llm_provider,
-        })
+        Ok(Self { db, llm_provider })
     }
 
     pub async fn retrieve_all(&self) -> Result<Vec<MemoryUnit>, KowalskiError> {
@@ -81,8 +78,6 @@ impl EpisodicBuffer {
             .delete(id.as_bytes())
             .map_err(|e| KowalskiError::Memory(e.to_string()))
     }
-
-
 
     pub async fn add_with_embedding(
         &mut self,

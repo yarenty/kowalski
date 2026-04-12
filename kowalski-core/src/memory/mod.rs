@@ -1,10 +1,10 @@
 pub mod consolidation;
 pub mod episodic;
-pub mod semantic;
-pub mod working;
 pub mod helpers;
+pub mod semantic;
 #[cfg(test)]
 mod tests;
+pub mod working;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

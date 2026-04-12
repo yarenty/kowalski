@@ -109,18 +109,18 @@ pub trait Agent: Send + Sync {
             io::stdout()
                 .flush()
                 .map_err(|e| KowalskiError::Server(e.to_string()))?;
-            
+
             let buffer = response_text.clone();
             debug!("Full LLM response: '{}'", buffer);
 
             // Try to extract JSON from mixed text response using robust utility
             debug!("Attempting to extract tool calls from response...");
             let tool_calls = crate::utils::json::extract_tool_calls(&buffer);
-            
+
             if !tool_calls.is_empty() {
                 // For now, we only process the first tool call found in one turn
                 let tool_call = &tool_calls[0];
-                
+
                 // Detect repeated tool calls
                 let tool_call_key = (tool_call.name.clone(), tool_call.parameters.clone());
                 if let Some(last) = &last_tool_call {
@@ -132,7 +132,7 @@ pub trait Agent: Send + Sync {
                     }
                 }
                 last_tool_call = Some(tool_call_key.clone());
-                
+
                 debug!("✅ Tool call successfully parsed!");
                 debug!("Tool: {}", tool_call.name);
                 debug!("Parameters: {}", tool_call.parameters);
@@ -146,16 +146,17 @@ pub trait Agent: Send + Sync {
                     Err(e) => {
                         let err_msg = format!("{}", e);
                         debug!("Tool execution failed: {}", err_msg);
-                        
+
                         // Basic fallback/chaining logic can be integrated here if needed
                         err_msg
                     }
                 };
 
                 let tool_message = format!("Tool result for {}: {}", tool_call.name, tool_result);
-                self.add_message(conversation_id, "assistant", &tool_message).await;
+                self.add_message(conversation_id, "assistant", &tool_message)
+                    .await;
                 debug!("Added tool result to conversation");
-                
+
                 current_input = format!("Based on the tool result: {}", tool_result);
                 debug!("Continuing with new input: '{}'", current_input);
                 continue;
@@ -274,36 +275,42 @@ impl BaseAgent {
 impl Agent for BaseAgent {
     async fn new(config: Config) -> Result<Self, KowalskiError> {
         // Initialize LLM Provider based on config
-        let llm_provider: std::sync::Arc<dyn crate::llm::LLMProvider> = match config.llm.provider.as_str() {
-            "openai" => {
-                let api_key = config.llm.openai_api_key.clone()
-                    .ok_or(KowalskiError::Configuration("OpenAI API key missing".to_string()))?;
-                std::sync::Arc::new(crate::llm::OpenAIProvider::new(&api_key))
-            },
-            "ollama" | _ => {
-                std::sync::Arc::new(crate::llm::OllamaProvider::new(
+        let llm_provider: std::sync::Arc<dyn crate::llm::LLMProvider> =
+            match config.llm.provider.as_str() {
+                "openai" => {
+                    let api_key =
+                        config
+                            .llm
+                            .openai_api_key
+                            .clone()
+                            .ok_or(KowalskiError::Configuration(
+                                "OpenAI API key missing".to_string(),
+                            ))?;
+                    std::sync::Arc::new(crate::llm::OpenAIProvider::new(&api_key))
+                }
+                "ollama" | _ => std::sync::Arc::new(crate::llm::OllamaProvider::new(
                     &config.ollama.host,
                     config.ollama.port,
-                ))
-            }
-        };
+                )),
+            };
 
         // Create memory providers
-        let working_memory = std::sync::Arc::new(tokio::sync::Mutex::new(
-            WorkingMemory::new(100)
-        )) as std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>;
-        
+        let working_memory = std::sync::Arc::new(tokio::sync::Mutex::new(WorkingMemory::new(100)))
+            as std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>;
+
         let episodic_memory = std::sync::Arc::new(tokio::sync::Mutex::new(
             crate::memory::episodic::EpisodicBuffer::new(
                 &config.memory.episodic_path,
                 llm_provider.clone(),
-            )?
-        )) as std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>;
-        
+            )?,
+        ))
+            as std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>;
+
         let semantic_memory = std::sync::Arc::new(tokio::sync::Mutex::new(
-            crate::memory::semantic::SemanticStore::new(&config.qdrant.http_url).await?
-        )) as std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>;
-        
+            crate::memory::semantic::SemanticStore::new(&config.qdrant.http_url).await?,
+        ))
+            as std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>;
+
         Self::new(
             config,
             "Base Agent",
@@ -313,7 +320,8 @@ impl Agent for BaseAgent {
             episodic_memory,
             semantic_memory,
             crate::tools::manager::ToolManager::new(),
-        ).await
+        )
+        .await
     }
 
     fn start_conversation(&mut self, model: &str) -> String {
@@ -430,7 +438,8 @@ impl Agent for BaseAgent {
         conversation.add_message("user", &content_with_memory);
 
         // Delegate to LLM Provider
-        let response = self.llm_provider
+        let response = self
+            .llm_provider
             .chat(&conversation.model, &conversation.messages)
             .await?;
 
@@ -491,7 +500,13 @@ impl Agent for BaseAgent {
         };
 
         // Add to Tier 1 working memory
-        if let Err(e) = self.working_memory.lock().await.add(memory_unit.clone()).await {
+        if let Err(e) = self
+            .working_memory
+            .lock()
+            .await
+            .add(memory_unit.clone())
+            .await
+        {
             eprintln!("Failed to add to working memory: {}", e);
         }
 

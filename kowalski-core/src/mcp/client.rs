@@ -60,7 +60,9 @@ impl McpClient {
             .await
     }
 
-    pub async fn list_tools(&self) -> Result<Vec<crate::mcp::types::McpToolDescription>, KowalskiError> {
+    pub async fn list_tools(
+        &self,
+    ) -> Result<Vec<crate::mcp::types::McpToolDescription>, KowalskiError> {
         let result: ToolListResult = self.send_request("tools/list", None).await?;
         Ok(result.tools)
     }
@@ -90,12 +92,7 @@ impl McpClient {
             "params": params.unwrap_or_else(|| json!({})),
         });
 
-        debug!(
-            "MCP {} -> {} payload: {}",
-            self.name,
-            method,
-            payload
-        );
+        debug!("MCP {} -> {} payload: {}", self.name, method, payload);
 
         let response = self
             .http

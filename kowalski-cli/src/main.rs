@@ -93,15 +93,19 @@ impl AgentManager {
 
         let agent_config = AgentConfig::load_from_file(Path::new(config_path))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-        
-        println!("Loading agent '{}' of type '{}'...", agent_config.name, agent_config.agent_type);
-        
+
+        println!(
+            "Loading agent '{}' of type '{}'...",
+            agent_config.name, agent_config.agent_type
+        );
+
         self.create_agent(
             agent_config.name.clone(),
             &agent_config.agent_type,
             agent_config.system_prompt.as_deref(),
             agent_config.temperature,
-        ).await?;
+        )
+        .await?;
 
         // If tools are specified, we might need a way to register them after creation
         // but for now create_agent uses default tools for each type.
@@ -119,11 +123,13 @@ impl AgentManager {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let config = Config::default();
         use kowalski_core::template::default::DefaultTemplate;
-        let builder = DefaultTemplate::create_agent(vec![], None, Some(0.7))
-            .await?;
+        let builder = DefaultTemplate::create_agent(vec![], None, Some(0.7)).await?;
         let mut template_agent = builder.build().await?;
-        template_agent.base_mut().set_system_prompt(&format!("Starting generic agent (was requested type: {})", agent_type));
-        
+        template_agent.base_mut().set_system_prompt(&format!(
+            "Starting generic agent (was requested type: {})",
+            agent_type
+        ));
+
         let agent: Box<dyn Agent + Send + Sync> = Box::new(template_agent);
         self.agents.write().await.insert(name.clone(), agent);
         self.configs.write().await.insert(name, config);
@@ -183,7 +189,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
 
         if manager.get_agent_mut(&agent_name).await.is_none() {
-            manager.create_agent(agent_name.clone(), "web", None, None).await?;
+            manager
+                .create_agent(agent_name.clone(), "web", None, None)
+                .await?;
         }
 
         let mut agents_guard = manager.get_agent_mut(&agent_name).await.unwrap();
@@ -235,7 +243,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     } else {
                         info!("No tools registered or tool listing not available.");
                     }
-                    
+
                     chat_loop(agent_ref, conv_id).await?;
                 } else {
                     println!("Agent '{}' not found.", agent);
@@ -259,13 +267,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     config.ollama.port,
                 ));
 
-            let mut weaver = Consolidator::new(
-                episodic_path,
-                qdrant_url,
-                llm_provider,
-                ollama_model,
-            )
-            .await?;
+            let mut weaver =
+                Consolidator::new(episodic_path, qdrant_url, llm_provider, ollama_model).await?;
             weaver.run(delete).await?;
             println!("Memory consolidation complete.");
         }
@@ -291,7 +294,7 @@ async fn chat_loop(
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
         let input_trimmed = input.trim();
-        
+
         if input_trimmed.eq_ignore_ascii_case("/bye") {
             println!("Goodbye!");
             break;
@@ -325,15 +328,13 @@ async fn chat_loop(
             } else {
                 let path = format!("sessions/{}.json", filename);
                 match fs::read_to_string(&path) {
-                    Ok(json) => {
-                        match agent.import_conversation(&json) {
-                            Ok(new_id) => {
-                                conv_id = new_id;
-                                println!("Conversation loaded. Current session ID: {}", conv_id);
-                            }
-                            Err(e) => eprintln!("Failed to import conversation: {}", e),
+                    Ok(json) => match agent.import_conversation(&json) {
+                        Ok(new_id) => {
+                            conv_id = new_id;
+                            println!("Conversation loaded. Current session ID: {}", conv_id);
                         }
-                    }
+                        Err(e) => eprintln!("Failed to import conversation: {}", e),
+                    },
                     Err(e) => eprintln!("Failed to read session file: {}", e),
                 }
             }
@@ -405,7 +406,7 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
         let mut parts = input.split_whitespace();
         let cmd = parts.next().unwrap_or("");
         match cmd {
-            "exit" | "quit"| "bye" | "/bye" => {
+            "exit" | "quit" | "bye" | "/bye" => {
                 println!("Exiting Kowalski CLI.");
                 break;
             }
@@ -459,7 +460,7 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
                             } else {
                                 info!("[DEBUG] No tools registered or tool listing not available.");
                             }
-                            
+
                             chat_loop(agent_ref, conv_id.clone()).await?;
                         } else {
                             println!("Agent '{}' not found.", name);

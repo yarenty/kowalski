@@ -2,6 +2,7 @@ use super::provider::LLMProvider;
 use crate::conversation::Message;
 use crate::error::KowalskiError;
 use async_openai::{
+    Client,
     config::OpenAIConfig,
     types::{
         chat::{
@@ -11,7 +12,6 @@ use async_openai::{
         },
         embeddings::CreateEmbeddingRequestArgs,
     },
-    Client,
 };
 use async_trait::async_trait;
 
@@ -43,7 +43,12 @@ impl LLMProvider for OpenAIProvider {
                         ChatCompletionRequestSystemMessageArgs::default()
                             .content(msg.content.clone())
                             .build()
-                            .map_err(|e| KowalskiError::Initialization(format!("OpenAI message error: {}", e)))?,
+                            .map_err(|e| {
+                                KowalskiError::Initialization(format!(
+                                    "OpenAI message error: {}",
+                                    e
+                                ))
+                            })?,
                     ));
                 }
                 "user" => {
@@ -51,7 +56,12 @@ impl LLMProvider for OpenAIProvider {
                         ChatCompletionRequestUserMessageArgs::default()
                             .content(msg.content.clone())
                             .build()
-                            .map_err(|e| KowalskiError::Initialization(format!("OpenAI message error: {}", e)))?,
+                            .map_err(|e| {
+                                KowalskiError::Initialization(format!(
+                                    "OpenAI message error: {}",
+                                    e
+                                ))
+                            })?,
                     ));
                 }
                 "assistant" => {
@@ -59,7 +69,12 @@ impl LLMProvider for OpenAIProvider {
                         ChatCompletionRequestAssistantMessageArgs::default()
                             .content(msg.content.clone())
                             .build()
-                            .map_err(|e| KowalskiError::Initialization(format!("OpenAI message error: {}", e)))?,
+                            .map_err(|e| {
+                                KowalskiError::Initialization(format!(
+                                    "OpenAI message error: {}",
+                                    e
+                                ))
+                            })?,
                     ));
                 }
                 _ => {
@@ -68,7 +83,12 @@ impl LLMProvider for OpenAIProvider {
                         ChatCompletionRequestUserMessageArgs::default()
                             .content(format!("[{}] {}", msg.role, msg.content))
                             .build()
-                            .map_err(|e| KowalskiError::Initialization(format!("OpenAI message error: {}", e)))?,
+                            .map_err(|e| {
+                                KowalskiError::Initialization(format!(
+                                    "OpenAI message error: {}",
+                                    e
+                                ))
+                            })?,
                     ));
                 }
             }
@@ -80,12 +100,20 @@ impl LLMProvider for OpenAIProvider {
             .build()
             .map_err(|e| KowalskiError::Initialization(format!("OpenAI request error: {}", e)))?;
 
-        let response = self.client.chat().create(request).await
+        let response = self
+            .client
+            .chat()
+            .create(request)
+            .await
             .map_err(|e| KowalskiError::Server(format!("OpenAI API error: {}", e)))?;
 
-        let content = response.choices.first()
+        let content = response
+            .choices
+            .first()
             .and_then(|choice| choice.message.content.clone())
-            .ok_or(KowalskiError::Server("No content in OpenAI response".to_string()))?;
+            .ok_or(KowalskiError::Server(
+                "No content in OpenAI response".to_string(),
+            ))?;
 
         Ok(content)
     }
@@ -97,12 +125,20 @@ impl LLMProvider for OpenAIProvider {
             .build()
             .map_err(|e| KowalskiError::Initialization(format!("OpenAI embedding error: {}", e)))?;
 
-        let response = self.client.embeddings().create(request).await
+        let response = self
+            .client
+            .embeddings()
+            .create(request)
+            .await
             .map_err(|e| KowalskiError::Memory(format!("OpenAI embedding API error: {}", e)))?;
 
-        let embedding = response.data.first()
+        let embedding = response
+            .data
+            .first()
             .map(|data| data.embedding.clone())
-            .ok_or(KowalskiError::Memory("No embedding in OpenAI response".to_string()))?;
+            .ok_or(KowalskiError::Memory(
+                "No embedding in OpenAI response".to_string(),
+            ))?;
 
         Ok(embedding)
     }
