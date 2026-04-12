@@ -19,12 +19,12 @@ pub struct Consolidator {
 }
 
 impl Consolidator {
-    pub fn new(
+    pub async fn new(
         episodic_path: &str,
         llm_provider: std::sync::Arc<dyn crate::llm::LLMProvider>,
         model: &str,
     ) -> Result<Self, KowalskiError> {
-        let episodic_memory = EpisodicBuffer::new(episodic_path, llm_provider.clone())?;
+        let episodic_memory = EpisodicBuffer::open(episodic_path, llm_provider.clone()).await?;
         let semantic_memory = SemanticStore::new();
         Ok(Self {
             episodic_memory,

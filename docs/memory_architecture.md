@@ -34,7 +34,7 @@ graph TD
 
     subgraph Memory Tiers
         T1[Tier 1: Working Memory <br> In-Memory Struct, e.g., Vec<Message>]
-        T2[Tier 2: Episodic Buffer <br> Fast K/V Store, e.g., RocksDB/Redis]
+        T2[Tier 2: Episodic Buffer <br> Embedded SQLite file]
         T3[Tier 3: Long-Term Semantic Store <br> Vector DB + Graph DB]
     end
 
@@ -56,7 +56,7 @@ graph TD
 
 ### Tier 2: Episodic Buffer (The Journal)
 *   **Purpose:** To store the full, high-fidelity history of recent conversations and tasks. This allows the agent to recall entire past interactions perfectly.
-*   **Storage Technology:** A high-performance, embedded key-value store. **RocksDB** is a perfect choice for a Rust-based project like Kowalski, as it's embeddable, extremely fast, and requires no separate server.
+*   **Storage Technology:** **Embedded SQLite** (via `sqlx`): each memory unit is stored as JSON in table `episodic_kv`. No separate server; one file under `memory.episodic_path` (e.g. `episodic.sqlite` in a directory, or a path ending in `.sqlite`/`.db`).
 *   **Characteristics:** Fast reads/writes, much larger capacity than working memory, persistent. Data is stored chronologically, indexed by a conversation ID or timestamp.
 *   **Management:** Data is written here after a task is completed. It should have a Time-to-Live (TTL) policy (e.g., automatically purge records older than 7-30 days) to keep the store from growing indefinitely. Its primary role is to be the source for the long-term memory consolidation process.
 
@@ -104,7 +104,7 @@ When the agent needs to access its long-term memory to inform a response, it use
 `kowalski-memory` crate.
 
 *   `Memory` and `Recall` traits.
-*   use Rust `rocksdb` for the embedded Tier 2 store.
+*   Tier 2 uses **SQLite** (`sqlx` + `episodic_kv`) for the embedded episodic store.
 *   Vector retrieval defaults to **in-process** paths; external services are **optional** (see [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](DESIGN_MEMORY_AND_DEPENDENCIES.md)).
 *   The Memory Weaver - an asynchronous `tokio` background task, ensuring it doesn't block the main agent loop.
 

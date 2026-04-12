@@ -26,7 +26,7 @@ The test simulates two independent `BaseAgent` instances running concurrently us
    - Verified Agent 1 still only sees "Secret 1".
 
 3. **Episodic Memory Test**:
-   - Added memories to both agents' episodic buffers (RocksDB).
+   - Added memories to both agents' episodic buffers (SQLite `episodic.sqlite` under distinct temp dirs).
    - Verified successful insertion into independent DB paths.
    - *(Note: Retrieval validation was skipped due to reliance on external Ollama service for embeddings, but the diverse paths confirm isolation at the storage level)*.
 

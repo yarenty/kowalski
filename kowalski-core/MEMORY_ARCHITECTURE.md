@@ -18,7 +18,7 @@ graph TD
 
     subgraph Memory Tiers
         T1["**Tier 1: Working Memory**<br>(in-process)"]
-        T2["**Tier 2: Episodic Buffer**<br>(RocksDB)"]
+        T2["**Tier 2: Episodic Buffer**<br>(SQLite file)"]
         T3["**Tier 3: Semantic Store**<br>(vectors + relation map)"]
     end
 
@@ -35,7 +35,7 @@ graph TD
 | Tier | Role | Implementation (current) |
 |------|------|----------------------------|
 | **1 – Working** | Immediate context for the active task | In-process structures; limited size, volatile |
-| **2 – Episodic** | Chronological, high-fidelity log of recent interactions | **RocksDB** (embedded, no separate server) |
+| **2 – Episodic** | Chronological, high-fidelity log of recent interactions | **SQLite** (`episodic_kv` table in `episodic.sqlite` under `memory.episodic_path`; see [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../docs/DESIGN_MEMORY_AND_DEPENDENCIES.md#episodic-tier-sqlite-embedded-file-no-daemon)) |
 | **3 – Semantic** | Distilled knowledge: similarity search + optional relational edges | **In-process** embedding index (cosine similarity) + **`HashMap` relation edges** (no extra graph crate) |
 
 ---
@@ -57,7 +57,7 @@ graph TD
 
 - **No Qdrant** (or other vector service) is required for the default build.
 - **Ollama** (or your configured LLM provider) is still needed for chat/embeddings when those features are used.
-- **RocksDB** creates its database under the configured episodic path (e.g. `memory.episodic_path`).
+- **Episodic SQLite** opens `episodic.sqlite` under the configured directory (or the path you set if it ends with `.sqlite` / `.db`).
 - Optional **SQL** migrations run when `memory.database_url` is set (e.g. `sqlite:…`); see [`src/db/mod.rs`](./src/db/mod.rs) and the repo `migrations/` folder.
 
 ### Graph relationships (in-memory map)
