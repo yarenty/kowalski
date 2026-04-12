@@ -22,6 +22,16 @@ bun run build
 
 Static output is written to `dist/` (suitable for any static host or reverse proxy).
 
+## Backend (CLI HTTP API)
+
+In one terminal from the repo root:
+
+```bash
+cargo run -p kowalski-cli -- serve
+```
+
+This binds **`127.0.0.1:3000`** and serves JSON under `/api` (`/api/health`, `/api/doctor`, `/api/mcp/servers`, `POST /api/mcp/ping`, `POST /api/chat`). Use `-c` / `--ollama-url` as needed (see `kowalski-cli serve --help`).
+
 ## API proxy
 
-`vite.config.ts` proxies `/api` to `http://127.0.0.1:3000` by default. Adjust the target when you add a Kowalski HTTP server.
+`vite.config.ts` proxies `/api` to `http://127.0.0.1:3000` so the Vue app can call relative paths like `/api/health`. For a production build on another origin, set `VITE_API_BASE` to the full API origin (no trailing slash).

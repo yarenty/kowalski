@@ -1,7 +1,89 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { onMounted, ref } from "vue";
+import { api, type Doctor, type Health, type McpPingResult, type McpServer } from "./api";
 
 const tab = ref<"home" | "mcp" | "chat">("home");
+
+const health = ref<Health | null>(null);
+const healthErr = ref<string | null>(null);
+
+const doctor = ref<Doctor | null>(null);
+const doctorErr = ref<string | null>(null);
+
+const servers = ref<McpServer[]>([]);
+const serversErr = ref<string | null>(null);
+
+const pingBusy = ref(false);
+const pingResults = ref<McpPingResult[] | null>(null);
+const pingErr = ref<string | null>(null);
+
+const chatIn = ref("");
+const chatOut = ref<string | null>(null);
+const chatBusy = ref(false);
+const chatErr = ref<string | null>(null);
+
+async function loadHealth() {
+  healthErr.value = null;
+  try {
+    health.value = await api.health();
+  } catch (e) {
+    health.value = null;
+    healthErr.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
+async function loadDoctor() {
+  doctorErr.value = null;
+  try {
+    doctor.value = await api.doctor();
+  } catch (e) {
+    doctor.value = null;
+    doctorErr.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
+async function loadServers() {
+  serversErr.value = null;
+  try {
+    servers.value = await api.mcpServers();
+  } catch (e) {
+    servers.value = [];
+    serversErr.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
+async function runMcpPing() {
+  pingBusy.value = true;
+  pingErr.value = null;
+  pingResults.value = null;
+  try {
+    pingResults.value = await api.mcpPing();
+  } catch (e) {
+    pingErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    pingBusy.value = false;
+  }
+}
+
+async function sendChat() {
+  const msg = chatIn.value.trim();
+  if (!msg) return;
+  chatBusy.value = true;
+  chatErr.value = null;
+  chatOut.value = null;
+  try {
+    const r = await api.chat(msg);
+    chatOut.value = r.reply;
+  } catch (e) {
+    chatErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    chatBusy.value = false;
+  }
+}
+
+onMounted(() => {
+  void loadHealth();
+});
 </script>
 
 <template>
@@ -20,15 +102,14 @@ const tab = ref<"home" | "mcp" | "chat">("home");
         <button
           type="button"
           :class="{ active: tab === 'mcp' }"
-          @click="tab = 'mcp'"
+          @click="
+            tab = 'mcp';
+            loadServers();
+          "
         >
           MCP
         </button>
-        <button
-          type="button"
-          :class="{ active: tab === 'chat' }"
-          @click="tab = 'chat'"
-        >
+        <button type="button" :class="{ active: tab === 'chat' }" @click="tab = 'chat'">
           Chat
         </button>
       </nav>
@@ -36,29 +117,55 @@ const tab = ref<"home" | "mcp" | "chat">("home");
 
     <main class="main">
       <section v-if="tab === 'home'" class="panel">
-        <h2>Welcome</h2>
-        <p>
-          This is the Vue shell for Kowalski. Use the CLI for day-to-day work:
-          <code>kowalski-cli doctor</code>, <code>mcp ping</code>,
-          <code>config check</code>.
+        <h2>API status</h2>
+        <p class="hint">
+          Run
+          <code>kowalski-cli serve</code>
+          (default <code>127.0.0.1:3000</code>), then
+          <code>bun run dev</code>
+          in <code>ui/</code> — Vite proxies <code>/api</code> to the CLI.
         </p>
         <p>
-          Wire this UI to an HTTP API when the backend is exposed (see
-          <code>vite.config.ts</code> proxy for <code>/api</code>).
+          <button type="button" class="primary" @click="loadHealth">Refresh health</button>
+          <button type="button" @click="loadDoctor">Load doctor</button>
         </p>
+        <pre v-if="health" class="json">{{ JSON.stringify(health, null, 2) }}</pre>
+        <p v-if="healthErr" class="err">{{ healthErr }}</p>
+        <h3>Ollama probe</h3>
+        <pre v-if="doctor" class="json">{{ JSON.stringify(doctor, null, 2) }}</pre>
+        <p v-if="doctorErr" class="err">{{ doctorErr }}</p>
       </section>
 
       <section v-else-if="tab === 'mcp'" class="panel">
-        <h2>MCP status</h2>
+        <h2>MCP</h2>
         <p>
-          Placeholder: list MCP servers from config and health (connect to your
-          backend or embed config later).
+          <button type="button" class="primary" @click="loadServers">Reload server list</button>
+          <button type="button" :disabled="pingBusy" @click="runMcpPing">
+            {{ pingBusy ? "Pinging…" : "Ping all (initialize + tools/list)" }}
+          </button>
         </p>
+        <p v-if="serversErr" class="err">{{ serversErr }}</p>
+        <pre v-if="servers.length" class="json">{{ JSON.stringify(servers, null, 2) }}</pre>
+        <p v-else-if="!serversErr" class="muted">No servers or empty config.</p>
+        <h3>Ping results</h3>
+        <pre v-if="pingResults" class="json">{{ JSON.stringify(pingResults, null, 2) }}</pre>
+        <p v-if="pingErr" class="err">{{ pingErr }}</p>
       </section>
 
       <section v-else class="panel">
-        <h2>Chat</h2>
-        <p>Placeholder: chat session when a Kowalski HTTP chat API is available.</p>
+        <h2>Chat (demo)</h2>
+        <p class="hint">
+          Demo echo via <code>POST /api/chat</code>. Full LLM chat remains in the CLI until agents
+          are wired here.
+        </p>
+        <textarea v-model="chatIn" rows="4" class="ta" placeholder="Message…" />
+        <p>
+          <button type="button" class="primary" :disabled="chatBusy" @click="sendChat">
+            {{ chatBusy ? "Sending…" : "Send" }}
+          </button>
+        </p>
+        <pre v-if="chatOut" class="json">{{ chatOut }}</pre>
+        <p v-if="chatErr" class="err">{{ chatErr }}</p>
       </section>
     </main>
   </div>
@@ -120,9 +227,55 @@ body {
   margin-top: 0;
   font-size: 1.1rem;
 }
+.panel h3 {
+  font-size: 1rem;
+  margin-top: 1.25rem;
+}
 .panel p {
   line-height: 1.55;
   color: #b8c0d0;
+}
+.hint {
+  font-size: 0.9rem;
+  color: #8b92a5;
+}
+.muted {
+  color: #6a7285;
+  font-size: 0.9rem;
+}
+button.primary {
+  background: #3d5a8c;
+  border-color: #5a7ab8;
+  color: #fff;
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.ta {
+  width: 100%;
+  max-width: 40rem;
+  box-sizing: border-box;
+  background: #1a1d26;
+  border: 1px solid #3d4658;
+  color: #e8e8ec;
+  border-radius: 6px;
+  padding: 0.5rem 0.65rem;
+  font: inherit;
+}
+.json {
+  background: #1a1d26;
+  border: 1px solid #2a2e38;
+  border-radius: 6px;
+  padding: 0.75rem;
+  overflow-x: auto;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #c8cfdd;
+}
+.err {
+  color: #e88;
+  font-size: 0.9rem;
 }
 code {
   background: #2a3142;
