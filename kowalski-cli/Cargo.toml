@@ -21,6 +21,10 @@ keywords = [
     "ollama",
 ]
 
+[features]
+default = []
+postgres = ["kowalski-core/postgres"]
+
 [dependencies]
 kowalski-core = { path = "../kowalski-core", version = "0.6.0" }
 

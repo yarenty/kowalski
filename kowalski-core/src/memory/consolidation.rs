@@ -3,9 +3,11 @@ use crate::{
     error::KowalskiError,
     memory::{
         MemoryProvider, MemoryUnit, episodic::EpisodicBuffer, semantic::SemanticStore,
-        semantic_pg::PostgresSemanticStore,
     },
 };
+#[cfg(feature = "postgres")]
+use crate::memory::semantic_pg::PostgresSemanticStore;
+#[cfg(feature = "postgres")]
 use sqlx::postgres::PgPool;
 use log::{debug, info};
 use std::error::Error;
@@ -32,20 +34,27 @@ impl Consolidator {
         let episodic_memory = EpisodicBuffer::open(memory, llm_provider.clone()).await?;
         let semantic_memory: Box<dyn MemoryProvider + Send + Sync> =
             if memory_uses_postgres(memory) {
-                let url = memory
-                    .database_url
-                    .as_ref()
-                    .expect("memory_uses_postgres implies database_url");
-                let pool = PgPool::connect(url.as_str())
-                    .await
-                    .map_err(|e| {
-                        KowalskiError::Memory(format!("consolidator semantic Postgres: {e}"))
-                    })?;
-                Box::new(PostgresSemanticStore::new(
-                    pool,
-                    llm_provider.clone(),
-                    memory.embedding_vector_dimensions,
-                ))
+                #[cfg(feature = "postgres")]
+                {
+                    let url = memory
+                        .database_url
+                        .as_ref()
+                        .expect("memory_uses_postgres implies database_url");
+                    let pool = PgPool::connect(url.as_str())
+                        .await
+                        .map_err(|e| {
+                            KowalskiError::Memory(format!("consolidator semantic Postgres: {e}"))
+                        })?;
+                    Box::new(PostgresSemanticStore::new(
+                        pool,
+                        llm_provider.clone(),
+                        memory.embedding_vector_dimensions,
+                    ))
+                }
+                #[cfg(not(feature = "postgres"))]
+                {
+                    return Err(crate::config::postgres_feature_required_error());
+                }
             } else {
                 Box::new(SemanticStore::new())
             };

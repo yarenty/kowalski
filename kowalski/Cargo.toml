@@ -38,7 +38,8 @@ path = "src/lib.rs"
 default = []
 
 # Other features
-cli = ["kowalski-cli"]
+cli = ["dep:kowalski-cli"]
+postgres = ["kowalski-core/postgres"]
 
-# All features
-full = ["cli"] 
+# All features (CLI + PostgreSQL client stack)
+full = ["cli", "postgres"]

@@ -2,11 +2,13 @@ pub mod consolidation;
 pub mod episodic;
 pub mod helpers;
 pub mod semantic;
+#[cfg(feature = "postgres")]
 pub mod semantic_pg;
 #[cfg(test)]
 mod tests;
 pub mod working;
 
+#[cfg(feature = "postgres")]
 pub use semantic_pg::PostgresSemanticStore;
 
 use async_trait::async_trait;
