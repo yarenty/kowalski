@@ -6,8 +6,9 @@ use std::sync::Arc;
 /// Type alias for task handler functions
 type TaskHandlerFn = Arc<dyn Fn(&str) -> bool + Send + Sync>;
 
-/// A chain of tools that can be executed in sequence
-#[deprecated(note = "Use crate::tools::manager::ToolManager instead")]
+/// A chain of tools that can be executed in sequence.
+///
+/// Prefer [`crate::tools::manager::ToolManager`] for new code (registration, JSON schema, MCP integration).
 pub struct ToolChain {
     /// The tools in the chain
     tools: Vec<Box<dyn Tool + Send + Sync>>,
@@ -69,8 +70,9 @@ impl ToolChain {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::tools::{TaskType, Tool, ToolInput, ToolOutput, ToolParameter};
+    use crate::KowalskiError;
+    use crate::tools::manager::ToolManager;
+    use crate::tools::{Tool, ToolInput, ToolOutput, ToolParameter};
     use serde_json::json;
 
     struct MockTool;
@@ -93,37 +95,16 @@ mod tests {
         }
     }
 
-    #[derive(Debug, Clone)]
-    struct MockTaskType;
-    impl TaskType for MockTaskType {
-        fn name(&self) -> &str {
-            "mock_task"
-        }
-
-        fn description(&self) -> &str {
-            "A mock task type for testing"
-        }
-    }
-
-    impl std::fmt::Display for MockTaskType {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "mock_task")
-        }
-    }
-
     #[tokio::test]
-    async fn test_tool_chain() {
-        let mut chain = ToolChain::new();
-        chain.register_tool(Box::new(MockTool));
-        chain.register_task_handler(MockTaskType, |_| true);
-
+    async fn tool_manager_executes_registered_tool() {
+        let mgr = ToolManager::new();
+        mgr.register(MockTool);
         let input = ToolInput::new(
             "mock_task".to_string(),
             "test content".to_string(),
             json!({}),
         );
-
-        let result = chain.execute(input).await;
+        let result = mgr.execute("mock_tool", input).await;
         assert!(result.is_ok());
     }
 }
