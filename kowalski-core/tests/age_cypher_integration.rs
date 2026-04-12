@@ -34,8 +34,14 @@ async fn postgres_age_cypher_returns_rows() {
 
     let graph = format!("g{}", Uuid::new_v4().as_simple());
     let create_sql = format!("SELECT create_graph('{graph}')");
+    let mut conn = pool.acquire().await.expect("acquire");
+    let _ = sqlx::query("LOAD 'age'").execute(&mut *conn).await;
+    sqlx::query("SET search_path = ag_catalog, public")
+        .execute(&mut *conn)
+        .await
+        .expect("search_path");
     sqlx::query(&create_sql)
-        .execute(&pool)
+        .execute(&mut *conn)
         .await
         .expect("create_graph");
 

@@ -62,12 +62,24 @@ pub async fn postgres_age_cypher(
         ));
     }
 
+    // AGE requires `ag_catalog` on `search_path` (and often `LOAD 'age'`) on the same session as
+    // `cypher(...)`. Pool connections are arbitrary; use one connection for SET + query.
+    let mut conn = pool
+        .acquire()
+        .await
+        .map_err(|e| KowalskiError::Configuration(format!("age cypher acquire: {e}")))?;
+    let _ = sqlx::query("LOAD 'age'").execute(&mut *conn).await;
+    sqlx::query("SET search_path = ag_catalog, public")
+        .execute(&mut *conn)
+        .await
+        .map_err(|e| KowalskiError::Configuration(format!("age search_path: {e}")))?;
+
     let raw: Vec<Option<String>> = sqlx::query_scalar(
         r#"SELECT (result)::text FROM cypher($1::name, $2::cstring) AS (result agtype)"#,
     )
     .bind(graph_name)
     .bind(cypher)
-    .fetch_all(&pool)
+    .fetch_all(&mut *conn)
     .await
     .map_err(|e| KowalskiError::Configuration(format!("cypher execution: {e}")))?;
 

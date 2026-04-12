@@ -10,6 +10,8 @@ rustflags = ["-C", "split-debuginfo=unpacked"]
 # Optional: Use zld if installed (uncomment if you have zld: brew install michaeleisel/zld/zld)
 # rustflags = ["-C", "link-arg=-fuse-ld=/usr/local/bin/zld", "-C", "split-debuginfo=unpacked"]
 
-[build]
-rustc-wrapper = "sccache"
+# Do not set `rustc-wrapper` here: CI and other machines may not have `sccache` installed.
+# To use sccache locally, add to ~/.cargo/config.toml:
+#   [build]
+#   rustc-wrapper = "sccache"
 
