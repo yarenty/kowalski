@@ -1,60 +1,51 @@
 // Tier 3: Long-Term Semantic Store (The Library)
-// Combines a Vector DB for semantic search and a Graph DB for relational knowledge.
+// In-process vector similarity + petgraph for relational knowledge (no external vector DB).
 
 use crate::{
     error::KowalskiError,
     memory::{MemoryProvider, MemoryQuery, MemoryUnit},
 };
 use async_trait::async_trait;
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use petgraph::graph::{Graph, NodeIndex};
 use petgraph::visit::EdgeRef;
-use qdrant_client::Payload;
-use qdrant_client::Qdrant;
-use qdrant_client::qdrant::{Condition, Filter, PointStruct};
-use serde_json::json;
 use std::collections::HashMap;
-// Removed OnceCell - no longer using singleton pattern
-use uuid::Uuid;
 
-const QDRANT_COLLECTION_NAME: &str = "kowalski_memory";
+/// Cosine similarity in \[−1, 1\]; returns 0 if lengths differ or norms are zero.
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
+    let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+    let na: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let nb: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if na == 0.0 || nb == 0.0 {
+        return 0.0;
+    }
+    dot / (na * nb)
+}
 
-/// A persistent, long-term memory store combining semantic (vector) search
-/// and relational (graph) search.
+/// Long-term memory: **in-memory** embedding index (cosine search) plus [`petgraph`] for structured edges.
 ///
-/// - **Vector Store (Qdrant):** Stores `MemoryUnit` embeddings for semantic similarity search.
-/// - **Graph Store (petgraph):** Stores entities and their relationships for structured queries.
+/// No network services required. Embeddings are compared in-process; scale is limited by RAM.
 pub struct SemanticStore {
-    vector_db: Qdrant,
+    /// Memories that include an embedding vector (used for semantic search).
+    embedded_entries: Vec<MemoryUnit>,
     graph_db: Graph<String, String>,
-    // A helper map to quickly find graph nodes by their string identifier
     graph_nodes: HashMap<String, NodeIndex>,
-    #[allow(dead_code)]
-    qdrant_url: String,
 }
 
 impl SemanticStore {
-    /// Creates a new `SemanticStore`.
-    ///
-    /// # Arguments
-    ///
-    /// * `qdrant_url` - The URL for the running Qdrant instance (e.g., "http://localhost:6333").
-    pub async fn new(qdrant_url: &str) -> Result<Self, KowalskiError> {
-        info!("Initializing semantic memory with Qdrant at {}", qdrant_url);
-        let vector_db = Qdrant::from_url(qdrant_url).build().map_err(|e| {
-            error!("Failed to connect to Qdrant: {}", e);
-            KowalskiError::Memory(e.to_string())
-        })?;
-
-        Ok(Self {
-            vector_db,
+    /// Creates an empty semantic store (no external services).
+    pub fn new() -> Self {
+        info!("Initializing in-process semantic memory (vector + graph)");
+        Self {
+            embedded_entries: Vec::new(),
             graph_db: Graph::new(),
             graph_nodes: HashMap::new(),
-            qdrant_url: qdrant_url.to_string(),
-        })
+        }
     }
 
-    /// Adds a node to the graph if it doesn't already exist.
     fn get_or_add_node(&mut self, name: &str) -> NodeIndex {
         *self.graph_nodes.entry(name.to_string()).or_insert_with(|| {
             debug!("Adding new node '{}' to graph", name);
@@ -63,38 +54,29 @@ impl SemanticStore {
     }
 }
 
+impl Default for SemanticStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl MemoryProvider for SemanticStore {
-    /// Adds a `MemoryUnit` to the semantic store.
-    ///
-    /// - If the unit has an embedding, it's added to the Qdrant vector DB.
-    /// - If the unit's content is a JSON object representing a graph relationship
-    ///   (e.g., `{"subject": "A", "predicate": "is_related_to", "object": "B"}`),
-    ///   it's added to the `petgraph` graph.
     async fn add(&mut self, memory: MemoryUnit) -> Result<(), KowalskiError> {
         debug!("Adding memory unit to semantic store: {}", memory.id);
 
-        // Add to vector store if an embedding exists
         if let Some(embedding) = &memory.embedding {
-            let generated_uuid = Uuid::new_v4().to_string();
-            // Store the original custom ID in the payload
-            let mut payload_map = serde_json::Map::new();
-            payload_map.insert("custom_id".to_string(), json!(memory.id.clone()));
-            let payload: Payload = serde_json::Value::Object(payload_map)
-                .try_into()
-                .unwrap_or_else(|_| Payload::default());
-            let point = PointStruct::new(generated_uuid, embedding.clone(), payload);
-            self.vector_db
-                .upsert_points(qdrant_client::qdrant::UpsertPointsBuilder::new(
-                    QDRANT_COLLECTION_NAME,
-                    vec![point],
-                ))
-                .await
-                .map_err(|e| KowalskiError::Memory(e.to_string()))?;
-            info!("Added memory unit {} to Qdrant collection.", memory.id);
+            if !embedding.is_empty() {
+                self.embedded_entries.push(MemoryUnit {
+                    id: memory.id.clone(),
+                    timestamp: memory.timestamp,
+                    content: memory.content.clone(),
+                    embedding: Some(embedding.clone()),
+                });
+                info!("Added memory unit {} to in-process vector index.", memory.id);
+            }
         }
 
-        // Add to graph store if content represents a relationship
         if let Ok(relation) = serde_json::from_str::<HashMap<String, String>>(&memory.content) {
             if let (Some(subject), Some(predicate), Some(object)) = (
                 relation.get("subject"),
@@ -115,95 +97,48 @@ impl MemoryProvider for SemanticStore {
         Ok(())
     }
 
-    /// `retrieve` is not the primary search method for this store. It performs a simple
-    /// metadata search in Qdrant. Use `search` for semantic vector search.
     async fn retrieve(
         &self,
         query: &str,
         _retrieval_limit: usize,
     ) -> Result<Vec<MemoryUnit>, KowalskiError> {
         warn!(
-            "Using retrieve on SemanticStore performs a simple metadata search, not a semantic vector search."
+            "SemanticStore::retrieve filters by id prefix / substring; use search() for vector similarity."
         );
-        let filter = Filter::must([Condition::matches("custom_id", query.to_string())]);
-        let points = self
-            .vector_db
-            .scroll(
-                qdrant_client::qdrant::ScrollPointsBuilder::new(QDRANT_COLLECTION_NAME)
-                    .filter(filter)
-                    .with_payload(true),
-            )
-            .await
-            .map_err(|e| KowalskiError::Memory(e.to_string()))?;
-
-        // This part is complex as we don't store the full MemoryUnit in Qdrant.
-        // In a real system, you'd fetch the full unit from another store (like Tier 2)
-        // using the retrieved IDs. For now, we return a simplified unit.
-        let results = points
-            .result
-            .into_iter()
-            .map(|p| {
-                let vectors = p.vectors.unwrap();
-                println!("DEBUG: vectors struct = {:?}", vectors);
-                let custom_id = p
-                    .payload
-                    .get("custom_id")
-                    .and_then(|v| v.as_str())
-                    .map_or(String::new(), |v| v.to_string());
-                MemoryUnit {
-                    id: custom_id,
-                    content: "Retrieved from Qdrant by metadata filter".to_string(),
-                    timestamp: 0,
-                    embedding: None, // temporarily set to None for debugging
-                }
-            })
+        let q = query.trim();
+        let results: Vec<MemoryUnit> = self
+            .embedded_entries
+            .iter()
+            .filter(|m| m.id == q || m.id.contains(q) || m.content.contains(q))
+            .cloned()
             .collect();
-
         Ok(results)
     }
 
-    /// Performs a hybrid search across the vector and graph stores.
     async fn search(&self, query: MemoryQuery) -> Result<Vec<MemoryUnit>, KowalskiError> {
         debug!("Searching semantic store with query: {:?}", query);
-        let mut results = Vec::new();
+        let mut out: Vec<MemoryUnit> = Vec::new();
 
-        // 1. Vector Search
         if let Some(vector) = &query.vector_query {
-            let search_points = qdrant_client::qdrant::SearchPointsBuilder::new(
-                QDRANT_COLLECTION_NAME,
-                vector.clone(),
-                query.top_k as u64,
-            )
-            .with_payload(true);
-            let search_result = self
-                .vector_db
-                .search_points(search_points)
-                .await
-                .map_err(|e| KowalskiError::Memory(e.to_string()))?;
-            info!(
-                "Found {} results from vector search.",
-                search_result.result.len()
-            );
-            // Again, creating simplified MemoryUnits from results
-            for point in search_result.result {
-                let vectors = point.vectors.unwrap();
-                println!("DEBUG: vectors struct = {:?}", vectors);
-                let custom_id = point
-                    .payload
-                    .get("custom_id")
-                    .and_then(|v| v.as_str())
-                    .map_or(String::new(), |v| v.to_string());
-                results.push(MemoryUnit {
-                    id: custom_id,
-                    content: format!("Retrieved from vector search (score: {})", point.score),
-                    timestamp: 0,
-                    embedding: None, // temporarily set to None for debugging
-                });
+            let mut scored: Vec<(f32, MemoryUnit)> = Vec::new();
+            for m in &self.embedded_entries {
+                let Some(emb) = &m.embedding else { continue };
+                let score = cosine_similarity(vector, emb);
+                scored.push((
+                    score,
+                    MemoryUnit {
+                        id: m.id.clone(),
+                        content: format!("{} (similarity {:.4})", m.content, score),
+                        timestamp: m.timestamp,
+                        embedding: None,
+                    },
+                ));
             }
+            scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+            scored.truncate(query.top_k.max(1));
+            out.extend(scored.into_iter().map(|(_, u)| u));
         }
 
-        // 2. Graph Search (simple implementation)
-        // A real implementation would use more advanced NLP to extract entities.
         if let Some(node_idx) = self.graph_nodes.get(&query.text_query) {
             for edge in self.graph_db.edges(*node_idx) {
                 let target_node_idx = edge.target();
@@ -213,7 +148,7 @@ impl MemoryProvider for SemanticStore {
                     "Found graph relationship: {} -[{}]-> {}",
                     query.text_query, edge_data, target_node_data
                 );
-                results.push(MemoryUnit {
+                out.push(MemoryUnit {
                     id: uuid::Uuid::new_v4().to_string(),
                     content: format!(
                         "Graph Relationship: {} {} {}",
@@ -225,9 +160,6 @@ impl MemoryProvider for SemanticStore {
             }
         }
 
-        Ok(results)
+        Ok(out)
     }
 }
-
-// Singleton pattern removed - use dependency injection instead
-// Create instances with SemanticStore::new() and inject via Arc<dyn MemoryProvider>

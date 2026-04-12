@@ -8,8 +8,6 @@ pub struct Config {
     pub ollama: OllamaConfig,
     /// Chat configuration
     pub chat: ChatConfig,
-    /// Qdrant configuration
-    pub qdrant: QdrantConfig,
     /// Memory configuration
     pub memory: MemoryConfig,
     /// Maximum number of memories to retrieve from working memory
@@ -101,28 +99,10 @@ impl Default for ChatConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QdrantConfig {
-    pub http_url: String,
-    pub grpc_url: String,
-    #[serde(flatten)]
-    pub additional: HashMap<String, serde_json::Value>,
-}
-
-impl Default for QdrantConfig {
-    fn default() -> Self {
-        Self {
-            http_url: "http://localhost:6333".to_string(),
-            grpc_url: "http://localhost:6334".to_string(),
-            additional: HashMap::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryConfig {
     pub episodic_path: String,
     /// Optional SQL store: prefer **`sqlite:…`** (single file, no server) for the simple path; use **`postgres://…`** when you need Postgres + pgvector at scale.
-    /// If unset, no SQL migrations run and existing RocksDB/Qdrant memory paths apply unchanged.
+    /// If unset, no SQL migrations run and existing RocksDB paths apply unchanged.
     #[serde(default)]
     pub database_url: Option<String>,
     #[serde(flatten)]
@@ -170,7 +150,6 @@ impl Default for Config {
             llm: LLMConfig::default(),
             mcp: McpConfig::default(),
             chat: ChatConfig::default(),
-            qdrant: QdrantConfig::default(),
             memory: MemoryConfig::default(),
             working_memory_retrieval_limit: 3,
             episodic_memory_retrieval_limit: 3,

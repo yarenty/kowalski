@@ -325,7 +325,7 @@ impl Agent for BaseAgent {
             as std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>;
 
         let semantic_memory = std::sync::Arc::new(tokio::sync::Mutex::new(
-            crate::memory::semantic::SemanticStore::new(&config.qdrant.http_url).await?,
+            crate::memory::semantic::SemanticStore::new(),
         ))
             as std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>;
 
