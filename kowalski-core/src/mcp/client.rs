@@ -56,8 +56,57 @@ impl McpClient {
             }
         });
 
-        self.send_request::<InitializeResult>("initialize", Some(params))
+        let info = self
+            .send_request::<InitializeResult>("initialize", Some(params))
+            .await?;
+
+        if let Err(e) = self
+            .send_notification("notifications/initialized", Some(json!({})))
             .await
+        {
+            warn!(
+                "MCP '{}' lifecycle: notifications/initialized failed: {}",
+                self.name, e
+            );
+        }
+
+        Ok(info)
+    }
+
+    /// JSON-RPC notification (no `id`). Used after successful `initialize` per MCP lifecycle.
+    async fn send_notification(
+        &self,
+        method: &str,
+        params: Option<serde_json::Value>,
+    ) -> Result<(), KowalskiError> {
+        let payload = json!({
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params.unwrap_or_else(|| json!({})),
+        });
+
+        debug!(
+            "MCP {} notification -> {} payload: {}",
+            self.name, method, payload
+        );
+
+        let response = self
+            .http
+            .post(self.base_url.clone())
+            .json(&payload)
+            .send()
+            .await
+            .map_err(KowalskiError::Request)?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(KowalskiError::Network(format!(
+                "MCP notification {} returned HTTP {}: {}",
+                method, status, body
+            )));
+        }
+        Ok(())
     }
 
     pub async fn list_tools(
