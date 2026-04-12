@@ -1,18 +1,31 @@
-//! Minimal JSON HTTP API for the Vue operator UI (CORS-enabled for local dev).
+//! JSON HTTP API for the Vue operator UI (CORS-enabled for local dev).
+//! `/api/chat` uses one in-process [`TemplateAgent`] + Ollama (from config).
 
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use kowalski_core::agent::Agent;
+use kowalski_core::template::agent::TemplateAgent;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use tower_http::cors::CorsLayer;
+
+struct ChatState {
+    agent: TemplateAgent,
+    conv_id: String,
+}
 
 #[derive(Clone)]
 struct ApiState {
     config_path: PathBuf,
     ollama_url: Option<String>,
+    model: String,
+    chat: Arc<Mutex<ChatState>>,
 }
 
 /// Run until SIGINT / process exit. Binds `addr` and serves under `/api/*`.
@@ -22,14 +35,25 @@ pub async fn serve(
     ollama_url: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let config_path = crate::ops::mcp_config_path(config.as_deref());
+    let full_config = crate::ops::load_kowalski_config_for_serve(&config_path)?;
+    kowalski_core::db::run_memory_migrations_if_configured(&full_config).await?;
+
+    let mut agent = TemplateAgent::new(full_config.clone()).await?;
+    let conv_id = agent.start_conversation(&full_config.ollama.model);
+    let model = full_config.ollama.model.clone();
+
     log::info!(
-        "Kowalski HTTP API at http://{} (config {})",
+        "Kowalski HTTP API at http://{} (config {}, model {})",
         addr,
-        config_path.display()
+        config_path.display(),
+        model
     );
+
     let state = ApiState {
         config_path,
         ollama_url,
+        model,
+        chat: Arc::new(Mutex::new(ChatState { agent, conv_id })),
     };
 
     let app = Router::new()
@@ -45,11 +69,12 @@ pub async fn serve(
     Ok(())
 }
 
-async fn get_health() -> Json<serde_json::Value> {
-    Json(serde_json::json!({
+async fn get_health(State(state): State<ApiState>) -> Json<serde_json::Value> {
+    Json(json!({
         "status": "ok",
         "service": "kowalski-cli",
         "version": env!("CARGO_PKG_VERSION"),
+        "model": state.model,
     }))
 }
 
@@ -83,14 +108,23 @@ struct ChatBody {
 struct ChatResponse {
     reply: String,
     mode: &'static str,
+    model: String,
 }
 
-async fn post_chat(Json(body): Json<ChatBody>) -> Json<ChatResponse> {
-    Json(ChatResponse {
-        reply: format!(
-            "(demo) Full agent chat is not wired to this API yet. You sent: {}",
-            body.message
-        ),
-        mode: "echo",
-    })
+async fn post_chat(
+    State(state): State<ApiState>,
+    Json(body): Json<ChatBody>,
+) -> Result<Json<ChatResponse>, (StatusCode, String)> {
+    let mut guard = state.chat.lock().await;
+    let conv_id = guard.conv_id.clone();
+    let reply = guard
+        .agent
+        .chat_with_tools(&conv_id, body.message.trim())
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(ChatResponse {
+        reply,
+        mode: "agent",
+        model: state.model.clone(),
+    }))
 }

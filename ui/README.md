@@ -27,10 +27,10 @@ Static output is written to `dist/` (suitable for any static host or reverse pro
 In one terminal from the repo root:
 
 ```bash
-cargo run -p kowalski-cli -- serve
+cargo run -p kowalski-cli -- serve -c config.toml
 ```
 
-This binds **`127.0.0.1:3000`** and serves JSON under `/api` (`/api/health`, `/api/doctor`, `/api/mcp/servers`, `POST /api/mcp/ping`, `POST /api/chat`). Use `-c` / `--ollama-url` as needed (see `kowalski-cli serve --help`).
+This binds **`127.0.0.1:3000`** and serves JSON under `/api` (`/api/health`, `/api/doctor`, `/api/mcp/servers`, `POST /api/mcp/ping`, **`POST /api/chat`** with a real Ollama-backed agent when `config.toml` exists). Use `-c` / `--ollama-url` as needed (see `kowalski-cli serve --help`).
 
 ## API proxy
 
