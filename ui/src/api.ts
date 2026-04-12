@@ -20,6 +20,7 @@ export type Health = {
   status: string;
   service: string;
   version: string;
+  model?: string;
 };
 
 export type Doctor = {
@@ -42,7 +43,7 @@ export type McpPingResult = {
   error?: string;
 };
 
-export type ChatResponse = { reply: string; mode: string };
+export type ChatResponse = { reply: string; mode: string; model: string };
 
 export const api = {
   health: () => json<Health>("/api/health"),

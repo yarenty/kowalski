@@ -19,6 +19,7 @@ const pingErr = ref<string | null>(null);
 
 const chatIn = ref("");
 const chatOut = ref<string | null>(null);
+const chatMeta = ref<string | null>(null);
 const chatBusy = ref(false);
 const chatErr = ref<string | null>(null);
 
@@ -71,9 +72,11 @@ async function sendChat() {
   chatBusy.value = true;
   chatErr.value = null;
   chatOut.value = null;
+  chatMeta.value = null;
   try {
     const r = await api.chat(msg);
     chatOut.value = r.reply;
+    chatMeta.value = `${r.mode} · ${r.model}`;
   } catch (e) {
     chatErr.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -153,10 +156,11 @@ onMounted(() => {
       </section>
 
       <section v-else class="panel">
-        <h2>Chat (demo)</h2>
+        <h2>Chat</h2>
         <p class="hint">
-          Demo echo via <code>POST /api/chat</code>. Full LLM chat remains in the CLI until agents
-          are wired here.
+          One in-process agent + Ollama via <code>POST /api/chat</code>. Run
+          <code>kowalski-cli serve -c config.toml</code> with Ollama up and the model from
+          <code>[ollama]</code>.
         </p>
         <textarea v-model="chatIn" rows="4" class="ta" placeholder="Message…" />
         <p>
@@ -164,6 +168,7 @@ onMounted(() => {
             {{ chatBusy ? "Sending…" : "Send" }}
           </button>
         </p>
+        <p v-if="chatMeta" class="muted">{{ chatMeta }}</p>
         <pre v-if="chatOut" class="json">{{ chatOut }}</pre>
         <p v-if="chatErr" class="err">{{ chatErr }}</p>
       </section>
