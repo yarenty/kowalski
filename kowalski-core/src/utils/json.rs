@@ -148,4 +148,26 @@ mod tests {
 ```"#;
         assert!(looks_like_tool_json_attempt(s));
     }
+
+    #[test]
+    fn looks_like_attempt_false_when_tool_call_parses() {
+        let s = r#"{"name": "fs_tool", "parameters": {}}"#;
+        assert!(!looks_like_tool_json_attempt(s));
+    }
+
+    #[test]
+    fn looks_like_attempt_true_when_tool_shape_but_invalid_json() {
+        // Valid-looking object that does not deserialize to [`ToolCall`] (name must be a string).
+        let s = r#"{"name": 999, "parameters": {}}"#;
+        assert!(
+            extract_tool_calls(s).is_empty(),
+            "precondition: should not parse as ToolCall"
+        );
+        assert!(looks_like_tool_json_attempt(s));
+    }
+
+    #[test]
+    fn looks_like_attempt_false_on_plain_text() {
+        assert!(!looks_like_tool_json_attempt("Hello, no JSON here."));
+    }
 }
