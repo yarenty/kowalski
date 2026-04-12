@@ -36,7 +36,7 @@ graph TD
 |------|------|----------------------------|
 | **1 – Working** | Immediate context for the active task | In-process structures; limited size, volatile |
 | **2 – Episodic** | Chronological, high-fidelity log of recent interactions | **SQL** — `episodic_kv` JSON: default **SQLite** file under `memory.episodic_path`, or **PostgreSQL** when `memory.database_url` is `postgres://…` ([`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../docs/DESIGN_MEMORY_AND_DEPENDENCIES.md)) |
-| **3 – Semantic** | Distilled knowledge: similarity search + optional relational edges | **In-process** embedding index (cosine similarity) + **`HashMap` relation edges** (no extra graph crate) |
+| **3 – Semantic** | Distilled knowledge: similarity search + optional relational edges | Default: **in-process** vectors + **`HashMap` relation edges**. With **`memory.database_url`** = `postgres://…`: **`semantic_memory`** + **`semantic_relation`** + **pgvector** (`<=>`); [`PostgresSemanticStore`](./src/memory/semantic_pg.rs) embeds the query in **`retrieve`** for SQL similarity. |
 
 ---
 
@@ -47,7 +47,8 @@ graph TD
 | `memory/mod.rs` | `MemoryProvider`, `MemoryUnit`, `MemoryQuery` |
 | `memory/working.rs` | Tier 1 |
 | `memory/episodic.rs` | Tier 2 |
-| `memory/semantic.rs` | Tier 3 (vectors + graph) |
+| `memory/semantic.rs` | Tier 3 default (in-process vectors + graph) |
+| `memory/semantic_pg.rs` | Tier 3 when using PostgreSQL (`PostgresSemanticStore`) |
 | `memory/consolidation.rs` | Consolidation (“Memory Weaver”) into semantic tier |
 | `memory/helpers.rs` | Helpers to construct default provider set from config |
 

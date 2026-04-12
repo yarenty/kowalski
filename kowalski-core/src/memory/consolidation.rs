@@ -1,8 +1,12 @@
 use crate::{
-    config::MemoryConfig,
+    config::{memory_uses_postgres, MemoryConfig},
     error::KowalskiError,
-    memory::{MemoryProvider, MemoryUnit, episodic::EpisodicBuffer, semantic::SemanticStore},
+    memory::{
+        MemoryProvider, MemoryUnit, episodic::EpisodicBuffer, semantic::SemanticStore,
+        semantic_pg::PostgresSemanticStore,
+    },
 };
+use sqlx::postgres::PgPool;
 use log::{debug, info};
 use std::error::Error;
 
@@ -14,7 +18,7 @@ pub trait MemoryWeaver {
 
 pub struct Consolidator {
     episodic_memory: EpisodicBuffer,
-    semantic_memory: SemanticStore,
+    semantic_memory: Box<dyn MemoryProvider + Send + Sync>,
     llm_provider: std::sync::Arc<dyn crate::llm::LLMProvider>,
     model: String,
 }
@@ -26,7 +30,25 @@ impl Consolidator {
         model: &str,
     ) -> Result<Self, KowalskiError> {
         let episodic_memory = EpisodicBuffer::open(memory, llm_provider.clone()).await?;
-        let semantic_memory = SemanticStore::new();
+        let semantic_memory: Box<dyn MemoryProvider + Send + Sync> =
+            if memory_uses_postgres(memory) {
+                let url = memory
+                    .database_url
+                    .as_ref()
+                    .expect("memory_uses_postgres implies database_url");
+                let pool = PgPool::connect(url.as_str())
+                    .await
+                    .map_err(|e| {
+                        KowalskiError::Memory(format!("consolidator semantic Postgres: {e}"))
+                    })?;
+                Box::new(PostgresSemanticStore::new(
+                    pool,
+                    llm_provider.clone(),
+                    memory.embedding_vector_dimensions,
+                ))
+            } else {
+                Box::new(SemanticStore::new())
+            };
         Ok(Self {
             episodic_memory,
             semantic_memory,
