@@ -1,8 +1,8 @@
 # Operator QA, backlog, and release checks
 
-**Automated:** CI (`.github/workflows/ci.yml`) and **`cargo test`**. This file is the **single live list** for manual/e2e verification, **product/engineering follow-ups**, and **repo hygiene** — consolidated from `LEFTOVERS.md`, `rebuild_tasks/`, `findings.md`, `progress.md`, `task_plan.md`, and `REBUILD_PLAN*.md` (those files stay as history or narrative; do not treat old WP checkboxes as the source of truth).
+**Automated:** CI (`.github/workflows/ci.yml`) and **`cargo test`**. This file is the **single live list** for manual/e2e verification, **product/engineering follow-ups**, and **repo hygiene**. Older planning notes may exist only in **git history**; do not treat stale external checklists as the source of truth.
 
-**See also:** [`ROADMAP.md`](ROADMAP.md) · [`LEFTOVERS.md`](LEFTOVERS.md) · [`rebuild_tasks/STATUS.md`](rebuild_tasks/STATUS.md)
+**See also:** [`ROADMAP.md`](ROADMAP.md) · [`CHANGELOG.md`](CHANGELOG.md)
 
 ---
 
@@ -14,9 +14,9 @@
 |----|------|--------|
 | FB-WP5-1 | **Automated multi-cluster lifecycle** | Optional: scheduled stale cleanup, auth on federation HTTP mutations, cross-process agent discovery — beyond current **`/api/federation/*`** + Postgres. |
 | FB-WP5-2 | **Stricter ACL defaults** | Tighten `default_max_delegation_depth` / envelope validation defaults; document operator tuning. |
-| FB-WP5-3 | **TTL / delegation loop hardening** | Optional watchdog for stale heartbeats; align with `rebuild_tasks/wp5_federation_core_tasks.md` ideas where still relevant. |
+| FB-WP5-3 | **TTL / delegation loop hardening** | Optional watchdog for stale heartbeats; cross-check with [`kowalski-core/ROADMAP.md`](kowalski-core/ROADMAP.md) federation items. |
 
-*Implemented baseline:* ranked capability routing, `agent_state` persistence, `POST /api/federation/heartbeat`, registry merge — see [`LEFTOVERS.md`](LEFTOVERS.md).
+*Implemented baseline:* ranked capability routing, `agent_state` persistence, `POST /api/federation/heartbeat`, registry merge.
 
 ### UI (`ui/`)
 
@@ -31,8 +31,8 @@
 
 | ID | Task | Notes |
 |----|------|--------|
-| FB-WP2-1 | **Extra MCP transports / polish** | Stdio ergonomics, live e2e vs mocks — [`rebuild_tasks/wp2_mcp_integration_tasks.md`](rebuild_tasks/wp2_mcp_integration_tasks.md). |
-| FB-WP2-2 | **Config / operator wizards** (optional) | From `findings.md`: guided MCP server registration and validation. |
+| FB-WP2-1 | **Extra MCP transports / polish** | Stdio ergonomics, live e2e vs mocks — see **WP2** below and [`kowalski-core/ROADMAP.md`](kowalski-core/ROADMAP.md). |
+| FB-WP2-2 | **Config / operator wizards** (optional) | Guided MCP server registration and validation (operator UX). |
 
 ### Tests & CI (extended)
 
@@ -41,7 +41,7 @@
 | FB-CI-1 | **Episodic memory integration test** on real Postgres | Insert/order by session — not default CI. |
 | FB-CI-2 | **pgvector cosine** integration test | Optional; beyond current smoke. |
 | FB-CI-3 | **Broader tool-JSON contract tests** | Mock LLM / edge cases — [`kowalski-core/ROADMAP.md`](kowalski-core/ROADMAP.md). |
-| FB-CI-4 | **CI image or job with Apache AGE** | Automated Cypher tests without manual DB (optional; `progress.md` follow-up). |
+| FB-CI-4 | **CI image or job with Apache AGE** | Automated Cypher tests without manual DB (optional follow-up). |
 
 ### DataFusion MCP (`kowalski-mcp-datafusion`)
 
@@ -55,17 +55,10 @@
 
 | ID | Task | Notes |
 |----|------|--------|
-| FB-DOC-1 | **Refresh `findings.md`** as the stack evolves | Open decisions / positioning (`task_plan.md` Phase 5). |
-| FB-DOC-2 | **Align stale `rebuild_tasks/wp*.md` checkboxes** | Many describe pre-1.0 plans; skim and mark historical or point here (`LEFTOVERS.md` §C). |
-| FB-DOC-3 | **Consolidated positioning narrative** | Optional deep pass vs OpenClaw-class tools (`findings.md`, `REBUILD_PLAN.md` vision). |
-| FB-REPO-1 | **Remove `rebuild_tasks/`** when comfortable | After checklist migration; keep git history unless policy requires otherwise. |
-| FB-REPO-2 | **Remove or archive `REBUILD_PLAN.md` / `REBUILD_PLAN_DETAILED.md`** | Superseded by shipped stack + this file; destructive — confirm before delete. |
-| FB-REPO-3 | **History rewrite on GitHub** (optional) | Only if sensitive content removal is required — coordinate with maintainers. |
-
-### Historical / superseded plans
-
-- **`REBUILD_PLAN.md`**, **`REBUILD_PLAN_DETAILED.md`**: Pre-consolidation vision, WP ordering, rollback tags — **mostly superseded** by 1.0.0 workspace layout; use for context only.
-- **`task_plan.md`**, **`progress.md`**: Session log and phase checklist — maintenance item: keep Phase 5 / “next” in sync with this file or mark archived.
+| FB-DOC-1 | **Keep design docs aligned** with the shipped stack | e.g. [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md); open decisions in [`ROADMAP.md`](ROADMAP.md). |
+| FB-DOC-2 | **Cross-check crate `ROADMAP.md` files** | Avoid drift vs code and this backlog. |
+| FB-DOC-3 | **Consolidated positioning narrative** | Optional deep pass vs OpenClaw-class tools — track themes in [`ROADMAP.md`](ROADMAP.md). |
+| FB-REPO-1 | **History rewrite on GitHub** (optional) | Only if sensitive content removal is required — coordinate with maintainers. |
 
 ---
 
@@ -165,6 +158,6 @@
 | **Analytics** | Usage, performance, cost, quality, error analytics |
 | **Advanced** | i18n, prompt templates, CoT viz, semantic search across chats, auto-summary |
 | **Dev** | Custom training tools, richer testing utilities |
-| **Edge / CPU** | ARM builds, Ollama quantized models, Raspberry Pi docs (`findings.md`) |
+| **Edge / CPU** | ARM builds, Ollama quantized models, Raspberry Pi / edge deployment notes in `docs/` or crate READMEs |
 
 Not exhaustive; see **ROADMAP** for crate-level checkboxes.
