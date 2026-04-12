@@ -20,7 +20,9 @@ const pingErr = ref<string | null>(null);
 const chatIn = ref("");
 const chatOut = ref<string | null>(null);
 const chatMeta = ref<string | null>(null);
+const sessionId = ref<string | null>(null);
 const chatBusy = ref(false);
+const resetBusy = ref(false);
 const chatErr = ref<string | null>(null);
 
 async function loadHealth() {
@@ -81,6 +83,22 @@ async function sendChat() {
     chatErr.value = e instanceof Error ? e.message : String(e);
   } finally {
     chatBusy.value = false;
+  }
+}
+
+async function resetChat() {
+  resetBusy.value = true;
+  chatErr.value = null;
+  try {
+    const r = await api.chatReset();
+    sessionId.value = r.conversation_id;
+    chatOut.value = null;
+    chatMeta.value = `new session · ${r.model}`;
+    chatIn.value = "";
+  } catch (e) {
+    chatErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    resetBusy.value = false;
   }
 }
 
@@ -167,7 +185,11 @@ onMounted(() => {
           <button type="button" class="primary" :disabled="chatBusy" @click="sendChat">
             {{ chatBusy ? "Sending…" : "Send" }}
           </button>
+          <button type="button" :disabled="resetBusy" @click="resetChat">
+            {{ resetBusy ? "Resetting…" : "New conversation" }}
+          </button>
         </p>
+        <p v-if="sessionId" class="muted">Session: {{ sessionId }}</p>
         <p v-if="chatMeta" class="muted">{{ chatMeta }}</p>
         <pre v-if="chatOut" class="json">{{ chatOut }}</pre>
         <p v-if="chatErr" class="err">{{ chatErr }}</p>
