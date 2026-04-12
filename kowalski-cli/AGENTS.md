@@ -55,7 +55,8 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: kowalski-cli  
-**Purpose**: Command-line interface for the Kowalski framework.  
+**Release**: **1.0.0** (see crate `Cargo.toml`).  
+**Purpose**: Command-line interface and **HTTP server** (`serve`) for the Vue operator UI: `/api/chat`, `/api/chat/stream` (with **`tools_stream`**), MCP, federation, graph status / Cypher (Postgres + AGE).  
 **Core Value Proposition**: Modular, extensible, and distributed architecture supporting standalone and federated deployments with privacy-preserving capabilities.  
 **Primary Mechanism**: Multi-agent orchestration and pluggable tools interfacing with local (Ollama) and remote LLMs.  
 **Target Users**: Kowalski framework agents and developers integrating kowalski-cli.  
@@ -335,18 +336,16 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-Active development. Core, Tools, and specialized agents (Academic, Code, Data, Web) are operational. Federation is WIP.
+**1.0.0**: `kowalski`, `kowalski chat`, `kowalski run`, `kowalski serve`, `config`, `db`, `doctor`, `mcp ping` / `mcp tools`. Build with **`--features postgres`** for SQL memory alignment with `serve` graph routes.
 
 ### Roadmap
-See `ROADMAP.md` for latest features and future plans.
+See [`ROADMAP.md`](ROADMAP.md) here and root [`../ROADMAP.md`](../ROADMAP.md).
 
 ### Technical Debt
-- Tools are currently monolithic, pending refactor into granular tool crates.
-- Federation protocol finalization.
+- Legacy “multi-agent” REPL sections in this file may predate the unified `TemplateAgent`; verify against `src/main.rs` and `ops.rs`.
 
 ### Known Issues
-- Ollama models must be running contextually.
-- Multi-agent coordination overhead.
+- `serve` requires a valid TOML config and a running LLM endpoint for chat tabs.
 
 ---
 

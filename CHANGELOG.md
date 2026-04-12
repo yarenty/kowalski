@@ -8,6 +8,22 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Changed
 
+- (nothing yet)
+
+## [1.0.0] - 2026-04-12
+
+> First **1.x** line: consolidated crates, operator CLI + Vue UI, MCP (HTTP/SSE + DataFusion server), optional Postgres/pgvector/AGE, federation hooks.
+
+### Added
+
+- **Workspace version 1.0.0** for `kowalski-core`, `kowalski-cli`, `kowalski`, `kowalski-mcp-datafusion`, and the Vue **operator UI** (`ui/`).
+- **HTTP API** (`kowalski-cli serve`): chat, chat stream, tool-aware streaming via **`tools_stream`** on **`POST /api/chat/stream`** (tokens only after tool execution in the same request); graph status and **`POST /api/graph/cypher`** (Apache AGE) when built with **`--features postgres`**.
+- **Vue Chat:** checkbox **Tool-aware stream** (`tools_stream`).
+- **CI:** `pgvector/pgvector:pg16` for default Postgres tests; **`apache/age:release_PG16_1.6.0`** job for **`postgres_age_cypher`** integration test; **`kowalski-cli`** build with **`postgres`** feature.
+- **`kowalski-mcp-datafusion`:** Streamable HTTP MCP server over CSV/Parquet (DataFusion).
+
+### Changed
+
 - **Cargo feature `postgres`:** PostgreSQL + **`pgvector`** are **optional**. The feature enables `sqlx/postgres`, optional **`pgvector`**, and **`pgvector/sqlx`** (vector types for SQLx). Default builds omit them. Enable with `cargo build -p kowalski-core --features postgres`, `cargo build -p kowalski-cli --features postgres`, or `cargo build -p kowalski --features full` (includes CLI + postgres). If `memory.database_url` is `postgres://…` without the feature, configuration returns a clear error.
 - **Semantic memory (Tier 3) + Postgres:** When **`memory.database_url`** is **`postgres://…`**, semantic tier uses **`PostgresSemanticStore`** ([`semantic_pg.rs`](kowalski-core/src/memory/semantic_pg.rs)): tables **`semantic_memory`** / **`semantic_relation`** ([`003_semantic_memory.sql`](migrations/postgres/003_semantic_memory.sql)), **pgvector** cosine distance (`<=>`). **`MemoryProvider::retrieve`** embeds the query via **`LLMProvider`** and runs SQL similarity (with `ILIKE` fallback). New config **`memory.embedding_vector_dimensions`** (default **768**, must match `vector(N)` in the migration). Depends on **`pgvector`** crate. In-process **`SemanticStore`** remains the default when no Postgres URL.
 - **Episodic memory (Tier 2):** Replaced **RocksDB** with **`sqlx`** + **`episodic_kv`**: default is a **local SQLite file** under `episodic_path` (directory → `episodic.sqlite`, or an explicit `.sqlite`/`.db`). Optional **`postgres://…`** in `memory.database_url` uses the same JSON rows in **PostgreSQL** (`migrations/postgres/002_episodic_kv.sql`). **`EpisodicBuffer::open(&MemoryConfig, …)`**, **`Consolidator::new(&MemoryConfig, …)`** (async); **`consolidate`** runs SQL migrations when `database_url` is set.
@@ -16,6 +32,9 @@ All notable changes to this project will be documented in this file, or at least
 ### Documentation
 
 - Documented **memory stack rationale**: **Qdrant** was used in an **initial proof of concept** for semantic memory; the **ongoing goal** is a **simple, robust, dependency-light** default with **minimal moving parts**. Canonical write-up: [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md). Linked from root and component `AGENTS.md`, READMEs, memory articles, and rebuild notes.
+- Refreshed **README.md**, **AGENTS.md**, **ROADMAP.md** (root and key sub-crates).
+
+[1.0.0]: https://github.com/yarenty/kowalski/releases/tag/1.0.0
 
 ## [0.5.2] - 2024-07-06
 

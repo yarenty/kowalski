@@ -1,6 +1,6 @@
 [package]
 name = "kowalski-mcp-datafusion"
-version = "0.6.0"
+version = "1.0.0"
 edition = "2024"
 description = "Standalone MCP Streamable HTTP server: DataFusion SQL, schema, and column statistics over CSV"
 license = "MIT"

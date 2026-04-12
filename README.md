@@ -1,10 +1,11 @@
 # Kowalski
 
+**Version 1.0.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-datafusion`, Vue `ui/`)
+
 > "AI agents are like pets – they're cute, but they make a mess."  
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"
 
-
-A sophisticated Rust-based multi-agent framework for interacting with various LLM providers, with built-in support for federation, secure multi-party computation, and extensible tooling architecture.
+A sophisticated Rust-based multi-agent framework for interacting with various LLM providers (Ollama, OpenAI-compatible APIs), with MCP tool integration, optional PostgreSQL memory (**pgvector**, **Apache AGE** graph queries), federation hooks, and a small **Vue** operator UI backed by **`kowalski-cli serve`**.
 
 ---
 
@@ -22,12 +23,15 @@ Kowalski is designed as a foundational framework for building intelligent, distr
 
 ```
 kowalski/
-├── kowalski-core/           # Core agent abstractions, conversation, roles, config, templates
-├── kowalski-cli/            # Command-line interface
+├── kowalski-core/           # Agents, LLM providers, memory, MCP client, federation types
+├── kowalski-cli/            # REPL, `serve` (HTTP API), config/db/mcp tools
+├── kowalski-mcp-datafusion/ # Standalone MCP server: DataFusion SQL over CSV/Parquet
+├── ui/                      # Vue 3 + Vite operator UI (Chat, MCP, federation, graph status)
 ├── migrations/
+│   ├── postgres/            # SQL migrations when using Postgres memory
 │   └── legacy_prompts/      # Stashed prompts from legacy specialized agents
 ├── resources/               # Configs, tokenizer, etc.
-└── ...                      # Examples, docs, etc.
+└── docs/                    # Design notes, architecture
 ```
 
 ---
@@ -41,8 +45,16 @@ kowalski/
 - [See details](./kowalski-core/README.md)
 
 ### **kowalski-cli**
-- The main command-line interface for Kowalski.
-- Provides a unified REPL and command set to interact with the core agent framework.
+- The main command-line interface: `chat`, `run`, `serve` (HTTP JSON API on `127.0.0.1:3000` by default), `config`, `db migrate`, `doctor`, `mcp ping` / `mcp tools`.
+- Build with **`--features postgres`** for SQL memory + pgvector bindings and **`POST /api/graph/cypher`** (Apache AGE) on `serve`.
+
+### **kowalski-mcp-datafusion**
+- Optional **MCP** server (Streamable HTTP) for **SQL** over local **CSV/Parquet** via **DataFusion**.
+- See [`kowalski-mcp-datafusion/README.md`](./kowalski-mcp-datafusion/README.md) and Docker assets in that crate.
+
+### **ui/**
+- Vue 3 + Vite operator shell: health, MCP ping, **Chat** (SSE including **tool-aware stream**), federation, graph extension status.
+- Dev: `cd ui && bun install && bun run dev` (proxies `/api` to the CLI server).
 
 ---
 
