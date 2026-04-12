@@ -388,7 +388,7 @@ See [`ROADMAP.md`](ROADMAP.md) (root and per-crate **`ROADMAP.md`** where presen
 
 | ❌ Don't | ✅ Do Instead |
 |----------|---------------|
-| Use temporary notes for persistence | Create structured files (`task.md`, `TODO.md`) |
+| Use temporary notes for persistence | Create structured files (task.md, findings.md) |
 | State goals once and forget | Re-read plans before major decisions |
 | Hide errors and retry silently | Log all errors with resolution details |
 | Stuff everything in context | Store large content in organized files |
