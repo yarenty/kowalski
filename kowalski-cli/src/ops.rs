@@ -48,6 +48,16 @@ pub struct McpPingResult {
 pub struct DoctorJson {
     pub cli_version: String,
     pub ollama: OllamaProbeJson,
+    /// From `[llm]` + `[ollama].model` (no API keys).
+    pub llm: LlmDoctorJson,
+}
+
+/// Non-secret LLM routing snapshot for `/api/doctor`.
+#[derive(Debug, Clone, Serialize)]
+pub struct LlmDoctorJson {
+    pub provider: String,
+    pub model: String,
+    pub openai_api_base: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -148,12 +158,19 @@ async fn probe_ollama_tags(base: &str) -> OllamaProbeJson {
 }
 
 /// JSON payload for `/api/doctor` (and similar UIs).
-pub async fn doctor_json(ollama_base: Option<String>) -> DoctorJson {
+pub async fn doctor_json(ollama_base: Option<String>, config: Option<&Config>) -> DoctorJson {
     let base = ollama_base.unwrap_or_else(|| "http://127.0.0.1:11434".to_string());
     let ollama = probe_ollama_tags(&base).await;
+    let c = config.cloned().unwrap_or_default();
+    let llm = LlmDoctorJson {
+        provider: c.llm.provider.clone(),
+        model: c.ollama.model.clone(),
+        openai_api_base: c.llm.openai_api_base.clone(),
+    };
     DoctorJson {
         cli_version: env!("CARGO_PKG_VERSION").to_string(),
         ollama,
+        llm,
     }
 }
 
@@ -177,6 +194,13 @@ pub fn run_config_check(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
                 println!("  memory.database_url = (unset — Tier 2 SQLite file only)");
             }
             println!("  mcp servers: {}", c.mcp.servers.len());
+            println!(
+                "  llm: provider = {}, model = {}",
+                c.llm.provider, c.ollama.model
+            );
+            if let Some(ref b) = c.llm.openai_api_base {
+                println!("  llm.openai_api_base = {}", b);
+            }
         }
         Err(e) => {
             println!("Note — not a full core `Config` (fix or use partial TOML only):");
@@ -215,8 +239,16 @@ pub async fn run_db_migrate(
 
 /// Print versions and probe local Ollama (default `http://127.0.0.1:11434`).
 pub async fn run_doctor(ollama_base: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
-    let j = doctor_json(ollama_base).await;
+    let config = load_optional_config_default_path();
+    let j = doctor_json(ollama_base, config.as_ref()).await;
     println!("kowalski-cli {}", j.cli_version);
+    println!(
+        "LLM: provider = {}, model = {}",
+        j.llm.provider, j.llm.model
+    );
+    if let Some(ref b) = j.llm.openai_api_base {
+        println!("LLM: openai_api_base = {}", b);
+    }
     if j.ollama.ok {
         println!("Ollama: OK — {}", j.ollama.url);
     } else if j.ollama.detail.starts_with("HTTP ") {
@@ -225,4 +257,13 @@ pub async fn run_doctor(ollama_base: Option<String>) -> Result<(), Box<dyn std::
         println!("Ollama: unreachable ({}) — {}", j.ollama.url, j.ollama.detail);
     }
     Ok(())
+}
+
+fn load_optional_config_default_path() -> Option<Config> {
+    let path = PathBuf::from("config.toml");
+    if !path.exists() {
+        return None;
+    }
+    let raw = fs::read_to_string(&path).ok()?;
+    toml::from_str(&raw).ok()
 }

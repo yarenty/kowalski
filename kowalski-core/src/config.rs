@@ -31,10 +31,14 @@ pub struct Config {
 /// Configuration for generic LLM settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LLMConfig {
-    /// The provider to use: "ollama", "openai", etc.
+    /// The provider to use: `ollama` (local) or `openai` (Chat Completions API — OpenAI or compatible).
     pub provider: String,
-    /// OpenAI API key (if using openai provider)
+    /// API key for `openai` provider (OpenAI, Groq, etc.). Many servers omit this; use `""` in TOML if needed.
     pub openai_api_key: Option<String>,
+    /// Base URL for OpenAI-compatible Chat Completions (e.g. `https://api.openai.com/v1`, or
+    /// `http://127.0.0.1:1234/v1` for LM Studio). If unset, the official OpenAI API base is used.
+    #[serde(default)]
+    pub openai_api_base: Option<String>,
 }
 
 impl Default for LLMConfig {
@@ -42,6 +46,7 @@ impl Default for LLMConfig {
         Self {
             provider: "ollama".to_string(),
             openai_api_key: std::env::var("OPENAI_API_KEY").ok(),
+            openai_api_base: None,
         }
     }
 }
@@ -137,6 +142,21 @@ pub fn memory_uses_postgres(memory: &MemoryConfig) -> bool {
     memory.database_url.as_ref().is_some_and(|u| {
         u.starts_with("postgres://") || u.starts_with("postgresql://")
     })
+}
+
+#[cfg(test)]
+mod postgres_flag_tests {
+    use super::{memory_uses_postgres, MemoryConfig};
+
+    #[test]
+    fn memory_uses_postgres_detects_url() {
+        let mut m = MemoryConfig::default();
+        assert!(!memory_uses_postgres(&m));
+        m.database_url = Some("postgres://localhost/db".to_string());
+        assert!(memory_uses_postgres(&m));
+        m.database_url = Some("postgresql://localhost/db".to_string());
+        assert!(memory_uses_postgres(&m));
+    }
 }
 
 /// Build-time `postgres` feature was not enabled while config requests a PostgreSQL URL.
