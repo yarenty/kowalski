@@ -9,6 +9,7 @@ use crate::{
 use async_trait::async_trait;
 use log::{debug, error, info};
 use serde_json;
+#[cfg(feature = "postgres")]
 use sqlx::postgres::PgPool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 use sqlx::Row;
@@ -26,6 +27,7 @@ CREATE TABLE IF NOT EXISTS episodic_kv (
 
 enum EpisodicBackend {
     Sqlite(SqlitePool),
+    #[cfg(feature = "postgres")]
     Postgres(PgPool),
 }
 
@@ -69,14 +71,23 @@ impl EpisodicBuffer {
     ) -> Result<Self, KowalskiError> {
         if let Some(ref url) = memory.database_url {
             if url.starts_with("postgres://") || url.starts_with("postgresql://") {
-                info!("Opening episodic buffer on PostgreSQL (episodic_kv)");
-                let pool = PgPool::connect(url.as_str())
-                    .await
-                    .map_err(|e| KowalskiError::Memory(format!("episodic Postgres connect: {e}")))?;
-                return Ok(Self {
-                    backend: EpisodicBackend::Postgres(pool),
-                    llm_provider,
-                });
+                #[cfg(feature = "postgres")]
+                {
+                    info!("Opening episodic buffer on PostgreSQL (episodic_kv)");
+                    let pool = PgPool::connect(url.as_str())
+                        .await
+                        .map_err(|e| {
+                            KowalskiError::Memory(format!("episodic Postgres connect: {e}"))
+                        })?;
+                    return Ok(Self {
+                        backend: EpisodicBackend::Postgres(pool),
+                        llm_provider,
+                    });
+                }
+                #[cfg(not(feature = "postgres"))]
+                {
+                    return Err(crate::config::postgres_feature_required_error());
+                }
             }
         }
 
@@ -117,6 +128,7 @@ impl EpisodicBuffer {
                     })
                     .collect::<Result<Vec<_>, _>>()?
             }
+            #[cfg(feature = "postgres")]
             EpisodicBackend::Postgres(pool) => {
                 let rows = sqlx::query("SELECT id, payload FROM episodic_kv ORDER BY id")
                     .fetch_all(pool)
@@ -147,6 +159,7 @@ impl EpisodicBuffer {
                     .await
                     .map_err(|e| KowalskiError::Memory(e.to_string()))?;
             }
+            #[cfg(feature = "postgres")]
             EpisodicBackend::Postgres(pool) => {
                 sqlx::query("DELETE FROM episodic_kv WHERE id = $1")
                     .bind(id)
@@ -207,6 +220,7 @@ impl EpisodicBuffer {
                     KowalskiError::Memory(e.to_string())
                 })?;
             }
+            #[cfg(feature = "postgres")]
             EpisodicBackend::Postgres(pool) => {
                 sqlx::query(
                     "INSERT INTO episodic_kv (id, payload) VALUES ($1, $2)
@@ -244,6 +258,7 @@ impl EpisodicBuffer {
                     })
                     .collect::<Result<Vec<_>, _>>()?
             }
+            #[cfg(feature = "postgres")]
             EpisodicBackend::Postgres(pool) => {
                 let rows = sqlx::query("SELECT id, payload FROM episodic_kv")
                     .fetch_all(pool)

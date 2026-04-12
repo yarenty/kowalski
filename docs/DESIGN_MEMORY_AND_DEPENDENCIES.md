@@ -27,7 +27,7 @@ For structured **subject → predicate → object** edges, the code briefly used
 | Aspect | Notes |
 |--------|--------|
 | **Path (default)** | Without a Postgres URL: `memory.episodic_path` — if it ends with `.sqlite` / `.db`, that file is used; otherwise a directory is created and **`episodic.sqlite`** is opened inside it. |
-| **Postgres** | With **`memory.database_url`** = `postgres://…`, Tier 2 reads/writes **`episodic_kv`** in that database (run migrations via [`db::run_memory_migrations_if_configured`](../../kowalski-core/src/db/mod.rs)). |
+| **Postgres** | With **`memory.database_url`** = `postgres://…` **and** the **`postgres`** Cargo feature on `kowalski-core`, Tier 2 reads/writes **`episodic_kv`** (run migrations via [`db::run_memory_migrations_if_configured`](../../kowalski-core/src/db/mod.rs)). Build: `cargo build -p kowalski-core --features postgres`. |
 | **Build** | Native SQLite via `libsqlite3-sys`; Postgres uses the existing **`sqlx`** Postgres driver. |
 | **Historical note** | Episodic storage previously used **RocksDB**; it was replaced to **reduce native dependency surface** and align Tier 2 with **SQL** already in the stack. |
 

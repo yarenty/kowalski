@@ -105,8 +105,8 @@ fn default_embedding_vector_dimensions() -> usize {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryConfig {
     pub episodic_path: String,
-    /// Optional SQL store: prefer **`sqlite:…`** (single file, no server) for migrations-only; use **`postgres://…`** when you need Postgres + pgvector at scale.
-    /// If **`postgres://…`**, Tier 2 episodic memory uses table **`episodic_kv`** in that database (run migrations via [`crate::db::run_memory_migrations_if_configured`](crate::db::run_memory_migrations_if_configured)). Otherwise Tier 2 uses a **SQLite file** under `episodic_path` (`episodic.sqlite` or an explicit `.sqlite`/`.db` path).
+    /// Optional SQL store: prefer **`sqlite:…`** (single file, no server) for migrations-only; use **`postgres://…`** when you need Postgres + pgvector at scale (**requires** building `kowalski-core` with **`--features postgres`**).
+    /// If **`postgres://…`** (with that feature), Tier 2 episodic memory uses table **`episodic_kv`** in that database (run migrations via [`crate::db::run_memory_migrations_if_configured`](crate::db::run_memory_migrations_if_configured)). Otherwise Tier 2 uses a **SQLite file** under `episodic_path` (`episodic.sqlite` or an explicit `.sqlite`/`.db` path).
     #[serde(default)]
     pub database_url: Option<String>,
     /// Embedding width for **PostgreSQL** `semantic_memory.embedding` (`vector(N)`). Must match your embedder (e.g. **768** for Ollama `nomic-embed-text`) and the dimension in `migrations/postgres/003_semantic_memory.sql`.
@@ -132,6 +132,13 @@ pub fn memory_uses_postgres(memory: &MemoryConfig) -> bool {
     memory.database_url.as_ref().is_some_and(|u| {
         u.starts_with("postgres://") || u.starts_with("postgresql://")
     })
+}
+
+/// Build-time `postgres` feature was not enabled while config requests a PostgreSQL URL.
+pub fn postgres_feature_required_error() -> crate::error::KowalskiError {
+    crate::error::KowalskiError::Configuration(
+        "PostgreSQL support requires building with `--features postgres` (e.g. `cargo build -p kowalski-core --features postgres` or `cargo build -p kowalski-cli --features postgres`).".to_string(),
+    )
 }
 
 /// Trait for extending configuration with additional settings
