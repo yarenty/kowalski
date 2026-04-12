@@ -34,7 +34,8 @@ impl FederationOrchestrator {
         self.broker.publish(envelope).await
     }
 
-    /// First agent matching `required_capability` receives a [`AclMessage::TaskDelegate`].
+    /// Best-ranked agent for `required_capability` receives a [`AclMessage::TaskDelegate`]
+    /// (see [`AgentRegistry::find_ranked_by_capability`]).
     /// Returns the chosen agent id, or `None` if no match.
     pub async fn delegate_first_match(
         &self,
@@ -42,7 +43,7 @@ impl FederationOrchestrator {
         instruction: &str,
         required_capability: &str,
     ) -> Result<Option<String>, KowalskiError> {
-        let candidates = self.registry.find_by_capability(required_capability);
+        let candidates = self.registry.find_ranked_by_capability(required_capability);
         let Some(agent) = candidates.first() else {
             return Ok(None);
         };

@@ -74,6 +74,8 @@ export type ChatStreamEvent =
   | { type: "error"; message: string }
   | { type: "done" };
 
+export type FederationDelegateResponse = { delegated_to: string | null };
+
 export const api = {
   health: () => json<Health>("/api/health"),
   agents: () => json<AgentsResponse>("/api/agents"),
@@ -92,7 +94,29 @@ export const api = {
       method: "POST",
       body: "{}",
     }),
+  federationDelegate: (body: {
+    task_id: string;
+    instruction: string;
+    capability: string;
+  }) =>
+    json<FederationDelegateResponse>("/api/federation/delegate", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };
+
+/** `EventSource` for `GET /api/federation/stream` — caller must `close()` when done. */
+export function openFederationEventSource(
+  topic: string,
+  onMessage: (data: string) => void,
+  onError?: () => void,
+): EventSource {
+  const url = `${base}/api/federation/stream?topic=${encodeURIComponent(topic)}`;
+  const es = new EventSource(url);
+  es.onmessage = (ev) => onMessage(ev.data);
+  es.onerror = () => onError?.();
+  return es;
+}
 
 /** Parses `text/event-stream` body: one JSON object per `data:` line. */
 export async function chatStream(

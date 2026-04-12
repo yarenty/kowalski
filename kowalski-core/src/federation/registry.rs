@@ -67,6 +67,33 @@ impl AgentRegistry {
             })
             .collect()
     }
+
+    /// Like [`find_by_capability`](Self::find_by_capability), ordered by match quality: exact capability
+    /// token first, then longer substring matches; ties broken by agent id.
+    pub fn find_ranked_by_capability(&self, cap: &str) -> Vec<AgentRecord> {
+        let c = cap.to_lowercase();
+        let mut v = self.find_by_capability(cap);
+        v.sort_by(|a, b| {
+            let sa = capability_match_score(a, &c);
+            let sb = capability_match_score(b, &c);
+            sb.cmp(&sa).then_with(|| a.id.cmp(&b.id))
+        });
+        v
+    }
+}
+
+fn capability_match_score(agent: &AgentRecord, c: &str) -> i32 {
+    let mut best = 0i32;
+    for x in &agent.capabilities {
+        let xl = x.to_lowercase();
+        if xl == c {
+            return 10_000;
+        }
+        if xl.contains(c) {
+            best = best.max(xl.len() as i32);
+        }
+    }
+    best
 }
 
 impl Default for AgentRegistry {
@@ -90,5 +117,23 @@ mod tests {
         let hits = r.find_by_capability("web");
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].id, "a1");
+    }
+
+    #[test]
+    fn ranked_prefers_exact_capability() {
+        let r = AgentRegistry::new();
+        r.register(AgentRecord {
+            id: "broad".into(),
+            capabilities: vec!["chat_assistant".into()],
+        })
+        .unwrap();
+        r.register(AgentRecord {
+            id: "exact".into(),
+            capabilities: vec!["chat".into(), "mcp".into()],
+        })
+        .unwrap();
+        let ranked = r.find_ranked_by_capability("chat");
+        assert_eq!(ranked[0].id, "exact");
+        assert_eq!(ranked[1].id, "broad");
     }
 }
