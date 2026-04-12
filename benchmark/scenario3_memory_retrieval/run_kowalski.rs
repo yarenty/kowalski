@@ -60,8 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let conversation_id = agent.start_conversation("llama3.2");
 
     // Pre-populate semantic memory for testing
-    // NOTE: This requires Qdrant to be running and the collection 'kowalski_memory' to exist.
-    // The embedding vector size must match Qdrant's collection config.
+    // Semantic tier uses in-process embeddings; no external vector DB.
     let content1 = "Kowalski is a high-performance, Rust-based framework for building AI agents.";
     let content2 = "Rust offers memory safety, concurrency without GIL, and high performance.";
     let embedding1 = get_ollama_embedding(content1).await?;
@@ -93,7 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await
         .expect("Failed to add memory unit 2");
 
-    // Give Qdrant a moment to index (in a real scenario, this is handled by Qdrant itself)
+    // Brief pause so async memory ops settle (if any)
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
     let start_time = Instant::now();

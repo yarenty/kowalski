@@ -177,7 +177,7 @@ async fn test_memory_isolation() {
     // If input has no embedding, it might fail or return nothing if it tries to generate one via Ollama (which might fail in test env).
 
     // Let's rely on WorkingMemory test as the proof of architecture,
-    // as it doesn't require external services (Ollama/Qdrant).
+    // as it doesn't require external services (Ollama).
     // The fact that we passed different instances to BaseAgent proves the architecture supports isolation.
 
     println!(

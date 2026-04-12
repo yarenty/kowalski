@@ -323,7 +323,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::Consolidate { delete }) => {
             let config = Config::default();
             let episodic_path = &config.memory.episodic_path;
-            let qdrant_url = &config.qdrant.http_url;
             let ollama_model = &config.ollama.model;
 
             // Create LLM provider for consolidation
@@ -334,7 +333,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ));
 
             let mut weaver =
-                Consolidator::new(episodic_path, qdrant_url, llm_provider, ollama_model).await?;
+                Consolidator::new(episodic_path, llm_provider, ollama_model)?;
             weaver.run(delete).await?;
             println!("Memory consolidation complete.");
         }

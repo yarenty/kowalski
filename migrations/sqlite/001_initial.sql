@@ -1,5 +1,5 @@
 -- WP3: SQLite — same logical model as migrations/postgres (default / simple single-node).
--- No pgvector equivalent here; use Qdrant (existing) or app-side vector search until sqlite-vec is added.
+-- Vector search can use app-side cosine on BLOBs or sqlite-vec later; semantic tier is in-process for now.
 -- Apply via `kowalski_core::db::run_migrations("sqlite:…")` or sqlx migrate.
 
 CREATE TABLE IF NOT EXISTS episodic_memory (

@@ -12,10 +12,6 @@ stream = true
 provider = "bing"
 api_key = ""  # DuckDuckGo doesn't require an API key
 
-[qdrant]
-http_url = "http://localhost:6333"
-grpc_url = "http://localhost:6334"
-
 [memory]
 episodic_path = "db/episodic_buffer"
 
