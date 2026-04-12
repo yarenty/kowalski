@@ -15,12 +15,12 @@
 //!
 //! - **`McpServerConfig::headers`**: Applied as `reqwest::Client` default headers (e.g. `Authorization`).
 //! - **`McpServerConfig::transport`**: `Http` uses JSON-RPC over POST; `Sse` is logged and still uses POST until a full SSE transport exists.
+//! - **Operator CLI**: `cargo run -p kowalski-cli -- mcp ping` loads `[mcp]` from `./config.toml` (or `mcp ping -c /path/to.toml`); other top-level TOML sections in the same file are ignored.
 //!
 //! ## Follow-ups (not done yet)
 //!
 //! - **Transport**: Full **SSE** (or Streamable HTTP) session per [MCP transports](https://spec.modelcontextprotocol.io/).
 //! - **Lifecycle**: Optionally treat `notifications/initialized` failures as hard errors for strict servers.
-//! - **CLI**: `mcp ping` / health command (WP6-style operator UX).
 //! - **Stdio MCP**: `McpClient::connect_stdio` for local processes (see WP2 task file “Later” section).
 //!
 //! **Prompt refresh:** [`crate::template::TemplateAgent::register_tool`] and [`crate::template::TemplateAgent::refresh_tool_prompt_appendix`] update `tool_prompt_appendix` when the tool set changes.
