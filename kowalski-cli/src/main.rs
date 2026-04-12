@@ -333,7 +333,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ));
 
             let mut weaver =
-                Consolidator::new(episodic_path, llm_provider, ollama_model)?;
+                Consolidator::new(episodic_path, llm_provider, ollama_model).await?;
             weaver.run(delete).await?;
             println!("Memory consolidation complete.");
         }

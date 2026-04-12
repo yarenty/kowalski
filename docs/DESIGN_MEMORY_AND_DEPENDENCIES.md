@@ -20,13 +20,27 @@ For structured **subject → predicate → object** edges, the code briefly used
 
 ---
 
+## Episodic tier: SQLite (embedded file, no daemon)
+
+**Tier 2 (episodic buffer)** stores each [`MemoryUnit`](../../kowalski-core/src/memory/mod.rs) as JSON in table **`episodic_kv`** (`id`, `payload`), using **`sqlx`** + **embedded SQLite** (via `libsqlite3-sys`, already required elsewhere). **No separate server** and no **C++ RocksDB** build.
+
+| Aspect | Notes |
+|--------|--------|
+| **Path** | `memory.episodic_path`: if it ends with `.sqlite` / `.db`, that file is used; otherwise a directory is created and **`episodic.sqlite`** is opened inside it (same layout as the old RocksDB directory convention). |
+| **Build** | One native SQLite compile path shared with optional `database_url` migrations. |
+| **Historical note** | Episodic storage previously used **RocksDB**; it was replaced to **reduce native dependency surface** and align Tier 2 with **SQLite** already in the stack. |
+
+**Direction:** [WP3](../rebuild_tasks/wp3_postgres_data_layer_tasks.md) may **unify** episodic rows with the same SQL schema as optional server Postgres; the on-disk file format can remain SQLite for single-node / edge.
+
+---
+
 ## Design goals: simple, robust, few moving parts
 
 The **main direction** for the framework is:
 
 | Goal | Implication |
 |------|-------------|
-| **Simplicity** | Prefer what runs **in-process** or in **embedded** stores (e.g. RocksDB, optional SQLite/Postgres) over mandatory network services. |
+| **Simplicity** | Prefer what runs **in-process** or in **embedded** stores (e.g. **SQLite** for episodic + optional SQL, Postgres when configured) over mandatory network services. |
 | **Robustness** | Fewer daemons and fewer failure points: every extra service is another thing that must be up, versioned, and secured. |
 | **Dependency minimization** | Avoid **required** heavy or external dependencies for core workflows; keep the default path **dependency-light** so installs and edge deployments stay predictable. |
 | **Optional scale-out** | When a deployment **needs** a dedicated vector DB, hosted SQL, or cluster storage, those remain **additive**—not prerequisites for “hello world” or local dev. |

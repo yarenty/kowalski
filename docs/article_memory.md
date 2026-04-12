@@ -22,7 +22,7 @@ Let’s walk through the three tiers, not as a checklist, but as a living system
 
 When an agent is in the middle of a conversation, it relies on its working memory. This is the scratchpad of the mind, holding the immediate context—recent messages, plans, and tool outputs. In Rust, this is as simple as a `Vec<Message>`, lightning-fast but ephemeral. When the conversation ends, this memory is flushed, making way for new experiences.
 
-But what happens to those experiences? They don’t just vanish. Instead, they’re archived in the episodic buffer—a kind of journal that records the agent’s life in high fidelity. Here, we use an embedded key-value store like RocksDB. It’s persistent, fast, and can recall every detail of recent events. Of course, even journals must be pruned, so we use a time-to-live policy to keep things manageable.
+But what happens to those experiences? They don’t just vanish. Instead, they’re archived in the episodic buffer—a kind of journal that records the agent’s life in high fidelity. Here, we use **embedded SQLite** (via `sqlx`): rows in `episodic_kv` hold serialized memory units. It’s persistent, fast, and can recall every detail of recent events. Of course, even journals must be pruned, so we use a time-to-live policy to keep things manageable.
 
 The real magic happens in the long-term semantic store. This is the agent’s true “brain,” where knowledge is distilled and organized. Instead of storing only raw conversations, semantic retrieval uses **embeddings** so the agent can find memories by meaning, not just keywords (historically explored with an external vector DB as **PoC**; the **default direction** is **in-process** similarity plus optional backends—see [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](DESIGN_MEMORY_AND_DEPENDENCIES.md)). For relationships and structured knowledge, **subject → (predicate, object)** edges are kept in a small **in-memory map** (`std` collections—no separate graph library required).
 
@@ -38,7 +38,7 @@ graph TD
 
     subgraph Memory Tiers
         T1["Tier 1: Working Memory <br> In-Memory Struct"]
-        T2["Tier 2: Episodic Buffer <br> RocksDB"]
+        T2["Tier 2: Episodic Buffer <br> SQLite"]
         T3["Tier 3: Long-Term Semantic Store <br> Vectors + Graph (PoC used Qdrant)"]
     end
 
@@ -86,7 +86,7 @@ The Recall Engine, on the other hand, is the agent’s librarian. When the agent
 
 ## Technical Details: Under the Hood
 
-Everything in `kowalski-memory` is written in Rust, chosen for its speed, safety, and ability to handle concurrency with ease. RocksDB serves as the backbone for episodic memory, providing fast, embeddable storage. For semantic memory, **vector search** was first explored with **Qdrant** as a **PoC**; the **default direction** is **in-process** similarity and **minimal external dependencies**—see [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](DESIGN_MEMORY_AND_DEPENDENCIES.md). Background tasks like consolidation run asynchronously with Tokio, ensuring the agent’s main loop is never blocked.
+Everything in `kowalski-memory` is written in Rust, chosen for its speed, safety, and ability to handle concurrency with ease. **SQLite** backs episodic memory (`episodic_kv`), giving fast, embeddable storage without a separate daemon. For semantic memory, **vector search** was first explored with **Qdrant** as a **PoC**; the **default direction** is **in-process** similarity and **minimal external dependencies**—see [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](DESIGN_MEMORY_AND_DEPENDENCIES.md). Background tasks like consolidation run asynchronously with Tokio, ensuring the agent’s main loop is never blocked.
 
 The architecture is built for extensibility. The core interfaces are defined as Rust traits—`MemoryProvider`, `MemoryWeaver`—so you can swap out storage backends, embedding models, retrieval strategies, or even the entire consolidation process as your needs evolve. For example, you might want to use a different vector database, or plug in a domain-specific LLM for summarization. Here’s how a basic memory trait might look:
 
@@ -102,7 +102,7 @@ pub trait MemoryProvider {
 
 ## Extension Points and Real-World Considerations
 
-One of the joys—and challenges—of building a system like this is the sheer number of ways you can extend it. Maybe you want to use a cloud-native database instead of RocksDB, or experiment with different embedding models. Perhaps your application needs a richer graph schema to capture complex relationships, or you want to add user feedback to improve retrieval. The architecture is designed to make these changes as painless as possible.
+One of the joys—and challenges—of building a system like this is the sheer number of ways you can extend it. Maybe you want to point episodic storage at a **shared SQL backend** (e.g. Postgres) in a future iteration, or experiment with different embedding models. Perhaps your application needs a richer graph schema to capture complex relationships, or you want to add user feedback to improve retrieval. The architecture is designed to make these changes as painless as possible.
 
 But with great power comes great responsibility. There are important considerations to keep in mind. Large language models have a limited context window, so you can’t just dump all of memory into working memory—you need to select and inject only the most relevant pieces. As your agent’s experience grows, efficient indexing and retrieval become critical. Latency matters, too: background tasks must never block the main agent loop. And don’t forget about privacy—sometimes, sensitive data needs to be purged or anonymized, especially in long-term storage.
 

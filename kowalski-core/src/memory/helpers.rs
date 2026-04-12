@@ -19,10 +19,9 @@ pub async fn create_memory_providers(
     let working_memory = Arc::new(Mutex::new(WorkingMemory::new(100))) as MemoryProviderArc;
 
     let llm_provider = crate::llm::create_llm_provider(config)?;
-    let episodic_memory = Arc::new(Mutex::new(EpisodicBuffer::new(
-        &config.memory.episodic_path,
-        llm_provider,
-    )?)) as MemoryProviderArc;
+    let episodic_memory = Arc::new(Mutex::new(
+        EpisodicBuffer::open(&config.memory.episodic_path, llm_provider).await?,
+    )) as MemoryProviderArc;
 
     let semantic_memory =
         Arc::new(Mutex::new(SemanticStore::new())) as MemoryProviderArc;

@@ -102,7 +102,7 @@ impl Default for ChatConfig {
 pub struct MemoryConfig {
     pub episodic_path: String,
     /// Optional SQL store: prefer **`sqlite:…`** (single file, no server) for the simple path; use **`postgres://…`** when you need Postgres + pgvector at scale.
-    /// If unset, no SQL migrations run and existing RocksDB paths apply unchanged.
+    /// If unset, no SQL migrations run for the optional `database_url` pool; episodic Tier 2 still uses its own SQLite file under `episodic_path`.
     #[serde(default)]
     pub database_url: Option<String>,
     #[serde(flatten)]

@@ -1,5 +1,5 @@
 // Tier 2: Episodic Buffer (The Journal)
-// A persistent, chronological log of recent conversations using RocksDB.
+// Persistent log of recent conversations using embedded SQLite (no RocksDB, no separate server).
 
 use crate::{
     error::KowalskiError,
@@ -7,76 +7,96 @@ use crate::{
 };
 use async_trait::async_trait;
 use log::{debug, error, info};
-
-use rocksdb::{DB, IteratorMode, Options};
 use serde_json;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
+use sqlx::Row;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-// Removed OnceCell - no longer using singleton pattern
 
-/// A persistent, chronological memory store using RocksDB.
+/// Schema for the episodic SQLite file (same as `migrations/sqlite/002_episodic_kv.sql`).
+const EPISODIC_KV_SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS episodic_kv (
+    id TEXT PRIMARY KEY NOT NULL,
+    payload TEXT NOT NULL
+);
+"#;
+
+/// Resolve filesystem path for the episodic DB file and ensure parent directories exist.
+fn episodic_db_file(episodic_path: &str) -> Result<PathBuf, KowalskiError> {
+    let p = episodic_path.trim_end_matches('/');
+    let file_path: PathBuf = if p.ends_with(".sqlite") || p.ends_with(".db") {
+        PathBuf::from(p)
+    } else {
+        Path::new(p).join("episodic.sqlite")
+    };
+    if let Some(parent) = file_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                KowalskiError::Memory(format!("create episodic directory: {e}"))
+            })?;
+        }
+    }
+    Ok(file_path)
+}
+
+/// A persistent memory store using **embedded SQLite** (single file on disk, no daemon).
 ///
-/// This acts as the agent's "journal," storing a high-fidelity log of past interactions.
-/// Memory units are stored as key-value pairs, where the key is the `MemoryUnit.id`.
+/// Memory units are stored as JSON in `episodic_kv`, keyed by `MemoryUnit.id`.
 pub struct EpisodicBuffer {
-    db: DB,
+    pool: SqlitePool,
     llm_provider: std::sync::Arc<dyn crate::llm::LLMProvider>,
 }
 
 impl EpisodicBuffer {
-    /// Creates a new or opens an existing `EpisodicBuffer` at the given path.
+    /// Opens or creates an episodic buffer at `episodic_path`.
     ///
-    /// # Arguments
-    ///
-    /// * `path` - The filesystem path where the RocksDB database will be stored.
-    /// * `llm_provider` - Provider for generating embeddings
-    pub fn new(
-        path: &str,
+    /// * If `episodic_path` ends with `.sqlite` or `.db`, that file is used.
+    /// * Otherwise it is treated as a **directory** and `episodic.sqlite` is created inside it
+    ///   (same layout as the former RocksDB directory convention).
+    pub async fn open(
+        episodic_path: &str,
         llm_provider: std::sync::Arc<dyn crate::llm::LLMProvider>,
     ) -> Result<Self, KowalskiError> {
-        info!("Initializing episodic buffer at path: {}", path);
-        let mut opts = Options::default();
-        opts.create_if_missing(true);
-        let db = DB::open(&opts, path).map_err(|e| {
-            let err_str = e.to_string();
-            if err_str.contains("No locks available") || err_str.contains("lock hold by current process") {
-                error!("RocksDB lock error at {}: {}", path, err_str);
-                KowalskiError::Memory(format!(
-                    "Failed to open RocksDB at {} due to a lock error: {}\n\
-                    This usually means another process is using the database, or a previous process crashed and left a stale lock.\n\
-                    - Ensure no other process is using the database.\n\
-                    - If safe, remove the LOCK file in the database directory and try again.\n\
-                    - If the problem persists, try rebooting your system.\n\
-                    - For development, you can move or delete the entire database directory to start fresh.\n\
-                    (Original error: {})",
-                    path, err_str, err_str
-                ))
-            } else {
-                error!("Failed to open RocksDB at {}: {}", path, err_str);
-                KowalskiError::Memory(err_str)
-            }
-        })?;
-        Ok(Self { db, llm_provider })
+        let file = episodic_db_file(episodic_path)?;
+        info!("Opening episodic SQLite buffer at {}", file.display());
+        let opts = SqliteConnectOptions::new()
+            .filename(&file)
+            .create_if_missing(true);
+        let pool = SqlitePool::connect_with(opts)
+            .await
+            .map_err(|e| KowalskiError::Memory(format!("episodic SQLite connect: {e}")))?;
+        sqlx::query(EPISODIC_KV_SCHEMA)
+            .execute(&pool)
+            .await
+            .map_err(|e| KowalskiError::Memory(format!("episodic schema: {e}")))?;
+        Ok(Self { pool, llm_provider })
     }
 
     pub async fn retrieve_all(&self) -> Result<Vec<MemoryUnit>, KowalskiError> {
-        let mut memories = Vec::new();
-        let iter = self.db.iterator(IteratorMode::Start);
-        for item in iter {
-            match item {
-                Ok((_key, value)) => match serde_json::from_slice::<MemoryUnit>(&value) {
-                    Ok(unit) => memories.push(unit),
-                    Err(e) => error!("Failed to deserialize memory unit from DB: {}", e),
-                },
-                Err(e) => error!("Error during RocksDB iteration: {}", e),
+        let rows = sqlx::query("SELECT id, payload FROM episodic_kv ORDER BY id")
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+        let mut memories = Vec::with_capacity(rows.len());
+        for row in rows {
+            let payload: String = row
+                .try_get("payload")
+                .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+            match serde_json::from_str::<MemoryUnit>(&payload) {
+                Ok(unit) => memories.push(unit),
+                Err(e) => error!("Failed to deserialize memory unit from SQLite: {}", e),
             }
         }
         Ok(memories)
     }
 
     pub async fn delete(&mut self, id: &str) -> Result<(), KowalskiError> {
-        self.db
-            .delete(id.as_bytes())
-            .map_err(|e| KowalskiError::Memory(e.to_string()))
+        sqlx::query("DELETE FROM episodic_kv WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+        Ok(())
     }
 
     pub async fn add_with_embedding(
@@ -85,25 +105,55 @@ impl EpisodicBuffer {
     ) -> Result<(), KowalskiError> {
         info!("[EpisodicBuffer] Adding memory unit: {}", memory.id);
         debug!("Adding memory unit to episodic buffer: {}", memory.id);
-        // If embedding is missing, generate it
         if memory.embedding.is_none() {
             match self.llm_provider.embed(&memory.content).await {
                 Ok(embedding) => memory.embedding = Some(embedding),
                 Err(e) => {
                     error!("Failed to get embedding for memory {}: {}", memory.id, e);
-                    // Continue without embedding
                 }
             }
         }
+        self.upsert_unit(&memory).await
+    }
+
+    async fn upsert_unit(&self, memory: &MemoryUnit) -> Result<(), KowalskiError> {
         let key = memory.id.clone();
-        let value = serde_json::to_string(&memory).map_err(|e| {
+        let value = serde_json::to_string(memory).map_err(|e| {
             error!("Failed to serialize memory unit {}: {}", key, e);
             KowalskiError::Memory(e.to_string())
         })?;
-        self.db.put(key.as_bytes(), value.as_bytes()).map_err(|e| {
-            error!("Failed to write to RocksDB for key {}: {}", key, e);
+        sqlx::query(
+            "INSERT INTO episodic_kv (id, payload) VALUES (?, ?)
+             ON CONFLICT(id) DO UPDATE SET payload = excluded.payload",
+        )
+        .bind(&key)
+        .bind(&value)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to write episodic row {}: {}", key, e);
             KowalskiError::Memory(e.to_string())
-        })
+        })?;
+        Ok(())
+    }
+
+    async fn load_all_units(&self) -> Result<Vec<MemoryUnit>, KowalskiError> {
+        let rows = sqlx::query("SELECT id, payload FROM episodic_kv")
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            let payload: String = row
+                .try_get("payload")
+                .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+            if let Ok(unit) = serde_json::from_str::<MemoryUnit>(&payload) {
+                out.push(unit);
+            } else {
+                error!("Failed to deserialize episodic payload");
+            }
+        }
+        Ok(out)
     }
 
     pub async fn retrieve_with_embedding(
@@ -112,72 +162,50 @@ impl EpisodicBuffer {
         retrieval_limit: usize,
     ) -> Result<Vec<MemoryUnit>, KowalskiError> {
         info!("[EpisodicBuffer][RETRIEVE] Query: '{}'", query);
-        // Try to get embedding for the query
         let query_embedding = self.llm_provider.embed(query).await.ok();
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let max_time_span = 60 * 60 * 24 * 30; // 30 days in seconds, for recency normalization
-        let iter = self.db.iterator(IteratorMode::Start);
+        let max_time_span = 60 * 60 * 24 * 30u64;
+        let units = self.load_all_units().await?;
         let mut scored = Vec::new();
         let mut fallback_results = Vec::new();
-        for item in iter {
-            match item {
-                Ok((_key, value)) => match serde_json::from_slice::<MemoryUnit>(&value) {
-                    Ok(unit) => {
-                        // If both query and memory have embeddings, use semantic+recency
-                        if let (Some(q_emb), Some(m_emb)) =
-                            (query_embedding.as_ref(), unit.embedding.as_ref())
-                        {
-                            let sim = cosine_similarity(q_emb, m_emb);
-                            // Recency: newer memories get higher score
-                            let recency = 1.0
-                                - ((now.saturating_sub(unit.timestamp)) as f32
-                                    / max_time_span as f32);
-                            let recency = recency.max(0.0); // Clamp to [0,1]
-                            let score = 0.85 * sim + 0.15 * recency;
-                            scored.push((score, unit));
-                        } else {
-                            // Fallback: text search (case-insensitive, any word)
-                            let lower_query = query.to_lowercase().trim().to_string();
-                            let query_words: Vec<&str> = lower_query.split_whitespace().collect();
-                            let content = unit.content.to_lowercase();
-                            if query_words.iter().any(|w| content.contains(w)) {
-                                fallback_results.push(unit);
-                            }
-                        }
-                    }
-                    Err(e) => error!("Failed to deserialize memory unit from DB: {}", e),
-                },
-                Err(e) => error!("Error during RocksDB iteration: {}", e),
+        for unit in units {
+            if let (Some(q_emb), Some(m_emb)) = (query_embedding.as_ref(), unit.embedding.as_ref())
+            {
+                let sim = cosine_similarity(q_emb, m_emb);
+                let recency = 1.0
+                    - ((now.saturating_sub(unit.timestamp)) as f32 / max_time_span as f32).min(1.0);
+                let recency = recency.max(0.0);
+                let score = 0.85 * sim + 0.15 * recency;
+                scored.push((score, unit));
+            } else {
+                let lower_query = query.to_lowercase().trim().to_string();
+                let query_words: Vec<&str> = lower_query.split_whitespace().collect();
+                let content = unit.content.to_lowercase();
+                if query_words.iter().any(|w| content.contains(w)) {
+                    fallback_results.push(unit);
+                }
             }
         }
-        // If we have scored results, sort and return top N
         if !scored.is_empty() {
             scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-            let results: Vec<MemoryUnit> = scored
+            return Ok(scored
                 .into_iter()
                 .map(|(_, u)| u)
                 .take(retrieval_limit)
-                .collect();
-            Ok(results)
-        } else {
-            // Fallback: return text search results (limit)
-            let results = if fallback_results.len() > retrieval_limit {
-                fallback_results.into_iter().take(retrieval_limit).collect()
-            } else {
-                fallback_results
-            };
-            Ok(results)
+                .collect());
         }
+        let results = if fallback_results.len() > retrieval_limit {
+            fallback_results[fallback_results.len() - retrieval_limit..].to_vec()
+        } else {
+            fallback_results
+        };
+        Ok(results)
     }
 }
 
-// Singleton pattern removed - use dependency injection instead
-// Create instances with EpisodicBuffer::new() and inject via Arc<dyn MemoryProvider>
-
-/// Utility: Cosine similarity between two vectors
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     let dot = a.iter().zip(b).map(|(x, y)| x * y).sum::<f32>();
     let norm_a = a.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -191,106 +219,69 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 
 #[async_trait]
 impl MemoryProvider for EpisodicBuffer {
-    /// Adds a `MemoryUnit` to the RocksDB store.
-    ///
-    /// The unit is serialized to JSON. The `MemoryUnit.id` is used as the key.
     async fn add(&mut self, mut memory: MemoryUnit) -> Result<(), KowalskiError> {
         info!("[EpisodicBuffer] Adding memory unit: {}", memory.id);
         debug!("Adding memory unit to episodic buffer: {}", memory.id);
-        // If embedding is missing, generate it
         if memory.embedding.is_none() {
             match self.llm_provider.embed(&memory.content).await {
                 Ok(embedding) => memory.embedding = Some(embedding),
                 Err(e) => {
                     error!("Failed to get embedding for memory {}: {}", memory.id, e);
-                    // Continue without embedding
                 }
             }
         }
-        let key = memory.id.clone();
-        let value = serde_json::to_string(&memory).map_err(|e| {
-            error!("Failed to serialize memory unit {}: {}", key, e);
-            KowalskiError::Memory(e.to_string())
-        })?;
-        self.db.put(key.as_bytes(), value.as_bytes()).map_err(|e| {
-            error!("Failed to write to RocksDB for key {}: {}", key, e);
-            KowalskiError::Memory(e.to_string())
-        })
+        self.upsert_unit(&memory).await
     }
 
-    /// Retrieves all memory units that contain the query string (case-insensitive).
-    ///
-    /// This performs a full scan of the database, which can be slow on large datasets.
-    /// It is intended for retrieving recent, related conversational context, not for
-    /// large-scale semantic search.
     async fn retrieve(
         &self,
         query: &str,
         retrieval_limit: usize,
     ) -> Result<Vec<MemoryUnit>, KowalskiError> {
         info!("[EpisodicBuffer][RETRIEVE] Query: '{}'", query);
-        // Try to get embedding for the query
         let query_embedding = self.llm_provider.embed(query).await.ok();
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let max_time_span = 60 * 60 * 24 * 30; // 30 days in seconds, for recency normalization
-        let iter = self.db.iterator(IteratorMode::Start);
+        let max_time_span = 60 * 60 * 24 * 30u64;
+        let units = self.load_all_units().await?;
         let mut scored = Vec::new();
         let mut fallback_results = Vec::new();
-        for item in iter {
-            match item {
-                Ok((_key, value)) => match serde_json::from_slice::<MemoryUnit>(&value) {
-                    Ok(unit) => {
-                        // If both query and memory have embeddings, use semantic+recency
-                        if let (Some(q_emb), Some(m_emb)) =
-                            (query_embedding.as_ref(), unit.embedding.as_ref())
-                        {
-                            let sim = cosine_similarity(q_emb, m_emb);
-                            // Recency: newer memories get higher score
-                            let recency = 1.0
-                                - ((now.saturating_sub(unit.timestamp)) as f32
-                                    / max_time_span as f32);
-                            let recency = recency.max(0.0); // Clamp to [0,1]
-                            let score = 0.85 * sim + 0.15 * recency;
-                            scored.push((score, unit));
-                        } else {
-                            // Fallback: text search (case-insensitive, any word)
-                            let lower_query = query.to_lowercase().trim().to_string();
-                            let query_words: Vec<&str> = lower_query.split_whitespace().collect();
-                            let content = unit.content.to_lowercase();
-                            if query_words.iter().any(|w| content.contains(w)) {
-                                fallback_results.push(unit);
-                            }
-                        }
-                    }
-                    Err(e) => error!("Failed to deserialize memory unit from DB: {}", e),
-                },
-                Err(e) => error!("Error during RocksDB iteration: {}", e),
+        for unit in units {
+            if let (Some(q_emb), Some(m_emb)) = (query_embedding.as_ref(), unit.embedding.as_ref())
+            {
+                let sim = cosine_similarity(q_emb, m_emb);
+                let recency = 1.0
+                    - ((now.saturating_sub(unit.timestamp)) as f32 / max_time_span as f32).min(1.0);
+                let recency = recency.max(0.0);
+                let score = 0.85 * sim + 0.15 * recency;
+                scored.push((score, unit));
+            } else {
+                let lower_query = query.to_lowercase().trim().to_string();
+                let query_words: Vec<&str> = lower_query.split_whitespace().collect();
+                let content = unit.content.to_lowercase();
+                if query_words.iter().any(|w| content.contains(w)) {
+                    fallback_results.push(unit);
+                }
             }
         }
-        // If we have scored results, sort and return top N
         if !scored.is_empty() {
             scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-            let results: Vec<MemoryUnit> = scored
+            return Ok(scored
                 .into_iter()
                 .map(|(_, u)| u)
                 .take(retrieval_limit)
-                .collect();
-            Ok(results)
-        } else {
-            // Fallback: return text search results (limit)
-            let results = if fallback_results.len() > retrieval_limit {
-                fallback_results[fallback_results.len() - retrieval_limit..].to_vec()
-            } else {
-                fallback_results
-            };
-            Ok(results)
+                .collect());
         }
+        let results = if fallback_results.len() > retrieval_limit {
+            fallback_results[fallback_results.len() - retrieval_limit..].to_vec()
+        } else {
+            fallback_results
+        };
+        Ok(results)
     }
 
-    /// Performs a structured search, currently equivalent to `retrieve`.
     async fn search(&self, query: MemoryQuery) -> Result<Vec<MemoryUnit>, KowalskiError> {
         debug!("Searching episodic buffer with query: {:?}", query);
         self.retrieve(&query.text_query, 3).await
