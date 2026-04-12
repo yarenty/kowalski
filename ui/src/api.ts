@@ -50,8 +50,16 @@ export type ChatResetResponse = {
   model: string;
 };
 
+export type AgentsResponse = {
+  mode: string;
+  agents: { name: string; description: string }[];
+  conversation_id: string;
+  model: string;
+};
+
 export const api = {
   health: () => json<Health>("/api/health"),
+  agents: () => json<AgentsResponse>("/api/agents"),
   doctor: () => json<Doctor>("/api/doctor"),
   mcpServers: () => json<McpServer[]>("/api/mcp/servers"),
   mcpPing: () =>

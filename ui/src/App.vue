@@ -1,11 +1,21 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { api, type Doctor, type Health, type McpPingResult, type McpServer } from "./api";
+import {
+  api,
+  type AgentsResponse,
+  type Doctor,
+  type Health,
+  type McpPingResult,
+  type McpServer,
+} from "./api";
 
 const tab = ref<"home" | "mcp" | "chat">("home");
 
 const health = ref<Health | null>(null);
 const healthErr = ref<string | null>(null);
+
+const agents = ref<AgentsResponse | null>(null);
+const agentsErr = ref<string | null>(null);
 
 const doctor = ref<Doctor | null>(null);
 const doctorErr = ref<string | null>(null);
@@ -32,6 +42,16 @@ async function loadHealth() {
   } catch (e) {
     health.value = null;
     healthErr.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
+async function loadAgents() {
+  agentsErr.value = null;
+  try {
+    agents.value = await api.agents();
+  } catch (e) {
+    agents.value = null;
+    agentsErr.value = e instanceof Error ? e.message : String(e);
   }
 }
 
@@ -104,6 +124,7 @@ async function resetChat() {
 
 onMounted(() => {
   void loadHealth();
+  void loadAgents();
 });
 </script>
 
@@ -148,10 +169,14 @@ onMounted(() => {
         </p>
         <p>
           <button type="button" class="primary" @click="loadHealth">Refresh health</button>
+          <button type="button" @click="loadAgents">Refresh agents</button>
           <button type="button" @click="loadDoctor">Load doctor</button>
         </p>
         <pre v-if="health" class="json">{{ JSON.stringify(health, null, 2) }}</pre>
         <p v-if="healthErr" class="err">{{ healthErr }}</p>
+        <h3>Agents</h3>
+        <pre v-if="agents" class="json">{{ JSON.stringify(agents, null, 2) }}</pre>
+        <p v-if="agentsErr" class="err">{{ agentsErr }}</p>
         <h3>Ollama probe</h3>
         <pre v-if="doctor" class="json">{{ JSON.stringify(doctor, null, 2) }}</pre>
         <p v-if="doctorErr" class="err">{{ doctorErr }}</p>
