@@ -1,8 +1,8 @@
 // Tier 2: Episodic Buffer (The Journal)
-// Persistent log of recent conversations: embedded SQLite file, or PostgreSQL `episodic_kv` when `memory.database_url` is `postgres://…`.
+// Default: embedded SQLite (`episodic_path`). Optional: PostgreSQL `episodic_kv` when `memory.database_url` is `postgres://…` and the `postgres` feature is enabled.
 
 use crate::{
-    config::MemoryConfig,
+    config::{memory_uses_postgres, MemoryConfig},
     error::KowalskiError,
     memory::{MemoryProvider, MemoryQuery, MemoryUnit},
 };
@@ -25,12 +25,6 @@ CREATE TABLE IF NOT EXISTS episodic_kv (
 );
 "#;
 
-enum EpisodicBackend {
-    Sqlite(SqlitePool),
-    #[cfg(feature = "postgres")]
-    Postgres(PgPool),
-}
-
 /// Resolve filesystem path for the episodic DB file and ensure parent directories exist.
 fn episodic_db_file(episodic_path: &str) -> Result<PathBuf, KowalskiError> {
     let p = episodic_path.trim_end_matches('/');
@@ -49,48 +43,58 @@ fn episodic_db_file(episodic_path: &str) -> Result<PathBuf, KowalskiError> {
     Ok(file_path)
 }
 
-/// A persistent memory store using **embedded SQLite** (single file) or **PostgreSQL** `episodic_kv`.
+/// A persistent memory store: **SQLite is the default** (single file under [`MemoryConfig::episodic_path`]);
+/// **PostgreSQL** `episodic_kv` is opt-in via `postgres://` URL + `postgres` feature.
 ///
 /// Memory units are stored as JSON in `episodic_kv`, keyed by `MemoryUnit.id`.
 pub struct EpisodicBuffer {
-    backend: EpisodicBackend,
+    /// Default Tier-2 store: SQLite file. `None` only when using PostgreSQL for Tier 2.
+    #[cfg(feature = "postgres")]
+    sqlite: Option<SqlitePool>,
+    /// Set when `memory.database_url` is `postgres://…` and the `postgres` feature is enabled.
+    #[cfg(feature = "postgres")]
+    postgres: Option<PgPool>,
+    #[cfg(not(feature = "postgres"))]
+    sqlite: SqlitePool,
     llm_provider: Arc<dyn crate::llm::LLMProvider>,
 }
 
 impl EpisodicBuffer {
     /// Opens or creates an episodic buffer from [`MemoryConfig`].
     ///
-    /// * If `memory.database_url` is set to **`postgres://`** or **`postgresql://`**, Tier 2 uses
-    ///   table `episodic_kv` in that database (run migrations first, e.g. [`crate::db::run_memory_migrations_if_configured`]).
-    /// * Otherwise Tier 2 uses **SQLite** on disk:
+    /// * **Default — SQLite:** Tier 2 uses a file derived from [`MemoryConfig::episodic_path`]:
     ///   - If `episodic_path` ends with `.sqlite` or `.db`, that file is used.
     ///   - Otherwise it is treated as a **directory** and `episodic.sqlite` is created inside it.
+    /// * **Opt-in — PostgreSQL:** If [`crate::config::memory_uses_postgres`] is true, Tier 2 uses table `episodic_kv`
+    ///   in that database (run migrations first, e.g. [`crate::db::run_memory_migrations_if_configured`]).
     pub async fn open(
         memory: &MemoryConfig,
         llm_provider: Arc<dyn crate::llm::LLMProvider>,
     ) -> Result<Self, KowalskiError> {
-        if let Some(ref url) = memory.database_url {
-            if url.starts_with("postgres://") || url.starts_with("postgresql://") {
-                #[cfg(feature = "postgres")]
-                {
-                    info!("Opening episodic buffer on PostgreSQL (episodic_kv)");
-                    let pool = PgPool::connect(url.as_str())
-                        .await
-                        .map_err(|e| {
-                            KowalskiError::Memory(format!("episodic Postgres connect: {e}"))
-                        })?;
-                    return Ok(Self {
-                        backend: EpisodicBackend::Postgres(pool),
-                        llm_provider,
-                    });
-                }
-                #[cfg(not(feature = "postgres"))]
-                {
-                    return Err(crate::config::postgres_feature_required_error());
-                }
+        if memory_uses_postgres(memory) {
+            #[cfg(feature = "postgres")]
+            {
+                let url = memory
+                    .database_url
+                    .as_ref()
+                    .expect("memory_uses_postgres implies database_url is set");
+                info!("Opening episodic buffer on PostgreSQL (episodic_kv)");
+                let pool = PgPool::connect(url.as_str())
+                    .await
+                    .map_err(|e| KowalskiError::Memory(format!("episodic Postgres connect: {e}")))?;
+                return Ok(Self {
+                    sqlite: None,
+                    postgres: Some(pool),
+                    llm_provider,
+                });
+            }
+            #[cfg(not(feature = "postgres"))]
+            {
+                return Err(crate::config::postgres_feature_required_error());
             }
         }
 
+        // Default: embedded SQLite (Tier 2).
         let file = episodic_db_file(&memory.episodic_path)?;
         info!("Opening episodic SQLite buffer at {}", file.display());
         let opts = SqliteConnectOptions::new()
@@ -103,15 +107,46 @@ impl EpisodicBuffer {
             .execute(&pool)
             .await
             .map_err(|e| KowalskiError::Memory(format!("episodic schema: {e}")))?;
-        Ok(Self {
-            backend: EpisodicBackend::Sqlite(pool),
-            llm_provider,
-        })
+        #[cfg(feature = "postgres")]
+        {
+            return Ok(Self {
+                sqlite: Some(pool),
+                postgres: None,
+                llm_provider,
+            });
+        }
+        #[cfg(not(feature = "postgres"))]
+        {
+            return Ok(Self {
+                sqlite: pool,
+                llm_provider,
+            });
+        }
     }
 
     pub async fn retrieve_all(&self) -> Result<Vec<MemoryUnit>, KowalskiError> {
-        let pairs: Vec<(String, String)> = match &self.backend {
-            EpisodicBackend::Sqlite(pool) => {
+        #[cfg(not(feature = "postgres"))]
+        let pairs: Vec<(String, String)> = {
+            let pool = &self.sqlite;
+            let rows = sqlx::query("SELECT id, payload FROM episodic_kv ORDER BY id")
+                .fetch_all(pool)
+                .await
+                .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+            rows.into_iter()
+                .map(|row| -> Result<(String, String), KowalskiError> {
+                    let id: String = row
+                        .try_get("id")
+                        .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+                    let payload: String = row
+                        .try_get("payload")
+                        .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+                    Ok((id, payload))
+                })
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        #[cfg(feature = "postgres")]
+        let pairs: Vec<(String, String)> = match (&self.sqlite, &self.postgres) {
+            (Some(pool), None) => {
                 let rows = sqlx::query("SELECT id, payload FROM episodic_kv ORDER BY id")
                     .fetch_all(pool)
                     .await
@@ -128,8 +163,7 @@ impl EpisodicBuffer {
                     })
                     .collect::<Result<Vec<_>, _>>()?
             }
-            #[cfg(feature = "postgres")]
-            EpisodicBackend::Postgres(pool) => {
+            (None, Some(pool)) => {
                 let rows = sqlx::query("SELECT id, payload FROM episodic_kv ORDER BY id")
                     .fetch_all(pool)
                     .await
@@ -145,27 +179,45 @@ impl EpisodicBuffer {
                         Ok((id, payload))
                     })
                     .collect::<Result<Vec<_>, _>>()?
+            }
+            _ => {
+                return Err(KowalskiError::Memory(
+                    "episodic buffer: expected exactly one of sqlite or postgres pool".into(),
+                ));
             }
         };
         Ok(Self::memory_units_from_pairs(pairs))
     }
 
     pub async fn delete(&mut self, id: &str) -> Result<(), KowalskiError> {
-        match &self.backend {
-            EpisodicBackend::Sqlite(pool) => {
+        #[cfg(not(feature = "postgres"))]
+        {
+            sqlx::query("DELETE FROM episodic_kv WHERE id = ?")
+                .bind(id)
+                .execute(&self.sqlite)
+                .await
+                .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+        }
+        #[cfg(feature = "postgres")]
+        match (&self.sqlite, &self.postgres) {
+            (Some(pool), None) => {
                 sqlx::query("DELETE FROM episodic_kv WHERE id = ?")
                     .bind(id)
                     .execute(pool)
                     .await
                     .map_err(|e| KowalskiError::Memory(e.to_string()))?;
             }
-            #[cfg(feature = "postgres")]
-            EpisodicBackend::Postgres(pool) => {
+            (None, Some(pool)) => {
                 sqlx::query("DELETE FROM episodic_kv WHERE id = $1")
                     .bind(id)
                     .execute(pool)
                     .await
                     .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+            }
+            _ => {
+                return Err(KowalskiError::Memory(
+                    "episodic buffer: expected exactly one of sqlite or postgres pool".into(),
+                ));
             }
         }
         Ok(())
@@ -205,8 +257,24 @@ impl EpisodicBuffer {
             error!("Failed to serialize memory unit {}: {}", key, e);
             KowalskiError::Memory(e.to_string())
         })?;
-        match &self.backend {
-            EpisodicBackend::Sqlite(pool) => {
+        #[cfg(not(feature = "postgres"))]
+        {
+            sqlx::query(
+                "INSERT INTO episodic_kv (id, payload) VALUES (?, ?)
+                 ON CONFLICT(id) DO UPDATE SET payload = excluded.payload",
+            )
+            .bind(&key)
+            .bind(&value)
+            .execute(&self.sqlite)
+            .await
+            .map_err(|e| {
+                error!("Failed to write episodic row {}: {}", key, e);
+                KowalskiError::Memory(e.to_string())
+            })?;
+        }
+        #[cfg(feature = "postgres")]
+        match (&self.sqlite, &self.postgres) {
+            (Some(pool), None) => {
                 sqlx::query(
                     "INSERT INTO episodic_kv (id, payload) VALUES (?, ?)
                      ON CONFLICT(id) DO UPDATE SET payload = excluded.payload",
@@ -220,8 +288,7 @@ impl EpisodicBuffer {
                     KowalskiError::Memory(e.to_string())
                 })?;
             }
-            #[cfg(feature = "postgres")]
-            EpisodicBackend::Postgres(pool) => {
+            (None, Some(pool)) => {
                 sqlx::query(
                     "INSERT INTO episodic_kv (id, payload) VALUES ($1, $2)
                      ON CONFLICT (id) DO UPDATE SET payload = EXCLUDED.payload",
@@ -235,13 +302,38 @@ impl EpisodicBuffer {
                     KowalskiError::Memory(e.to_string())
                 })?;
             }
+            _ => {
+                return Err(KowalskiError::Memory(
+                    "episodic buffer: expected exactly one of sqlite or postgres pool".into(),
+                ));
+            }
         }
         Ok(())
     }
 
     async fn load_all_units(&self) -> Result<Vec<MemoryUnit>, KowalskiError> {
-        let pairs: Vec<(String, String)> = match &self.backend {
-            EpisodicBackend::Sqlite(pool) => {
+        #[cfg(not(feature = "postgres"))]
+        let pairs: Vec<(String, String)> = {
+            let pool = &self.sqlite;
+            let rows = sqlx::query("SELECT id, payload FROM episodic_kv")
+                .fetch_all(pool)
+                .await
+                .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+            rows.into_iter()
+                .map(|row| -> Result<(String, String), KowalskiError> {
+                    let id: String = row
+                        .try_get("id")
+                        .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+                    let payload: String = row
+                        .try_get("payload")
+                        .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+                    Ok((id, payload))
+                })
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        #[cfg(feature = "postgres")]
+        let pairs: Vec<(String, String)> = match (&self.sqlite, &self.postgres) {
+            (Some(pool), None) => {
                 let rows = sqlx::query("SELECT id, payload FROM episodic_kv")
                     .fetch_all(pool)
                     .await
@@ -258,8 +350,7 @@ impl EpisodicBuffer {
                     })
                     .collect::<Result<Vec<_>, _>>()?
             }
-            #[cfg(feature = "postgres")]
-            EpisodicBackend::Postgres(pool) => {
+            (None, Some(pool)) => {
                 let rows = sqlx::query("SELECT id, payload FROM episodic_kv")
                     .fetch_all(pool)
                     .await
@@ -275,6 +366,11 @@ impl EpisodicBuffer {
                         Ok((id, payload))
                     })
                     .collect::<Result<Vec<_>, _>>()?
+            }
+            _ => {
+                return Err(KowalskiError::Memory(
+                    "episodic buffer: expected exactly one of sqlite or postgres pool".into(),
+                ));
             }
         };
         let mut out = Vec::with_capacity(pairs.len());

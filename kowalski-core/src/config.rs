@@ -104,9 +104,9 @@ fn default_embedding_vector_dimensions() -> usize {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryConfig {
+    /// **Default Tier-2 episodic store:** embedded **SQLite** file under this path (`episodic.sqlite` in the directory, or a path ending in `.sqlite`/`.db`). Used when [`Self::database_url`] is unset or does not request PostgreSQL.
     pub episodic_path: String,
-    /// Optional SQL store: prefer **`sqlite:…`** (single file, no server) for migrations-only; use **`postgres://…`** when you need Postgres + pgvector at scale (**requires** building `kowalski-core` with **`--features postgres`**).
-    /// If **`postgres://…`** (with that feature), Tier 2 episodic memory uses table **`episodic_kv`** in that database (run migrations via [`crate::db::run_memory_migrations_if_configured`](crate::db::run_memory_migrations_if_configured)). Otherwise Tier 2 uses a **SQLite file** under `episodic_path` (`episodic.sqlite` or an explicit `.sqlite`/`.db` path).
+    /// Optional: set to **`postgres://…`** / **`postgresql://…`** to use PostgreSQL for Tier 2 (`episodic_kv`) and Tier 3 semantic SQL (**requires** `kowalski-core` **`--features postgres`**). If omitted, Tier 2 stays on **SQLite** ([`Self::episodic_path`]) — the default.
     #[serde(default)]
     pub database_url: Option<String>,
     /// Embedding width for **PostgreSQL** `semantic_memory.embedding` (`vector(N)`). Must match your embedder (e.g. **768** for Ollama `nomic-embed-text`) and the dimension in `migrations/postgres/003_semantic_memory.sql`.

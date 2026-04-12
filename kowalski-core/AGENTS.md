@@ -114,7 +114,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 - **Serde**: Serialization/Deserialization
 - **Reqwest**: HTTP client
 - **Tracing**: Logging and instrumentation
-- **SQLx**: SQLite (always). **PostgreSQL** + **`pgvector`** only when building with **`--features postgres`** on `kowalski-core` (or `kowalski-cli --features postgres`, or workspace `kowalski --features full`).
+- **SQLx**: SQLite (always). **PostgreSQL** (`sqlx/postgres`) and **`pgvector`** (`pgvector/sqlx` SQLx integration) are enabled only by the **`postgres`** feature on `kowalski-core` (e.g. `--features postgres`, or `kowalski-cli --features postgres`, or `kowalski --features full`).
 
 ---
 
