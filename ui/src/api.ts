@@ -76,6 +76,10 @@ export type ChatStreamEvent =
 
 export type FederationDelegateResponse = { delegated_to: string | null };
 
+export type FederationRegistryResponse = {
+  agents: { id: string; capabilities: string[] }[];
+};
+
 export const api = {
   health: () => json<Health>("/api/health"),
   agents: () => json<AgentsResponse>("/api/agents"),
@@ -94,6 +98,7 @@ export const api = {
       method: "POST",
       body: "{}",
     }),
+  federationRegistry: () => json<FederationRegistryResponse>("/api/federation/registry"),
   federationDelegate: (body: {
     task_id: string;
     instruction: string;

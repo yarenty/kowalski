@@ -24,7 +24,7 @@ pub use federation::{
     MessageBroker, MpscBroker,
 };
 #[cfg(feature = "postgres")]
-pub use federation::PgBroker;
+pub use federation::{bridge_postgres_notify_to_mpsc, PgBroker};
 pub use logging::*;
 pub use mcp::{
     CallToolResponse, McpClient, McpHub, McpToolBinding, McpToolDescription, McpToolProxy,
