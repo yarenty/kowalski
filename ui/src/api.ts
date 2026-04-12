@@ -74,6 +74,7 @@ export type SessionsResponse = {
 /** One SSE `data:` JSON line from `POST /api/chat/stream`. */
 export type ChatStreamEvent =
   | { type: "start"; conversation_id: string; model: string }
+  | { type: "token"; content: string }
   | { type: "assistant"; content: string }
   | { type: "error"; message: string }
   | { type: "done" };
@@ -103,6 +104,7 @@ export const api = {
       body: "{}",
     }),
   federationRegistry: () => json<FederationRegistryResponse>("/api/federation/registry"),
+  graphStatus: () => json<Record<string, unknown>>("/api/graph/status"),
   federationDelegate: (body: {
     task_id: string;
     instruction: string;

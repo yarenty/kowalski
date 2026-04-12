@@ -81,6 +81,7 @@ pub fn list_mcp_servers_public(path: &Path) -> Result<Vec<McpServerPublic>, Box<
                 transport: match s.transport {
                     kowalski_core::config::McpTransport::Http => "http".to_string(),
                     kowalski_core::config::McpTransport::Sse => "sse".to_string(),
+                    kowalski_core::config::McpTransport::Stdio => "stdio".to_string(),
                 },
             })
             .collect(),
@@ -97,29 +98,42 @@ pub async fn mcp_ping_results(path: &Path) -> Result<Vec<McpPingResult>, Box<dyn
         let transport = match server.transport {
             kowalski_core::config::McpTransport::Http => "http",
             kowalski_core::config::McpTransport::Sse => "sse",
+            kowalski_core::config::McpTransport::Stdio => "stdio",
         };
-        match kowalski_core::mcp::McpClient::connect_server(server).await {
-            Ok(client) => match client.list_tools().await {
-                Ok(tools) => out.push(McpPingResult {
-                    name: server.name.clone(),
-                    url: server.url.clone(),
-                    transport: transport.to_string(),
-                    ok: true,
-                    tool_count: Some(tools.len()),
-                    error: None,
-                }),
-                Err(e) => out.push(McpPingResult {
-                    name: server.name.clone(),
-                    url: server.url.clone(),
-                    transport: transport.to_string(),
-                    ok: false,
-                    tool_count: None,
-                    error: Some(format!("tools/list: {}", e)),
-                }),
-            },
+        let url_display = if server.url.trim().is_empty() {
+            server.command.join(" ")
+        } else {
+            server.url.clone()
+        };
+        let result: Result<
+            Vec<kowalski_core::mcp::types::McpToolDescription>,
+            kowalski_core::KowalskiError,
+        > = if matches!(
+            server.transport,
+            kowalski_core::config::McpTransport::Stdio
+        ) {
+            match kowalski_core::McpStdioClient::connect(server).await {
+                Ok(c) => c.list_tools().await,
+                Err(e) => Err(e),
+            }
+        } else {
+            match kowalski_core::mcp::McpClient::connect_server(server).await {
+                Ok(c) => c.list_tools().await,
+                Err(e) => Err(e),
+            }
+        };
+        match result {
+            Ok(tools) => out.push(McpPingResult {
+                name: server.name.clone(),
+                url: url_display,
+                transport: transport.to_string(),
+                ok: true,
+                tool_count: Some(tools.len()),
+                error: None,
+            }),
             Err(e) => out.push(McpPingResult {
                 name: server.name.clone(),
-                url: server.url.clone(),
+                url: url_display,
                 transport: transport.to_string(),
                 ok: false,
                 tool_count: None,

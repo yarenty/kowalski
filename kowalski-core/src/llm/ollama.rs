@@ -1,10 +1,10 @@
-use super::provider::LLMProvider;
+use super::provider::{LLMProvider, TokenStream};
 use crate::agent::types::ChatRequest;
 use crate::conversation::Message;
 use crate::error::KowalskiError;
 use async_trait::async_trait;
+use futures::StreamExt;
 use reqwest::Client;
-use serde_json::json;
 
 pub struct OllamaProvider {
     base_url: String,
@@ -26,8 +26,8 @@ impl LLMProvider for OllamaProvider {
         let request = ChatRequest {
             model: model.to_string(),
             messages: messages.to_vec(),
-            stream: false,    // Force non-streaming for now
-            temperature: 0.7, // Default, should be configurable? Passed in method?
+            stream: false,
+            temperature: 0.7,
             max_tokens: 2048,
             tools: None,
         };
@@ -48,13 +48,11 @@ impl LLMProvider for OllamaProvider {
             )));
         }
 
-        // Parse non-streaming response
         let response_json: serde_json::Value = response
             .json()
             .await
             .map_err(|e| KowalskiError::Server(format!("Failed to parse JSON: {}", e)))?;
 
-        // Ollama non-streaming response structure: { "message": { "content": "..." } }
         let content = response_json["message"]["content"]
             .as_str()
             .ok_or(KowalskiError::Server(
@@ -70,8 +68,8 @@ impl LLMProvider for OllamaProvider {
         let response = self
             .client
             .post(&url)
-            .json(&json!({
-                "model": "nomic-embed-text", // Should be configurable
+            .json(&serde_json::json!({
+                "model": "nomic-embed-text",
                 "prompt": text
             }))
             .send()
@@ -103,5 +101,61 @@ impl LLMProvider for OllamaProvider {
 
     fn supports_streaming(&self) -> bool {
         true
+    }
+
+    fn chat_stream(&self, model: &str, messages: Vec<Message>) -> TokenStream<'_> {
+        let url = format!("{}/api/chat", self.base_url);
+        let request = ChatRequest {
+            model: model.to_string(),
+            messages,
+            stream: true,
+            temperature: 0.7,
+            max_tokens: 2048,
+            tools: None,
+        };
+        let client = self.client.clone();
+        Box::pin(async_stream::stream! {
+            let response = match client.post(&url).json(&request).send().await {
+                Ok(r) => r,
+                Err(e) => {
+                    yield Err(KowalskiError::Server(format!("Ollama stream: {e}")));
+                    return;
+                }
+            };
+            if !response.status().is_success() {
+                let t = response.text().await.unwrap_or_default();
+                yield Err(KowalskiError::Server(format!("Ollama error: {t}")));
+                return;
+            }
+            let mut buf: Vec<u8> = Vec::new();
+            let mut bytes_stream = response.bytes_stream();
+            while let Some(chunk) = bytes_stream.next().await {
+                let chunk = match chunk {
+                    Ok(c) => c,
+                    Err(e) => {
+                        yield Err(KowalskiError::Server(format!("Ollama stream read: {e}")));
+                        return;
+                    }
+                };
+                buf.extend_from_slice(&chunk);
+                while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
+                    let raw: Vec<u8> = buf.drain(..=pos).collect();
+                    let line = String::from_utf8_lossy(&raw);
+                    let line = line.trim();
+                    if line.is_empty() {
+                        continue;
+                    }
+                    let v: serde_json::Value = match serde_json::from_str(line) {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
+                    if let Some(c) = v["message"]["content"].as_str() {
+                        if !c.is_empty() {
+                            yield Ok(c.to_string());
+                        }
+                    }
+                }
+            }
+        })
     }
 }

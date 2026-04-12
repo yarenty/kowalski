@@ -284,6 +284,94 @@ impl BaseAgent {
     pub fn set_system_prompt(&mut self, prompt: &str) {
         self.system_prompt = Some(prompt.to_string());
     }
+
+    /// Same memory + user turn as [`Agent::chat_with_history`], but returns owned messages for
+    /// [`crate::llm::LLMProvider::chat_stream`] without calling the LLM (caller streams, then
+    /// should [`Self::add_message`] with role `assistant` for the full reply).
+    pub async fn prepare_stream_turn(
+        &mut self,
+        conversation_id: &str,
+        content: &str,
+        role: Option<Role>,
+    ) -> Result<(String, Vec<Message>, std::sync::Arc<dyn crate::llm::LLMProvider>), KowalskiError>
+    {
+        let working_memories = self
+            .working_memory
+            .lock()
+            .await
+            .retrieve(content, self.config.working_memory_retrieval_limit)
+            .await
+            .unwrap_or_default();
+
+        let episodic_memories = self
+            .episodic_memory
+            .lock()
+            .await
+            .retrieve(content, self.config.episodic_memory_retrieval_limit)
+            .await
+            .unwrap_or_default();
+
+        let semantic_memories = self
+            .semantic_memory
+            .lock()
+            .await
+            .retrieve(content, self.config.semantic_memory_retrieval_limit)
+            .await
+            .unwrap_or_default();
+
+        let mut seen_ids = HashSet::new();
+        let mut all_memories = Vec::new();
+        for m in working_memories
+            .into_iter()
+            .chain(episodic_memories)
+            .chain(semantic_memories)
+        {
+            if seen_ids.insert(m.id.clone()) {
+                all_memories.push(m);
+            }
+        }
+
+        let memory_context = if !all_memories.is_empty() {
+            let concatenated_memories = all_memories
+                .iter()
+                .map(|m| m.content.as_str())
+                .collect::<Vec<&str>>()
+                .join("\n---\n");
+            format!(
+                "\n--- Relevant Memories ---\n{}\n--- End Memories ---",
+                concatenated_memories
+            )
+        } else {
+            String::new()
+        };
+
+        let conversation = self
+            .conversations
+            .get_mut(conversation_id)
+            .ok_or_else(|| KowalskiError::ConversationNotFound(conversation_id.to_string()))?;
+
+        if let Some(role) = role {
+            conversation.add_message("system", &role.get_prompt());
+
+            if let Some(audience) = role.get_audience() {
+                conversation.add_message("system", &audience.get_prompt());
+            }
+            if let Some(preset) = role.get_preset() {
+                conversation.add_message("system", &preset.get_prompt());
+            }
+            if let Some(style) = role.get_style() {
+                conversation.add_message("system", &style.get_prompt());
+            }
+        }
+
+        let content_with_memory = format!("{}{}", content, memory_context);
+        conversation.add_message("user", &content_with_memory);
+
+        let model = conversation.model.clone();
+        let messages = conversation.messages.clone();
+        let llm = self.llm_provider.clone();
+        Ok((model, messages, llm))
+    }
 }
 
 #[async_trait]

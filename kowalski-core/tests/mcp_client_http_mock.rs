@@ -145,6 +145,7 @@ async fn mcp_client_sends_mcp_server_config_headers() {
         url: url.clone(),
         transport: McpTransport::Http,
         headers,
+        command: Vec::new(),
     };
 
     let client = McpClient::connect_server(&cfg)

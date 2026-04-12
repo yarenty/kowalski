@@ -52,6 +52,11 @@ impl McpClient {
     /// and parses both JSON and SSE bodies. [`McpTransport::Sse`] is treated as streamable-capable
     /// (same POST path; no separate legacy GET bootstrap in this build).
     pub async fn connect_server(server: &McpServerConfig) -> Result<Self, KowalskiError> {
+        if matches!(server.transport, McpTransport::Stdio) {
+            return Err(KowalskiError::Configuration(
+                "McpClient::connect_server is for HTTP/SSE only; use `transport = \"stdio\"` with `McpHub` / `McpStdioClient::connect`".into(),
+            ));
+        }
         let base_url = Url::parse(&server.url)?;
         let http = build_http_client(&server.headers)?;
 
@@ -86,6 +91,7 @@ impl McpClient {
             url: url.to_string(),
             transport: McpTransport::Http,
             headers: HashMap::new(),
+            command: Vec::new(),
         })
         .await
     }

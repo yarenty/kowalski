@@ -60,6 +60,7 @@ regex = "1.10"
 markdown = "1.0"
 llm_json = "1.0.2"
 async-openai = { version = "0.32.4", features = ["native-tls", "chat-completion", "embedding"] }
+async-stream = "0.3"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros", "tls-native-tls"] }
 pgvector = { version = "0.4", optional = true, default-features = false }
 

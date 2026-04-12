@@ -54,6 +54,19 @@ const fedEs = ref<EventSource | null>(null);
 const fedRegistry = ref<FederationRegistryResponse | null>(null);
 const fedRegistryErr = ref<string | null>(null);
 
+const graphStatus = ref<Record<string, unknown> | null>(null);
+const graphErr = ref<string | null>(null);
+
+async function loadGraphStatus() {
+  graphErr.value = null;
+  try {
+    graphStatus.value = await api.graphStatus();
+  } catch (e) {
+    graphStatus.value = null;
+    graphErr.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
 async function loadFederationRegistry() {
   fedRegistryErr.value = null;
   try {
@@ -206,6 +219,8 @@ async function sendChatStream() {
       if (ev.type === "start") {
         sessionId.value = ev.conversation_id;
         chatMeta.value = `SSE · ${ev.model}`;
+      } else if (ev.type === "token") {
+        chatOut.value = (chatOut.value ?? "") + ev.content;
       } else if (ev.type === "assistant") {
         chatOut.value = ev.content;
       } else if (ev.type === "error") {
@@ -318,9 +333,15 @@ onUnmounted(() => {
       <section v-else-if="tab === 'graph'" class="panel">
         <h2>Graph</h2>
         <p class="hint">
-          Apache AGE / Cypher exploration and episodic graph APIs are tracked under WP3. This tab is
-          a placeholder until <code>/api/graph/*</code> and an AGE-backed store are wired.
+          <code>GET /api/graph/status</code> probes Postgres for <code>vector</code> and
+          <code>age</code> extensions when <code>memory.database_url</code> is set and the CLI is built
+          with <code>--features postgres</code>. Full Cypher / AGE integration is WP3.
         </p>
+        <p>
+          <button type="button" class="primary" @click="loadGraphStatus">Load graph status</button>
+        </p>
+        <pre v-if="graphStatus" class="json">{{ JSON.stringify(graphStatus, null, 2) }}</pre>
+        <p v-if="graphErr" class="err">{{ graphErr }}</p>
       </section>
 
       <section v-else-if="tab === 'federation'" class="panel">
