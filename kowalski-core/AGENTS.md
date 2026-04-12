@@ -55,7 +55,8 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: kowalski-core  
-**Purpose**: Core foundational abstractions, conversation logic, and agent traits.  
+**Release**: **1.0.0** (see crate `Cargo.toml`).  
+**Purpose**: Core foundational abstractions, conversation logic, agent traits, LLM providers, memory tiers, MCP client/hub, federation types, optional Postgres (pgvector) and graph helpers (AGE Cypher).  
 **Core Value Proposition**: Modular, extensible, and distributed architecture supporting standalone and federated deployments with privacy-preserving capabilities.  
 **Primary Mechanism**: Multi-agent orchestration and pluggable tools interfacing with local (Ollama) and remote LLMs.  
 **Target Users**: Kowalski framework agents and developers integrating kowalski-core.  
@@ -336,18 +337,17 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-Active development. Core, Tools, and specialized agents (Academic, Code, Data, Web) are operational. Federation is WIP.
+**1.0.0**: `BaseAgent` / `TemplateAgent`, `chat_with_tools`, optional **`chat_with_tools_stream_final`** for SSE, MCP integration, memory (SQLite default; Postgres optional), federation primitives. See also [`../ROADMAP.md`](../ROADMAP.md) and [`ROADMAP.md`](ROADMAP.md) in this crate.
 
 ### Roadmap
-See `ROADMAP.md` for latest features and future plans.
+See [`ROADMAP.md`](ROADMAP.md) (this crate) and root [`../ROADMAP.md`](../ROADMAP.md).
 
 ### Technical Debt
-- Tools are currently monolithic, pending refactor into granular tool crates.
-- Federation protocol finalization.
+- Legacy sections below describe older multi-crate layout; prefer `src/` tree and root docs.
 
 ### Known Issues
-- Ollama models must be running contextually.
-- Multi-agent coordination overhead.
+- LLM backends must be configured and reachable for live tests.
+- Full federation hardening is an ongoing concern (TTL, auth).
 
 ---
 

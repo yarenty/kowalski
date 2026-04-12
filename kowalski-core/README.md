@@ -1,5 +1,7 @@
 # Kowalski Core
 
+**Crate version 1.0.0** · Part of the [`kowalski` workspace](https://github.com/yarenty/kowalski).
+
 The core library for the Kowalski AI agent framework, providing foundational abstractions, types, and utilities for building modular, extensible, and robust AI agents.
 
 ---

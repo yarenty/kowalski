@@ -1,6 +1,8 @@
 # Kowalski UI (Vue 3 + Vite)
 
-Operator-facing web shell for Kowalski. The **CLI** (`kowalski-cli`) remains the primary control plane; this app is the starting point for dashboards (MCP health, chat, federation) once an HTTP API is available.
+**Version 1.0.0** · Operator-facing web shell for Kowalski, calling **`kowalski-cli serve`** under `/api/*`.
+
+Features: health, MCP ping, **Chat** (`POST /api/chat`, SSE **`POST /api/chat/stream`** with optional **Tool-aware stream** / `tools_stream`), federation, graph extension status. See [`ROADMAP.md`](./ROADMAP.md).
 
 Use **[Bun](https://bun.sh)** for installs and scripts (not npm).
 
@@ -30,7 +32,7 @@ In one terminal from the repo root:
 cargo run -p kowalski-cli -- serve -c config.toml
 ```
 
-This binds **`127.0.0.1:3000`** and serves JSON under `/api` (`/api/health`, `/api/doctor`, `/api/mcp/servers`, `POST /api/mcp/ping`, **`POST /api/chat`**, **`POST /api/chat/reset`** for a new conversation). Use `-c` / `--ollama-url` as needed (see `kowalski-cli serve --help`).
+This binds **`127.0.0.1:3000`** and serves JSON under `/api` (`/api/health`, `/api/doctor`, `/api/mcp/servers`, `POST /api/mcp/ping`, **`POST /api/chat`**, **`POST /api/chat/stream`** (body may include **`tools_stream`: true**), **`POST /api/chat/reset`**). With **`kowalski-cli --features postgres`** and a Postgres memory URL, graph routes may include **`POST /api/graph/cypher`** (Apache AGE on the server). Use `-c` / `--ollama-url` as needed (see `kowalski-cli serve --help`).
 
 ## API proxy
 

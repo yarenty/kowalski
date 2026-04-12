@@ -1,6 +1,8 @@
 # Kowalski CLI
 
-A command-line interface for the Kowalski AI agent framework, providing easy access to all Kowalski capabilities through a unified CLI.
+**Crate version 1.0.0** · See [`ROADMAP.md`](./ROADMAP.md) and root [`README.md`](../README.md).
+
+A command-line interface for the Kowalski AI agent framework: REPL, **`serve`** (HTTP API for the Vue UI), and operator commands (`config`, `db`, `doctor`, `mcp`).
 
 ## Overview
 

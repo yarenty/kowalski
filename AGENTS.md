@@ -55,10 +55,11 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: Kowalski  
-**Purpose**: A sophisticated Rust-based multi-agent framework for interacting with various LLM providers, with built-in support for federation, secure multi-party computation, and extensible tooling architecture.  
-**Core Value Proposition**: Modular, extensible, and distributed architecture supporting standalone and federated deployments with privacy-preserving capabilities.  
-**Primary Mechanism**: Multi-agent orchestration and pluggable tools interfacing with local (Ollama) and remote LLMs.  
-**Target Users**: Developers building intelligent, distributed agent systems.  
+**Release line**: **1.0.0** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).  
+**Purpose**: A Rust-native multi-agent framework: **`kowalski-core`** (agents, LLM, memory, MCP client), **`kowalski-cli`** (REPL + **`serve`** HTTP API), optional **`kowalski-mcp-datafusion`**, Vue **`ui/`**, optional PostgreSQL (**pgvector**, **Apache AGE**).  
+**Core Value Proposition**: Modular, extensible deployment with MCP-first tools and federation-oriented APIs.  
+**Primary Mechanism**: `TemplateAgent` + pluggable tools (built-in + MCP), Ollama/OpenAI-compatible providers.  
+**Target Users**: Developers building operator-run or embedded agent systems on CPU-friendly stacks.  
 
 ### Business Context
 - **Problem Solved**: Complexity in building and managing secure, federated multi-agent LLM systems.
@@ -323,18 +324,18 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-Active rebuilding. Legacy specialized agents and tool crates have been consolidated. Core functionality is centralized in `kowalski-core` and exposed through `kowalski-cli`.
+**1.0.0** shipped as a consolidated workspace: single **`TemplateAgent`** path in **`kowalski-core`**, **`kowalski-cli`** for REPL + **`serve`**, MCP HTTP client + **`kowalski-mcp-datafusion`** server crate, Vue operator UI, Postgres-backed memory and graph probes when built with **`--features postgres`**.
 
 ### Roadmap
-See `ROADMAP.md` for latest features and future plans.
+See [`ROADMAP.md`](ROADMAP.md) (root and per-crate **`ROADMAP.md`** where present).
 
 ### Technical Debt
-- Tool definitions are being migrated to Model Context Protocol (MCP).
-- Legacy prompts are staged in `migrations/legacy_prompts/` pending config-based loading.
+- Legacy prompts remain in `migrations/legacy_prompts/` for optional config-based loading.
+- Further MCP transports and packaging (desktop, etc.) are out of band for the core repo.
 
 ### Known Issues
-- Ollama models must be running contextually.
-- Multi-agent coordination overhead.
+- Ollama (or other LLM endpoints) must be reachable when using live chat.
+- Federation and graph features are powerful but require correct Postgres/AGE setup in production.
 
 ---
 

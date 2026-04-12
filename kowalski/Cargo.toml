@@ -1,6 +1,6 @@
 [package]
 name = "kowalski"
-version = "0.6.0"
+version = "1.0.0"
 edition = "2024"
 description = "Kowalski: A Rust-based agent for interacting with Ollama models"
 license = "MIT"
@@ -23,10 +23,10 @@ keywords = [
 
 [dependencies]
 # Core components are non-optional
-kowalski-core = { path = "../kowalski-core", version = "0.6.0" }
+kowalski-core = { path = "../kowalski-core", version = "1.0.0" }
 
 # Optional CLI
-kowalski-cli = { path = "../kowalski-cli", version = "0.6.0", optional = true }
+kowalski-cli = { path = "../kowalski-cli", version = "1.0.0", optional = true }
 
 tokio = { workspace = true }
 

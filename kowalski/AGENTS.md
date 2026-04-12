@@ -55,7 +55,8 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: kowalski  
-**Purpose**: The main facade crate providing a unified API for the Kowalski framework.  
+**Release**: **1.0.0** — thin facade over **`kowalski-core`** with optional **`kowalski-cli`** (`cli` / `full` features).  
+**Purpose**: Optional unified dependency entry for apps that want the workspace crates from one package name.  
 **Core Value Proposition**: Modular, extensible, and distributed architecture supporting standalone and federated deployments with privacy-preserving capabilities.  
 **Primary Mechanism**: Multi-agent orchestration and pluggable tools interfacing with local (Ollama) and remote LLMs.  
 **Target Users**: Developers integrating the Kowalski framework into their applications.  
@@ -335,18 +336,16 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-Active development. Core, Tools, and specialized agents (Academic, Code, Data, Web) are operational. Federation is WIP.
+**1.0.0**: Re-exports / bundles **`kowalski-core`**; optional **`cli`** feature pulls in **`kowalski-cli`**. Prefer depending on **`kowalski-core`** / **`kowalski-cli`** directly for most new code.
 
 ### Roadmap
-See `ROADMAP.md` for latest features and future plans.
+See [`../ROADMAP.md`](../ROADMAP.md).
 
 ### Technical Debt
-- Tools are currently monolithic, pending refactor into granular tool crates.
-- Federation protocol finalization.
+- Facade crate is easy to overlook; keep `Cargo.toml` feature flags aligned with `kowalski-core` / `kowalski-cli`.
 
 ### Known Issues
-- Ollama models must be running contextually.
-- Multi-agent coordination overhead.
+- Same operational constraints as the core (LLM endpoints, optional Postgres).
 
 ---
 

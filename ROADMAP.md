@@ -1,18 +1,20 @@
-# Kowalski Roadmap & Features (0.5.0+)
+# Kowalski Roadmap & Features (1.0.0+)
 
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"
 
-## 🧩 Modular Architecture (since 0.5.0)
+**Release:** **1.0.0** — see [`CHANGELOG.md`](CHANGELOG.md).  
+**Per-crate roadmaps:** [`kowalski-core/ROADMAP.md`](kowalski-core/ROADMAP.md), [`kowalski-cli/ROADMAP.md`](kowalski-cli/ROADMAP.md), [`kowalski-mcp-datafusion/ROADMAP.md`](kowalski-mcp-datafusion/ROADMAP.md), [`ui/ROADMAP.md`](ui/ROADMAP.md).
 
-**Design emphasis:** Prefer **simple, robust** components and **few required services**—see [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md) (includes note on **Qdrant** as early **PoC** for vector memory).
+## Modular architecture (1.0.0)
 
-Kowalski is now split into clear, focused modules:
-- **Core**: Foundational types, agent abstractions, conversation, roles, configuration, error handling, toolchain logic
-- **Tools**: Pluggable tools for code, data, web, and document analysis
-- **Template**: Agent builder, base agent, and ready-to-use agent templates
-- **Federation**: (WIP) Multi-agent orchestration, registry, and protocols
-- **Agents**: Specific agents (academic, code, data, web, etc.)
-- **CLI**: Command-line interface
+**Design emphasis:** Prefer **simple, robust** components and **few required services**—see [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md) (note on **Qdrant** as early **PoC** for vector memory).
+
+Workspace layout:
+- **kowalski-core**: `TemplateAgent`, LLM providers, memory, MCP client/hub, federation types; optional **Postgres** + **pgvector** + **Apache AGE** helpers.
+- **kowalski-cli**: REPL, **`serve`** (HTTP API for the Vue UI), operator commands.
+- **kowalski-mcp-datafusion**: standalone **MCP** Streamable HTTP server (DataFusion over CSV/Parquet).
+- **ui**: Vue 3 + Vite operator UI (Chat / MCP / federation / graph status).
+- **Legacy prompts**: `migrations/legacy_prompts/` (staged).
 
 ---
 
@@ -51,9 +53,10 @@ Kowalski is now split into clear, focused modules:
 - [x] Role assignment (coordinator, worker, observer)
 - [x] Task delegation and assignment
 - [x] Message passing and broadcasting
+- [x] In-process + SSE broker; optional Postgres `LISTEN`/`NOTIFY` bridge (see `kowalski-cli serve` with `--features postgres`)
 - [ ] Protocol selection (A2A, ACP, MCP, or custom) (open)
 - [ ] Secure agent authentication (planned)
-- [ ] Persistent registry and orchestrator state (planned)
+- [x] Persistent registry records (Postgres-backed when configured)
 - [ ] Federation-wide logging and monitoring (planned)
 
 ## Agents
@@ -66,12 +69,12 @@ Kowalski is now split into clear, focused modules:
 
 ## User Interface & Integration
 - [x] CLI interface with rich formatting
-- [ ] Web interface (planned)
-- [ ] REST API (planned)
-- [ ] WebSocket support (planned)
+- [x] Vue operator UI (`ui/`) + **`kowalski-cli serve`** HTTP API
+- [x] REST-style JSON API under `/api/*` (chat, stream, MCP, federation, graph)
+- [x] WebSocket `/api/federation/ws` (and SSE stream) where enabled
 - [ ] Export conversations (PDF, HTML, Markdown) (planned)
 - [ ] Slack/Discord/Teams integration (planned)
-- [ ] Git/CI/CD integration (planned)
+- [x] CI: GitHub Actions (Postgres pgvector + dedicated **Apache AGE** job)
 
 ## Security & Privacy
 - [ ] End-to-end encryption (planned)

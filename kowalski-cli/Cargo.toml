@@ -1,6 +1,6 @@
 [package]
 name = "kowalski-cli"
-version = "0.6.0"
+version = "1.0.0"
 edition = "2024"
 description = "Kowalski CLI Interface: A Rust-based agent for interacting with Ollama models"
 license = "MIT"
@@ -26,7 +26,7 @@ default = []
 postgres = ["kowalski-core/postgres"]
 
 [dependencies]
-kowalski-core = { path = "../kowalski-core", version = "0.6.0" }
+kowalski-core = { path = "../kowalski-core", version = "1.0.0" }
 
 
 chrono = "0.4"

@@ -41,6 +41,8 @@ const sessionId = ref<string | null>(null);
 const chatBusy = ref(false);
 const resetBusy = ref(false);
 const chatErr = ref<string | null>(null);
+/** When true, SSE uses `tools_stream`: stream tokens only for the LLM turn after tool execution(s). */
+const chatToolsStream = ref(false);
 
 const fedTopic = ref("federation");
 const fedTaskId = ref("demo-1");
@@ -218,7 +220,9 @@ async function sendChatStream() {
     await chatStream(msg, (ev) => {
       if (ev.type === "start") {
         sessionId.value = ev.conversation_id;
-        chatMeta.value = `SSE · ${ev.model}`;
+        chatMeta.value = chatToolsStream.value
+          ? `SSE · tools_stream · ${ev.model}`
+          : `SSE · ${ev.model}`;
       } else if (ev.type === "token") {
         chatOut.value = (chatOut.value ?? "") + ev.content;
       } else if (ev.type === "assistant") {
@@ -226,7 +230,7 @@ async function sendChatStream() {
       } else if (ev.type === "error") {
         chatErr.value = ev.message;
       }
-    });
+    }, { toolsStream: chatToolsStream.value });
   } catch (e) {
     chatErr.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -412,8 +416,16 @@ onUnmounted(() => {
         <p class="hint">
           One in-process agent + Ollama via <code>POST /api/chat</code> or SSE
           <code>POST /api/chat/stream</code> (one JSON event per line; assistant text arrives when
-          the turn completes). Run <code>kowalski-cli serve -c config.toml</code> with Ollama up and
-          the model from <code>[ollama]</code>.
+          the turn completes). With <strong>Tool-aware stream</strong>, the server runs the tool loop
+          and emits <code>token</code> events only for the final LLM reply after tool result(s). Run
+          <code>kowalski-cli serve -c config.toml</code> with Ollama up and the model from
+          <code>[ollama]</code>.
+        </p>
+        <p class="row">
+          <label class="chk">
+            <input v-model="chatToolsStream" type="checkbox" />
+            Tool-aware stream (<code>tools_stream</code>)
+          </label>
         </p>
         <textarea v-model="chatIn" rows="4" class="ta" placeholder="Message…" />
         <p>
@@ -503,6 +515,20 @@ body {
 .hint {
   font-size: 0.9rem;
   color: #8b92a5;
+}
+.row {
+  margin: 0.35rem 0 0.5rem;
+}
+.chk {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  color: #b8c0d0;
+  cursor: pointer;
+}
+.chk input {
+  accent-color: #5a7ab8;
 }
 .muted {
   color: #6a7285;

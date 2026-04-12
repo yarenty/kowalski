@@ -26,10 +26,10 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-kowalski = "0.5.0"
+kowalski = "1.0.0"
 
-# Optional: Enable data analysis capabilities
-kowalski = { version = "0.5.0", features = ["data"] }
+# Optional: CLI + Postgres client stack
+kowalski = { version = "1.0.0", features = ["full"] }
 ```
 
 ## Quick Start
