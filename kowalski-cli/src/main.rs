@@ -322,7 +322,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         Some(Commands::Consolidate { delete }) => {
             let config = Config::default();
-            let episodic_path = &config.memory.episodic_path;
             let ollama_model = &config.ollama.model;
 
             // Create LLM provider for consolidation
@@ -332,8 +331,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     config.ollama.port,
                 ));
 
+            kowalski_core::db::run_memory_migrations_if_configured(&config).await?;
+
             let mut weaver =
-                Consolidator::new(episodic_path, llm_provider, ollama_model).await?;
+                Consolidator::new(&config.memory, llm_provider, ollama_model).await?;
             weaver.run(delete).await?;
             println!("Memory consolidation complete.");
         }

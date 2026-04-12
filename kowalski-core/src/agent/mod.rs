@@ -317,11 +317,8 @@ impl Agent for BaseAgent {
             as std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>;
 
         let episodic_memory = std::sync::Arc::new(tokio::sync::Mutex::new(
-            crate::memory::episodic::EpisodicBuffer::open(
-                &config.memory.episodic_path,
-                llm_provider.clone(),
-            )
-            .await?,
+            crate::memory::episodic::EpisodicBuffer::open(&config.memory, llm_provider.clone())
+                .await?,
         ))
             as std::sync::Arc<tokio::sync::Mutex<dyn MemoryProvider + Send + Sync>>;
 
