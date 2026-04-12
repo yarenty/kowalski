@@ -9,6 +9,7 @@ use crate::memory::working::WorkingMemory;
 use crate::role::Role;
 use crate::tools::{ToolCall, ToolOutput};
 use async_trait::async_trait;
+use futures::StreamExt;
 use log::debug;
 use log::info;
 use log::warn;
@@ -371,6 +372,131 @@ impl BaseAgent {
         let messages = conversation.messages.clone();
         let llm = self.llm_provider.clone();
         Ok((model, messages, llm))
+    }
+
+    /// Like [`Agent::chat_with_tools`] but emits **token deltas** over `token_tx` only for the first
+    /// LLM completion **after at least one tool execution** in this request (final natural answer).
+    pub async fn chat_with_tools_stream_final(
+        &mut self,
+        conversation_id: &str,
+        user_input: &str,
+        token_tx: &tokio::sync::mpsc::Sender<String>,
+    ) -> Result<String, KowalskiError> {
+        let mut final_response = String::new();
+        let mut current_input = user_input.to_string();
+        let mut iteration_count = 0;
+        const MAX_ITERATIONS: usize = 5;
+        let mut last_tool_call: Option<(String, serde_json::Value)> = None;
+        let mut tool_parse_hint_sent = false;
+        // After a tool ran, the next LLM completion is streamed (final answer in the common case).
+        let mut stream_next_llm_turn = false;
+
+        debug!(
+            "chat_with_tools_stream_final for input: '{}'",
+            user_input
+        );
+
+        while iteration_count < MAX_ITERATIONS {
+            iteration_count += 1;
+            let use_stream = std::mem::replace(&mut stream_next_llm_turn, false);
+            debug!(
+                " === ITERATION {} (stream_final={}) ===",
+                iteration_count, use_stream
+            );
+
+            let response_text = if use_stream {
+                let (model, messages, llm) = self
+                    .prepare_stream_turn(conversation_id, &current_input, None)
+                    .await?;
+                let mut full = String::new();
+                let mut stream = llm.chat_stream(&model, messages);
+                while let Some(item) = stream.next().await {
+                    let delta = item?;
+                    if !delta.is_empty() {
+                        full.push_str(&delta);
+                        let _ = token_tx.send(delta).await;
+                    }
+                }
+                full
+            } else {
+                self.chat_with_history(conversation_id, &current_input, None)
+                    .await?
+            };
+
+            println!("{}", response_text);
+            io::stdout()
+                .flush()
+                .map_err(|e| KowalskiError::Server(e.to_string()))?;
+
+            let buffer = response_text.clone();
+            let tool_calls = crate::utils::json::extract_tool_calls(&buffer);
+
+            if !tool_calls.is_empty() {
+                let tool_call = &tool_calls[0];
+                let tool_call_key = (tool_call.name.clone(), tool_call.parameters.clone());
+                if let Some(last) = &last_tool_call {
+                    if *last == tool_call_key {
+                        debug!("Repeated tool call; breaking");
+                        break;
+                    }
+                }
+                last_tool_call = Some(tool_call_key.clone());
+
+                let tool_result = match self
+                    .execute_tool(&tool_call.name, &tool_call.parameters)
+                    .await
+                {
+                    Ok(output) => output.result.to_string(),
+                    Err(e) => format!("{}", e),
+                };
+
+                let tool_message = format!("Tool result for {}: {}", tool_call.name, tool_result);
+                self.add_message(conversation_id, "assistant", &tool_message)
+                    .await;
+
+                current_input = format!("Based on the tool result: {}", tool_result);
+                stream_next_llm_turn = true;
+                continue;
+            }
+
+            if crate::utils::json::looks_like_tool_json_attempt(&buffer) && !tool_parse_hint_sent {
+                tool_parse_hint_sent = true;
+                warn!(
+                    "Tool call JSON parse failed; requesting self-correction (non-stream)"
+                );
+                self.add_message(conversation_id, "assistant", &buffer)
+                    .await;
+                const HINT: &str = "Your previous reply appeared to include a tool call but it could not be parsed as JSON. Reply with a single JSON object only: {\"name\": \"<tool_name>\", \"parameters\": { ... } } matching the available tools. No markdown fences or extra text.";
+                current_input = HINT.to_string();
+                stream_next_llm_turn = false;
+                continue;
+            }
+
+            final_response = buffer;
+            self.add_message(conversation_id, "assistant", &final_response)
+                .await;
+
+            if let Some(tool_call) = rule_based_tool_call(user_input) {
+                let tool_result_str = match self
+                    .execute_tool(&tool_call.name, &tool_call.parameters)
+                    .await
+                {
+                    Ok(output) => output.result.to_string(),
+                    Err(e) => format!("Tool execution failed: {}", e),
+                };
+                self.add_message(conversation_id, "assistant", &tool_result_str)
+                    .await;
+                return Ok(tool_result_str);
+            }
+
+            break;
+        }
+
+        if iteration_count >= MAX_ITERATIONS {
+            warn!("Reached maximum iterations (stream_final)");
+        }
+
+        Ok(final_response)
     }
 }
 

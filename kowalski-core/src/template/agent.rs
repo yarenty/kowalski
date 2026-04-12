@@ -244,6 +244,19 @@ impl TemplateAgent {
             .prepare_stream_turn(conversation_id, user, None)
             .await
     }
+
+    /// Like [`crate::agent::Agent::chat_with_tools`], but streams token deltas only for the LLM
+    /// completion after at least one tool execution (see [`crate::agent::BaseAgent::chat_with_tools_stream_final`]).
+    pub async fn chat_with_tools_stream_final(
+        &mut self,
+        conversation_id: &str,
+        user_input: &str,
+        token_tx: &tokio::sync::mpsc::Sender<String>,
+    ) -> Result<String, KowalskiError> {
+        self.base_mut()
+            .chat_with_tools_stream_final(conversation_id, user_input, token_tx)
+            .await
+    }
 }
 
 #[async_trait]

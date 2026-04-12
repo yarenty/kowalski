@@ -152,7 +152,7 @@ pub async fn serve(
         federation_pg_notify,
     };
 
-    let app = Router::new()
+    let router = Router::new()
         .route("/api/health", get(get_health))
         .route("/api/agents", get(get_agents))
         .route("/api/sessions", get(get_sessions))
@@ -166,7 +166,10 @@ pub async fn serve(
         .route("/api/federation/ws", get(get_federation_ws))
         .route("/api/federation/registry", get(get_federation_registry))
         .route("/api/federation/delegate", post(post_federation_delegate))
-        .route("/api/graph/status", get(get_graph_status))
+        .route("/api/graph/status", get(get_graph_status));
+    #[cfg(feature = "postgres")]
+    let router = router.route("/api/graph/cypher", post(post_graph_cypher));
+    let app = router
         .with_state(state)
         .layer(CorsLayer::permissive());
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -252,6 +255,9 @@ async fn post_mcp_ping(
 #[derive(Deserialize)]
 struct ChatBody {
     message: String,
+    /// When true, `POST /api/chat/stream` runs the tool loop and streams **only** the first LLM turn after a tool result (final answer); earlier turns are non-streamed like `POST /api/chat`.
+    #[serde(default)]
+    tools_stream: bool,
 }
 
 #[derive(Serialize)]
@@ -298,13 +304,15 @@ async fn post_chat(
     }))
 }
 
-/// SSE (`text/event-stream`): `start`, then `token` deltas from the LLM (no tool-calling loop), optional final `assistant` echo, then `done`.
+/// SSE (`text/event-stream`): `start`, then `token` deltas, optional final `assistant` echo, then `done`.
+/// With `tools_stream: true`, runs the tool loop and emits `token` only for the LLM turn after tool execution(s); with `tools_stream: false` (default), one plain LLM stream (no tool loop).
 async fn post_chat_stream(
     State(state): State<ApiState>,
     Json(body): Json<ChatBody>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(256);
     let msg = body.message.trim().to_string();
+    let tools_stream = body.tools_stream;
     let api = state.clone();
     tokio::spawn(async move {
         let conv_id = {
@@ -323,6 +331,51 @@ async fn post_chat_stream(
         {
             return;
         }
+
+        if tools_stream {
+            let (token_tx, mut token_rx) = tokio::sync::mpsc::channel::<String>(256);
+            let sse = tx.clone();
+            let forward = tokio::spawn(async move {
+                while let Some(delta) = token_rx.recv().await {
+                    let payload = json!({ "type": "token", "content": delta });
+                    if sse
+                        .send(Ok(Event::default().data(payload.to_string())))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            });
+            let outcome = {
+                let mut guard = api.chat.lock().await;
+                guard
+                    .agent
+                    .chat_with_tools_stream_final(&conv_id, &msg, &token_tx)
+                    .await
+            };
+            drop(token_tx);
+            let _ = forward.await;
+            match outcome {
+                Ok(full) => {
+                    let summary = json!({ "type": "assistant", "content": full });
+                    let _ = tx
+                        .send(Ok(Event::default().data(summary.to_string())))
+                        .await;
+                }
+                Err(e) => {
+                    let payload = json!({ "type": "error", "message": e.to_string() });
+                    let _ = tx
+                        .send(Ok(Event::default().data(payload.to_string())))
+                        .await;
+                }
+            }
+            let _ = tx
+                .send(Ok(Event::default().data(r#"{"type":"done"}"#.to_string())))
+                .await;
+            return;
+        }
+
         let prep = {
             let mut guard = api.chat.lock().await;
             guard.agent.prepare_stream_turn(&conv_id, &msg).await
@@ -450,6 +503,40 @@ async fn get_graph_status(State(state): State<ApiState>) -> Json<serde_json::Val
         "config_path": state.config_path.display().to_string(),
         "note": "Configure memory.database_url and build with --features postgres for live extension probes."
     }))
+}
+
+#[cfg(feature = "postgres")]
+#[derive(Deserialize)]
+struct GraphCypherBody {
+    graph: String,
+    query: String,
+}
+
+#[cfg(feature = "postgres")]
+async fn post_graph_cypher(
+    State(state): State<ApiState>,
+    Json(body): Json<GraphCypherBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    if let Some(ref url) = state.full_config.memory.database_url {
+        if kowalski_core::config::memory_uses_postgres(&state.full_config.memory) {
+            return kowalski_core::postgres_age_cypher(url, body.graph.trim(), body.query.trim())
+                .await
+                .map(Json)
+                .map_err(|e| {
+                    let msg = e.to_string();
+                    let code = if msg.contains("AGE extension") {
+                        StatusCode::SERVICE_UNAVAILABLE
+                    } else {
+                        StatusCode::BAD_REQUEST
+                    };
+                    (code, msg)
+                });
+        }
+    }
+    Err((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "Postgres memory URL not configured".to_string(),
+    ))
 }
 
 /// SSE: one JSON [`AclEnvelope`] per `data:` line (same topic as in-process broker).

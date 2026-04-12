@@ -49,6 +49,9 @@ jobs:
         run: |
           cargo test -p kowalski-core --features postgres -- --nocapture
 
+      - name: Build kowalski-cli with postgres (graph Cypher route)
+        run: cargo build -p kowalski-cli --features postgres
+
       - name: SQL migrations against CI Postgres
         env:
           DATABASE_URL: postgres://kowalski:kowalski@127.0.0.1:5432/kowalski

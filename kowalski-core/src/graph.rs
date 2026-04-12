@@ -33,3 +33,55 @@ pub async fn postgres_graph_status(_database_url: &str) -> Result<serde_json::Va
         "postgres feature not enabled".into(),
     ))
 }
+
+/// Run a Cypher query via Apache AGE [`cypher`](https://age.apache.org/).
+/// The query must expose a single `agtype` column named `result` (e.g. `RETURN x AS result`).
+#[cfg(feature = "postgres")]
+pub async fn postgres_age_cypher(
+    database_url: &str,
+    graph_name: &str,
+    cypher: &str,
+) -> Result<serde_json::Value, KowalskiError> {
+    use serde_json::json;
+    use sqlx::postgres::PgPool;
+
+    let pool = PgPool::connect(database_url)
+        .await
+        .map_err(|e| KowalskiError::Configuration(format!("age cypher connect: {e}")))?;
+
+    let age: bool = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age')",
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| KowalskiError::Configuration(format!("age cypher: {e}")))?;
+
+    if !age {
+        return Err(KowalskiError::Configuration(
+            "Apache AGE extension is not installed on this Postgres instance".into(),
+        ));
+    }
+
+    let raw: Vec<Option<String>> = sqlx::query_scalar(
+        r#"SELECT (result)::text FROM cypher($1::name, $2::cstring) AS (result agtype)"#,
+    )
+    .bind(graph_name)
+    .bind(cypher)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| KowalskiError::Configuration(format!("cypher execution: {e}")))?;
+
+    let rows: Vec<serde_json::Value> = raw.into_iter().map(|t| json!(t)).collect();
+    Ok(json!({ "rows": rows }))
+}
+
+#[cfg(not(feature = "postgres"))]
+pub async fn postgres_age_cypher(
+    _database_url: &str,
+    _graph_name: &str,
+    _cypher: &str,
+) -> Result<serde_json::Value, KowalskiError> {
+    Err(KowalskiError::Configuration(
+        "postgres feature not enabled".into(),
+    ))
+}

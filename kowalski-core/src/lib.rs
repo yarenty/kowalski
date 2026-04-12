@@ -28,7 +28,7 @@ pub use federation::{
 pub use federation::{
     bridge_postgres_notify_to_mpsc, bridge_postgres_notify_to_mpsc_pool, pg_pool_connect, PgBroker,
 };
-pub use graph::postgres_graph_status;
+pub use graph::{postgres_age_cypher, postgres_graph_status};
 pub use logging::*;
 pub use mcp::{
     CallToolResponse, McpClient, McpConnection, McpHub, McpStdioClient, McpToolBinding,
