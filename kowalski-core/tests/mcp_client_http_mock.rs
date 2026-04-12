@@ -7,6 +7,12 @@ use serde_json::{Value, json};
 async fn mcp_handler(Json(body): Json<Value>) -> Json<Value> {
     let id = body.get("id").cloned().unwrap_or(json!(1));
     let method = body["method"].as_str().unwrap_or("");
+
+    // JSON-RPC notification (no id): MCP lifecycle after initialize
+    if body.get("id").is_none() && method == "notifications/initialized" {
+        return Json(json!({ "jsonrpc": "2.0", "result": null }));
+    }
+
     let result = match method {
         "initialize" => json!({
             "protocolVersion": "2024-11-05",
