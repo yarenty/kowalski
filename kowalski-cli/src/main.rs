@@ -17,7 +17,7 @@ use kowalski_core::memory::consolidation::{Consolidator, MemoryWeaver};
     author,
     version,
     about = "Kowalski CLI — agents, memory, and MCP operators.",
-    long_about = "Use `mcp ping` or `mcp tools` to verify Streamable HTTP MCP servers from [mcp] in config.toml."
+    long_about = "Operators: `config check`, `db migrate`, `doctor`, `mcp ping`, `mcp tools` (see --help on each)."
 )]
 struct Cli {
     #[clap(subcommand)]

@@ -1,4 +1,6 @@
 /target
+ui/node_modules
+ui/dist
 Cargo.lock
 .idea
 .idea/
