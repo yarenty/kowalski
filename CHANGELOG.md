@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Changed
 
-- **Episodic memory (Tier 2):** Replaced **RocksDB** with **embedded SQLite** (`episodic_kv` table, `EpisodicBuffer::open`). Drops the **`rocksdb`** / C++ build; uses existing **`sqlx`** + SQLite stack. `memory.episodic_path` still supports a directory (creates `episodic.sqlite` inside) or a path ending in `.sqlite`/`.db`. **`Consolidator::new`** is now **`async`**.
+- **Episodic memory (Tier 2):** Replaced **RocksDB** with **`sqlx`** + **`episodic_kv`**: default is a **local SQLite file** under `episodic_path` (directory → `episodic.sqlite`, or an explicit `.sqlite`/`.db`). Optional **`postgres://…`** in `memory.database_url` uses the same JSON rows in **PostgreSQL** (`migrations/postgres/002_episodic_kv.sql`). **`EpisodicBuffer::open(&MemoryConfig, …)`**, **`Consolidator::new(&MemoryConfig, …)`** (async); **`consolidate`** runs SQL migrations when `database_url` is set.
 - **Semantic memory relations:** Replaced **`petgraph`** with a **`HashMap<String, Vec<(String, String)>>`** (subject → outgoing `(predicate, object)` edges). Same behavior for the current query pattern; **one fewer dependency**; no graph crate—only `std`. See [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md).
 
 ### Documentation

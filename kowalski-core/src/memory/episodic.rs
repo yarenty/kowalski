@@ -59,7 +59,7 @@ impl EpisodicBuffer {
     /// Opens or creates an episodic buffer from [`MemoryConfig`].
     ///
     /// * If `memory.database_url` is set to **`postgres://`** or **`postgresql://`**, Tier 2 uses
-    ///   table `episodic_kv` in that database (run migrations first: [`crate::db::run_migrations`]).
+    ///   table `episodic_kv` in that database (run migrations first, e.g. [`crate::db::run_memory_migrations_if_configured`]).
     /// * Otherwise Tier 2 uses **SQLite** on disk:
     ///   - If `episodic_path` ends with `.sqlite` or `.db`, that file is used.
     ///   - Otherwise it is treated as a **directory** and `episodic.sqlite` is created inside it.
@@ -99,30 +99,43 @@ impl EpisodicBuffer {
     }
 
     pub async fn retrieve_all(&self) -> Result<Vec<MemoryUnit>, KowalskiError> {
-        let rows = match &self.backend {
+        let pairs: Vec<(String, String)> = match &self.backend {
             EpisodicBackend::Sqlite(pool) => {
-                sqlx::query("SELECT id, payload FROM episodic_kv ORDER BY id")
+                let rows = sqlx::query("SELECT id, payload FROM episodic_kv ORDER BY id")
                     .fetch_all(pool)
                     .await
+                    .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+                rows.into_iter()
+                    .map(|row| -> Result<(String, String), KowalskiError> {
+                        let id: String = row
+                            .try_get("id")
+                            .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+                        let payload: String = row
+                            .try_get("payload")
+                            .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+                        Ok((id, payload))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
             }
             EpisodicBackend::Postgres(pool) => {
-                sqlx::query("SELECT id, payload FROM episodic_kv ORDER BY id")
+                let rows = sqlx::query("SELECT id, payload FROM episodic_kv ORDER BY id")
                     .fetch_all(pool)
                     .await
+                    .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+                rows.into_iter()
+                    .map(|row| -> Result<(String, String), KowalskiError> {
+                        let id: String = row
+                            .try_get("id")
+                            .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+                        let payload: String = row
+                            .try_get("payload")
+                            .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+                        Ok((id, payload))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
             }
-        }
-        .map_err(|e| KowalskiError::Memory(e.to_string()))?;
-        let mut memories = Vec::with_capacity(rows.len());
-        for row in rows {
-            let payload: String = row
-                .try_get("payload")
-                .map_err(|e| KowalskiError::Memory(e.to_string()))?;
-            match serde_json::from_str::<MemoryUnit>(&payload) {
-                Ok(unit) => memories.push(unit),
-                Err(e) => error!("Failed to deserialize memory unit: {}", e),
-            }
-        }
-        Ok(memories)
+        };
+        Ok(Self::memory_units_from_pairs(pairs))
     }
 
     pub async fn delete(&mut self, id: &str) -> Result<(), KowalskiError> {
@@ -132,16 +145,28 @@ impl EpisodicBuffer {
                     .bind(id)
                     .execute(pool)
                     .await
+                    .map_err(|e| KowalskiError::Memory(e.to_string()))?;
             }
             EpisodicBackend::Postgres(pool) => {
                 sqlx::query("DELETE FROM episodic_kv WHERE id = $1")
                     .bind(id)
                     .execute(pool)
                     .await
+                    .map_err(|e| KowalskiError::Memory(e.to_string()))?;
             }
         }
-        .map_err(|e| KowalskiError::Memory(e.to_string()))?;
         Ok(())
+    }
+
+    fn memory_units_from_pairs(pairs: Vec<(String, String)>) -> Vec<MemoryUnit> {
+        let mut memories = Vec::with_capacity(pairs.len());
+        for (_id, payload) in pairs {
+            match serde_json::from_str::<MemoryUnit>(&payload) {
+                Ok(unit) => memories.push(unit),
+                Err(e) => error!("Failed to deserialize memory unit: {}", e),
+            }
+        }
+        memories
     }
 
     pub async fn add_with_embedding(
@@ -177,6 +202,10 @@ impl EpisodicBuffer {
                 .bind(&value)
                 .execute(pool)
                 .await
+                .map_err(|e| {
+                    error!("Failed to write episodic row {}: {}", key, e);
+                    KowalskiError::Memory(e.to_string())
+                })?;
             }
             EpisodicBackend::Postgres(pool) => {
                 sqlx::query(
@@ -187,34 +216,54 @@ impl EpisodicBuffer {
                 .bind(&value)
                 .execute(pool)
                 .await
+                .map_err(|e| {
+                    error!("Failed to write episodic row {}: {}", key, e);
+                    KowalskiError::Memory(e.to_string())
+                })?;
             }
         }
-        .map_err(|e| {
-            error!("Failed to write episodic row {}: {}", key, e);
-            KowalskiError::Memory(e.to_string())
-        })?;
         Ok(())
     }
 
     async fn load_all_units(&self) -> Result<Vec<MemoryUnit>, KowalskiError> {
-        let rows = match &self.backend {
+        let pairs: Vec<(String, String)> = match &self.backend {
             EpisodicBackend::Sqlite(pool) => {
-                sqlx::query("SELECT id, payload FROM episodic_kv")
+                let rows = sqlx::query("SELECT id, payload FROM episodic_kv")
                     .fetch_all(pool)
                     .await
+                    .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+                rows.into_iter()
+                    .map(|row| -> Result<(String, String), KowalskiError> {
+                        let id: String = row
+                            .try_get("id")
+                            .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+                        let payload: String = row
+                            .try_get("payload")
+                            .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+                        Ok((id, payload))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
             }
             EpisodicBackend::Postgres(pool) => {
-                sqlx::query("SELECT id, payload FROM episodic_kv")
+                let rows = sqlx::query("SELECT id, payload FROM episodic_kv")
                     .fetch_all(pool)
                     .await
+                    .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+                rows.into_iter()
+                    .map(|row| -> Result<(String, String), KowalskiError> {
+                        let id: String = row
+                            .try_get("id")
+                            .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+                        let payload: String = row
+                            .try_get("payload")
+                            .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+                        Ok((id, payload))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
             }
-        }
-        .map_err(|e| KowalskiError::Memory(e.to_string()))?;
-        let mut out = Vec::with_capacity(rows.len());
-        for row in rows {
-            let payload: String = row
-                .try_get("payload")
-                .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+        };
+        let mut out = Vec::with_capacity(pairs.len());
+        for (_id, payload) in pairs {
             if let Ok(unit) = serde_json::from_str::<MemoryUnit>(&payload) {
                 out.push(unit);
             } else {
