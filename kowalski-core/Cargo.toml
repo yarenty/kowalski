@@ -65,4 +65,4 @@ pgvector = { version = "0.4", optional = true, default-features = false }
 
 [dev-dependencies]
 tempfile = "3.25.0"
-axum = "0.7"
+axum = { workspace = true }

@@ -17,7 +17,7 @@ use kowalski_core::memory::consolidation::{Consolidator, MemoryWeaver};
     author,
     version,
     about = "Kowalski CLI — agents, memory, and MCP operators.",
-    long_about = "Operators: `config check`, `db migrate`, `doctor`, `mcp ping`, `mcp tools` (see --help on each)."
+    long_about = "Operators: `config check`, `db migrate`, `doctor`, `mcp ping`, `mcp tools`, `serve` (see --help on each)."
 )]
 struct Cli {
     #[clap(subcommand)]
@@ -92,6 +92,18 @@ enum Commands {
     /// Print versions and probe local Ollama
     Doctor {
         /// Ollama base URL (default http://127.0.0.1:11434)
+        #[clap(long)]
+        ollama_url: Option<String>,
+    },
+    /// Expose a minimal JSON HTTP API for the Vue UI (`GET /api/health`, etc.)
+    Serve {
+        /// Listen address (default 127.0.0.1:3000 — matches `ui/vite.config.ts` proxy)
+        #[clap(long, default_value = "127.0.0.1:3000")]
+        bind: String,
+        /// Config TOML for MCP listing/ping (default ./config.toml)
+        #[clap(short, long)]
+        config: Option<String>,
+        /// Ollama base URL for `/api/doctor` (default http://127.0.0.1:11434)
         #[clap(long)]
         ollama_url: Option<String>,
     },
@@ -228,17 +240,10 @@ impl AgentManager {
     }
 }
 
-fn mcp_config_path(config_path: Option<&str>) -> std::path::PathBuf {
-    use std::path::Path;
-    config_path
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| Path::new("config.toml").to_path_buf())
-}
-
 async fn run_mcp_ping(config_path: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     use kowalski_cli::config::load_mcp_config_from_file;
 
-    let path = mcp_config_path(config_path);
+    let path = kowalski_cli::ops::mcp_config_path(config_path);
     let mcp = load_mcp_config_from_file(&path)?;
     if mcp.servers.is_empty() {
         println!(
@@ -254,29 +259,22 @@ async fn run_mcp_ping(config_path: Option<&str>) -> Result<(), Box<dyn std::erro
         mcp.servers.len()
     );
 
-    for server in &mcp.servers {
-        print!(
-            "  {} <{}> [{}] ... ",
-            server.name,
-            server.url,
-            match server.transport {
-                kowalski_core::config::McpTransport::Http => "http",
-                kowalski_core::config::McpTransport::Sse => "sse",
-            }
-        );
+    let results = kowalski_cli::ops::mcp_ping_results(&path).await?;
+    for r in results {
+        print!("  {} <{}> [{}] ... ", r.name, r.url, r.transport);
         io::stdout().flush()?;
-        match kowalski_core::mcp::McpClient::connect_server(server).await {
-            Ok(client) => {
-                let sid = client
-                    .session_id()
-                    .map(|s| format!(" (session {}…)", &s[..s.len().min(12)]))
-                    .unwrap_or_default();
-                match client.list_tools().await {
-                    Ok(tools) => println!("OK — {} tool(s){}", tools.len(), sid),
-                    Err(e) => println!("partial — tools/list: {}{}", e, sid),
-                }
+        if r.ok {
+            println!(
+                "OK — {} tool(s)",
+                r.tool_count.unwrap_or(0)
+            );
+        } else {
+            let err = r.error.as_deref().unwrap_or("");
+            if err.starts_with("tools/list:") {
+                println!("partial — {}", err);
+            } else {
+                println!("FAILED — {}", err);
             }
-            Err(e) => println!("FAILED — {}", e),
         }
     }
     Ok(())
@@ -285,7 +283,7 @@ async fn run_mcp_ping(config_path: Option<&str>) -> Result<(), Box<dyn std::erro
 async fn run_mcp_tools(config_path: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     use kowalski_cli::config::load_mcp_config_from_file;
 
-    let path = mcp_config_path(config_path);
+    let path = kowalski_cli::ops::mcp_config_path(config_path);
     let mcp = load_mcp_config_from_file(&path)?;
     if mcp.servers.is_empty() {
         println!(
@@ -457,6 +455,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::Doctor { ollama_url }) => {
             kowalski_cli::ops::run_doctor(ollama_url).await?;
         },
+        Some(Commands::Serve {
+            bind,
+            config,
+            ollama_url,
+        }) => {
+            let addr: std::net::SocketAddr = bind.parse().map_err(|e| {
+                format!("Invalid --bind {:?}: {}", bind, e)
+            })?;
+            kowalski_cli::http_api::serve(addr, config, ollama_url).await?;
+        },
         Some(Commands::Consolidate { delete }) => {
             let config = Config::default();
             let ollama_model = &config.ollama.model;
@@ -627,6 +635,7 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
                 println!("  kowalski-cli config check [config.toml]");
                 println!("  kowalski-cli db migrate [--url] [-c config.toml]");
                 println!("  kowalski-cli doctor [--ollama-url URL]");
+                println!("  kowalski-cli serve [--bind 127.0.0.1:3000] [-c config.toml]  — JSON API for UI");
             }
             "create" => {
                 let agent_type = parts.next();

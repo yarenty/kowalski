@@ -38,13 +38,14 @@ tracing = { workspace = true }
 tracing-subscriber = { version = "0.3" }
 env_logger = "0.11"
 tokio = { workspace = true }
+axum = { workspace = true }
 reqwest = { workspace = true }
 async-trait = { workspace = true }
 log = { workspace = true }
 futures = { workspace = true }
 bytes = { workspace = true }
 tower = { workspace = true }
-tower-http = { workspace = true }
+tower-http = { workspace = true, features = ["cors", "trace"] }
 url = { workspace = true }
 regex = { workspace = true }
 markdown = { workspace = true }
