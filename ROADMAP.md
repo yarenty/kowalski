@@ -4,6 +4,8 @@
 
 ## 🧩 Modular Architecture (since 0.5.0)
 
+**Design emphasis:** Prefer **simple, robust** components and **few required services**—see [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md) (includes note on **Qdrant** as early **PoC** for vector memory).
+
 Kowalski is now split into clear, focused modules:
 - **Core**: Foundational types, agent abstractions, conversation, roles, configuration, error handling, toolchain logic
 - **Tools**: Pluggable tools for code, data, web, and document analysis

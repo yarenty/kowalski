@@ -1,5 +1,7 @@
 # Memory Isolation Test Results
 
+> **Note:** Framework memory design aims for **minimal external dependencies** (see [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../../docs/DESIGN_MEMORY_AND_DEPENDENCIES.md)); **Qdrant** was **PoC-only** for semantic vectors.
+
 ## Test Details
 - **Date**: 2026-02-11
 - **Test Type**: Automated Rust Integration Test

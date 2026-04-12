@@ -8,6 +8,8 @@ The core library for the Kowalski AI agent framework, providing foundational abs
 
 `kowalski-core` is the heart of the Kowalski agent ecosystem. It defines the essential building blocks for agent-based AI systems, including agent logic, conversation management, tool and toolchain orchestration, model management, roles/personas, configuration, error handling, and logging. All other Kowalski modules and agents build on top of these abstractions.
 
+**Memory & dependencies:** **Qdrant** was used in an **initial PoC** for semantic memory. The **goal** is a **simple, robust** stack with **minimal failure points**—see [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../docs/DESIGN_MEMORY_AND_DEPENDENCIES.md) and [`MEMORY_ARCHITECTURE.md`](./MEMORY_ARCHITECTURE.md).
+
 ---
 
 ## Dependencies

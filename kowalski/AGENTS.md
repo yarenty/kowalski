@@ -89,6 +89,10 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 - **Performance**: Async-first using Tokio
 - **Monitoring**: Built-in activity tracking and LLM observability
 
+### Memory stack and dependencies (design)
+
+**Qdrant** was used in an **initial PoC** for semantic memory. The project prioritizes a **simple, robust, dependency-light** stack and **fewer moving parts**; see [`../docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../docs/DESIGN_MEMORY_AND_DEPENDENCIES.md).
+
 ---
 
 ## 4. Technology Stack

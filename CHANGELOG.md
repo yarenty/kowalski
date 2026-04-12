@@ -4,6 +4,12 @@
 
 All notable changes to this project will be documented in this file, or at least we'll try to remember to do so.
 
+## [Unreleased]
+
+### Documentation
+
+- Documented **memory stack rationale**: **Qdrant** was used in an **initial proof of concept** for semantic memory; the **ongoing goal** is a **simple, robust, dependency-light** default with **minimal moving parts**. Canonical write-up: [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md). Linked from root and component `AGENTS.md`, READMEs, memory articles, and rebuild notes.
+
 ## [0.5.2] - 2024-07-06
 
 > "Version 0.5.2: Now with a memory like an elephant (but less likely to trample your data)."

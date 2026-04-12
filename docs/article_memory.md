@@ -2,6 +2,8 @@
 
 How do you give an AI agent a memory that’s more than just a chat log? This question led to the creation of `kowalski-memory`, a Rust-based, multi-tiered memory system for agentic AI. Let’s take a journey through the philosophy, technical architecture, and the real-world challenges of building a memory system that doesn’t just store data, but learns, forgets, and grows—much like we do.
 
+> **Design update:** **Qdrant** was used in an **initial proof of concept** for semantic (vector) memory. The **main goal** going forward is a **simple, robust, dependency-light** implementation with **minimal moving parts** and **fewer failure points**. See the canonical note [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](DESIGN_MEMORY_AND_DEPENDENCIES.md).
+
 ---
 
 ## Why Agentic Memory Needs to Be More Than a Database
@@ -22,7 +24,7 @@ When an agent is in the middle of a conversation, it relies on its working memor
 
 But what happens to those experiences? They don’t just vanish. Instead, they’re archived in the episodic buffer—a kind of journal that records the agent’s life in high fidelity. Here, we use an embedded key-value store like RocksDB. It’s persistent, fast, and can recall every detail of recent events. Of course, even journals must be pruned, so we use a time-to-live policy to keep things manageable.
 
-The real magic happens in the long-term semantic store. This is the agent’s true “brain,” where knowledge is distilled and organized. Instead of storing raw conversations, we use a vector database like Qdrant to enable semantic search—so the agent can find memories by meaning, not just keywords. For relationships and structured knowledge, a graph database can be added, capturing the web of facts and entities the agent has learned.
+The real magic happens in the long-term semantic store. This is the agent’s true “brain,” where knowledge is distilled and organized. Instead of storing only raw conversations, semantic retrieval uses **embeddings** so the agent can find memories by meaning, not just keywords (historically explored with an external vector DB as **PoC**; the **default direction** is **in-process** similarity plus optional backends—see [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](DESIGN_MEMORY_AND_DEPENDENCIES.md)). For relationships and structured knowledge, a **graph** layer (e.g. `petgraph` in Rust) captures the web of facts and entities the agent has learned.
 
 Here’s a diagram to visualize this architecture:
 
@@ -37,7 +39,7 @@ graph TD
     subgraph Memory Tiers
         T1["Tier 1: Working Memory <br> In-Memory Struct"]
         T2["Tier 2: Episodic Buffer <br> RocksDB"]
-        T3["Tier 3: Long-Term Semantic Store <br> Qdrant/Graph DB"]
+        T3["Tier 3: Long-Term Semantic Store <br> Vectors + Graph (PoC used Qdrant)"]
     end
 
     B <--> T1;
@@ -84,7 +86,7 @@ The Recall Engine, on the other hand, is the agent’s librarian. When the agent
 
 ## Technical Details: Under the Hood
 
-Everything in `kowalski-memory` is written in Rust, chosen for its speed, safety, and ability to handle concurrency with ease. RocksDB serves as the backbone for episodic memory, providing fast, embeddable storage. For semantic memory, Qdrant enables powerful vector search, letting the agent find memories by meaning. Background tasks like consolidation run asynchronously with Tokio, ensuring the agent’s main loop is never blocked.
+Everything in `kowalski-memory` is written in Rust, chosen for its speed, safety, and ability to handle concurrency with ease. RocksDB serves as the backbone for episodic memory, providing fast, embeddable storage. For semantic memory, **vector search** was first explored with **Qdrant** as a **PoC**; the **default direction** is **in-process** similarity and **minimal external dependencies**—see [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](DESIGN_MEMORY_AND_DEPENDENCIES.md). Background tasks like consolidation run asynchronously with Tokio, ensuring the agent’s main loop is never blocked.
 
 The architecture is built for extensibility. The core interfaces are defined as Rust traits—`MemoryProvider`, `MemoryWeaver`—so you can swap out storage backends, embedding models, retrieval strategies, or even the entire consolidation process as your needs evolve. For example, you might want to use a different vector database, or plug in a domain-specific LLM for summarization. Here’s how a basic memory trait might look:
 
