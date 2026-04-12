@@ -21,6 +21,9 @@ pub struct Config {
     /// LLM configuration (new)
     #[serde(default)]
     pub llm: LLMConfig,
+    /// MCP configuration
+    #[serde(default)]
+    pub mcp: McpConfig,
     /// Additional configurations from other agents
     #[serde(flatten)]
     pub additional: HashMap<String, serde_json::Value>,
@@ -160,6 +163,7 @@ impl Default for Config {
         Self {
             ollama: OllamaConfig::default(),
             llm: LLMConfig::default(),
+            mcp: McpConfig::default(),
             chat: ChatConfig::default(),
             qdrant: QdrantConfig::default(),
             memory: MemoryConfig::default(),
@@ -168,5 +172,38 @@ impl Default for Config {
             semantic_memory_retrieval_limit: 3,
             additional: HashMap::new(),
         }
+    }
+}
+
+/// Configuration for MCP servers
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct McpConfig {
+    #[serde(default)]
+    pub servers: Vec<McpServerConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpServerConfig {
+    pub name: String,
+    /// Base URL of the MCP server (JSON-RPC endpoint or HTTP transport root)
+    pub url: String,
+    /// Preferred transport, defaults to SSE as per spec
+    #[serde(default)]
+    pub transport: McpTransport,
+    /// Optional static headers (e.g., auth tokens)
+    #[serde(default)]
+    pub headers: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum McpTransport {
+    Sse,
+    Http,
+}
+
+impl Default for McpTransport {
+    fn default() -> Self {
+        McpTransport::Sse
     }
 }

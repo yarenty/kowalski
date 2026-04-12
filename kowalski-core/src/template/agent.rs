@@ -2,6 +2,7 @@ use crate::agent::BaseAgent;
 use crate::config::Config;
 use crate::error::KowalskiError;
 use crate::template::config::TemplateAgentConfig;
+use crate::mcp::McpHub;
 use crate::tools::{TaskType, Tool, ToolInput, ToolOutput};
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -45,8 +46,14 @@ impl TemplateAgent {
             crate::tools::manager::ToolManager::new(),
         )
         .await?;
-        let template_config = TemplateAgentConfig::from(config);
+        let template_config = TemplateAgentConfig::from(config.clone());
         let task_handlers = Arc::new(RwLock::new(HashMap::new()));
+
+        if let Some(hub) = McpHub::new(&config.mcp.servers).await? {
+            for proxy in hub.into_tool_proxies() {
+                base.tool_manager.register_boxed(proxy);
+            }
+        }
 
         Ok(Self {
             base,

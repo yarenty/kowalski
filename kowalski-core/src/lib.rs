@@ -4,6 +4,7 @@ pub mod conversation;
 pub mod error;
 pub mod llm;
 pub mod logging;
+pub mod mcp;
 pub mod memory;
 pub mod model;
 pub mod role;
@@ -17,6 +18,7 @@ pub use config::*;
 // pub use conversation::*; // Remove this to avoid ToolCall ambiguity
 pub use error::KowalskiError;
 pub use logging::*;
+pub use mcp::*;
 pub use model::ModelManager;
 pub use model::*;
 pub use role::{Audience, Preset, Role, Style};
