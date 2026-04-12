@@ -14,12 +14,14 @@ pub mod tool_chain;
 pub mod tools;
 pub mod utils;
 
-pub use agent::*;
+pub use agent::{Agent, BaseAgent, MessageHandler};
 pub use config::*;
 // pub use conversation::*; // Remove this to avoid ToolCall ambiguity
 pub use error::KowalskiError;
 pub use logging::*;
-pub use mcp::*;
+pub use mcp::{
+    CallToolResponse, McpClient, McpHub, McpToolBinding, McpToolDescription, McpToolProxy,
+};
 pub use model::ModelManager;
 pub use model::*;
 pub use role::{Audience, Preset, Role, Style};

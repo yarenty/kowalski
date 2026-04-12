@@ -8,7 +8,7 @@ use tempfile::tempdir;
 #[tokio::test]
 async fn test_memory_isolation() {
     // Setup configuration
-    let mut config = Config::default();
+    let config = Config::default();
 
     // Create temporary directories for episodic memory to avoid conflicts/persistence
     let dir1 = tempdir().unwrap();
@@ -22,7 +22,7 @@ async fn test_memory_isolation() {
         .await
         .unwrap();
     let llm_provider1 = crate::llm::create_llm_provider(&config1).unwrap();
-    let mut agent1 = BaseAgent::new(
+    let agent1 = BaseAgent::new(
         config1,
         "agent1",
         "Test Agent 1",
@@ -43,7 +43,7 @@ async fn test_memory_isolation() {
         .await
         .unwrap();
     let llm_provider2 = crate::llm::create_llm_provider(&config2).unwrap();
-    let mut agent2 = BaseAgent::new(
+    let agent2 = BaseAgent::new(
         config2,
         "agent2",
         "Test Agent 2",
@@ -165,8 +165,8 @@ async fn test_memory_isolation() {
         .unwrap();
 
     // Verify isolation
-    let res1 = em1.lock().await.retrieve("Episodic", 5).await.unwrap();
-    let res2 = em2.lock().await.retrieve("Episodic", 5).await.unwrap();
+    let _res1 = em1.lock().await.retrieve("Episodic", 5).await.unwrap();
+    let _res2 = em2.lock().await.retrieve("Episodic", 5).await.unwrap();
 
     // Note: retrieval logic might be fuzzy or depend on embeddings,
     // but here we are checking if they return different contents or count.

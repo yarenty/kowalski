@@ -1,6 +1,9 @@
-//! Integration test: JSON-RPC MCP over HTTP POST against a local mock server.
+//! Integration test: JSON-RPC MCP over HTTP POST against a local mock server
+//! (JSON bodies and Streamable HTTP **SSE** bodies).
 
+use axum::body::Body;
 use axum::http::{StatusCode, header};
+use axum::response::Response;
 use axum::{Json, Router, routing::post};
 use kowalski_core::config::{McpServerConfig, McpTransport};
 use kowalski_core::mcp::client::McpClient;
@@ -9,6 +12,20 @@ use std::collections::HashMap;
 
 async fn mcp_handler(Json(body): Json<Value>) -> Json<Value> {
     Json(mcp_jsonrpc_result(body))
+}
+
+/// Streamable HTTP: same JSON-RPC payloads delivered as `text/event-stream` (`data:` lines).
+async fn mcp_handler_sse(Json(body): Json<Value>) -> Response {
+    let envelope = mcp_jsonrpc_result(body);
+    let data = format!(
+        "data: {}\n\n",
+        serde_json::to_string(&envelope).expect("serialize json-rpc")
+    );
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/event-stream")
+        .body(Body::from(data))
+        .expect("response")
 }
 
 fn mcp_jsonrpc_result(body: Value) -> Value {
@@ -88,6 +105,25 @@ async fn mcp_client_list_and_call_via_mock_http() {
         .expect("call_tool");
     let normalized = raw.normalized_content();
     assert_eq!(normalized, json!("pong"));
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn mcp_client_list_tools_via_sse_response_body() {
+    let app = Router::new().route("/", post(mcp_handler_sse));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let url = format!("http://127.0.0.1:{}/", addr.port());
+    let client = McpClient::connect("mock-sse", &url).await.expect("connect");
+
+    let tools = client.list_tools().await.expect("list_tools");
+    assert_eq!(tools.len(), 1);
+    assert_eq!(tools[0].name, "echo");
 
     server.abort();
 }
