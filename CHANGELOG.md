@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Changed
+
+- **Semantic memory relations:** Replaced **`petgraph`** with a **`HashMap<String, Vec<(String, String)>>`** (subject → outgoing `(predicate, object)` edges). Same behavior for the current query pattern; **one fewer dependency**; no graph crate—only `std`. See [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md).
+
 ### Documentation
 
 - Documented **memory stack rationale**: **Qdrant** was used in an **initial proof of concept** for semantic memory; the **ongoing goal** is a **simple, robust, dependency-light** default with **minimal moving parts**. Canonical write-up: [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md). Linked from root and component `AGENTS.md`, READMEs, memory articles, and rebuild notes.

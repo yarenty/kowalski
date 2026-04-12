@@ -64,7 +64,7 @@ graph TD
 *   **Purpose:** To store distilled, permanent knowledge. This is the agent's true "brain." It doesn't store conversations verbatim; it stores the *meaning* extracted from them.
 *   **Storage Technology:** Typically a **dual-component** system:
     1.  **Vector / semantic retrieval:** Embeddings enable recall by **conceptual similarity**. Kowalski **explored external vector DBs (e.g. Qdrant) as PoC**; the **default direction** is **in-process** similarity and **minimal external dependencies**—see [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](DESIGN_MEMORY_AND_DEPENDENCIES.md).
-    2.  **(Optional but powerful) Graph layer:** For structured relationships; `petgraph` can model edges without a separate server.
+    2.  **(Optional but powerful) Graph layer:** For structured relationships; Kowalski’s default uses a **simple adjacency map** (`HashMap`, no extra graph crate); full graph DBs remain an optional deployment choice.
 *   **Characteristics:** Slower than other tiers, but offers powerful query capabilities. Designed for permanent storage.
 *   **Management:** Data is added to this tier exclusively through the **Memory Consolidation Process**.
 

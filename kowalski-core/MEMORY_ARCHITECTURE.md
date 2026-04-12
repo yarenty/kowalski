@@ -19,7 +19,7 @@ graph TD
     subgraph Memory Tiers
         T1["**Tier 1: Working Memory**<br>(in-process)"]
         T2["**Tier 2: Episodic Buffer**<br>(RocksDB)"]
-        T3["**Tier 3: Semantic Store**<br>(in-process vectors + petgraph)"]
+        T3["**Tier 3: Semantic Store**<br>(vectors + relation map)"]
     end
 
     B <--> T1;
@@ -36,7 +36,7 @@ graph TD
 |------|------|----------------------------|
 | **1 – Working** | Immediate context for the active task | In-process structures; limited size, volatile |
 | **2 – Episodic** | Chronological, high-fidelity log of recent interactions | **RocksDB** (embedded, no separate server) |
-| **3 – Semantic** | Distilled knowledge: similarity search + optional relational edges | **In-process** embedding index (cosine similarity) + **`petgraph`** graph; no mandatory vector DB |
+| **3 – Semantic** | Distilled knowledge: similarity search + optional relational edges | **In-process** embedding index (cosine similarity) + **`HashMap` relation edges** (no extra graph crate) |
 
 ---
 
@@ -60,15 +60,15 @@ graph TD
 - **RocksDB** creates its database under the configured episodic path (e.g. `memory.episodic_path`).
 - Optional **SQL** migrations run when `memory.database_url` is set (e.g. `sqlite:…`); see [`src/db/mod.rs`](./src/db/mod.rs) and the repo `migrations/` folder.
 
-### Graph relationships (`petgraph`)
+### Graph relationships (in-memory map)
 
-To record a triple, add a `MemoryUnit` whose `content` is JSON:
+Outgoing edges are stored as **subject → [(predicate, object), …]** in a `HashMap` (no separate graph library). To record a triple, add a `MemoryUnit` whose `content` is JSON:
 
 ```json
 {"subject": "Kowalski", "predicate": "has_module", "object": "kowalski-core"}
 ```
 
-The in-memory graph is **not persisted** across process restarts unless you add serialization or an external store (future work).
+Relations are **not persisted** across process restarts unless you add serialization or an external store (future work).
 
 ---
 
