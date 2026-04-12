@@ -58,6 +58,7 @@ pub async fn serve(
 
     let app = Router::new()
         .route("/api/health", get(get_health))
+        .route("/api/agents", get(get_agents))
         .route("/api/doctor", get(get_doctor))
         .route("/api/mcp/servers", get(get_mcp_servers))
         .route("/api/mcp/ping", post(post_mcp_ping))
@@ -75,6 +76,20 @@ async fn get_health(State(state): State<ApiState>) -> Json<serde_json::Value> {
         "status": "ok",
         "service": "kowalski-cli",
         "version": env!("CARGO_PKG_VERSION"),
+        "model": state.model,
+    }))
+}
+
+/// Single-process `serve`: one template agent (not a federated `AgentRegistry` yet).
+async fn get_agents(State(state): State<ApiState>) -> Json<serde_json::Value> {
+    let guard = state.chat.lock().await;
+    Json(json!({
+        "mode": "single_process",
+        "agents": [{
+            "name": guard.agent.name(),
+            "description": guard.agent.description(),
+        }],
+        "conversation_id": guard.conv_id,
         "model": state.model,
     }))
 }
