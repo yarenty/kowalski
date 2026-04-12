@@ -1,16 +1,23 @@
 //! Integration test: JSON-RPC MCP over HTTP POST against a local mock server.
 
+use axum::http::{StatusCode, header};
 use axum::{Json, Router, routing::post};
+use kowalski_core::config::{McpServerConfig, McpTransport};
 use kowalski_core::mcp::client::McpClient;
 use serde_json::{Value, json};
+use std::collections::HashMap;
 
 async fn mcp_handler(Json(body): Json<Value>) -> Json<Value> {
+    Json(mcp_jsonrpc_result(body))
+}
+
+fn mcp_jsonrpc_result(body: Value) -> Value {
     let id = body.get("id").cloned().unwrap_or(json!(1));
     let method = body["method"].as_str().unwrap_or("");
 
     // JSON-RPC notification (no id): MCP lifecycle after initialize
     if body.get("id").is_none() && method == "notifications/initialized" {
-        return Json(json!({ "jsonrpc": "2.0", "result": null }));
+        return json!({ "jsonrpc": "2.0", "result": null });
     }
 
     let result = match method {
@@ -34,14 +41,28 @@ async fn mcp_handler(Json(body): Json<Value>) -> Json<Value> {
             "content": [{"type": "text", "text": "pong"}]
         }),
         _ => {
-            return Json(json!({
+            return json!({
                 "jsonrpc": "2.0",
                 "id": id,
                 "error": {"code": -32601, "message": "method not found"}
-            }));
+            });
         }
     };
-    Json(json!({ "jsonrpc": "2.0", "id": id, "result": result }))
+    json!({ "jsonrpc": "2.0", "id": id, "result": result })
+}
+
+async fn mcp_handler_with_auth(
+    headers: axum::http::HeaderMap,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, StatusCode> {
+    let ok = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        == Some("Bearer test-token");
+    if !ok {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    Ok(Json(mcp_jsonrpc_result(body)))
 }
 
 #[tokio::test]
@@ -67,6 +88,34 @@ async fn mcp_client_list_and_call_via_mock_http() {
         .expect("call_tool");
     let normalized = raw.normalized_content();
     assert_eq!(normalized, json!("pong"));
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn mcp_client_sends_mcp_server_config_headers() {
+    let app = Router::new().route("/", post(mcp_handler_with_auth));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let url = format!("http://127.0.0.1:{}/", addr.port());
+    let mut headers = HashMap::new();
+    headers.insert("Authorization".to_string(), "Bearer test-token".to_string());
+    let cfg = McpServerConfig {
+        name: "mock".to_string(),
+        url: url.clone(),
+        transport: McpTransport::Http,
+        headers,
+    };
+
+    let client = McpClient::connect_server(&cfg)
+        .await
+        .expect("connect with headers");
+    let tools = client.list_tools().await.expect("list_tools");
+    assert_eq!(tools.len(), 1);
 
     server.abort();
 }

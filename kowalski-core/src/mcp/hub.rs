@@ -32,7 +32,7 @@ impl McpHub {
         let mut bindings = HashMap::new();
 
         for server in servers {
-            let client = match McpClient::connect(&server.name, &server.url).await {
+            let client = match McpClient::connect_server(server).await {
                 Ok(c) => c,
                 Err(err) => {
                     warn!("Failed to connect to MCP server '{}': {}", server.name, err);

@@ -1,9 +1,13 @@
+use crate::config::{McpServerConfig, McpTransport};
 use crate::error::KowalskiError;
 use crate::mcp::types::{CallToolResponse, InitializeResult, ToolListResult};
 use log::{debug, warn};
 use reqwest::Url;
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::de::DeserializeOwned;
 use serde_json::json;
+use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -17,15 +21,42 @@ pub struct McpClient {
     init: Arc<InitializeResult>,
 }
 
+fn build_http_client(headers: &HashMap<String, String>) -> Result<reqwest::Client, KowalskiError> {
+    let mut map = HeaderMap::new();
+    for (key, value) in headers {
+        let hname = HeaderName::from_str(key.trim()).map_err(|e| {
+            KowalskiError::Configuration(format!("Invalid MCP header name '{key}': {e}"))
+        })?;
+        let hval = HeaderValue::from_str(value).map_err(|e| {
+            KowalskiError::Configuration(format!("Invalid MCP header value for '{key}': {e}"))
+        })?;
+        map.insert(hname, hval);
+    }
+    reqwest::Client::builder()
+        .default_headers(map)
+        .build()
+        .map_err(KowalskiError::Request)
+}
+
 impl McpClient {
-    pub async fn connect(name: impl Into<String>, url: &str) -> Result<Self, KowalskiError> {
-        let base_url = Url::parse(url)?;
-        let http = reqwest::Client::builder()
-            .build()
-            .map_err(KowalskiError::Request)?;
+    /// Connect using full server config: URL, optional [`McpServerConfig::headers`] (e.g. auth),
+    /// and transport hint (full SSE session is not implemented yet; JSON-RPC uses HTTP POST).
+    pub async fn connect_server(server: &McpServerConfig) -> Result<Self, KowalskiError> {
+        let base_url = Url::parse(&server.url)?;
+        let http = build_http_client(&server.headers)?;
+
+        match server.transport {
+            McpTransport::Sse => {
+                debug!(
+                    "MCP server '{}': transport=sse; JSON-RPC still uses HTTP POST on {} until full SSE transport is implemented",
+                    server.name, server.url
+                );
+            }
+            McpTransport::Http => {}
+        }
 
         let mut client = Self {
-            name: name.into(),
+            name: server.name.clone(),
             base_url,
             http,
             id_counter: Arc::new(AtomicU64::new(1)),
@@ -38,6 +69,17 @@ impl McpClient {
         }
 
         Ok(client)
+    }
+
+    /// Convenience: no extra headers, HTTP-style POST transport.
+    pub async fn connect(name: impl Into<String>, url: &str) -> Result<Self, KowalskiError> {
+        Self::connect_server(&McpServerConfig {
+            name: name.into(),
+            url: url.to_string(),
+            transport: McpTransport::Http,
+            headers: HashMap::new(),
+        })
+        .await
     }
 
     pub fn name(&self) -> &str {

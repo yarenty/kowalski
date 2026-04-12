@@ -109,14 +109,23 @@ impl TemplateAgent {
         &mut self.config
     }
 
-    /// Registers a tool with the agent
-    /// Registers a tool with the agent
+    /// Registers a tool and refreshes [`TemplateAgentConfig::tool_prompt_appendix`] from the
+    /// current tool set so the next [`crate::agent::Agent::start_conversation`] includes updated schemas.
     pub async fn register_tool(
-        &self,
+        &mut self,
         tool: Box<dyn Tool + Send + Sync>,
     ) -> Result<(), KowalskiError> {
         self.base.tool_manager.register_boxed(tool);
+        self.config.tool_prompt_appendix =
+            Self::build_tool_prompt_appendix(&self.base.tool_manager).await;
         Ok(())
+    }
+
+    /// Recomputes the tool schema appendix from the current [`BaseAgent::tool_manager`].
+    /// Call this if tools are registered without going through [`Self::register_tool`].
+    pub async fn refresh_tool_prompt_appendix(&mut self) {
+        self.config.tool_prompt_appendix =
+            Self::build_tool_prompt_appendix(&self.base.tool_manager).await;
     }
 
     /// Registers a task handler with the agent
