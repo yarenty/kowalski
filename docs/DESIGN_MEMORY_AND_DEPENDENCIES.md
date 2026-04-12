@@ -20,17 +20,18 @@ For structured **subject → predicate → object** edges, the code briefly used
 
 ---
 
-## Episodic tier: SQLite (embedded file, no daemon)
+## Episodic tier: `episodic_kv` (SQLite file or PostgreSQL)
 
-**Tier 2 (episodic buffer)** stores each [`MemoryUnit`](../../kowalski-core/src/memory/mod.rs) as JSON in table **`episodic_kv`** (`id`, `payload`), using **`sqlx`** + **embedded SQLite** (via `libsqlite3-sys`, already required elsewhere). **No separate server** and no **C++ RocksDB** build.
+**Tier 2 (episodic buffer)** stores each [`MemoryUnit`](../../kowalski-core/src/memory/mod.rs) as JSON in table **`episodic_kv`** (`id`, `payload`), using **`sqlx`**. Default is **embedded SQLite** (no separate server). If **`memory.database_url`** is **`postgres://…`**, the same table and JSON shape are used in **PostgreSQL** (see `migrations/postgres/002_episodic_kv.sql`). **No C++ RocksDB** build.
 
 | Aspect | Notes |
 |--------|--------|
-| **Path** | `memory.episodic_path`: if it ends with `.sqlite` / `.db`, that file is used; otherwise a directory is created and **`episodic.sqlite`** is opened inside it (same layout as the old RocksDB directory convention). |
-| **Build** | One native SQLite compile path shared with optional `database_url` migrations. |
-| **Historical note** | Episodic storage previously used **RocksDB**; it was replaced to **reduce native dependency surface** and align Tier 2 with **SQLite** already in the stack. |
+| **Path (default)** | Without a Postgres URL: `memory.episodic_path` — if it ends with `.sqlite` / `.db`, that file is used; otherwise a directory is created and **`episodic.sqlite`** is opened inside it. |
+| **Postgres** | With **`memory.database_url`** = `postgres://…`, Tier 2 reads/writes **`episodic_kv`** in that database (run migrations via [`db::run_memory_migrations_if_configured`](../../kowalski-core/src/db/mod.rs)). |
+| **Build** | Native SQLite via `libsqlite3-sys`; Postgres uses the existing **`sqlx`** Postgres driver. |
+| **Historical note** | Episodic storage previously used **RocksDB**; it was replaced to **reduce native dependency surface** and align Tier 2 with **SQL** already in the stack. |
 
-**Direction:** [WP3](../rebuild_tasks/wp3_postgres_data_layer_tasks.md) may **unify** episodic rows with the same SQL schema as optional server Postgres; the on-disk file format can remain SQLite for single-node / edge.
+**Direction:** [WP3](../rebuild_tasks/wp3_postgres_data_layer_tasks.md) continues with **pgvector**, **`episodic_memory`** normalized rows, and **`agent_state`** as needed; Tier 2 `episodic_kv` JSON is the current interchange format for `MemoryUnit` blobs.
 
 ---
 
