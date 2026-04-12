@@ -1,0 +1,19 @@
+[package]
+name = "kowalski-mcp-datafusion"
+version = "0.6.0"
+edition = "2024"
+description = "Standalone MCP Streamable HTTP server: DataFusion SQL, schema, and column statistics over CSV"
+license = "MIT"
+authors = ["yarenty <yarenty@gmail.com>"]
+repository = "https://github.com/yarenty/kowalski"
+
+# DataFusion and its native deps are pinned here only (not in the repo workspace) so this crate can be built and Dockerized independently.
+
+[dependencies]
+axum = { workspace = true }
+clap = { version = "4.5", features = ["derive"] }
+datafusion = "53"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+uuid = { version = "1", features = ["v4"] }
