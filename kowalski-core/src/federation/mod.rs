@@ -12,7 +12,9 @@ mod registry;
 
 pub use acl::{check_delegate_depth, AclEnvelope, AclMessage};
 pub use broker::{MessageBroker, MpscBroker};
-pub use orchestrator::FederationOrchestrator;
+pub use orchestrator::{DelegationOutcome, FederationOrchestrator};
 #[cfg(feature = "postgres")]
-pub use pg_broker::{bridge_postgres_notify_to_mpsc, PgBroker};
+pub use pg_broker::{
+    bridge_postgres_notify_to_mpsc, bridge_postgres_notify_to_mpsc_pool, pg_pool_connect, PgBroker,
+};
 pub use registry::{AgentRecord, AgentRegistry};

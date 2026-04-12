@@ -13,7 +13,7 @@ import {
   type SessionsResponse,
 } from "./api";
 
-const tab = ref<"home" | "mcp" | "chat" | "federation">("home");
+const tab = ref<"home" | "mcp" | "chat" | "federation" | "graph">("home");
 
 const health = ref<Health | null>(null);
 const healthErr = ref<string | null>(null);
@@ -280,6 +280,9 @@ onUnmounted(() => {
         >
           Federation
         </button>
+        <button type="button" :class="{ active: tab === 'graph' }" @click="tab = 'graph'">
+          Graph
+        </button>
       </nav>
     </header>
 
@@ -310,6 +313,14 @@ onUnmounted(() => {
         <h3>Ollama probe</h3>
         <pre v-if="doctor" class="json">{{ JSON.stringify(doctor, null, 2) }}</pre>
         <p v-if="doctorErr" class="err">{{ doctorErr }}</p>
+      </section>
+
+      <section v-else-if="tab === 'graph'" class="panel">
+        <h2>Graph</h2>
+        <p class="hint">
+          Apache AGE / Cypher exploration and episodic graph APIs are tracked under WP3. This tab is
+          a placeholder until <code>/api/graph/*</code> and an AGE-backed store are wired.
+        </p>
       </section>
 
       <section v-else-if="tab === 'federation'" class="panel">

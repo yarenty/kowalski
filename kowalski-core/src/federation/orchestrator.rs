@@ -6,6 +6,13 @@ use crate::federation::broker::MessageBroker;
 use crate::federation::registry::AgentRegistry;
 use std::sync::Arc;
 
+/// Result of a successful [`FederationOrchestrator::delegate_first_match`] (for HTTP/Postgres fan-out).
+#[derive(Debug, Clone)]
+pub struct DelegationOutcome {
+    pub agent_id: String,
+    pub envelope: AclEnvelope,
+}
+
 /// Holds registry + broker for one deployment (in-process or bridged to Postgres).
 pub struct FederationOrchestrator {
     pub registry: Arc<AgentRegistry>,
@@ -36,13 +43,13 @@ impl FederationOrchestrator {
 
     /// Best-ranked agent for `required_capability` receives a [`AclMessage::TaskDelegate`]
     /// (see [`AgentRegistry::find_ranked_by_capability`]).
-    /// Returns the chosen agent id, or `None` if no match.
+    /// Returns the chosen agent id and envelope, or `None` if no match.
     pub async fn delegate_first_match(
         &self,
         task_id: &str,
         instruction: &str,
         required_capability: &str,
-    ) -> Result<Option<String>, KowalskiError> {
+    ) -> Result<Option<DelegationOutcome>, KowalskiError> {
         let candidates = self.registry.find_ranked_by_capability(required_capability);
         let Some(agent) = candidates.first() else {
             return Ok(None);
@@ -62,7 +69,10 @@ impl FederationOrchestrator {
             msg,
         );
         self.broker.publish(&env).await?;
-        Ok(Some(agent.id.clone()))
+        Ok(Some(DelegationOutcome {
+            agent_id: agent.id.clone(),
+            envelope: env,
+        }))
     }
 }
 
@@ -86,7 +96,7 @@ mod tests {
             .delegate_first_match("t1", "find X", "search")
             .await
             .unwrap();
-        assert_eq!(to.as_deref(), Some("worker"));
+        assert_eq!(to.as_ref().map(|d| d.agent_id.as_str()), Some("worker"));
         let env = rx.recv().await.unwrap();
         assert!(matches!(env.payload, AclMessage::TaskDelegate { .. }));
     }
