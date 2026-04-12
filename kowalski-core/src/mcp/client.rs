@@ -94,6 +94,11 @@ impl McpClient {
         &self.name
     }
 
+    /// Streamable HTTP session id from `Mcp-Session-Id` responses, if the server assigned one.
+    pub fn session_id(&self) -> Option<String> {
+        self.session_id.lock().ok().and_then(|g| g.clone())
+    }
+
     fn apply_streamable_headers(&self, mut req: RequestBuilder) -> RequestBuilder {
         req = req.header(ACCEPT, ACCEPT_STREAMABLE);
         if let Ok(guard) = self.session_id.lock() {

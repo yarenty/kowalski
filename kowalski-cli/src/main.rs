@@ -13,7 +13,12 @@ use tokio::sync::RwLock;
 use kowalski_core::memory::consolidation::{Consolidator, MemoryWeaver};
 
 #[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
+#[clap(
+    author,
+    version,
+    about = "Kowalski CLI — agents, memory, and MCP operators.",
+    long_about = "Use `mcp ping` or `mcp tools` to verify Streamable HTTP MCP servers from [mcp] in config.toml."
+)]
 struct Cli {
     #[clap(subcommand)]
     command: Option<Commands>,
@@ -80,6 +85,12 @@ enum Commands {
 enum McpCommands {
     /// Run initialize + tools/list against each server in [mcp] (from config TOML)
     Ping {
+        /// TOML file containing an [mcp] section (default: ./config.toml)
+        #[clap(short, long)]
+        config: Option<String>,
+    },
+    /// List tool names and descriptions per MCP server (same config as ping)
+    Tools {
         /// TOML file containing an [mcp] section (default: ./config.toml)
         #[clap(short, long)]
         config: Option<String>,
@@ -178,13 +189,17 @@ impl AgentManager {
     }
 }
 
+fn mcp_config_path(config_path: Option<&str>) -> std::path::PathBuf {
+    use std::path::Path;
+    config_path
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| Path::new("config.toml").to_path_buf())
+}
+
 async fn run_mcp_ping(config_path: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     use kowalski_cli::config::load_mcp_config_from_file;
-    use std::path::Path;
 
-    let path = config_path
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| Path::new("config.toml").to_path_buf());
+    let path = mcp_config_path(config_path);
     let mcp = load_mcp_config_from_file(&path)?;
     if mcp.servers.is_empty() {
         println!(
@@ -212,12 +227,77 @@ async fn run_mcp_ping(config_path: Option<&str>) -> Result<(), Box<dyn std::erro
         );
         io::stdout().flush()?;
         match kowalski_core::mcp::McpClient::connect_server(server).await {
-            Ok(client) => match client.list_tools().await {
-                Ok(tools) => println!("OK — {} tool(s)", tools.len()),
-                Err(e) => println!("partial — tools/list: {}", e),
-            },
+            Ok(client) => {
+                let sid = client
+                    .session_id()
+                    .map(|s| format!(" (session {}…)", &s[..s.len().min(12)]))
+                    .unwrap_or_default();
+                match client.list_tools().await {
+                    Ok(tools) => println!("OK — {} tool(s){}", tools.len(), sid),
+                    Err(e) => println!("partial — tools/list: {}{}", e, sid),
+                }
+            }
             Err(e) => println!("FAILED — {}", e),
         }
+    }
+    Ok(())
+}
+
+async fn run_mcp_tools(config_path: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    use kowalski_cli::config::load_mcp_config_from_file;
+
+    let path = mcp_config_path(config_path);
+    let mcp = load_mcp_config_from_file(&path)?;
+    if mcp.servers.is_empty() {
+        println!(
+            "No MCP servers under [mcp] in {}. Add [[mcp.servers]] entries.",
+            path.display()
+        );
+        return Ok(());
+    }
+
+    println!(
+        "MCP tools — {} ({} server(s))\n",
+        path.display(),
+        mcp.servers.len()
+    );
+
+    for server in &mcp.servers {
+        println!(
+            "[{}] {} ({})",
+            server.name,
+            server.url,
+            match server.transport {
+                kowalski_core::config::McpTransport::Http => "http",
+                kowalski_core::config::McpTransport::Sse => "sse",
+            }
+        );
+        match kowalski_core::mcp::McpClient::connect_server(server).await {
+            Ok(client) => {
+                if let Some(sid) = client.session_id() {
+                    println!("  Session: {}", sid);
+                }
+                match client.list_tools().await {
+                    Ok(tools) => {
+                        if tools.is_empty() {
+                            println!("  (no tools reported)");
+                        }
+                        for t in &tools {
+                            let desc = t.description.trim();
+                            let short = if desc.len() > 120 {
+                                format!("{}…", &desc[..120])
+                            } else {
+                                desc.to_string()
+                            };
+                            println!("  • {} — {}", t.name, short);
+                        }
+                    }
+                    Err(e) => println!("  Error: {}", e),
+                }
+            }
+            Err(e) => println!("  FAILED: {}", e),
+        }
+        println!();
     }
     Ok(())
 }
@@ -318,6 +398,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 config: config_path,
             } => {
                 run_mcp_ping(config_path.as_deref()).await?;
+            }
+            McpCommands::Tools {
+                config: config_path,
+            } => {
+                run_mcp_tools(config_path.as_deref()).await?;
             }
         },
         Some(Commands::Consolidate { delete }) => {
@@ -483,6 +568,10 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
                 println!("  list: List available agent types");
                 println!("  agents: List active agents");
                 println!("  bye | /bye : Exit the CLI");
+                println!();
+                println!("MCP (run outside this REPL):");
+                println!("  kowalski mcp ping [-c config.toml]   — health + tool count");
+                println!("  kowalski mcp tools [-c config.toml]  — list tools per server");
             }
             "create" => {
                 let agent_type = parts.next();
