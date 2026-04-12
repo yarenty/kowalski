@@ -62,6 +62,20 @@ Automated checks live in **CI** (`.github/workflows/ci.yml`) and **`cargo test`*
 
 ---
 
+## Tests & CI
+- [ ] **Episodic memory integration test** on real Postgres (insert/order by session) — called out in old WP3 text; not default CI.
+- [ ] **pgvector cosine** integration test on live Postgres (optional; beyond current smoke).
+- [ ] **Broader tool-JSON contract tests** — [`kowalski-core/ROADMAP.md`](kowalski-core/ROADMAP.md) (mock LLM / edge cases).
+
+---
+
+## DataFusion MCP (`kowalski-mcp-datafusion`)
+- [ ] **Multi-table / Parquet** registration via CLI flags.
+- [ ] **Performance / large-file** documentation (streaming vs load).
+- [ ] **Ballista / distributed** (long shot; same MCP surface).
+
+---
+
 ## Optional global smoke
 
 - `cargo build --workspace && cargo test --workspace` — before a release.
@@ -71,4 +85,18 @@ Automated checks live in **CI** (`.github/workflows/ci.yml`) and **`cargo test`*
 
 ---
 
-*Synced from `rebuild_tasks/wp*_checks.md` and `wp*_tasks.md`. Update this file when you add or automate a check.*
+Not exhaustive; use ROADMAP for full checkboxes.
+
+| Theme | Examples |
+|-------|----------|
+| **Memory** | Long-term conversation storage, search/indexing, context window management |
+| **Tools** | More formats (DOCX, EPUB, HTML), OCR, tables, academic extras |
+| **Template** | More domain templates, dynamic plugins |
+| **Federation** | Protocol choice (A2A, ACP, …), **auth**, federation-wide logging/monitoring |
+| **Agents** | More specialized agents / industry templates |
+| **UI & integrations** | Export chats (PDF/HTML/MD), Slack/Discord/Teams |
+| **Security** | E2E encryption, RBAC, anonymization, audit, filtering |
+| **Analytics** | Usage, performance, cost, quality, error analytics |
+| **Advanced** | i18n, prompt templates, CoT viz, semantic search across chats, auto-summary |
+| **Dev** | Custom training tools, richer testing utilities |
+
