@@ -5,13 +5,18 @@
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::sse::{Event, Sse};
+use axum::extract::Query;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use futures::Stream;
+use futures::StreamExt;
 use std::convert::Infallible;
 use tokio_stream::wrappers::ReceiverStream;
 use kowalski_core::agent::Agent;
 use kowalski_core::config::Config;
+use kowalski_core::federation::{
+    AgentRecord, AgentRegistry, FederationOrchestrator, MpscBroker,
+};
 use kowalski_core::template::agent::TemplateAgent;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -33,6 +38,8 @@ struct ApiState {
     model: String,
     full_config: Config,
     chat: Arc<Mutex<ChatState>>,
+    federation_broker: Arc<MpscBroker>,
+    federation: Arc<FederationOrchestrator>,
 }
 
 /// Run until SIGINT / process exit. Binds `addr` and serves under `/api/*`.
@@ -49,6 +56,22 @@ pub async fn serve(
     let conv_id = agent.start_conversation(&full_config.ollama.model);
     let model = full_config.ollama.model.clone();
 
+    let federation_broker = Arc::new(MpscBroker::new());
+    let federation_registry = Arc::new(AgentRegistry::new());
+    federation_registry
+        .register(AgentRecord {
+            id: "template".into(),
+            capabilities: vec!["chat".into(), "mcp".into(), "llm".into()],
+        })
+        .map_err(|e| format!("federation registry: {e}"))?;
+    let mut federation = FederationOrchestrator::new(
+        federation_registry.clone(),
+        federation_broker.clone(),
+    );
+    federation.orchestrator_id = "kowalski-serve".into();
+    federation.default_topic = "federation".into();
+    let federation = Arc::new(federation);
+
     log::info!(
         "Kowalski HTTP API at http://{} (config {}, model {})",
         addr,
@@ -62,6 +85,8 @@ pub async fn serve(
         model,
         full_config: full_config.clone(),
         chat: Arc::new(Mutex::new(ChatState { agent, conv_id })),
+        federation_broker: federation_broker.clone(),
+        federation,
     };
 
     let app = Router::new()
@@ -74,6 +99,8 @@ pub async fn serve(
         .route("/api/chat", post(post_chat))
         .route("/api/chat/stream", post(post_chat_stream))
         .route("/api/chat/reset", post(post_chat_reset))
+        .route("/api/federation/stream", get(get_federation_stream))
+        .route("/api/federation/delegate", post(post_federation_delegate))
         .with_state(state)
         .layer(CorsLayer::permissive());
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -240,4 +267,43 @@ async fn post_chat_stream(
             .await;
     });
     Sse::new(ReceiverStream::new(rx))
+}
+
+#[derive(Deserialize)]
+struct FederationStreamQuery {
+    topic: Option<String>,
+}
+
+/// SSE: one JSON [`AclEnvelope`] per `data:` line (same topic as in-process broker).
+async fn get_federation_stream(
+    State(state): State<ApiState>,
+    Query(q): Query<FederationStreamQuery>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>> + Send> {
+    let topic = q.topic.unwrap_or_else(|| "federation".to_string());
+    let rx = state.federation_broker.subscribe(&topic, 64);
+    let stream = ReceiverStream::new(rx).map(|env| {
+        Ok::<Event, Infallible>(Event::default().data(
+            serde_json::to_string(&env).unwrap_or_else(|_| "{}".to_string()),
+        ))
+    });
+    Sse::new(stream)
+}
+
+#[derive(Deserialize)]
+struct FederationDelegateBody {
+    task_id: String,
+    instruction: String,
+    capability: String,
+}
+
+async fn post_federation_delegate(
+    State(state): State<ApiState>,
+    Json(body): Json<FederationDelegateBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let delegated_to = state
+        .federation
+        .delegate_first_match(&body.task_id, &body.instruction, &body.capability)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(json!({ "delegated_to": delegated_to })))
 }
