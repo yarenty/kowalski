@@ -11,15 +11,19 @@
 //! - **System prompt**: [`crate::template::TemplateAgent`] appends `ToolManager::generate_json_schema()`
 //!   to the system message when tools are present (see `TemplateAgentConfig::tool_prompt_appendix`).
 //!
+//! ## Configuration wiring
+//!
+//! - **`McpServerConfig::headers`**: Applied as `reqwest::Client` default headers (e.g. `Authorization`).
+//! - **`McpServerConfig::transport`**: `Http` uses JSON-RPC over POST; `Sse` is logged and still uses POST until a full SSE transport exists.
+//!
 //! ## Follow-ups (not done yet)
 //!
-//! - **Transport**: Full **SSE** (or Streamable HTTP) session per [MCP transports](https://spec.modelcontextprotocol.io/);
-//!   wire `McpServerConfig::transport` and `headers` into `McpClient`.
+//! - **Transport**: Full **SSE** (or Streamable HTTP) session per [MCP transports](https://spec.modelcontextprotocol.io/).
 //! - **Lifecycle**: Optionally treat `notifications/initialized` failures as hard errors for strict servers.
-//! - **Prompt refresh**: Recompute `tool_prompt_appendix` when tools are registered after agent construction
-//!   (e.g. `TemplateAgent::register_tool`).
 //! - **CLI**: `mcp ping` / health command (WP6-style operator UX).
 //! - **Stdio MCP**: `McpClient::connect_stdio` for local processes (see WP2 task file “Later” section).
+//!
+//! **Prompt refresh:** [`crate::template::TemplateAgent::register_tool`] and [`crate::template::TemplateAgent::refresh_tool_prompt_appendix`] update `tool_prompt_appendix` when the tool set changes.
 //!
 //! ## Tests
 //!

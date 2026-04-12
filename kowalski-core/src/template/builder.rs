@@ -99,7 +99,7 @@ impl AgentBuilder {
         // }
 
         // Create template agent
-        let agent = TemplateAgent::new(Config::default()).await?;
+        let mut agent = TemplateAgent::new(Config::default()).await?;
 
         // Register tools
         for tool in self.tools {
