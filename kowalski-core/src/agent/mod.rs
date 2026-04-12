@@ -84,12 +84,12 @@ pub trait Agent: Send + Sync {
         conversation_id: &str,
         user_input: &str,
     ) -> Result<String, KowalskiError> {
-        use crate::tools::ToolCall;
         let mut final_response = String::new();
         let mut current_input = user_input.to_string();
         let mut iteration_count = 0;
         const MAX_ITERATIONS: usize = 5; // Prevent infinite loops
         let mut last_tool_call: Option<(String, serde_json::Value)> = None;
+        let mut tool_parse_hint_sent = false;
 
         debug!("Starting chat_with_tools for input: '{}'", user_input);
 
@@ -159,6 +159,16 @@ pub trait Agent: Send + Sync {
 
                 current_input = format!("Based on the tool result: {}", tool_result);
                 debug!("Continuing with new input: '{}'", current_input);
+                continue;
+            }
+
+            if crate::utils::json::looks_like_tool_json_attempt(&buffer) && !tool_parse_hint_sent {
+                tool_parse_hint_sent = true;
+                self.add_message(conversation_id, "assistant", &buffer)
+                    .await;
+                const HINT: &str = "Your previous reply appeared to include a tool call but it could not be parsed as JSON. Reply with a single JSON object only: {\"name\": \"<tool_name>\", \"parameters\": { ... } } matching the available tools. No markdown fences or extra text.";
+                current_input = HINT.to_string();
+                debug!("Tool JSON parse failed; requesting one self-correction turn");
                 continue;
             }
 
