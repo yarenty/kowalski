@@ -12,6 +12,14 @@ That work was valuable for **exploring** retrieval and consolidation flows. It i
 
 ---
 
+## Historical note: `petgraph` (crate, not a service)
+
+For structured **subject → predicate → object** edges, the code briefly used the **`petgraph`** crate. That was **never** an external installation—only a **Cargo dependency**. It added graph algorithms we did not need for the current behavior (outgoing edges from a subject string).
+
+**Current default:** relation triples are stored in a plain **`HashMap<String, Vec<(String, String)>>`** (subject → list of `(predicate, object)`), **no extra graph crate**. This keeps the **relational** slice of semantic memory on **`std` collections** only, alongside the in-process vector list.
+
+---
+
 ## Design goals: simple, robust, few moving parts
 
 The **main direction** for the framework is:
@@ -23,7 +31,7 @@ The **main direction** for the framework is:
 | **Dependency minimization** | Avoid **required** heavy or external dependencies for core workflows; keep the default path **dependency-light** so installs and edge deployments stay predictable. |
 | **Optional scale-out** | When a deployment **needs** a dedicated vector DB, hosted SQL, or cluster storage, those remain **additive**—not prerequisites for “hello world” or local dev. |
 
-Today, the semantic tier uses **in-process cosine similarity** over stored embeddings plus **`petgraph`** for structured edges—**no Qdrant client** in the default build. Optional SQL migrations (`sqlite:` / `postgres://`) support durable metadata and episodic-style tables without mandating a second always-on vector service.
+Today, the semantic tier uses **in-process cosine similarity** over stored embeddings and a **`HashMap` of relation edges** for triples—**no Qdrant client** and **no graph library** in the default build. Optional SQL migrations (`sqlite:` / `postgres://`) support durable metadata and episodic-style tables without mandating a second always-on vector service.
 
 ---
 

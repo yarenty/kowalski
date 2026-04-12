@@ -64,7 +64,7 @@ graph TD
 *   **Purpose:** To store distilled, permanent knowledge. This is the agent's true "brain." It doesn't store conversations verbatim; it stores the *meaning* extracted from them.
 *   **Storage Technology:** Typically a **dual-component** system:
     1.  **Vector / semantic retrieval:** Every piece of knowledge is converted into an embedding so the agent can find relevant memories by **conceptual similarity**. Kowalski **explored external vector DBs (e.g. Qdrant) as PoC**; the **default direction** is **in-process** similarity and **minimal external dependencies**—see [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md). Optional hosted or SQL-backed vector stores remain valid for scale-out.
-    2.  **(Optional but powerful) Graph layer:** For structured relationships between entities (e.g., "User A *works on* Project X"); in Rust, `petgraph` can model edges without a separate server.
+    2.  **(Optional but powerful) Graph layer:** For structured relationships between entities (e.g., "User A *works on* Project X"); the **default implementation** uses **`std::collections::HashMap`** for triples—no separate graph library or server.
 *   **Characteristics:** Slower than other tiers, but offers powerful query capabilities. Designed for permanent storage.
 *   **Management:** Data is added to this tier exclusively through the **Memory Consolidation Process**.
 

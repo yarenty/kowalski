@@ -1,5 +1,5 @@
 // Tier 3: Long-Term Semantic Store (The Library)
-// In-process vector similarity + petgraph for relational knowledge (no external vector DB).
+// In-process vector similarity + simple in-memory relation edges (std only for the graph part).
 
 use crate::{
     error::KowalskiError,
@@ -7,8 +7,6 @@ use crate::{
 };
 use async_trait::async_trait;
 use log::{debug, info, warn};
-use petgraph::graph::{Graph, NodeIndex};
-use petgraph::visit::EdgeRef;
 use std::collections::HashMap;
 
 /// Cosine similarity in \[−1, 1\]; returns 0 if lengths differ or norms are zero.
@@ -25,32 +23,25 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     dot / (na * nb)
 }
 
-/// Long-term memory: **in-memory** embedding index (cosine search) plus [`petgraph`] for structured edges.
+/// Long-term memory: **in-memory** embedding index (cosine search) plus a **lightweight relation map**
+/// (`subject` → list of `(predicate, object)` triples). No extra crates for the relational layer—only `std::collections`.
 ///
 /// No network services required. Embeddings are compared in-process; scale is limited by RAM.
 pub struct SemanticStore {
     /// Memories that include an embedding vector (used for semantic search).
     embedded_entries: Vec<MemoryUnit>,
-    graph_db: Graph<String, String>,
-    graph_nodes: HashMap<String, NodeIndex>,
+    /// Directed edges from each subject: `subject -> [(predicate, object), ...]`.
+    relations: HashMap<String, Vec<(String, String)>>,
 }
 
 impl SemanticStore {
     /// Creates an empty semantic store (no external services).
     pub fn new() -> Self {
-        info!("Initializing in-process semantic memory (vector + graph)");
+        info!("Initializing in-process semantic memory (vectors + relation map)");
         Self {
             embedded_entries: Vec::new(),
-            graph_db: Graph::new(),
-            graph_nodes: HashMap::new(),
+            relations: HashMap::new(),
         }
-    }
-
-    fn get_or_add_node(&mut self, name: &str) -> NodeIndex {
-        *self.graph_nodes.entry(name.to_string()).or_insert_with(|| {
-            debug!("Adding new node '{}' to graph", name);
-            self.graph_db.add_node(name.to_string())
-        })
     }
 }
 
@@ -83,12 +74,12 @@ impl MemoryProvider for SemanticStore {
                 relation.get("predicate"),
                 relation.get("object"),
             ) {
-                let subj_node = self.get_or_add_node(subject);
-                let obj_node = self.get_or_add_node(object);
-                self.graph_db
-                    .add_edge(subj_node, obj_node, predicate.clone());
+                self.relations
+                    .entry(subject.clone())
+                    .or_default()
+                    .push((predicate.clone(), object.clone()));
                 info!(
-                    "Added relationship to graph: {} -[{}]-> {}",
+                    "Added relationship: {} -[{}]-> {}",
                     subject, predicate, object
                 );
             }
@@ -139,20 +130,17 @@ impl MemoryProvider for SemanticStore {
             out.extend(scored.into_iter().map(|(_, u)| u));
         }
 
-        if let Some(node_idx) = self.graph_nodes.get(&query.text_query) {
-            for edge in self.graph_db.edges(*node_idx) {
-                let target_node_idx = edge.target();
-                let target_node_data = &self.graph_db[target_node_idx];
-                let edge_data = edge.weight();
+        if let Some(edges) = self.relations.get(&query.text_query) {
+            for (predicate, target) in edges {
                 info!(
                     "Found graph relationship: {} -[{}]-> {}",
-                    query.text_query, edge_data, target_node_data
+                    query.text_query, predicate, target
                 );
                 out.push(MemoryUnit {
                     id: uuid::Uuid::new_v4().to_string(),
                     content: format!(
                         "Graph Relationship: {} {} {}",
-                        query.text_query, edge_data, target_node_data
+                        query.text_query, predicate, target
                     ),
                     timestamp: 0,
                     embedding: None,

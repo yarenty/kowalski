@@ -377,7 +377,7 @@ The `kowalski-core/src` directory is well-organized into logical modules:
 ## 3. Strengths
 
 *   **Robust Core Abstractions:** The `Agent` and `Tool` traits are well-defined and provide a strong foundation for building extensible agent functionalities.
-*   **Sophisticated Memory Architecture:** The multi-tiered memory system (Working, Episodic, Semantic) is a significant strength: in-memory working memory, RocksDB episodic buffer, and semantic storage via **in-process** vector similarity plus **petgraph** (Qdrant was an early PoC only; see [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../docs/DESIGN_MEMORY_AND_DEPENDENCIES.md)). The hybrid retrieval and memory consolidation ("Memory Weaver") are advanced features.
+*   **Sophisticated Memory Architecture:** The multi-tiered memory system (Working, Episodic, Semantic) is a significant strength: in-memory working memory, RocksDB episodic buffer, and semantic storage via **in-process** vector similarity plus a **simple `HashMap` of relation triples** (Qdrant was an early PoC for vectors; `petgraph` was removed in favor of `std` collections—see [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../docs/DESIGN_MEMORY_AND_DEPENDENCIES.md)). The hybrid retrieval and memory consolidation ("Memory Weaver") are advanced features.
 *   **Modular Design:** The logical separation into distinct modules (`agent`, `memory`, `model`, `tools`, etc.) enhances maintainability and understanding.
 *   **ReAct-style Tool Execution:** The `BaseAgent` includes a `chat_with_tools` method that implements a ReAct-style loop for LLM-driven tool use, which is a powerful pattern.
 *   **Rust-native Performance and Safety:** Leveraging Rust ensures high performance, memory safety, and concurrency, crucial for an agentic framework.
