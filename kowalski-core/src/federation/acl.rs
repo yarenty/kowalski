@@ -5,6 +5,12 @@
 use crate::error::KowalskiError;
 use serde::{Deserialize, Serialize};
 
+/// Default cap on delegation depth when the sender omits `max_delegation_depth` (strict default).
+pub const DEFAULT_MAX_DELEGATION_DEPTH: u32 = 3;
+
+/// Hard upper bound: envelopes claiming a higher max are rejected (operator misconfiguration / abuse).
+pub const ABSOLUTE_MAX_DELEGATION_DEPTH: u32 = 32;
+
 /// Wire envelope: every publish carries topic routing + provenance.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AclEnvelope {
@@ -60,18 +66,30 @@ pub enum AclMessage {
     },
 }
 
-/// Reject [`AclMessage::TaskDelegate`] when `delegation_depth` exceeds `max_delegation_depth`.
+/// Reject [`AclMessage::TaskDelegate`] when `delegation_depth` exceeds the effective max.
+/// When `max_delegation_depth` is omitted, [`DEFAULT_MAX_DELEGATION_DEPTH`] applies. Values above
+/// [`ABSOLUTE_MAX_DELEGATION_DEPTH`] are rejected.
 pub fn check_delegate_depth(msg: &AclMessage) -> Result<(), KowalskiError> {
     if let AclMessage::TaskDelegate {
         delegation_depth,
-        max_delegation_depth: Some(max),
+        max_delegation_depth,
         ..
     } = msg
     {
-        if delegation_depth > max {
+        let max: u32 = match max_delegation_depth {
+            Some(m) if *m > ABSOLUTE_MAX_DELEGATION_DEPTH => {
+                return Err(KowalskiError::Federation(format!(
+                    "max_delegation_depth {} exceeds absolute limit {}",
+                    *m, ABSOLUTE_MAX_DELEGATION_DEPTH
+                )));
+            }
+            Some(m) => *m,
+            None => DEFAULT_MAX_DELEGATION_DEPTH,
+        };
+        if *delegation_depth > max {
             return Err(KowalskiError::Federation(format!(
                 "delegation_depth {} exceeds max {}",
-                delegation_depth, max
+                *delegation_depth, max
             )));
         }
     }
@@ -106,6 +124,41 @@ mod tests {
             instruction: "x".into(),
             delegation_depth: 4,
             max_delegation_depth: Some(3),
+        };
+        assert!(check_delegate_depth(&msg).is_err());
+    }
+
+    #[test]
+    fn check_depth_none_uses_default_cap() {
+        let msg = AclMessage::TaskDelegate {
+            task_id: "t".into(),
+            from_agent: "a".into(),
+            to_agent: "b".into(),
+            instruction: "x".into(),
+            delegation_depth: 4,
+            max_delegation_depth: None,
+        };
+        assert!(check_delegate_depth(&msg).is_err());
+        let ok = AclMessage::TaskDelegate {
+            task_id: "t".into(),
+            from_agent: "a".into(),
+            to_agent: "b".into(),
+            instruction: "x".into(),
+            delegation_depth: 2,
+            max_delegation_depth: None,
+        };
+        assert!(check_delegate_depth(&ok).is_ok());
+    }
+
+    #[test]
+    fn check_depth_rejects_absurd_max() {
+        let msg = AclMessage::TaskDelegate {
+            task_id: "t".into(),
+            from_agent: "a".into(),
+            to_agent: "b".into(),
+            instruction: "x".into(),
+            delegation_depth: 0,
+            max_delegation_depth: Some(ABSOLUTE_MAX_DELEGATION_DEPTH + 1),
         };
         assert!(check_delegate_depth(&msg).is_err());
     }

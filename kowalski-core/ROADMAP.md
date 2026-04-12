@@ -8,9 +8,10 @@ Crate version **1.0.0** (see `Cargo.toml`). For the whole workspace, see **[`../
 
 ## Medium term
 - [ ] Memory: conversation search / indexing (if kept in-tree; align with [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../docs/DESIGN_MEMORY_AND_DEPENDENCIES.md)).
-- [ ] Federation: stricter ACL defaults; operator notes: `serve` bridges `LISTEN kowalski_federation` when Postgres is configured (`http_api` + `kowalski_core::bridge_postgres_notify_to_mpsc`).
+- [ ] Federation: further operator tuning (TTL jobs, auth on register/deregister) as needed.
 
 ## Done (1.0.0 baseline)
 - [x] `BaseAgent` / `TemplateAgent`, `chat_with_tools`, streaming helpers.
 - [x] MCP client (Streamable HTTP / SSE), hub + tool proxies.
 - [x] Optional Postgres + pgvector path; graph status + AGE Cypher helpers behind `postgres` feature.
+- [x] Federation ACL: default / absolute delegation depth caps (`federation::acl`); lifecycle APIs + `current_task` on delegate (`http_api`).

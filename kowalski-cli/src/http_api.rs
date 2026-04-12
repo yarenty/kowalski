@@ -166,6 +166,9 @@ pub async fn serve(
         .route("/api/federation/stream", get(get_federation_stream))
         .route("/api/federation/ws", get(get_federation_ws))
         .route("/api/federation/registry", get(get_federation_registry))
+        .route("/api/federation/register", post(post_federation_register))
+        .route("/api/federation/deregister", post(post_federation_deregister))
+        .route("/api/federation/cleanup-stale", post(post_federation_cleanup_stale))
         .route("/api/federation/heartbeat", post(post_federation_heartbeat))
         .route("/api/federation/delegate", post(post_federation_delegate))
         .route("/api/graph/status", get(get_graph_status));
@@ -639,6 +642,24 @@ async fn post_federation_delegate(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     #[cfg(feature = "postgres")]
+    if let (Some(ref url), Some(o)) = (
+        state.full_config.memory.database_url.as_ref(),
+        outcome.as_ref(),
+    ) {
+        if kowalski_core::config::memory_uses_postgres(&state.full_config.memory) {
+            let task_label = format!(
+                "{}: {}",
+                body.task_id,
+                body.instruction.chars().take(240).collect::<String>()
+            );
+            if let Err(e) = kowalski_core::set_agent_current_task(url, &o.agent_id, &task_label).await
+            {
+                log::warn!("federation current_task: {}", e);
+            }
+        }
+    }
+
+    #[cfg(feature = "postgres")]
     if let (Some(pg), Some(o)) = (&state.federation_pg_notify, outcome.as_ref()) {
         if let Err(e) = pg.publish(&o.envelope).await {
             log::warn!("federation pg_notify fan-out: {}", e);
@@ -649,4 +670,103 @@ async fn post_federation_delegate(
         "delegated_to": outcome.as_ref().map(|o| &o.agent_id),
         "topic": outcome.as_ref().map(|o| &o.envelope.topic),
     })))
+}
+
+#[derive(Deserialize)]
+struct FederationRegisterBody {
+    id: String,
+    capabilities: Vec<String>,
+}
+
+async fn post_federation_register(
+    State(state): State<ApiState>,
+    Json(body): Json<FederationRegisterBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let id = body.id.trim();
+    if id.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "id required".into()));
+    }
+    let record = AgentRecord {
+        id: id.to_string(),
+        capabilities: body.capabilities,
+    };
+    state
+        .federation
+        .registry
+        .register(record.clone())
+        .map_err(|e| (StatusCode::CONFLICT, e.to_string()))?;
+    #[cfg(feature = "postgres")]
+    if let Some(ref url) = state.full_config.memory.database_url {
+        if kowalski_core::config::memory_uses_postgres(&state.full_config.memory) {
+            if let Err(e) = kowalski_core::upsert_registry_record(url, &record).await {
+                log::warn!("federation registry upsert: {}", e);
+            }
+            if let Err(e) = kowalski_core::upsert_agent_state_for_record(url, &record).await {
+                log::warn!("agent_state upsert: {}", e);
+            }
+        }
+    }
+    Ok(Json(json!({ "ok": true, "id": record.id })))
+}
+
+#[derive(Deserialize)]
+struct FederationDeregisterBody {
+    agent_id: String,
+}
+
+async fn post_federation_deregister(
+    State(state): State<ApiState>,
+    Json(body): Json<FederationDeregisterBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let id = body.agent_id.trim();
+    if id.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "agent_id required".into()));
+    }
+    if id == "template" {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "cannot deregister built-in template agent".into(),
+        ));
+    }
+    state
+        .federation
+        .registry
+        .deregister(id)
+        .map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))?;
+    #[cfg(feature = "postgres")]
+    if let Some(ref url) = state.full_config.memory.database_url {
+        if kowalski_core::config::memory_uses_postgres(&state.full_config.memory) {
+            if let Err(e) = kowalski_core::delete_federation_agent(url, id).await {
+                log::warn!("federation deregister DB: {}", e);
+            }
+        }
+    }
+    Ok(Json(json!({ "ok": true, "agent_id": id })))
+}
+
+#[derive(Deserialize)]
+struct FederationCleanupBody {
+    /// Heartbeats older than this many seconds are treated as stale (`active = false`).
+    stale_after_secs: u64,
+}
+
+async fn post_federation_cleanup_stale(
+    State(state): State<ApiState>,
+    Json(body): Json<FederationCleanupBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    #[cfg(feature = "postgres")]
+    {
+        if let Some(ref url) = state.full_config.memory.database_url {
+            if kowalski_core::config::memory_uses_postgres(&state.full_config.memory) {
+                let n = kowalski_core::mark_stale_agents_inactive(url, body.stale_after_secs)
+                    .await
+                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                return Ok(Json(json!({ "ok": true, "rows_updated": n })));
+            }
+        }
+    }
+    Err((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "Postgres memory URL not configured".into(),
+    ))
 }

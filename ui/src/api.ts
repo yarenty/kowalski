@@ -82,7 +82,7 @@ export type ChatStreamEvent =
 export type FederationDelegateResponse = { delegated_to: string | null };
 
 export type FederationRegistryResponse = {
-  agents: { id: string; capabilities: string[] }[];
+  agents: { id: string; capabilities: string[]; state?: unknown }[];
 };
 
 export const api = {
@@ -113,6 +113,21 @@ export const api = {
     json<FederationDelegateResponse>("/api/federation/delegate", {
       method: "POST",
       body: JSON.stringify(body),
+    }),
+  federationRegister: (body: { id: string; capabilities: string[] }) =>
+    json<{ ok: boolean; id: string }>("/api/federation/register", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  federationDeregister: (agent_id: string) =>
+    json<{ ok: boolean; agent_id: string }>("/api/federation/deregister", {
+      method: "POST",
+      body: JSON.stringify({ agent_id }),
+    }),
+  federationCleanupStale: (stale_after_secs: number) =>
+    json<{ ok: boolean; rows_updated: number }>("/api/federation/cleanup-stale", {
+      method: "POST",
+      body: JSON.stringify({ stale_after_secs }),
     }),
 };
 

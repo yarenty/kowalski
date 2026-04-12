@@ -20,6 +20,7 @@ pub async fn run_orchestrator(config_path: Option<&str>) -> Result<(), Box<dyn s
         model, conv_id
     );
     println!("Commands: /bye exit · /new new session · lines ending with \\ continue");
+    println!("Lines are prefixed with [agent] (LLM) and [tool] (tool round) for readability.");
     println!("Federation: use `serve` + Vue or `curl` to /api/federation/* (HTTP + optional Postgres NOTIFY).");
 
     let mut rl = DefaultEditor::new()?;
@@ -58,14 +59,13 @@ pub async fn run_orchestrator(config_path: Option<&str>) -> Result<(), Box<dyn s
             continue;
         }
 
-        match agent.chat_with_tools(&conv_id, input).await {
-            Ok(reply) => {
-                println!("{}", reply);
-            }
-            Err(e) => {
+        {
+            let _repl = kowalski_core::agent::repl_trace::ReplTraceGuard::enable();
+            if let Err(e) = agent.chat_with_tools(&conv_id, input).await {
                 eprintln!("error: {}", e);
             }
         }
+        // `chat_with_tools` prints each LLM turn (and `[agent]`/`[tool]` when trace is on); no extra println.
         let _ = io::stdout().flush();
     }
 

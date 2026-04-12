@@ -192,3 +192,93 @@ pub async fn touch_agent_heartbeat(database_url: &str, agent_id: &str) -> Result
 pub async fn touch_agent_heartbeat(_database_url: &str, _agent_id: &str) -> Result<(), KowalskiError> {
     Ok(())
 }
+
+/// Remove a federated agent from `federation_registry` and `agent_state`.
+#[cfg(feature = "postgres")]
+pub async fn delete_federation_agent(database_url: &str, agent_id: &str) -> Result<(), KowalskiError> {
+    use sqlx::postgres::PgPool;
+    let pool = PgPool::connect(database_url)
+        .await
+        .map_err(|e| KowalskiError::Federation(format!("federation delete connect: {e}")))?;
+    sqlx::query("DELETE FROM agent_state WHERE agent_id = $1")
+        .bind(agent_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| KowalskiError::Federation(format!("agent_state delete: {e}")))?;
+    sqlx::query("DELETE FROM federation_registry WHERE agent_id = $1")
+        .bind(agent_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| KowalskiError::Federation(format!("federation_registry delete: {e}")))?;
+    Ok(())
+}
+
+#[cfg(not(feature = "postgres"))]
+pub async fn delete_federation_agent(_database_url: &str, _agent_id: &str) -> Result<(), KowalskiError> {
+    Ok(())
+}
+
+/// Set `active = false` for rows whose heartbeat is older than `stale_after_secs`.
+#[cfg(feature = "postgres")]
+pub async fn mark_stale_agents_inactive(
+    database_url: &str,
+    stale_after_secs: u64,
+) -> Result<u64, KowalskiError> {
+    use sqlx::postgres::PgPool;
+    let pool = PgPool::connect(database_url)
+        .await
+        .map_err(|e| KowalskiError::Federation(format!("stale cleanup connect: {e}")))?;
+    let cutoff = chrono::Utc::now() - chrono::Duration::seconds(stale_after_secs as i64);
+    let r = sqlx::query(
+        "UPDATE agent_state SET active = false WHERE updated_at < $1 AND active = true",
+    )
+    .bind(cutoff)
+    .execute(&pool)
+    .await
+    .map_err(|e| KowalskiError::Federation(format!("stale cleanup: {e}")))?;
+    Ok(r.rows_affected())
+}
+
+#[cfg(not(feature = "postgres"))]
+pub async fn mark_stale_agents_inactive(
+    _database_url: &str,
+    _stale_after_secs: u64,
+) -> Result<u64, KowalskiError> {
+    Ok(0)
+}
+
+/// Record delegated work on the target agent (`current_task` + heartbeat).
+#[cfg(feature = "postgres")]
+pub async fn set_agent_current_task(
+    database_url: &str,
+    agent_id: &str,
+    current_task: &str,
+) -> Result<(), KowalskiError> {
+    use sqlx::postgres::PgPool;
+    let pool = PgPool::connect(database_url)
+        .await
+        .map_err(|e| KowalskiError::Federation(format!("current_task connect: {e}")))?;
+    sqlx::query(
+        r#"INSERT INTO agent_state (agent_id, capabilities, current_task, active, updated_at)
+           VALUES ($1, '[]'::jsonb, $2, true, NOW())
+           ON CONFLICT (agent_id) DO UPDATE SET
+             current_task = EXCLUDED.current_task,
+             active = true,
+             updated_at = NOW()"#,
+    )
+    .bind(agent_id)
+    .bind(current_task)
+    .execute(&pool)
+    .await
+    .map_err(|e| KowalskiError::Federation(format!("current_task update: {e}")))?;
+    Ok(())
+}
+
+#[cfg(not(feature = "postgres"))]
+pub async fn set_agent_current_task(
+    _database_url: &str,
+    _agent_id: &str,
+    _current_task: &str,
+) -> Result<(), KowalskiError> {
+    Ok(())
+}

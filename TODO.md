@@ -1,10 +1,75 @@
-# Manual & end-to-end verification
+# Operator QA, backlog, and release checks
 
-Automated checks live in **CI** (`.github/workflows/ci.yml`) and **`cargo test`**. This file lists **operator-only** and **live-environment** steps that are not fully automated.
+**Automated:** CI (`.github/workflows/ci.yml`) and **`cargo test`**. This file is the **single live list** for manual/e2e verification, **product/engineering follow-ups**, and **repo hygiene** — consolidated from `LEFTOVERS.md`, `rebuild_tasks/`, `findings.md`, `progress.md`, `task_plan.md`, and `REBUILD_PLAN*.md` (those files stay as history or narrative; do not treat old WP checkboxes as the source of truth).
+
+**See also:** [`ROADMAP.md`](ROADMAP.md) · [`LEFTOVERS.md`](LEFTOVERS.md) · [`rebuild_tasks/STATUS.md`](rebuild_tasks/STATUS.md)
 
 ---
 
-## WP2 — MCP
+## Backlog — code, UX, docs
+
+### Federation (`kowalski-core` / WP5)
+
+| ID | Task | Notes |
+|----|------|--------|
+| FB-WP5-1 | **Automated multi-cluster lifecycle** | Optional: scheduled stale cleanup, auth on federation HTTP mutations, cross-process agent discovery — beyond current **`/api/federation/*`** + Postgres. |
+| FB-WP5-2 | **Stricter ACL defaults** | Tighten `default_max_delegation_depth` / envelope validation defaults; document operator tuning. |
+| FB-WP5-3 | **TTL / delegation loop hardening** | Optional watchdog for stale heartbeats; align with `rebuild_tasks/wp5_federation_core_tasks.md` ideas where still relevant. |
+
+*Implemented baseline:* ranked capability routing, `agent_state` persistence, `POST /api/federation/heartbeat`, registry merge — see [`LEFTOVERS.md`](LEFTOVERS.md).
+
+### UI (`ui/`)
+
+| ID | Task | Notes |
+|----|------|--------|
+| FB-WP6-1 | **UX polish** for long JSON / federation logs | Collapsible panels, formatting, performance on large payloads. |
+| FB-WP6-2 | **REPL-style prefixes** (`[agent]`, `[tool]`) | Terminal ergonomics; ties to WP6-M6. |
+| FB-WP6-3 | **Federation timeline view** | Richer than raw SSE stream; optional. |
+| FB-WP6-4 | **Graph explorer UI** | Beyond status + Cypher form; full explore TBD. |
+
+### MCP / CLI
+
+| ID | Task | Notes |
+|----|------|--------|
+| FB-WP2-1 | **Extra MCP transports / polish** | Stdio ergonomics, live e2e vs mocks — [`rebuild_tasks/wp2_mcp_integration_tasks.md`](rebuild_tasks/wp2_mcp_integration_tasks.md). |
+| FB-WP2-2 | **Config / operator wizards** (optional) | From `findings.md`: guided MCP server registration and validation. |
+
+### Tests & CI (extended)
+
+| ID | Task | Notes |
+|----|------|--------|
+| FB-CI-1 | **Episodic memory integration test** on real Postgres | Insert/order by session — not default CI. |
+| FB-CI-2 | **pgvector cosine** integration test | Optional; beyond current smoke. |
+| FB-CI-3 | **Broader tool-JSON contract tests** | Mock LLM / edge cases — [`kowalski-core/ROADMAP.md`](kowalski-core/ROADMAP.md). |
+| FB-CI-4 | **CI image or job with Apache AGE** | Automated Cypher tests without manual DB (optional; `progress.md` follow-up). |
+
+### DataFusion MCP (`kowalski-mcp-datafusion`)
+
+| ID | Task | Notes |
+|----|------|--------|
+| FB-DF-1 | **Multi-table / Parquet** registration via CLI flags | |
+| FB-DF-2 | **Performance / large-file** documentation | Streaming vs load. |
+| FB-DF-3 | **Ballista / distributed** | Long shot; same MCP surface. |
+
+### Documentation & repo hygiene
+
+| ID | Task | Notes |
+|----|------|--------|
+| FB-DOC-1 | **Refresh `findings.md`** as the stack evolves | Open decisions / positioning (`task_plan.md` Phase 5). |
+| FB-DOC-2 | **Align stale `rebuild_tasks/wp*.md` checkboxes** | Many describe pre-1.0 plans; skim and mark historical or point here (`LEFTOVERS.md` §C). |
+| FB-DOC-3 | **Consolidated positioning narrative** | Optional deep pass vs OpenClaw-class tools (`findings.md`, `REBUILD_PLAN.md` vision). |
+| FB-REPO-1 | **Remove `rebuild_tasks/`** when comfortable | After checklist migration; keep git history unless policy requires otherwise. |
+| FB-REPO-2 | **Remove or archive `REBUILD_PLAN.md` / `REBUILD_PLAN_DETAILED.md`** | Superseded by shipped stack + this file; destructive — confirm before delete. |
+| FB-REPO-3 | **History rewrite on GitHub** (optional) | Only if sensitive content removal is required — coordinate with maintainers. |
+
+### Historical / superseded plans
+
+- **`REBUILD_PLAN.md`**, **`REBUILD_PLAN_DETAILED.md`**: Pre-consolidation vision, WP ordering, rollback tags — **mostly superseded** by 1.0.0 workspace layout; use for context only.
+- **`task_plan.md`**, **`progress.md`**: Session log and phase checklist — maintenance item: keep Phase 5 / “next” in sync with this file or mark archived.
+
+---
+
+## WP2 — MCP (manual / e2e)
 
 | ID | What to verify | How (summary) |
 |----|----------------|----------------|
@@ -44,8 +109,9 @@ Automated checks live in **CI** (`.github/workflows/ci.yml`) and **`cargo test`*
 | WP5-M1 | **Postgres NOTIFY bridge** | `cargo run -p kowalski-cli --features postgres -- federation ping-notify -c config.toml` with valid `memory.database_url`; confirm NOTIFY path (see CLI help). |
 | WP5-M2 | **Cross-process envelope** (optional) | Two processes / manual `pg_notify` to `kowalski_federation` with JSON **`AclEnvelope`** under size limits; SSE/WebSocket subscribers see events. |
 | WP5-M3 | **Delegate path** | `POST /api/federation/delegate` with registry populated; confirm `delegated_to` and broker traffic. |
+| WP5-M4 | **`agent_state` + heartbeat** (Postgres) | With DB configured: `GET /api/federation/registry` includes merged **`state`**; **`POST /api/federation/heartbeat`** bumps `updated_at`. |
 
-**Not implemented yet (product gaps, not a smoke checklist):** persistent **`AgentState`** table + heartbeats; **scored** capability routing (vs first match). Track in [`rebuild_tasks/wp5_federation_core_checks.md`](rebuild_tasks/wp5_federation_core_checks.md).
+**Product gaps** (not smoke-only): see **Backlog — Federation** above (`FB-WP5-*`).
 
 ---
 
@@ -85,7 +151,7 @@ Automated checks live in **CI** (`.github/workflows/ci.yml`) and **`cargo test`*
 
 ---
 
-Not exhaustive; use ROADMAP for full checkboxes.
+## Aspirational themes (not scheduled)
 
 | Theme | Examples |
 |-------|----------|
@@ -99,4 +165,6 @@ Not exhaustive; use ROADMAP for full checkboxes.
 | **Analytics** | Usage, performance, cost, quality, error analytics |
 | **Advanced** | i18n, prompt templates, CoT viz, semantic search across chats, auto-summary |
 | **Dev** | Custom training tools, richer testing utilities |
+| **Edge / CPU** | ARM builds, Ollama quantized models, Raspberry Pi docs (`findings.md`) |
 
+Not exhaustive; see **ROADMAP** for crate-level checkboxes.
