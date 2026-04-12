@@ -20,9 +20,11 @@ pub use config::*;
 // pub use conversation::*; // Remove this to avoid ToolCall ambiguity
 pub use error::KowalskiError;
 pub use federation::{
-    AclEnvelope, AclMessage, AgentRecord, AgentRegistry, FederationOrchestrator, MessageBroker,
-    MpscBroker,
+    check_delegate_depth, AclEnvelope, AclMessage, AgentRecord, AgentRegistry, FederationOrchestrator,
+    MessageBroker, MpscBroker,
 };
+#[cfg(feature = "postgres")]
+pub use federation::PgBroker;
 pub use logging::*;
 pub use mcp::{
     CallToolResponse, McpClient, McpHub, McpToolBinding, McpToolDescription, McpToolProxy,

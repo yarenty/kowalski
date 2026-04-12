@@ -6,9 +6,13 @@
 mod acl;
 mod broker;
 mod orchestrator;
+#[cfg(feature = "postgres")]
+mod pg_broker;
 mod registry;
 
-pub use acl::{AclEnvelope, AclMessage};
+pub use acl::{check_delegate_depth, AclEnvelope, AclMessage};
 pub use broker::{MessageBroker, MpscBroker};
 pub use orchestrator::FederationOrchestrator;
+#[cfg(feature = "postgres")]
+pub use pg_broker::PgBroker;
 pub use registry::{AgentRecord, AgentRegistry};

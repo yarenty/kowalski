@@ -89,6 +89,8 @@ mod tests {
                 from_agent: "orch".into(),
                 to_agent: "agent-b".into(),
                 instruction: "go".into(),
+                delegation_depth: 0,
+                max_delegation_depth: None,
             },
         );
         broker.publish_to_topic(&env).await.unwrap();
