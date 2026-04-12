@@ -3,6 +3,7 @@ use std::collections::HashMap;
 
 /// Core configuration for the Kowalski system
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Config {
     /// Ollama configuration
     pub ollama: OllamaConfig,
@@ -47,6 +48,7 @@ impl Default for LLMConfig {
 
 /// Configuration for Ollama integration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct OllamaConfig {
     /// The host where Ollama is running
     pub host: String,
@@ -72,10 +74,12 @@ impl Default for OllamaConfig {
 
 /// Configuration for chat functionality
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ChatConfig {
     /// Maximum number of messages to keep in history
     pub max_history: usize,
-    /// Whether to enable streaming responses
+    /// Whether to enable streaming responses (`stream` is accepted as a TOML field alias)
+    #[serde(alias = "stream")]
     pub enable_streaming: bool,
     /// Temperature for response generation (0.0 to 1.0)
     pub temperature: f32,
@@ -103,6 +107,7 @@ fn default_embedding_vector_dimensions() -> usize {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MemoryConfig {
     /// **Default Tier-2 episodic store:** embedded **SQLite** file under this path (`episodic.sqlite` in the directory, or a path ending in `.sqlite`/`.db`). Used when [`Self::database_url`] is unset or does not request PostgreSQL.
     pub episodic_path: String,

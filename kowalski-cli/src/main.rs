@@ -79,6 +79,45 @@ enum Commands {
         #[clap(subcommand)]
         command: McpCommands,
     },
+    /// Validate configuration TOML (and full Kowalski `Config` when possible)
+    Config {
+        #[clap(subcommand)]
+        command: ConfigCommands,
+    },
+    /// Run SQL migrations for `sqlite:` or `postgres://` URLs
+    Db {
+        #[clap(subcommand)]
+        command: DbCommands,
+    },
+    /// Print versions and probe local Ollama
+    Doctor {
+        /// Ollama base URL (default http://127.0.0.1:11434)
+        #[clap(long)]
+        ollama_url: Option<String>,
+    },
+}
+
+#[derive(Parser, Debug)]
+enum ConfigCommands {
+    /// Check that TOML parses and optionally matches core `Config`
+    Check {
+        /// Path to config.toml (default: config.toml)
+        #[clap(default_value = "config.toml")]
+        path: String,
+    },
+}
+
+#[derive(Parser, Debug)]
+enum DbCommands {
+    /// Apply embedded migrations to the database URL (`memory.database_url` or `--url`)
+    Migrate {
+        /// SQL store URL (sqlite:… or postgres://…)
+        #[clap(long)]
+        url: Option<String>,
+        /// Read memory.database_url from this TOML (ignored if --url is set)
+        #[clap(short, long)]
+        config: Option<String>,
+    },
 }
 
 #[derive(Parser, Debug)]
@@ -405,6 +444,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 run_mcp_tools(config_path.as_deref()).await?;
             }
         },
+        Some(Commands::Config { command }) => match command {
+            ConfigCommands::Check { path } => {
+                kowalski_cli::ops::run_config_check(std::path::Path::new(&path))?;
+            }
+        },
+        Some(Commands::Db { command }) => match command {
+            DbCommands::Migrate { url, config } => {
+                kowalski_cli::ops::run_db_migrate(url, config).await?;
+            }
+        },
+        Some(Commands::Doctor { ollama_url }) => {
+            kowalski_cli::ops::run_doctor(ollama_url).await?;
+        },
         Some(Commands::Consolidate { delete }) => {
             let config = Config::default();
             let ollama_model = &config.ollama.model;
@@ -569,9 +621,12 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
                 println!("  agents: List active agents");
                 println!("  bye | /bye : Exit the CLI");
                 println!();
-                println!("MCP (run outside this REPL):");
-                println!("  kowalski mcp ping [-c config.toml]   — health + tool count");
-                println!("  kowalski mcp tools [-c config.toml]  — list tools per server");
+                println!("Operators (run outside this REPL):");
+                println!("  kowalski-cli mcp ping [-c config.toml]   — health + tool count");
+                println!("  kowalski-cli mcp tools [-c config.toml]  — list tools per server");
+                println!("  kowalski-cli config check [config.toml]");
+                println!("  kowalski-cli db migrate [--url] [-c config.toml]");
+                println!("  kowalski-cli doctor [--ollama-url URL]");
             }
             "create" => {
                 let agent_type = parts.next();
