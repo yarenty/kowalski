@@ -19,10 +19,10 @@
 //!
 //! ## Follow-ups (not done yet)
 //!
-//! - **Transport**: Full **SSE** (or Streamable HTTP) session per [MCP transports](https://spec.modelcontextprotocol.io/).
+//! - **Transport**: Full **SSE** or **Streamable HTTP** session per [MCP transports](https://spec.modelcontextprotocol.io/) — **first priority after core** (`task_plan.md`).
 //! - **Lifecycle**: Optionally treat `notifications/initialized` failures as hard errors for strict servers.
 //!
-//! **Stdio MCP** (`connect_stdio`) is **deferred until after** the **datafusion-mcp** (or equivalent) HTTP server path is stable — see `rebuild_tasks/wp2_mcp_integration_tasks.md` and `REBUILD_PLAN_DETAILED.md` §10. Core refactor (WP3/WP4) does not depend on it.
+//! **Stdio MCP** (`connect_stdio`) and other transports are **deferred** until SSE/streamable HTTP lands — see `rebuild_tasks/wp2_mcp_integration_tasks.md`.
 //!
 //! **Prompt refresh:** [`crate::template::TemplateAgent::register_tool`] and [`crate::template::TemplateAgent::refresh_tool_prompt_appendix`] update `tool_prompt_appendix` when the tool set changes.
 //!

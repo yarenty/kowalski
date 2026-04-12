@@ -42,8 +42,7 @@ pub trait Agent: Send + Sync {
     /// Deletes a conversation
     fn delete_conversation(&mut self, id: &str) -> bool;
 
-    /// Chats with history
-    /// Chats with history
+    /// Chats with history (model messages) for the given conversation.
     async fn chat_with_history(
         &mut self,
         conversation_id: &str,
