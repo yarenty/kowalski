@@ -2,11 +2,13 @@
 import { onMounted, ref } from "vue";
 import {
   api,
+  chatStream,
   type AgentsResponse,
   type Doctor,
   type Health,
   type McpPingResult,
   type McpServer,
+  type SessionsResponse,
 } from "./api";
 
 const tab = ref<"home" | "mcp" | "chat">("home");
@@ -16,6 +18,9 @@ const healthErr = ref<string | null>(null);
 
 const agents = ref<AgentsResponse | null>(null);
 const agentsErr = ref<string | null>(null);
+
+const sessions = ref<SessionsResponse | null>(null);
+const sessionsErr = ref<string | null>(null);
 
 const doctor = ref<Doctor | null>(null);
 const doctorErr = ref<string | null>(null);
@@ -52,6 +57,16 @@ async function loadAgents() {
   } catch (e) {
     agents.value = null;
     agentsErr.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
+async function loadSessions() {
+  sessionsErr.value = null;
+  try {
+    sessions.value = await api.sessions();
+  } catch (e) {
+    sessions.value = null;
+    sessionsErr.value = e instanceof Error ? e.message : String(e);
   }
 }
 
@@ -106,6 +121,31 @@ async function sendChat() {
   }
 }
 
+async function sendChatStream() {
+  const msg = chatIn.value.trim();
+  if (!msg) return;
+  chatBusy.value = true;
+  chatErr.value = null;
+  chatOut.value = "";
+  chatMeta.value = null;
+  try {
+    await chatStream(msg, (ev) => {
+      if (ev.type === "start") {
+        sessionId.value = ev.conversation_id;
+        chatMeta.value = `SSE · ${ev.model}`;
+      } else if (ev.type === "assistant") {
+        chatOut.value = ev.content;
+      } else if (ev.type === "error") {
+        chatErr.value = ev.message;
+      }
+    });
+  } catch (e) {
+    chatErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    chatBusy.value = false;
+  }
+}
+
 async function resetChat() {
   resetBusy.value = true;
   chatErr.value = null;
@@ -115,6 +155,7 @@ async function resetChat() {
     chatOut.value = null;
     chatMeta.value = `new session · ${r.model}`;
     chatIn.value = "";
+    void loadSessions();
   } catch (e) {
     chatErr.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -125,6 +166,7 @@ async function resetChat() {
 onMounted(() => {
   void loadHealth();
   void loadAgents();
+  void loadSessions();
 });
 </script>
 
@@ -170,6 +212,7 @@ onMounted(() => {
         <p>
           <button type="button" class="primary" @click="loadHealth">Refresh health</button>
           <button type="button" @click="loadAgents">Refresh agents</button>
+          <button type="button" @click="loadSessions">Refresh sessions</button>
           <button type="button" @click="loadDoctor">Load doctor</button>
         </p>
         <pre v-if="health" class="json">{{ JSON.stringify(health, null, 2) }}</pre>
@@ -177,6 +220,9 @@ onMounted(() => {
         <h3>Agents</h3>
         <pre v-if="agents" class="json">{{ JSON.stringify(agents, null, 2) }}</pre>
         <p v-if="agentsErr" class="err">{{ agentsErr }}</p>
+        <h3>Sessions</h3>
+        <pre v-if="sessions" class="json">{{ JSON.stringify(sessions, null, 2) }}</pre>
+        <p v-if="sessionsErr" class="err">{{ sessionsErr }}</p>
         <h3>Ollama probe</h3>
         <pre v-if="doctor" class="json">{{ JSON.stringify(doctor, null, 2) }}</pre>
         <p v-if="doctorErr" class="err">{{ doctorErr }}</p>
@@ -201,14 +247,18 @@ onMounted(() => {
       <section v-else class="panel">
         <h2>Chat</h2>
         <p class="hint">
-          One in-process agent + Ollama via <code>POST /api/chat</code>. Run
-          <code>kowalski-cli serve -c config.toml</code> with Ollama up and the model from
-          <code>[ollama]</code>.
+          One in-process agent + Ollama via <code>POST /api/chat</code> or SSE
+          <code>POST /api/chat/stream</code> (one JSON event per line; assistant text arrives when
+          the turn completes). Run <code>kowalski-cli serve -c config.toml</code> with Ollama up and
+          the model from <code>[ollama]</code>.
         </p>
         <textarea v-model="chatIn" rows="4" class="ta" placeholder="Message…" />
         <p>
           <button type="button" class="primary" :disabled="chatBusy" @click="sendChat">
             {{ chatBusy ? "Sending…" : "Send" }}
+          </button>
+          <button type="button" :disabled="chatBusy" @click="sendChatStream">
+            {{ chatBusy ? "Sending…" : "Send (SSE)" }}
           </button>
           <button type="button" :disabled="resetBusy" @click="resetChat">
             {{ resetBusy ? "Resetting…" : "New conversation" }}

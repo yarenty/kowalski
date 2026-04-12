@@ -1,10 +1,14 @@
 //! JSON HTTP API for the Vue operator UI (CORS-enabled for local dev).
-//! `/api/chat` uses one in-process `TemplateAgent` + Ollama (from config).
+//! `/api/chat` and `/api/chat/stream` use one in-process `TemplateAgent` + Ollama (from config).
 
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::response::sse::{Event, Sse};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use futures::Stream;
+use std::convert::Infallible;
+use tokio_stream::wrappers::ReceiverStream;
 use kowalski_core::agent::Agent;
 use kowalski_core::template::agent::TemplateAgent;
 use serde::{Deserialize, Serialize};
@@ -59,10 +63,12 @@ pub async fn serve(
     let app = Router::new()
         .route("/api/health", get(get_health))
         .route("/api/agents", get(get_agents))
+        .route("/api/sessions", get(get_sessions))
         .route("/api/doctor", get(get_doctor))
         .route("/api/mcp/servers", get(get_mcp_servers))
         .route("/api/mcp/ping", post(post_mcp_ping))
         .route("/api/chat", post(post_chat))
+        .route("/api/chat/stream", post(post_chat_stream))
         .route("/api/chat/reset", post(post_chat_reset))
         .with_state(state)
         .layer(CorsLayer::permissive());
@@ -91,6 +97,19 @@ async fn get_agents(State(state): State<ApiState>) -> Json<serde_json::Value> {
         }],
         "conversation_id": guard.conv_id,
         "model": state.model,
+    }))
+}
+
+/// Active conversation(s) for this `serve` process (one in-memory session today).
+async fn get_sessions(State(state): State<ApiState>) -> Json<serde_json::Value> {
+    let guard = state.chat.lock().await;
+    Json(json!({
+        "mode": "single_process",
+        "sessions": [{
+            "id": guard.conv_id,
+            "model": state.model,
+            "agent_name": guard.agent.name(),
+        }],
     }))
 }
 
@@ -162,4 +181,57 @@ async fn post_chat(
         mode: "agent",
         model: state.model.clone(),
     }))
+}
+
+/// SSE (`text/event-stream`): one JSON object per `data:` line — `start`, `assistant` or `error`, then `done`.
+/// Token streaming is not wired in core yet; the assistant payload is sent once when the turn completes.
+async fn post_chat_stream(
+    State(state): State<ApiState>,
+    Json(body): Json<ChatBody>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(16);
+    let msg = body.message.trim().to_string();
+    let api = state.clone();
+    tokio::spawn(async move {
+        let conv_id = {
+            let g = api.chat.lock().await;
+            g.conv_id.clone()
+        };
+        let start = json!({
+            "type": "start",
+            "conversation_id": conv_id,
+            "model": api.model,
+        });
+        if tx
+            .send(Ok(Event::default().data(start.to_string())))
+            .await
+            .is_err()
+        {
+            return;
+        }
+        let result = {
+            let mut guard = api.chat.lock().await;
+            guard.agent.chat_with_tools(&conv_id, &msg).await
+        };
+        match result {
+            Ok(reply) => {
+                let payload = json!({ "type": "assistant", "content": reply });
+                let _ = tx
+                    .send(Ok(Event::default().data(payload.to_string())))
+                    .await;
+            }
+            Err(e) => {
+                let payload = json!({ "type": "error", "message": e.to_string() });
+                let _ = tx
+                    .send(Ok(Event::default().data(payload.to_string())))
+                    .await;
+            }
+        }
+        let _ = tx
+            .send(Ok(
+                Event::default().data(r#"{"type":"done"}"#.to_string()),
+            ))
+            .await;
+    });
+    Sse::new(ReceiverStream::new(rx))
 }
