@@ -164,6 +164,12 @@ pub trait Agent: Send + Sync {
 
             if crate::utils::json::looks_like_tool_json_attempt(&buffer) && !tool_parse_hint_sent {
                 tool_parse_hint_sent = true;
+                let preview: String = buffer.chars().take(400).collect();
+                let total_chars = buffer.chars().count();
+                warn!(
+                    "Tool call JSON parse failed ({} chars); raw preview: {:?}",
+                    total_chars, preview
+                );
                 self.add_message(conversation_id, "assistant", &buffer)
                     .await;
                 const HINT: &str = "Your previous reply appeared to include a tool call but it could not be parsed as JSON. Reply with a single JSON object only: {\"name\": \"<tool_name>\", \"parameters\": { ... } } matching the available tools. No markdown fences or extra text.";
@@ -284,6 +290,8 @@ impl BaseAgent {
 #[async_trait]
 impl Agent for BaseAgent {
     async fn new(config: Config) -> Result<Self, KowalskiError> {
+        crate::db::run_memory_migrations_if_configured(&config).await?;
+
         // Initialize LLM Provider based on config
         let llm_provider: std::sync::Arc<dyn crate::llm::LLMProvider> =
             match config.llm.provider.as_str() {

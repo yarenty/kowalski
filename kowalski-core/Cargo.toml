@@ -55,6 +55,7 @@ regex = "1.10"
 markdown = "1.0"
 llm_json = "1.0.2"
 async-openai = { version = "0.32.4", features = ["native-tls", "chat-completion", "embedding"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "postgres", "migrate", "macros", "tls-native-tls"] }
 
 [dev-dependencies]
 tempfile = "3.25.0"

@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod config;
+pub mod db;
 pub mod conversation;
 pub mod error;
 pub mod llm;

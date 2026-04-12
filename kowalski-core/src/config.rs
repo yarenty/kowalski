@@ -121,6 +121,10 @@ impl Default for QdrantConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryConfig {
     pub episodic_path: String,
+    /// Optional SQL store: prefer **`sqlite:…`** (single file, no server) for the simple path; use **`postgres://…`** when you need Postgres + pgvector at scale.
+    /// If unset, no SQL migrations run and existing RocksDB/Qdrant memory paths apply unchanged.
+    #[serde(default)]
+    pub database_url: Option<String>,
     #[serde(flatten)]
     pub additional: HashMap<String, serde_json::Value>,
 }
@@ -129,6 +133,7 @@ impl Default for MemoryConfig {
     fn default() -> Self {
         Self {
             episodic_path: "../target/episodic_db".to_string(), //just for testing!
+            database_url: None,
             additional: HashMap::new(),
         }
     }
