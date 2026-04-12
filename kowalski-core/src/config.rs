@@ -101,8 +101,8 @@ impl Default for ChatConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryConfig {
     pub episodic_path: String,
-    /// Optional SQL store: prefer **`sqlite:…`** (single file, no server) for the simple path; use **`postgres://…`** when you need Postgres + pgvector at scale.
-    /// If unset, no SQL migrations run for the optional `database_url` pool; episodic Tier 2 still uses its own SQLite file under `episodic_path`.
+    /// Optional SQL store: prefer **`sqlite:…`** (single file, no server) for migrations-only; use **`postgres://…`** when you need Postgres + pgvector at scale.
+    /// If **`postgres://…`**, Tier 2 episodic memory uses table **`episodic_kv`** in that database (run migrations via [`crate::db::run_memory_migrations_if_configured`](crate::db::run_memory_migrations_if_configured)). Otherwise Tier 2 uses a **SQLite file** under `episodic_path` (`episodic.sqlite` or an explicit `.sqlite`/`.db` path).
     #[serde(default)]
     pub database_url: Option<String>,
     #[serde(flatten)]

@@ -1,16 +1,19 @@
 // Tier 2: Episodic Buffer (The Journal)
-// Persistent log of recent conversations using embedded SQLite (no RocksDB, no separate server).
+// Persistent log of recent conversations: embedded SQLite file, or PostgreSQL `episodic_kv` when `memory.database_url` is `postgres://…`.
 
 use crate::{
+    config::MemoryConfig,
     error::KowalskiError,
     memory::{MemoryProvider, MemoryQuery, MemoryUnit},
 };
 use async_trait::async_trait;
 use log::{debug, error, info};
 use serde_json;
+use sqlx::postgres::PgPool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 use sqlx::Row;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Schema for the episodic SQLite file (same as `migrations/sqlite/002_episodic_kv.sql`).
@@ -20,6 +23,11 @@ CREATE TABLE IF NOT EXISTS episodic_kv (
     payload TEXT NOT NULL
 );
 "#;
+
+enum EpisodicBackend {
+    Sqlite(SqlitePool),
+    Postgres(PgPool),
+}
 
 /// Resolve filesystem path for the episodic DB file and ensure parent directories exist.
 fn episodic_db_file(episodic_path: &str) -> Result<PathBuf, KowalskiError> {
@@ -39,25 +47,40 @@ fn episodic_db_file(episodic_path: &str) -> Result<PathBuf, KowalskiError> {
     Ok(file_path)
 }
 
-/// A persistent memory store using **embedded SQLite** (single file on disk, no daemon).
+/// A persistent memory store using **embedded SQLite** (single file) or **PostgreSQL** `episodic_kv`.
 ///
 /// Memory units are stored as JSON in `episodic_kv`, keyed by `MemoryUnit.id`.
 pub struct EpisodicBuffer {
-    pool: SqlitePool,
-    llm_provider: std::sync::Arc<dyn crate::llm::LLMProvider>,
+    backend: EpisodicBackend,
+    llm_provider: Arc<dyn crate::llm::LLMProvider>,
 }
 
 impl EpisodicBuffer {
-    /// Opens or creates an episodic buffer at `episodic_path`.
+    /// Opens or creates an episodic buffer from [`MemoryConfig`].
     ///
-    /// * If `episodic_path` ends with `.sqlite` or `.db`, that file is used.
-    /// * Otherwise it is treated as a **directory** and `episodic.sqlite` is created inside it
-    ///   (same layout as the former RocksDB directory convention).
+    /// * If `memory.database_url` is set to **`postgres://`** or **`postgresql://`**, Tier 2 uses
+    ///   table `episodic_kv` in that database (run migrations first: [`crate::db::run_migrations`]).
+    /// * Otherwise Tier 2 uses **SQLite** on disk:
+    ///   - If `episodic_path` ends with `.sqlite` or `.db`, that file is used.
+    ///   - Otherwise it is treated as a **directory** and `episodic.sqlite` is created inside it.
     pub async fn open(
-        episodic_path: &str,
-        llm_provider: std::sync::Arc<dyn crate::llm::LLMProvider>,
+        memory: &MemoryConfig,
+        llm_provider: Arc<dyn crate::llm::LLMProvider>,
     ) -> Result<Self, KowalskiError> {
-        let file = episodic_db_file(episodic_path)?;
+        if let Some(ref url) = memory.database_url {
+            if url.starts_with("postgres://") || url.starts_with("postgresql://") {
+                info!("Opening episodic buffer on PostgreSQL (episodic_kv)");
+                let pool = PgPool::connect(url.as_str())
+                    .await
+                    .map_err(|e| KowalskiError::Memory(format!("episodic Postgres connect: {e}")))?;
+                return Ok(Self {
+                    backend: EpisodicBackend::Postgres(pool),
+                    llm_provider,
+                });
+            }
+        }
+
+        let file = episodic_db_file(&memory.episodic_path)?;
         info!("Opening episodic SQLite buffer at {}", file.display());
         let opts = SqliteConnectOptions::new()
             .filename(&file)
@@ -69,14 +92,26 @@ impl EpisodicBuffer {
             .execute(&pool)
             .await
             .map_err(|e| KowalskiError::Memory(format!("episodic schema: {e}")))?;
-        Ok(Self { pool, llm_provider })
+        Ok(Self {
+            backend: EpisodicBackend::Sqlite(pool),
+            llm_provider,
+        })
     }
 
     pub async fn retrieve_all(&self) -> Result<Vec<MemoryUnit>, KowalskiError> {
-        let rows = sqlx::query("SELECT id, payload FROM episodic_kv ORDER BY id")
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+        let rows = match &self.backend {
+            EpisodicBackend::Sqlite(pool) => {
+                sqlx::query("SELECT id, payload FROM episodic_kv ORDER BY id")
+                    .fetch_all(pool)
+                    .await
+            }
+            EpisodicBackend::Postgres(pool) => {
+                sqlx::query("SELECT id, payload FROM episodic_kv ORDER BY id")
+                    .fetch_all(pool)
+                    .await
+            }
+        }
+        .map_err(|e| KowalskiError::Memory(e.to_string()))?;
         let mut memories = Vec::with_capacity(rows.len());
         for row in rows {
             let payload: String = row
@@ -84,18 +119,28 @@ impl EpisodicBuffer {
                 .map_err(|e| KowalskiError::Memory(e.to_string()))?;
             match serde_json::from_str::<MemoryUnit>(&payload) {
                 Ok(unit) => memories.push(unit),
-                Err(e) => error!("Failed to deserialize memory unit from SQLite: {}", e),
+                Err(e) => error!("Failed to deserialize memory unit: {}", e),
             }
         }
         Ok(memories)
     }
 
     pub async fn delete(&mut self, id: &str) -> Result<(), KowalskiError> {
-        sqlx::query("DELETE FROM episodic_kv WHERE id = ?")
-            .bind(id)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+        match &self.backend {
+            EpisodicBackend::Sqlite(pool) => {
+                sqlx::query("DELETE FROM episodic_kv WHERE id = ?")
+                    .bind(id)
+                    .execute(pool)
+                    .await
+            }
+            EpisodicBackend::Postgres(pool) => {
+                sqlx::query("DELETE FROM episodic_kv WHERE id = $1")
+                    .bind(id)
+                    .execute(pool)
+                    .await
+            }
+        }
+        .map_err(|e| KowalskiError::Memory(e.to_string()))?;
         Ok(())
     }
 
@@ -122,14 +167,28 @@ impl EpisodicBuffer {
             error!("Failed to serialize memory unit {}: {}", key, e);
             KowalskiError::Memory(e.to_string())
         })?;
-        sqlx::query(
-            "INSERT INTO episodic_kv (id, payload) VALUES (?, ?)
-             ON CONFLICT(id) DO UPDATE SET payload = excluded.payload",
-        )
-        .bind(&key)
-        .bind(&value)
-        .execute(&self.pool)
-        .await
+        match &self.backend {
+            EpisodicBackend::Sqlite(pool) => {
+                sqlx::query(
+                    "INSERT INTO episodic_kv (id, payload) VALUES (?, ?)
+                     ON CONFLICT(id) DO UPDATE SET payload = excluded.payload",
+                )
+                .bind(&key)
+                .bind(&value)
+                .execute(pool)
+                .await
+            }
+            EpisodicBackend::Postgres(pool) => {
+                sqlx::query(
+                    "INSERT INTO episodic_kv (id, payload) VALUES ($1, $2)
+                     ON CONFLICT (id) DO UPDATE SET payload = EXCLUDED.payload",
+                )
+                .bind(&key)
+                .bind(&value)
+                .execute(pool)
+                .await
+            }
+        }
         .map_err(|e| {
             error!("Failed to write episodic row {}: {}", key, e);
             KowalskiError::Memory(e.to_string())
@@ -138,10 +197,19 @@ impl EpisodicBuffer {
     }
 
     async fn load_all_units(&self) -> Result<Vec<MemoryUnit>, KowalskiError> {
-        let rows = sqlx::query("SELECT id, payload FROM episodic_kv")
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| KowalskiError::Memory(e.to_string()))?;
+        let rows = match &self.backend {
+            EpisodicBackend::Sqlite(pool) => {
+                sqlx::query("SELECT id, payload FROM episodic_kv")
+                    .fetch_all(pool)
+                    .await
+            }
+            EpisodicBackend::Postgres(pool) => {
+                sqlx::query("SELECT id, payload FROM episodic_kv")
+                    .fetch_all(pool)
+                    .await
+            }
+        }
+        .map_err(|e| KowalskiError::Memory(e.to_string()))?;
         let mut out = Vec::with_capacity(rows.len());
         for row in rows {
             let payload: String = row
