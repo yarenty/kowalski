@@ -51,6 +51,11 @@ const fedCap = ref("chat");
 const fedResult = ref<string | null>(null);
 const fedErr = ref<string | null>(null);
 const fedBusy = ref(false);
+const fedCleanupBusy = ref(false);
+const fedStaleSecs = ref(300);
+const fedDeregisterId = ref("");
+const fedRegId = ref("");
+const fedRegCaps = ref("search, chat");
 const fedLines = ref<string[]>([]);
 const fedEs = ref<EventSource | null>(null);
 const fedRegistry = ref<FederationRegistryResponse | null>(null);
@@ -116,6 +121,60 @@ async function fedDelegate() {
       capability: fedCap.value.trim() || "chat",
     });
     fedResult.value = JSON.stringify(r, null, 2);
+    void loadFederationRegistry();
+  } catch (e) {
+    fedErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    fedBusy.value = false;
+  }
+}
+
+async function fedCleanupStale() {
+  fedCleanupBusy.value = true;
+  fedErr.value = null;
+  try {
+    const r = await api.federationCleanupStale(
+      Math.max(30, Math.floor(fedStaleSecs.value)),
+    );
+    fedResult.value = JSON.stringify(r, null, 2);
+    void loadFederationRegistry();
+  } catch (e) {
+    fedErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    fedCleanupBusy.value = false;
+  }
+}
+
+async function fedDeregister() {
+  const id = fedDeregisterId.value.trim();
+  if (!id) return;
+  fedBusy.value = true;
+  fedErr.value = null;
+  try {
+    const r = await api.federationDeregister(id);
+    fedResult.value = JSON.stringify(r, null, 2);
+    fedDeregisterId.value = "";
+    void loadFederationRegistry();
+  } catch (e) {
+    fedErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    fedBusy.value = false;
+  }
+}
+
+async function fedRegister() {
+  const id = fedRegId.value.trim();
+  if (!id) return;
+  const caps = fedRegCaps.value
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  fedBusy.value = true;
+  fedErr.value = null;
+  try {
+    const r = await api.federationRegister({ id, capabilities: caps });
+    fedResult.value = JSON.stringify(r, null, 2);
+    void loadFederationRegistry();
   } catch (e) {
     fedErr.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -321,16 +380,16 @@ onUnmounted(() => {
           <button type="button" @click="loadSessions">Refresh sessions</button>
           <button type="button" @click="loadDoctor">Load doctor</button>
         </p>
-        <pre v-if="health" class="json">{{ JSON.stringify(health, null, 2) }}</pre>
+        <pre v-if="health" class="json json-scroll">{{ JSON.stringify(health, null, 2) }}</pre>
         <p v-if="healthErr" class="err">{{ healthErr }}</p>
         <h3>Agents</h3>
-        <pre v-if="agents" class="json">{{ JSON.stringify(agents, null, 2) }}</pre>
+        <pre v-if="agents" class="json json-scroll">{{ JSON.stringify(agents, null, 2) }}</pre>
         <p v-if="agentsErr" class="err">{{ agentsErr }}</p>
         <h3>Sessions</h3>
-        <pre v-if="sessions" class="json">{{ JSON.stringify(sessions, null, 2) }}</pre>
+        <pre v-if="sessions" class="json json-scroll">{{ JSON.stringify(sessions, null, 2) }}</pre>
         <p v-if="sessionsErr" class="err">{{ sessionsErr }}</p>
         <h3>Ollama probe</h3>
-        <pre v-if="doctor" class="json">{{ JSON.stringify(doctor, null, 2) }}</pre>
+        <pre v-if="doctor" class="json json-scroll">{{ JSON.stringify(doctor, null, 2) }}</pre>
         <p v-if="doctorErr" class="err">{{ doctorErr }}</p>
       </section>
 
@@ -344,7 +403,7 @@ onUnmounted(() => {
         <p>
           <button type="button" class="primary" @click="loadGraphStatus">Load graph status</button>
         </p>
-        <pre v-if="graphStatus" class="json">{{ JSON.stringify(graphStatus, null, 2) }}</pre>
+        <pre v-if="graphStatus" class="json json-scroll">{{ JSON.stringify(graphStatus, null, 2) }}</pre>
         <p v-if="graphErr" class="err">{{ graphErr }}</p>
       </section>
 
@@ -362,7 +421,7 @@ onUnmounted(() => {
             Refresh registry
           </button>
         </p>
-        <pre v-if="fedRegistry" class="json">{{ JSON.stringify(fedRegistry, null, 2) }}</pre>
+        <pre v-if="fedRegistry" class="json json-scroll">{{ JSON.stringify(fedRegistry, null, 2) }}</pre>
         <p v-if="fedRegistryErr" class="err">{{ fedRegistryErr }}</p>
         <p>
           <label class="lbl">Topic</label>
@@ -372,7 +431,43 @@ onUnmounted(() => {
           <button type="button" class="primary" @click="fedConnect">Connect stream</button>
           <button type="button" @click="fedDisconnect">Disconnect</button>
         </p>
-        <pre class="json fed-log">{{ fedLines.length ? fedLines.join("\n\n") : "(no events yet)" }}</pre>
+        <div v-if="fedLines.length" class="fed-events">
+          <details
+            v-for="(line, i) in fedLines"
+            :key="i"
+            class="fed-event"
+            :open="i >= fedLines.length - 3"
+          >
+            <summary>Event {{ i + 1 }}</summary>
+            <pre class="json fed-line">{{ line }}</pre>
+          </details>
+        </div>
+        <p v-else class="muted">(no events yet)</p>
+        <p class="row">
+          <label class="lbl">Mark stale (seconds)</label>
+          <input v-model.number="fedStaleSecs" class="inp" type="number" min="30" />
+          <button
+            type="button"
+            :disabled="fedCleanupBusy"
+            @click="fedCleanupStale"
+          >
+            {{ fedCleanupBusy ? "…" : "POST /api/federation/cleanup-stale" }}
+          </button>
+        </p>
+        <p class="row">
+          <label class="lbl">Register agent id</label>
+          <input v-model="fedRegId" class="inp" type="text" placeholder="worker-1" />
+        </p>
+        <p class="row">
+          <label class="lbl">Capabilities (comma-separated)</label>
+          <input v-model="fedRegCaps" class="inp" type="text" />
+          <button type="button" :disabled="fedBusy" @click="fedRegister">Register</button>
+        </p>
+        <p class="row">
+          <label class="lbl">Deregister agent id</label>
+          <input v-model="fedDeregisterId" class="inp" type="text" />
+          <button type="button" :disabled="fedBusy" @click="fedDeregister">Deregister</button>
+        </p>
         <h3>Delegate (ranked match)</h3>
         <p>
           <label class="lbl">task_id</label>
@@ -391,7 +486,7 @@ onUnmounted(() => {
             {{ fedBusy ? "Delegating…" : "POST /api/federation/delegate" }}
           </button>
         </p>
-        <pre v-if="fedResult" class="json">{{ fedResult }}</pre>
+        <pre v-if="fedResult" class="json json-scroll">{{ fedResult }}</pre>
         <p v-if="fedErr" class="err">{{ fedErr }}</p>
       </section>
 
@@ -404,10 +499,10 @@ onUnmounted(() => {
           </button>
         </p>
         <p v-if="serversErr" class="err">{{ serversErr }}</p>
-        <pre v-if="servers.length" class="json">{{ JSON.stringify(servers, null, 2) }}</pre>
+        <pre v-if="servers.length" class="json json-scroll">{{ JSON.stringify(servers, null, 2) }}</pre>
         <p v-else-if="!serversErr" class="muted">No servers or empty config.</p>
         <h3>Ping results</h3>
-        <pre v-if="pingResults" class="json">{{ JSON.stringify(pingResults, null, 2) }}</pre>
+        <pre v-if="pingResults" class="json json-scroll">{{ JSON.stringify(pingResults, null, 2) }}</pre>
         <p v-if="pingErr" class="err">{{ pingErr }}</p>
       </section>
 
@@ -441,7 +536,7 @@ onUnmounted(() => {
         </p>
         <p v-if="sessionId" class="muted">Session: {{ sessionId }}</p>
         <p v-if="chatMeta" class="muted">{{ chatMeta }}</p>
-        <pre v-if="chatOut" class="json">{{ chatOut }}</pre>
+        <pre v-if="chatOut" class="json json-scroll chat-out">{{ chatOut }}</pre>
         <p v-if="chatErr" class="err">{{ chatErr }}</p>
       </section>
     </main>
@@ -591,9 +686,33 @@ code {
   padding: 0.4rem 0.55rem;
   font: inherit;
 }
-.fed-log {
-  max-height: 14rem;
+.json-scroll {
+  max-height: 18rem;
+  overflow: auto;
+}
+.chat-out {
+  max-height: 24rem;
   white-space: pre-wrap;
   word-break: break-word;
+}
+.fed-events {
+  max-height: min(50vh, 28rem);
+  overflow-y: auto;
+  border: 1px solid #2a2e38;
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+}
+.fed-event {
+  margin: 0.35rem 0;
+}
+.fed-event summary {
+  cursor: pointer;
+  color: #9aa8c0;
+  font-size: 0.85rem;
+}
+.fed-line {
+  margin: 0.35rem 0 0;
+  padding: 0.5rem;
+  font-size: 0.78rem;
 }
 </style>

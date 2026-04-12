@@ -17,12 +17,15 @@ pub mod tools;
 pub mod utils;
 
 pub use agent::{Agent, BaseAgent, MessageHandler};
+pub use agent::repl_trace::ReplTraceGuard;
 pub use config::*;
 // pub use conversation::*; // Remove this to avoid ToolCall ambiguity
 pub use error::KowalskiError;
 pub use federation::{
-    check_delegate_depth, AclEnvelope, AclMessage, AgentRecord, AgentRegistry, DelegationOutcome,
-    FederationOrchestrator, load_registry_into, touch_agent_heartbeat, upsert_agent_state_for_record,
+    check_delegate_depth, AclEnvelope, AclMessage, AgentRecord, AgentRegistry,
+    ABSOLUTE_MAX_DELEGATION_DEPTH, DelegationOutcome, DEFAULT_MAX_DELEGATION_DEPTH,
+    FederationOrchestrator, delete_federation_agent, load_registry_into, mark_stale_agents_inactive,
+    set_agent_current_task, touch_agent_heartbeat, upsert_agent_state_for_record,
     upsert_registry_record, MessageBroker, MpscBroker,
 };
 #[cfg(feature = "postgres")]

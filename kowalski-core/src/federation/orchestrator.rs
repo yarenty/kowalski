@@ -1,7 +1,9 @@
 //! Orchestration: capability-based routing over a [`MessageBroker`].
 
 use crate::error::KowalskiError;
-use crate::federation::acl::{check_delegate_depth, AclEnvelope, AclMessage};
+use crate::federation::acl::{
+    check_delegate_depth, AclEnvelope, AclMessage, DEFAULT_MAX_DELEGATION_DEPTH,
+};
 use crate::federation::broker::MessageBroker;
 use crate::federation::registry::AgentRegistry;
 use std::sync::Arc;
@@ -31,7 +33,7 @@ impl FederationOrchestrator {
             broker,
             orchestrator_id: "orchestrator".to_string(),
             default_topic: "federation".to_string(),
-            default_max_delegation_depth: 5,
+            default_max_delegation_depth: DEFAULT_MAX_DELEGATION_DEPTH,
         }
     }
 

@@ -21,6 +21,7 @@ use std::collections::HashSet;
 use std::io::{self, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+pub mod repl_trace;
 pub mod types;
 
 /// The core agent trait that all our specialized agents must implement.
@@ -105,7 +106,11 @@ pub trait Agent: Send + Sync {
                 .await?;
 
             // Print response (simulate streaming effect or just print)
-            println!("{}", response_text);
+            if repl_trace::repl_trace_enabled() {
+                println!("[agent] {}", response_text);
+            } else {
+                println!("{}", response_text);
+            }
             io::stdout()
                 .flush()
                 .map_err(|e| KowalskiError::Server(e.to_string()))?;
@@ -137,6 +142,12 @@ pub trait Agent: Send + Sync {
                 debug!("Tool: {}", tool_call.name);
                 debug!("Parameters: {}", tool_call.parameters);
                 debug!("Reasoning: {:?}", tool_call.reasoning);
+
+                if repl_trace::repl_trace_enabled() {
+                    let params = serde_json::to_string(&tool_call.parameters)
+                        .unwrap_or_else(|_| "{}".to_string());
+                    println!("[tool] {} {}", tool_call.name, params);
+                }
 
                 let tool_result = match self
                     .execute_tool(&tool_call.name, &tool_call.parameters)
@@ -423,7 +434,11 @@ impl BaseAgent {
                     .await?
             };
 
-            println!("{}", response_text);
+            if repl_trace::repl_trace_enabled() {
+                println!("[agent] {}", response_text);
+            } else {
+                println!("{}", response_text);
+            }
             io::stdout()
                 .flush()
                 .map_err(|e| KowalskiError::Server(e.to_string()))?;
@@ -441,6 +456,12 @@ impl BaseAgent {
                     }
                 }
                 last_tool_call = Some(tool_call_key.clone());
+
+                if repl_trace::repl_trace_enabled() {
+                    let params = serde_json::to_string(&tool_call.parameters)
+                        .unwrap_or_else(|_| "{}".to_string());
+                    println!("[tool] {} {}", tool_call.name, params);
+                }
 
                 let tool_result = match self
                     .execute_tool(&tool_call.name, &tool_call.parameters)
