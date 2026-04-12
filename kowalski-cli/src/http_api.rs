@@ -1,5 +1,5 @@
 //! JSON HTTP API for the Vue operator UI (CORS-enabled for local dev).
-//! `/api/chat` uses one in-process [`TemplateAgent`] + Ollama (from config).
+//! `/api/chat` uses one in-process `TemplateAgent` + Ollama (from config).
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -62,6 +62,7 @@ pub async fn serve(
         .route("/api/mcp/servers", get(get_mcp_servers))
         .route("/api/mcp/ping", post(post_mcp_ping))
         .route("/api/chat", post(post_chat))
+        .route("/api/chat/reset", post(post_chat_reset))
         .with_state(state)
         .layer(CorsLayer::permissive());
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -109,6 +110,25 @@ struct ChatResponse {
     reply: String,
     mode: &'static str,
     model: String,
+}
+
+#[derive(Serialize)]
+struct ChatResetResponse {
+    conversation_id: String,
+    model: String,
+}
+
+async fn post_chat_reset(
+    State(state): State<ApiState>,
+) -> Result<Json<ChatResetResponse>, (StatusCode, String)> {
+    let mut guard = state.chat.lock().await;
+    let conversation_id = guard.agent.start_conversation(&state.model);
+    guard.conv_id = conversation_id.clone();
+    log::info!("HTTP chat: new conversation {}", conversation_id);
+    Ok(Json(ChatResetResponse {
+        conversation_id,
+        model: state.model.clone(),
+    }))
 }
 
 async fn post_chat(

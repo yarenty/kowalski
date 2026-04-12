@@ -45,6 +45,11 @@ export type McpPingResult = {
 
 export type ChatResponse = { reply: string; mode: string; model: string };
 
+export type ChatResetResponse = {
+  conversation_id: string;
+  model: string;
+};
+
 export const api = {
   health: () => json<Health>("/api/health"),
   doctor: () => json<Doctor>("/api/doctor"),
@@ -55,5 +60,10 @@ export const api = {
     json<ChatResponse>("/api/chat", {
       method: "POST",
       body: JSON.stringify({ message }),
+    }),
+  chatReset: () =>
+    json<ChatResetResponse>("/api/chat/reset", {
+      method: "POST",
+      body: "{}",
     }),
 };
