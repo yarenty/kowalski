@@ -17,7 +17,7 @@ use kowalski_core::memory::consolidation::{Consolidator, MemoryWeaver};
     author,
     version,
     about = "Kowalski CLI — agents, memory, and MCP operators.",
-    long_about = "Operators: `config check`, `db migrate`, `doctor`, `mcp ping`, `mcp tools`, `serve` (see --help on each)."
+    long_about = "Operators: `config check`, `db migrate`, `doctor`, `mcp ping`, `mcp tools`, `federation ping-notify` (with `--features postgres`), `serve` (see --help on each)."
 )]
 struct Cli {
     #[clap(subcommand)]
@@ -95,6 +95,11 @@ enum Commands {
         #[clap(long)]
         ollama_url: Option<String>,
     },
+    /// Federation operators (Postgres `NOTIFY` smoke test when built with `--features postgres`)
+    Federation {
+        #[clap(subcommand)]
+        command: FederationCommands,
+    },
     /// Expose a minimal JSON HTTP API for the Vue UI (`GET /api/health`, etc.)
     Serve {
         /// Listen address (default 127.0.0.1:3000 — matches `ui/vite.config.ts` proxy)
@@ -127,6 +132,16 @@ enum DbCommands {
         #[clap(long)]
         url: Option<String>,
         /// Read memory.database_url from this TOML (ignored if --url is set)
+        #[clap(short, long)]
+        config: Option<String>,
+    },
+}
+
+#[derive(Parser, Debug)]
+enum FederationCommands {
+    /// Send a Ping ACL via `pg_notify` on `kowalski_federation` (needs `memory.database_url` in config)
+    PingNotify {
+        /// Config TOML (default ./config.toml)
         #[clap(short, long)]
         config: Option<String>,
     },
@@ -455,6 +470,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::Doctor { ollama_url }) => {
             kowalski_cli::ops::run_doctor(ollama_url).await?;
         },
+        Some(Commands::Federation { command }) => match command {
+            FederationCommands::PingNotify { config } => {
+                kowalski_cli::federation_ops::run_ping_notify(config.as_deref()).await?;
+            }
+        },
         Some(Commands::Serve {
             bind,
             config,
@@ -635,6 +655,7 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
                 println!("  kowalski-cli config check [config.toml]");
                 println!("  kowalski-cli db migrate [--url] [-c config.toml]");
                 println!("  kowalski-cli doctor [--ollama-url URL]");
+                println!("  kowalski-cli federation ping-notify [-c config.toml]  — pg_notify smoke (needs --features postgres)");
                 println!("  kowalski-cli serve …  — /api/federation/registry, /api/federation/stream (SSE), /api/federation/delegate; with --features postgres + memory.database_url, LISTEN kowalski_federation → broker");
             }
             "create" => {

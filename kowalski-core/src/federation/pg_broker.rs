@@ -7,6 +7,14 @@ use crate::federation::acl::AclEnvelope;
 use crate::federation::broker::MessageBroker;
 use async_trait::async_trait;
 use sqlx::postgres::{PgListener, PgPool};
+use std::sync::Arc;
+
+/// Connect a [`PgPool`] for [`PgBroker`] / federation operators.
+pub async fn pg_pool_connect(database_url: &str) -> Result<PgPool, KowalskiError> {
+    PgPool::connect(database_url)
+        .await
+        .map_err(|e| KowalskiError::Federation(format!("PgPool::connect: {e}")))
+}
 
 /// NOTIFY channel name is fixed at construction; payload is JSON [`AclEnvelope`].
 pub struct PgBroker {
@@ -101,15 +109,12 @@ impl MessageBroker for PgBroker {
 
 /// `LISTEN` on `notify_channel` and republish JSON [`AclEnvelope`]s into the in-process
 /// [`super::broker::MpscBroker`] (e.g. so `serve` SSE clients see cross-process NOTIFY).
-pub async fn bridge_postgres_notify_to_mpsc(
-    database_url: &str,
+pub async fn bridge_postgres_notify_to_mpsc_pool(
+    pool: Arc<PgPool>,
     notify_channel: &str,
-    local: std::sync::Arc<super::broker::MpscBroker>,
+    local: Arc<super::broker::MpscBroker>,
 ) -> Result<(), KowalskiError> {
-    let pool = PgPool::connect(database_url)
-        .await
-        .map_err(|e| KowalskiError::Federation(format!("PgPool::connect: {e}")))?;
-    let pg = PgBroker::new(pool, notify_channel);
+    let pg = PgBroker::new((*pool).clone(), notify_channel);
     let mut rx = pg.subscribe(256)?;
     tokio::spawn(async move {
         while let Some(env) = rx.recv().await {
@@ -117,4 +122,15 @@ pub async fn bridge_postgres_notify_to_mpsc(
         }
     });
     Ok(())
+}
+
+/// Connects, starts the bridge, and returns the pool for reuse (e.g. outbound `pg_notify`).
+pub async fn bridge_postgres_notify_to_mpsc(
+    database_url: &str,
+    notify_channel: &str,
+    local: Arc<super::broker::MpscBroker>,
+) -> Result<Arc<PgPool>, KowalskiError> {
+    let pool = Arc::new(pg_pool_connect(database_url).await?);
+    bridge_postgres_notify_to_mpsc_pool(pool.clone(), notify_channel, local).await?;
+    Ok(pool)
 }

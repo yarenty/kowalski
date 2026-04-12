@@ -1,12 +1,15 @@
 //! In-process message broker (fan-out to subscribers per topic).
 //!
-//! Future: `PgBroker` using Postgres `LISTEN` / `NOTIFY` with JSON payloads.
+//! [`MpscBroker::publish_to_topic`] drops a second delivery with the same [`AclEnvelope::id`]
+//! (covers Postgres `NOTIFY` echo after an in-process publish).
 
 use crate::error::KowalskiError;
 use crate::federation::acl::AclEnvelope;
 use async_trait::async_trait;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
+
+const RECENT_ENVELOPE_IDS_CAP: usize = 2048;
 
 /// Publishes [`AclEnvelope`] messages; transport-agnostic contract for federation.
 #[async_trait]
@@ -21,12 +24,17 @@ type SubscriberVec = Vec<tokio::sync::mpsc::Sender<AclEnvelope>>;
 #[derive(Clone)]
 pub struct MpscBroker {
     inner: Arc<Mutex<HashMap<String, SubscriberVec>>>,
+    /// Suppresses a second delivery of the same `AclEnvelope.id` (e.g. in-process publish + Postgres NOTIFY echo).
+    recent_envelope_ids: Arc<Mutex<VecDeque<String>>>,
 }
 
 impl MpscBroker {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(HashMap::new())),
+            recent_envelope_ids: Arc::new(Mutex::new(VecDeque::with_capacity(
+                RECENT_ENVELOPE_IDS_CAP,
+            ))),
         }
     }
 
@@ -44,6 +52,16 @@ impl MpscBroker {
 
     /// Publish to all subscribers on `envelope.topic`. No subscribers → Ok (no-op).
     pub async fn publish_to_topic(&self, envelope: &AclEnvelope) -> Result<(), KowalskiError> {
+        {
+            let mut recent = self.recent_envelope_ids.lock().expect("mpsc broker dedupe lock");
+            if recent.contains(&envelope.id) {
+                return Ok(());
+            }
+            recent.push_back(envelope.id.clone());
+            while recent.len() > RECENT_ENVELOPE_IDS_CAP {
+                recent.pop_front();
+            }
+        }
         let topic = envelope.topic.clone();
         let senders: Vec<_> = {
             let g = self.inner.lock().expect("mpsc broker lock");
@@ -98,6 +116,23 @@ mod tests {
         let rb = b.recv().await.unwrap();
         assert_eq!(ra.payload, env.payload);
         assert_eq!(rb.payload, env.payload);
+    }
+
+    #[tokio::test]
+    async fn duplicate_envelope_id_not_delivered_twice() {
+        let broker = MpscBroker::new();
+        let mut sub = broker.subscribe("tasks", 8);
+        let env = AclEnvelope::new(
+            "tasks",
+            "orch",
+            AclMessage::Ping {
+                text: "once".into(),
+            },
+        );
+        broker.publish_to_topic(&env).await.unwrap();
+        broker.publish_to_topic(&env).await.unwrap();
+        let _ = sub.recv().await.unwrap();
+        assert!(sub.try_recv().is_err());
     }
 
     #[tokio::test]

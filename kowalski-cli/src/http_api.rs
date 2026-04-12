@@ -17,6 +17,8 @@ use kowalski_core::config::Config;
 use kowalski_core::federation::{
     AgentRecord, AgentRegistry, FederationOrchestrator, MpscBroker,
 };
+#[cfg(feature = "postgres")]
+use kowalski_core::federation::MessageBroker;
 use kowalski_core::template::agent::TemplateAgent;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -40,6 +42,9 @@ struct ApiState {
     chat: Arc<Mutex<ChatState>>,
     federation_broker: Arc<MpscBroker>,
     federation: Arc<FederationOrchestrator>,
+    /// Same DB pool as the LISTEN bridge — used to fan out delegates via `NOTIFY`.
+    #[cfg(feature = "postgres")]
+    federation_pg_notify: Option<Arc<kowalski_core::PgBroker>>,
 }
 
 /// Run until SIGINT / process exit. Binds `addr` and serves under `/api/*`.
@@ -73,7 +78,8 @@ pub async fn serve(
     let federation = Arc::new(federation);
 
     #[cfg(feature = "postgres")]
-    {
+    let federation_pg_notify = {
+        let mut pg_out: Option<Arc<kowalski_core::PgBroker>> = None;
         if kowalski_core::config::memory_uses_postgres(&full_config.memory) {
             if let Some(ref url) = full_config.memory.database_url {
                 match kowalski_core::bridge_postgres_notify_to_mpsc(
@@ -83,14 +89,21 @@ pub async fn serve(
                 )
                 .await
                 {
-                    Ok(()) => log::info!(
-                        "Federation: Postgres LISTEN kowalski_federation → in-process broker (SSE)"
-                    ),
+                    Ok(pool) => {
+                        log::info!(
+                            "Federation: Postgres LISTEN kowalski_federation → in-process broker (SSE)"
+                        );
+                        pg_out = Some(Arc::new(kowalski_core::PgBroker::new(
+                            (*pool).clone(),
+                            "kowalski_federation",
+                        )));
+                    }
                     Err(e) => log::warn!("Federation Postgres bridge: {}", e),
                 }
             }
         }
-    }
+        pg_out
+    };
 
     log::info!(
         "Kowalski HTTP API at http://{} (config {}, model {})",
@@ -107,6 +120,8 @@ pub async fn serve(
         chat: Arc::new(Mutex::new(ChatState { agent, conv_id })),
         federation_broker: federation_broker.clone(),
         federation,
+        #[cfg(feature = "postgres")]
+        federation_pg_notify,
     };
 
     let app = Router::new()
@@ -129,12 +144,28 @@ pub async fn serve(
     Ok(())
 }
 
+fn federation_postgres_notify_bridge(state: &ApiState) -> bool {
+    #[cfg(feature = "postgres")]
+    {
+        state.federation_pg_notify.is_some()
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = state;
+        false
+    }
+}
+
 async fn get_health(State(state): State<ApiState>) -> Json<serde_json::Value> {
     Json(json!({
         "status": "ok",
         "service": "kowalski-cli",
         "version": env!("CARGO_PKG_VERSION"),
         "model": state.model,
+        "federation": {
+            "agents_registered": state.federation.registry.list().len(),
+            "postgres_notify_bridge": federation_postgres_notify_bridge(&state),
+        },
     }))
 }
 
@@ -326,10 +357,21 @@ async fn post_federation_delegate(
     State(state): State<ApiState>,
     Json(body): Json<FederationDelegateBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let delegated_to = state
+    let outcome = state
         .federation
         .delegate_first_match(&body.task_id, &body.instruction, &body.capability)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    Ok(Json(json!({ "delegated_to": delegated_to })))
+
+    #[cfg(feature = "postgres")]
+    if let (Some(pg), Some(o)) = (&state.federation_pg_notify, outcome.as_ref()) {
+        if let Err(e) = pg.publish(&o.envelope).await {
+            log::warn!("federation pg_notify fan-out: {}", e);
+        }
+    }
+
+    Ok(Json(json!({
+        "delegated_to": outcome.as_ref().map(|o| &o.agent_id),
+        "topic": outcome.as_ref().map(|o| &o.envelope.topic),
+    })))
 }

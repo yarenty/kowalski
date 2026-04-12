@@ -21,6 +21,10 @@ export type Health = {
   service: string;
   version: string;
   model?: string;
+  federation?: {
+    agents_registered: number;
+    postgres_notify_bridge: boolean;
+  };
 };
 
 export type Doctor = {
