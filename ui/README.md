@@ -4,8 +4,6 @@
 
 Features: health, MCP ping, **Chat** (`POST /api/chat`, SSE **`POST /api/chat/stream`** with optional **Tool-aware stream** / `tools_stream`), federation, graph extension status. See [`ROADMAP.md`](./ROADMAP.md).
 
-Use **[Bun](https://bun.sh)** for installs and scripts (not npm).
-
 ## Setup
 
 ```bash
@@ -14,7 +12,17 @@ bun install
 bun run dev
 ```
 
-Open http://localhost:5173
+Open [http://localhost:5173](http://localhost:5173)
+
+Vite uses Rollup internally (transitive dependency). You do not need to add Rollup directly, but it still needs the matching native package for your runtime architecture.
+
+If you hit `Cannot find module @rollup/rollup-darwin-*` on macOS, your runtime arch is usually mismatched (for example Rosetta x64 vs arm64). Use Node 22 arm64 and reinstall:
+
+```bash
+cd ui
+rm -rf node_modules bun.lockb
+bun install
+```
 
 ## Build
 

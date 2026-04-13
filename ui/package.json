@@ -3,6 +3,10 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
+  "packageManager": "bun@1.2.21",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -12,8 +16,8 @@
     "vue": "^3.5.13"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^5.2.1",
-    "typescript": "~5.7.2",
-    "vite": "^6.0.5"
+    "@vitejs/plugin-vue": "^6.0.6",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.8"
   }
 }

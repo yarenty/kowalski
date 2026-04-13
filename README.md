@@ -54,21 +54,19 @@ kowalski/
 
 ### **ui/**
 - Vue 3 + Vite operator shell: health, MCP ping, **Chat** (SSE including **tool-aware stream**), federation, graph extension status.
-- Dev: `cd ui && bun install && bun run dev` (proxies `/api` to the CLI server).
+- Dev: `cd ui && bun install && bun run dev` (proxies `/api` to the CLI server; see [`ui/README.md`](./ui/README.md)).
 
 ---
 
 ## 🚀 Installation & Setup
 
-> "Installation is like cooking – it's easy until you burn something." – A Frustrated Developer
-
 ### 1. Prerequisites
 
-- Rust (latest stable, install via [rustup.rs](https://rustup.rs))
-- [Ollama](https://ollama.com/) (for local LLMs, e.g., llama3.2)
-- (Optional) Other LLM providers (OpenAI, etc.)
+- **Rust** (latest stable, [rustup.rs](https://rustup.rs))
+- **[Ollama](https://ollama.com/)** if you use the default `[llm] provider = "ollama"` (local models)
+- **Optional:** Node 22 + **Bun** for the Vue UI (`ui/`), PostgreSQL + extensions for durable memory / federation (see `TODO.md` and crate `README`s)
 
-### 2. Clone & Build
+### 2. Clone & build
 
 ```bash
 git clone https://github.com/yarenty/kowalski.git
@@ -76,52 +74,89 @@ cd kowalski
 cargo build --release
 ```
 
-### 3. Install & Run Ollama
+The main binary is **`kowalski-cli`** (`target/release/kowalski-cli`). Adjust `config.toml` in the repo root (or pass `-c` / `--config` where supported) for models, MCP servers, and memory.
+
+### 3. Ollama (typical local setup)
 
 ```bash
-# Install Ollama (see https://ollama.com/download)
-ollama serve &
-
-# Download a model (llama3.2 runs on CPU)
-ollama pull llama3.2
+ollama serve   # in another terminal or as a service
+ollama pull llama3.2   # or another tag matching `[ollama].model` in config.toml
 ```
 
-### 4. Run Kowalski
+### 4. Quick checks
 
 ```bash
-cargo run --release --bin kowalski-cli
-# Or use the CLI directly after building
-./target/release/kowalski chat "Hello, world!"
+./target/release/kowalski-cli doctor
+./target/release/kowalski-cli config check
 ```
 
 ---
 
 ## 🛠️ Usage
 
-### CLI Examples
+### CLI (examples)
+
+Tools and MCP are driven by **`TemplateAgent`** + config, not separate `kowalski tool …` / academic subcommands.
 
 ```bash
-# Chat with an LLM
-kowalski chat "What's the best way to learn Rust?"
+# Help (binary name is kowalski-cli)
+./target/release/kowalski-cli --help
 
-# Analyze a PDF
-kowalski academic --file research.pdf
+# Orchestrator REPL (TemplateAgent + tools; uses config.toml by default)
+./target/release/kowalski-cli run -c config.toml
 
-# Web search
-kowalski tool search "rust async programming"
+# HTTP API for the Vue UI (default bind 127.0.0.1:3000)
+./target/release/kowalski-cli serve -c config.toml
 
-# Code analysis
-kowalski tool code ./src/main.rs
+# MCP servers from config: initialize + tools/list
+./target/release/kowalski-cli mcp ping -c config.toml
+./target/release/kowalski-cli mcp tools -c config.toml
+
+# Apply SQL migrations when using sqlite: or postgres:// memory URLs
+./target/release/kowalski-cli db migrate --url 'postgres://…'
+# or: db migrate -c config.toml
+
+# Interactive / legacy agent manager flow (create agents, then chat by name)
+./target/release/kowalski-cli --interactive
+./target/release/kowalski-cli create web
+./target/release/kowalski-cli chat my-agent-name
 ```
 
-### Rust API Example
+Build with **`--features postgres`** on `kowalski-cli` for Postgres memory, graph routes, and federation helpers (`cargo build -p kowalski-cli --features postgres`).
+
+### Vue UI (`ui/`)
+
+The web UI lives in **[`ui/`](./ui/)** at the repository root (Vue 3 + Vite). It talks to the backend via **`kowalski-cli serve`**: the dev server proxies **`/api`** to **`http://127.0.0.1:3000`** (see `ui/vite.config.ts`).
+
+**Two terminals:**
+
+```bash
+# Terminal 1 — HTTP API (must be up first)
+./target/release/kowalski-cli serve -c config.toml
+
+# Terminal 2 — Vite (default http://localhost:5173)
+cd ui && npm install && npm run dev
+```
+
+Production build: `cd ui && npm run build` (static assets under `ui/dist/`). More detail: [`ui/README.md`](./ui/README.md) and [`ui/DEPLOY.md`](./ui/DEPLOY.md).
+
+### Rust API (minimal)
 
 ```rust
-use kowalski_core::{Agent, BaseAgent, Config};
-let config = Config::default();
-let mut agent = BaseAgent::new(config, "Demo Agent", "A test agent").await?;
-let conv_id = agent.start_conversation("llama3.2");
-agent.add_message(&conv_id, "user", "Hello, world!").await;
+use kowalski_core::agent::Agent;
+use kowalski_core::config::Config;
+use kowalski_core::template::TemplateAgent;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = Config::default();
+    let model = config.ollama.model.clone();
+    let mut agent = TemplateAgent::new(config).await?;
+    let conv = agent.start_conversation(&model);
+    let reply = agent.chat_with_history(&conv, "Hello", None).await?;
+    println!("{reply}");
+    Ok(())
+}
 ```
 
 ---
@@ -147,6 +182,7 @@ Legacy prompt configurations are currently stored in `migrations/legacy_prompts/
 - [CHANGELOG.md](./CHANGELOG.md)
 - [ROADMAP.md](./ROADMAP.md)
 - **[TODO.md](./TODO.md)** — manual & end-to-end verification (operator checklist)
+- **[`ui/README.md`](./ui/README.md)** — Vue operator UI (dev, build, proxy to `serve`)
 - [Each module's README](./kowalski-core/README.md), etc.
 
 ---
