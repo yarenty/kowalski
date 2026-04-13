@@ -13,7 +13,7 @@ import {
   type SessionsResponse,
 } from "./api";
 
-const tab = ref<"home" | "mcp" | "chat" | "federation" | "graph">("home");
+const tab = ref<"home" | "mcp" | "chat" | "federation" | "graph">("chat");
 
 const health = ref<Health | null>(null);
 const healthErr = ref<string | null>(null);
@@ -43,6 +43,8 @@ const resetBusy = ref(false);
 const chatErr = ref<string | null>(null);
 /** When true, SSE uses `tools_stream`: stream tokens only for the LLM turn after tool execution(s). */
 const chatToolsStream = ref(false);
+type ChatTurn = { role: "user" | "assistant"; content: string };
+const chatTurns = ref<ChatTurn[]>([]);
 
 const fedTopic = ref("federation");
 const fedTaskId = ref("demo-1");
@@ -253,6 +255,7 @@ async function runMcpPing() {
 async function sendChat() {
   const msg = chatIn.value.trim();
   if (!msg) return;
+  chatTurns.value.push({ role: "user", content: msg });
   chatBusy.value = true;
   chatErr.value = null;
   chatOut.value = null;
@@ -261,8 +264,13 @@ async function sendChat() {
     const r = await api.chat(msg);
     chatOut.value = r.reply;
     chatMeta.value = `${r.mode} · ${r.model}`;
+    chatTurns.value.push({ role: "assistant", content: r.reply });
+    chatIn.value = "";
+    void loadSessions();
   } catch (e) {
-    chatErr.value = e instanceof Error ? e.message : String(e);
+    const message = e instanceof Error ? e.message : String(e);
+    chatErr.value = message;
+    chatTurns.value.push({ role: "assistant", content: `[error] ${message}` });
   } finally {
     chatBusy.value = false;
   }
@@ -271,6 +279,9 @@ async function sendChat() {
 async function sendChatStream() {
   const msg = chatIn.value.trim();
   if (!msg) return;
+  chatTurns.value.push({ role: "user", content: msg });
+  const assistantTurn: ChatTurn = { role: "assistant", content: "" };
+  chatTurns.value.push(assistantTurn);
   chatBusy.value = true;
   chatErr.value = null;
   chatOut.value = "";
@@ -284,14 +295,24 @@ async function sendChatStream() {
           : `SSE · ${ev.model}`;
       } else if (ev.type === "token") {
         chatOut.value = (chatOut.value ?? "") + ev.content;
+        assistantTurn.content += ev.content;
       } else if (ev.type === "assistant") {
         chatOut.value = ev.content;
+        assistantTurn.content = ev.content;
       } else if (ev.type === "error") {
         chatErr.value = ev.message;
+        assistantTurn.content = `[error] ${ev.message}`;
       }
     }, { toolsStream: chatToolsStream.value });
+    if (!assistantTurn.content.trim()) {
+      assistantTurn.content = "(no assistant output)";
+    }
+    chatIn.value = "";
+    void loadSessions();
   } catch (e) {
-    chatErr.value = e instanceof Error ? e.message : String(e);
+    const message = e instanceof Error ? e.message : String(e);
+    chatErr.value = message;
+    assistantTurn.content = `[error] ${message}`;
   } finally {
     chatBusy.value = false;
   }
@@ -306,6 +327,7 @@ async function resetChat() {
     chatOut.value = null;
     chatMeta.value = `new session · ${r.model}`;
     chatIn.value = "";
+    chatTurns.value = [];
     void loadSessions();
   } catch (e) {
     chatErr.value = e instanceof Error ? e.message : String(e);
@@ -395,6 +417,14 @@ onUnmounted(() => {
 
       <section v-else-if="tab === 'graph'" class="panel">
         <h2>Graph</h2>
+        <div class="guide">
+          <h3>How to use</h3>
+          <ol>
+            <li>Build and run CLI with <code>--features postgres</code>.</li>
+            <li>Set <code>memory.database_url</code> in <code>config.toml</code>.</li>
+            <li>Click <strong>Load graph status</strong> to verify extensions.</li>
+          </ol>
+        </div>
         <p class="hint">
           <code>GET /api/graph/status</code> probes Postgres for <code>vector</code> and
           <code>age</code> extensions when <code>memory.database_url</code> is set and the CLI is built
@@ -409,6 +439,14 @@ onUnmounted(() => {
 
       <section v-else-if="tab === 'federation'" class="panel">
         <h2>Federation</h2>
+        <div class="guide">
+          <h3>How to use</h3>
+          <ol>
+            <li>Register one or more test agents and click <strong>Refresh registry</strong>.</li>
+            <li>Connect stream to watch delegated events live.</li>
+            <li>Delegate by capability (for example <code>chat</code>).</li>
+          </ol>
+        </div>
         <p class="hint">
           In-process ACL via <code>GET /api/federation/stream</code> (SSE) and
           <code>POST /api/federation/delegate</code>. With
@@ -492,6 +530,14 @@ onUnmounted(() => {
 
       <section v-else-if="tab === 'mcp'" class="panel">
         <h2>MCP</h2>
+        <div class="guide">
+          <h3>How to use</h3>
+          <ol>
+            <li>Add <code>[[mcp.servers]]</code> entries in <code>config.toml</code>.</li>
+            <li>Reload server list to verify the config is loaded.</li>
+            <li>Run ping and check <code>ok</code> plus <code>tool_count</code>.</li>
+          </ol>
+        </div>
         <p>
           <button type="button" class="primary" @click="loadServers">Reload server list</button>
           <button type="button" :disabled="pingBusy" @click="runMcpPing">
@@ -508,6 +554,14 @@ onUnmounted(() => {
 
       <section v-else-if="tab === 'chat'" class="panel">
         <h2>Chat</h2>
+        <div class="guide">
+          <h3>How to use</h3>
+          <ol>
+            <li>Ask a question with <strong>Send</strong> or <strong>Send (SSE)</strong>.</li>
+            <li>Ask follow-up questions in the same session.</li>
+            <li>Use <strong>New conversation</strong> to reset context.</li>
+          </ol>
+        </div>
         <p class="hint">
           One in-process agent + Ollama via <code>POST /api/chat</code> or SSE
           <code>POST /api/chat/stream</code> (one JSON event per line; assistant text arrives when
@@ -538,6 +592,19 @@ onUnmounted(() => {
         <p v-if="chatMeta" class="muted">{{ chatMeta }}</p>
         <pre v-if="chatOut" class="json json-scroll chat-out">{{ chatOut }}</pre>
         <p v-if="chatErr" class="err">{{ chatErr }}</p>
+        <h3>Transcript</h3>
+        <div v-if="chatTurns.length" class="chat-history">
+          <article
+            v-for="(turn, idx) in chatTurns"
+            :key="idx"
+            class="chat-turn"
+            :class="`turn-${turn.role}`"
+          >
+            <header>{{ turn.role === "user" ? "You" : "Assistant" }}</header>
+            <pre class="chat-turn-content">{{ turn.content }}</pre>
+          </article>
+        </div>
+        <p v-else class="muted">(no messages yet)</p>
       </section>
     </main>
   </div>
@@ -610,6 +677,25 @@ body {
 .hint {
   font-size: 0.9rem;
   color: #8b92a5;
+}
+.guide {
+  border: 1px solid #2a2e38;
+  border-radius: 8px;
+  background: #171b22;
+  padding: 0.65rem 0.8rem;
+  margin-bottom: 0.8rem;
+}
+.guide h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.92rem;
+}
+.guide ol {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: #aeb8cc;
+}
+.guide li {
+  margin: 0.2rem 0;
 }
 .row {
   margin: 0.35rem 0 0.5rem;
@@ -694,6 +780,34 @@ code {
   max-height: 24rem;
   white-space: pre-wrap;
   word-break: break-word;
+}
+.chat-history {
+  display: grid;
+  gap: 0.5rem;
+  max-height: 24rem;
+  overflow: auto;
+}
+.chat-turn {
+  border: 1px solid #2a2e38;
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+  background: #171b22;
+}
+.chat-turn header {
+  color: #9aa8c0;
+  font-size: 0.8rem;
+  margin-bottom: 0.2rem;
+}
+.chat-turn-content {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #d2d9e8;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.turn-user {
+  border-color: #3d5a8c;
 }
 .fed-events {
   max-height: min(50vh, 28rem);

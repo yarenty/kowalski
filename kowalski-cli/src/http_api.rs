@@ -29,6 +29,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tower_http::cors::CorsLayer;
+use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 
 struct ChatState {
     agent: TemplateAgent,
@@ -176,6 +177,11 @@ pub async fn serve(
     let router = router.route("/api/graph/cypher", post(post_graph_cypher));
     let app = router
         .with_state(state)
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().include_headers(false))
+                .on_response(DefaultOnResponse::new()),
+        )
         .layer(CorsLayer::permissive());
 
     if let Some((cert, key)) = tls {
