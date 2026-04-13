@@ -107,10 +107,11 @@ function send(stream: boolean) {
 .meta { min-height: 1.2rem; }
 .chat-history {
   flex: 1;
-  min-height: 16rem;
+  min-height: 0;
   max-height: calc(100vh - 25rem);
   overflow: auto;
   display: grid;
+  align-content: start;
   gap: 0.5rem;
   border: 1px solid #2a2e38;
   border-radius: 8px;
@@ -118,12 +119,16 @@ function send(stream: boolean) {
   background: #141820;
 }
 .chat-turn {
+  align-self: start;
   border: 1px solid #2a2e38;
   border-radius: 8px;
   padding: 0.55rem 0.65rem;
   background: #171b22;
+  width: fit-content;
+  max-width: 100%;
 }
 .turn-user { border-color: #3d5a8c; }
+.turn-user { justify-self: end; }
 .chat-turn header { color: #9aa8c0; font-size: 0.8rem; margin-bottom: 0.2rem; }
 .chat-turn-content {
   margin: 0;
@@ -136,6 +141,7 @@ function send(stream: boolean) {
 .composer {
   position: sticky;
   bottom: 0;
+  margin-top: auto;
   background: #12141a;
   border-top: 1px solid #2a2e38;
   padding-top: 0.5rem;

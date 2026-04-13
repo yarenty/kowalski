@@ -31,7 +31,7 @@ const emit = defineEmits<{
       <p class="tagline">Operator UI</p>
       <nav class="nav">
         <button :class="{ active: activeTab === 'chat' }" @click="emit('select-tab', 'chat')">Chat</button>
-        <button :class="{ active: activeTab === 'home' }" @click="emit('select-tab', 'home')">Home</button>
+        <button :class="{ active: activeTab === 'home' }" @click="emit('select-tab', 'home')">Dashboard</button>
         <button :class="{ active: activeTab === 'mcp' }" @click="emit('select-tab', 'mcp')">MCP</button>
         <button :class="{ active: activeTab === 'federation' }" @click="emit('select-tab', 'federation')">Federation</button>
         <button :class="{ active: activeTab === 'graph' }" @click="emit('select-tab', 'graph')">Graph</button>
