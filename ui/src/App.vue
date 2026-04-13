@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { onMounted, ref } from "vue";
 import SidebarNav from "./components/SidebarNav.vue";
 import AboutPanel from "./panels/AboutPanel.vue";
 import ChatPanel from "./panels/ChatPanel.vue";
@@ -29,6 +29,7 @@ const chatBusy = ref(false);
 const resetBusy = ref(false);
 const chatErr = ref<string | null>(null);
 const chatToolsStream = ref(false);
+const appVersion = ref<string>("unknown");
 
 function persistConversations() {
   localStorage.setItem(CHAT_LIST_KEY, JSON.stringify(conversations.value));
@@ -147,6 +148,15 @@ async function sendChat(payload: { message: string; stream: boolean }) {
 function selectConversation(id: string) {
   activeConversationId.value = id;
 }
+
+onMounted(async () => {
+  try {
+    const h = await api.health();
+    if (h.version) appVersion.value = h.version;
+  } catch {
+    /* keep unknown */
+  }
+});
 </script>
 
 <template>
@@ -156,6 +166,7 @@ function selectConversation(id: string) {
       :collapsed="sidebarCollapsed"
       :conversations="conversations"
       :active-conversation-id="activeConversationId"
+      :app-version="appVersion"
       @toggle-collapse="sidebarCollapsed = !sidebarCollapsed"
       @select-tab="tab = $event"
       @select-conversation="selectConversation"

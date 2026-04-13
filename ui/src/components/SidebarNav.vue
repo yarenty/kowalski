@@ -11,6 +11,7 @@ defineProps<{
   collapsed: boolean;
   conversations: ConversationItem[];
   activeConversationId: string | null;
+  appVersion: string;
 }>();
 
 const emit = defineEmits<{
@@ -62,6 +63,8 @@ const emit = defineEmits<{
           <button :class="{ active: activeTab === 'about' }" @click="emit('select-tab', 'about')">About</button>
         </div>
       </section>
+      <p class="version">version: {{ appVersion }}</p>
+      <br/>
     </div>
   </aside>
 </template>
@@ -78,10 +81,19 @@ h1 { margin: 0; font-size: 1.05rem; }
   background: #2a3142; border: 1px solid #3d4658; color: #c8cfdd; padding: 0.35rem 0.55rem; border-radius: 6px; cursor: pointer; text-align: left;
 }
 .nav button.active, .conv-btn.active { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
-.chat-list { margin-top: 0.8rem; border-top: 1px solid #2a2e38; padding-top: 0.6rem; }
+.chat-list {
+  margin-top: 0.8rem;
+  border-top: 1px solid #2a2e38;
+  padding-top: 0.6rem;
+}
 .chat-list-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; }
 .new-btn { width: 28px; height: 28px; padding: 0; text-align: center; }
-.chat-list-scroll { max-height: calc(100vh - 260px); overflow: auto; display: grid; gap: 0.35rem; }
+.chat-list-scroll {
+  max-height: clamp(9rem, 36vh, 20rem);
+  overflow: auto;
+  display: grid;
+  gap: 0.35rem;
+}
 .title { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .muted { color: #6a7285; font-size: 0.85rem; }
 .admin {
@@ -107,4 +119,10 @@ h1 { margin: 0; font-size: 1.05rem; }
   text-align: left;
 }
 .admin-nav button.active { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
+.version {
+  margin: 0.55rem 0 0;
+  color: #8b92a5;
+  font-size: 0.75rem;
+  text-align: center;
+}
 </style>
