@@ -10,6 +10,7 @@ import {
   type Health,
   type McpPingResult,
   type McpServer,
+  type MemoryStatus,
   type SessionsResponse,
 } from "./api";
 
@@ -26,6 +27,8 @@ const sessionsErr = ref<string | null>(null);
 
 const doctor = ref<Doctor | null>(null);
 const doctorErr = ref<string | null>(null);
+const memoryStatus = ref<MemoryStatus | null>(null);
+const memoryErr = ref<string | null>(null);
 
 const servers = ref<McpServer[]>([]);
 const serversErr = ref<string | null>(null);
@@ -271,6 +274,16 @@ async function loadDoctor() {
   }
 }
 
+async function loadMemoryStatus() {
+  memoryErr.value = null;
+  try {
+    memoryStatus.value = await api.memoryStatus();
+  } catch (e) {
+    memoryStatus.value = null;
+    memoryErr.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
 async function loadServers() {
   serversErr.value = null;
   try {
@@ -384,6 +397,7 @@ onMounted(() => {
   void loadHealth();
   void loadAgents();
   void loadSessions();
+  void loadMemoryStatus();
 });
 
 onUnmounted(() => {
@@ -449,7 +463,25 @@ watch([chatTurns, sessionId, chatMeta], () => {
           <button type="button" @click="loadAgents">Refresh agents</button>
           <button type="button" @click="loadSessions">Refresh sessions</button>
           <button type="button" @click="loadDoctor">Load doctor</button>
+          <button type="button" @click="loadMemoryStatus">Load memory status</button>
         </p>
+        <h3>Memory</h3>
+        <article v-if="memoryStatus" class="card">
+          <header>
+            <strong>Embeddings</strong>
+            <span
+              class="status-badge"
+              :class="statusClass(memoryStatus.embeddings_ok)"
+            >{{ statusLabel(memoryStatus.embeddings_ok) }}</span>
+          </header>
+          <p class="muted">Backend: {{ memoryStatus.backend }}</p>
+          <p class="muted">Episodic buffer count: {{ memoryStatus.episodic_buffer_count }}</p>
+          <p class="muted">Embed model: {{ memoryStatus.embed_model }}</p>
+          <p v-if="memoryStatus.last_embed_error" class="err">
+            Last embed error: {{ memoryStatus.last_embed_error }}
+          </p>
+        </article>
+        <p v-if="memoryErr" class="err">{{ memoryErr }}</p>
         <details>
           <summary>Raw health JSON</summary>
           <pre v-if="health" class="json json-scroll">{{ JSON.stringify(health, null, 2) }}</pre>

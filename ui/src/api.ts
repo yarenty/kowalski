@@ -53,6 +53,13 @@ export type McpPingResult = {
 };
 
 export type ChatResponse = { reply: string; mode: string; model: string };
+export type MemoryStatus = {
+  backend: string;
+  episodic_buffer_count: number;
+  embeddings_ok: boolean;
+  embed_model: string;
+  last_embed_error?: string | null;
+};
 
 export type ChatResetResponse = {
   conversation_id: string;
@@ -93,6 +100,7 @@ export const api = {
   mcpServers: () => json<McpServer[]>("/api/mcp/servers"),
   mcpPing: () =>
     json<McpPingResult[]>("/api/mcp/ping", { method: "POST", body: "{}" }),
+  memoryStatus: () => json<MemoryStatus>("/api/memory/status"),
   chat: (message: string) =>
     json<ChatResponse>("/api/chat", {
       method: "POST",
