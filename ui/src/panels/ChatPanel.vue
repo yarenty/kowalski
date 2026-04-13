@@ -191,7 +191,10 @@ function send(stream: boolean) {
   width: fit-content;
   max-width: 100%;
 }
-.turn-user { border-color: #3d5a8c; }
+.turn-user {
+  border-color: #6f8fc7;
+  max-width: 80%;
+}
 .turn-user { justify-self: end; }
 .chat-turn header { color: #9aa8c0; font-size: 0.8rem; margin-bottom: 0.2rem; }
 .chat-turn-content {
