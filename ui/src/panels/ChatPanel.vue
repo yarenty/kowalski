@@ -45,7 +45,45 @@ async function revealLatestAssistantTurn() {
 
 function renderAssistantMarkdown(content: string): string {
   const html = marked.parse(content, { breaks: true, gfm: true }) as string;
-  return DOMPurify.sanitize(html);
+  const safe = DOMPurify.sanitize(html);
+  const container = document.createElement("div");
+  container.innerHTML = safe;
+  const codeBlocks = container.querySelectorAll("pre > code");
+  codeBlocks.forEach((codeEl) => {
+    const pre = codeEl.parentElement;
+    if (!pre || !pre.parentElement) return;
+    const wrap = document.createElement("div");
+    wrap.className = "code-block-wrap";
+    const btn = document.createElement("button");
+    btn.className = "copy-code-btn";
+    btn.type = "button";
+    btn.textContent = "Copy";
+    pre.parentElement.replaceChild(wrap, pre);
+    wrap.appendChild(btn);
+    wrap.appendChild(pre);
+  });
+  return container.innerHTML;
+}
+
+async function onTranscriptClick(ev: MouseEvent) {
+  const target = ev.target as HTMLElement | null;
+  if (!target || !target.classList.contains("copy-code-btn")) return;
+  const wrap = target.closest(".code-block-wrap");
+  const code = wrap?.querySelector("pre code");
+  const text = code?.textContent ?? "";
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    target.textContent = "Copied";
+    setTimeout(() => {
+      target.textContent = "Copy";
+    }, 1200);
+  } catch {
+    target.textContent = "Failed";
+    setTimeout(() => {
+      target.textContent = "Copy";
+    }, 1200);
+  }
 }
 
 watch(
@@ -75,7 +113,7 @@ function send(stream: boolean) {
       <p v-if="activeConversation?.chatMeta" class="muted">{{ activeConversation.chatMeta }}</p>
     </div>
 
-    <div ref="transcriptEl" class="chat-history">
+    <div ref="transcriptEl" class="chat-history" @click="onTranscriptClick">
       <article
         v-for="(turn, idx) in activeConversation?.turns ?? []"
         :key="idx"
@@ -177,6 +215,19 @@ function send(stream: boolean) {
   border-radius: 6px;
   padding: 0.5rem;
   overflow-x: auto;
+  margin: 0;
+}
+.md-content :deep(.code-block-wrap) { margin: 0.45rem 0; }
+.md-content :deep(.copy-code-btn) {
+  display: inline-block;
+  margin: 0 0 0.25rem;
+  background: #2a3142;
+  border: 1px solid #3d4658;
+  color: #c8cfdd;
+  border-radius: 6px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.75rem;
+  cursor: pointer;
 }
 .md-content :deep(code) {
   background: #2a3142;
