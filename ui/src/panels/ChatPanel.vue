@@ -27,12 +27,27 @@ const emit = defineEmits<{
 const chatIn = ref("");
 const transcriptEl = ref<HTMLElement | null>(null);
 
-watch(() => props.activeConversation?.turns.length, async () => {
+async function revealLatestAssistantTurn() {
   await nextTick();
-  if (transcriptEl.value) {
-    transcriptEl.value.scrollTop = transcriptEl.value.scrollHeight;
+  const root = transcriptEl.value;
+  if (!root) return;
+  const turns = root.querySelectorAll<HTMLElement>(".chat-turn");
+  if (!turns.length) return;
+  const last = turns[turns.length - 1];
+  if (last.classList.contains("turn-assistant")) {
+    last.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  } else {
+    root.scrollTop = root.scrollHeight;
   }
-});
+}
+
+watch(
+  () => props.activeConversation?.turns,
+  () => {
+    void revealLatestAssistantTurn();
+  },
+  { deep: true },
+);
 
 function send(stream: boolean) {
   const msg = chatIn.value.trim();
