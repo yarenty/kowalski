@@ -57,7 +57,8 @@ function renderAssistantMarkdown(content: string): string {
     const btn = document.createElement("button");
     btn.className = "copy-code-btn";
     btn.type = "button";
-    btn.textContent = "Copy";
+    btn.setAttribute("aria-label", "Copy code");
+    btn.setAttribute("title", "Copy code");
     pre.parentElement.replaceChild(wrap, pre);
     wrap.appendChild(btn);
     wrap.appendChild(pre);
@@ -67,22 +68,20 @@ function renderAssistantMarkdown(content: string): string {
 
 async function onTranscriptClick(ev: MouseEvent) {
   const target = ev.target as HTMLElement | null;
-  if (!target || !target.classList.contains("copy-code-btn")) return;
-  const wrap = target.closest(".code-block-wrap");
+  const btn = target?.closest(".copy-code-btn") as HTMLElement | null;
+  if (!btn) return;
+  const wrap = btn.closest(".code-block-wrap");
   const code = wrap?.querySelector("pre code");
   const text = code?.textContent ?? "";
   if (!text) return;
   try {
     await navigator.clipboard.writeText(text);
-    target.textContent = "Copied";
+    btn.classList.add("copied");
     setTimeout(() => {
-      target.textContent = "Copy";
+      btn.classList.remove("copied");
     }, 1200);
   } catch {
-    target.textContent = "Failed";
-    setTimeout(() => {
-      target.textContent = "Copy";
-    }, 1200);
+    btn.classList.remove("copied");
   }
 }
 
@@ -213,21 +212,39 @@ function send(stream: boolean) {
   background: #10141b;
   border: 1px solid #2a3142;
   border-radius: 6px;
-  padding: 0.5rem;
+  padding: 0.75rem 0.5rem 0.5rem;
   overflow-x: auto;
   margin: 0;
 }
-.md-content :deep(.code-block-wrap) { margin: 0.45rem 0; }
+.md-content :deep(.code-block-wrap) {
+  margin: 0.45rem 0;
+  position: relative;
+}
 .md-content :deep(.copy-code-btn) {
-  display: inline-block;
-  margin: 0 0 0.25rem;
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  width: 1.5rem;
+  height: 1.5rem;
   background: #2a3142;
   border: 1px solid #3d4658;
   color: #c8cfdd;
-  border-radius: 6px;
-  padding: 0.15rem 0.5rem;
-  font-size: 0.75rem;
+  border-radius: 5px;
+  padding: 0;
+  line-height: 1;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.md-content :deep(.copy-code-btn)::before {
+  content: "⧉";
+  font-size: 0.9rem;
+}
+.md-content :deep(.copy-code-btn.copied) {
+  border-color: #2f7c47;
+  color: #8de3a8;
+  background: #153323;
 }
 .md-content :deep(code) {
   background: #2a3142;
