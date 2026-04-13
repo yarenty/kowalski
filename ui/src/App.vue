@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   api,
   chatStream,
@@ -45,6 +45,7 @@ const chatErr = ref<string | null>(null);
 const chatToolsStream = ref(false);
 type ChatTurn = { role: "user" | "assistant"; content: string };
 const chatTurns = ref<ChatTurn[]>([]);
+const CHAT_STORAGE_KEY = "kowalski.ui.chat.v1";
 
 const fedTopic = ref("federation");
 const fedTaskId = ref("demo-1");
@@ -65,6 +66,47 @@ const fedRegistryErr = ref<string | null>(null);
 
 const graphStatus = ref<Record<string, unknown> | null>(null);
 const graphErr = ref<string | null>(null);
+const federationAgents = computed(() => fedRegistry.value?.agents ?? []);
+
+function statusLabel(ok: boolean): string {
+  return ok ? "OK" : "ERROR";
+}
+
+function statusClass(ok: boolean): string {
+  return ok ? "status-ok" : "status-error";
+}
+
+function persistChatState() {
+  const payload = {
+    turns: chatTurns.value.slice(-100),
+    sessionId: sessionId.value,
+    chatMeta: chatMeta.value,
+  };
+  localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(payload));
+}
+
+function restoreChatState() {
+  const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+  if (!raw) return;
+  try {
+    const parsed = JSON.parse(raw) as {
+      turns?: ChatTurn[];
+      sessionId?: string | null;
+      chatMeta?: string | null;
+    };
+    if (Array.isArray(parsed.turns)) {
+      chatTurns.value = parsed.turns.filter(
+        (t) =>
+          (t.role === "user" || t.role === "assistant") &&
+          typeof t.content === "string",
+      );
+    }
+    sessionId.value = parsed.sessionId ?? null;
+    chatMeta.value = parsed.chatMeta ?? null;
+  } catch {
+    /* ignore invalid localStorage payload */
+  }
+}
 
 async function loadGraphStatus() {
   graphErr.value = null;
@@ -328,6 +370,7 @@ async function resetChat() {
     chatMeta.value = `new session · ${r.model}`;
     chatIn.value = "";
     chatTurns.value = [];
+    persistChatState();
     void loadSessions();
   } catch (e) {
     chatErr.value = e instanceof Error ? e.message : String(e);
@@ -337,6 +380,7 @@ async function resetChat() {
 }
 
 onMounted(() => {
+  restoreChatState();
   void loadHealth();
   void loadAgents();
   void loadSessions();
@@ -345,6 +389,10 @@ onMounted(() => {
 onUnmounted(() => {
   fedDisconnect();
 });
+
+watch([chatTurns, sessionId, chatMeta], () => {
+  persistChatState();
+}, { deep: true });
 </script>
 
 <template>
@@ -402,16 +450,28 @@ onUnmounted(() => {
           <button type="button" @click="loadSessions">Refresh sessions</button>
           <button type="button" @click="loadDoctor">Load doctor</button>
         </p>
-        <pre v-if="health" class="json json-scroll">{{ JSON.stringify(health, null, 2) }}</pre>
+        <details>
+          <summary>Raw health JSON</summary>
+          <pre v-if="health" class="json json-scroll">{{ JSON.stringify(health, null, 2) }}</pre>
+        </details>
         <p v-if="healthErr" class="err">{{ healthErr }}</p>
         <h3>Agents</h3>
-        <pre v-if="agents" class="json json-scroll">{{ JSON.stringify(agents, null, 2) }}</pre>
+        <details>
+          <summary>Raw agents JSON</summary>
+          <pre v-if="agents" class="json json-scroll">{{ JSON.stringify(agents, null, 2) }}</pre>
+        </details>
         <p v-if="agentsErr" class="err">{{ agentsErr }}</p>
         <h3>Sessions</h3>
-        <pre v-if="sessions" class="json json-scroll">{{ JSON.stringify(sessions, null, 2) }}</pre>
+        <details>
+          <summary>Raw sessions JSON</summary>
+          <pre v-if="sessions" class="json json-scroll">{{ JSON.stringify(sessions, null, 2) }}</pre>
+        </details>
         <p v-if="sessionsErr" class="err">{{ sessionsErr }}</p>
         <h3>Ollama probe</h3>
-        <pre v-if="doctor" class="json json-scroll">{{ JSON.stringify(doctor, null, 2) }}</pre>
+        <details>
+          <summary>Raw doctor JSON</summary>
+          <pre v-if="doctor" class="json json-scroll">{{ JSON.stringify(doctor, null, 2) }}</pre>
+        </details>
         <p v-if="doctorErr" class="err">{{ doctorErr }}</p>
       </section>
 
@@ -433,7 +493,10 @@ onUnmounted(() => {
         <p>
           <button type="button" class="primary" @click="loadGraphStatus">Load graph status</button>
         </p>
-        <pre v-if="graphStatus" class="json json-scroll">{{ JSON.stringify(graphStatus, null, 2) }}</pre>
+        <details>
+          <summary>Raw graph JSON</summary>
+          <pre v-if="graphStatus" class="json json-scroll">{{ JSON.stringify(graphStatus, null, 2) }}</pre>
+        </details>
         <p v-if="graphErr" class="err">{{ graphErr }}</p>
       </section>
 
@@ -459,7 +522,21 @@ onUnmounted(() => {
             Refresh registry
           </button>
         </p>
-        <pre v-if="fedRegistry" class="json json-scroll">{{ JSON.stringify(fedRegistry, null, 2) }}</pre>
+        <div v-if="federationAgents.length" class="cards">
+          <article v-for="agent in federationAgents" :key="agent.id" class="card">
+            <header>
+              <strong>{{ agent.id }}</strong>
+              <span class="status-badge status-ok">ACTIVE</span>
+            </header>
+            <p class="muted">Capabilities: {{ agent.capabilities.join(", ") || "(none)" }}</p>
+            <p v-if="agent.state" class="muted">State available</p>
+          </article>
+        </div>
+        <p v-else class="muted">No registered agents.</p>
+        <details>
+          <summary>Raw federation registry JSON</summary>
+          <pre v-if="fedRegistry" class="json json-scroll">{{ JSON.stringify(fedRegistry, null, 2) }}</pre>
+        </details>
         <p v-if="fedRegistryErr" class="err">{{ fedRegistryErr }}</p>
         <p>
           <label class="lbl">Topic</label>
@@ -524,7 +601,10 @@ onUnmounted(() => {
             {{ fedBusy ? "Delegating…" : "POST /api/federation/delegate" }}
           </button>
         </p>
-        <pre v-if="fedResult" class="json json-scroll">{{ fedResult }}</pre>
+        <details>
+          <summary>Raw federation action JSON</summary>
+          <pre v-if="fedResult" class="json json-scroll">{{ fedResult }}</pre>
+        </details>
         <p v-if="fedErr" class="err">{{ fedErr }}</p>
       </section>
 
@@ -545,10 +625,36 @@ onUnmounted(() => {
           </button>
         </p>
         <p v-if="serversErr" class="err">{{ serversErr }}</p>
-        <pre v-if="servers.length" class="json json-scroll">{{ JSON.stringify(servers, null, 2) }}</pre>
+        <div v-if="servers.length" class="cards">
+          <article v-for="s in servers" :key="`${s.name}-${s.url}`" class="card">
+            <header>
+              <strong>{{ s.name }}</strong>
+              <span class="status-badge status-neutral">{{ s.transport.toUpperCase() }}</span>
+            </header>
+            <p class="muted">{{ s.url }}</p>
+          </article>
+        </div>
         <p v-else-if="!serversErr" class="muted">No servers or empty config.</p>
+        <details>
+          <summary>Raw MCP servers JSON</summary>
+          <pre v-if="servers.length" class="json json-scroll">{{ JSON.stringify(servers, null, 2) }}</pre>
+        </details>
         <h3>Ping results</h3>
-        <pre v-if="pingResults" class="json json-scroll">{{ JSON.stringify(pingResults, null, 2) }}</pre>
+        <div v-if="pingResults?.length" class="cards">
+          <article v-for="r in pingResults" :key="`${r.name}-${r.url}`" class="card">
+            <header>
+              <strong>{{ r.name }}</strong>
+              <span class="status-badge" :class="statusClass(r.ok)">{{ statusLabel(r.ok) }}</span>
+            </header>
+            <p class="muted">{{ r.transport }} · {{ r.url }}</p>
+            <p v-if="r.ok" class="muted">tools: {{ r.tool_count ?? 0 }}</p>
+            <p v-else class="err">{{ r.error }}</p>
+          </article>
+        </div>
+        <details>
+          <summary>Raw MCP ping JSON</summary>
+          <pre v-if="pingResults" class="json json-scroll">{{ JSON.stringify(pingResults, null, 2) }}</pre>
+        </details>
         <p v-if="pingErr" class="err">{{ pingErr }}</p>
       </section>
 
@@ -696,6 +802,51 @@ body {
 }
 .guide li {
   margin: 0.2rem 0;
+}
+details {
+  margin: 0.45rem 0;
+}
+details > summary {
+  cursor: pointer;
+  color: #9aa8c0;
+  font-size: 0.86rem;
+}
+.cards {
+  display: grid;
+  gap: 0.45rem;
+}
+.card {
+  border: 1px solid #2a2e38;
+  border-radius: 8px;
+  background: #171b22;
+  padding: 0.55rem 0.65rem;
+}
+.card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.status-badge {
+  border-radius: 999px;
+  font-size: 0.72rem;
+  padding: 0.12rem 0.45rem;
+  border: 1px solid transparent;
+}
+.status-ok {
+  color: #8de3a8;
+  border-color: #2f7c47;
+  background: #153323;
+}
+.status-error {
+  color: #ffb0b0;
+  border-color: #8d3a3a;
+  background: #381b1b;
+}
+.status-neutral {
+  color: #b9c8ef;
+  border-color: #41598e;
+  background: #1c2844;
 }
 .row {
   margin: 0.35rem 0 0.5rem;
