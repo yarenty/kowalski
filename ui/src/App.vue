@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import SidebarNav from "./components/SidebarNav.vue";
+import AboutPanel from "./panels/AboutPanel.vue";
 import ChatPanel from "./panels/ChatPanel.vue";
 import FederationPanel from "./panels/FederationPanel.vue";
 import GraphPanel from "./panels/GraphPanel.vue";
@@ -8,7 +9,7 @@ import HomePanel from "./panels/HomePanel.vue";
 import McpPanel from "./panels/McpPanel.vue";
 import { api, chatStream } from "./api";
 
-const tab = ref<"home" | "mcp" | "chat" | "federation" | "graph">("chat");
+const tab = ref<"home" | "mcp" | "chat" | "federation" | "graph" | "about">("chat");
 const sidebarCollapsed = ref(false);
 
 type ChatTurn = { role: "user" | "assistant"; content: string };
@@ -176,6 +177,7 @@ function selectConversation(id: string) {
       />
       <FederationPanel v-else-if="tab === 'federation'" />
       <GraphPanel v-else-if="tab === 'graph'" />
+      <AboutPanel v-else-if="tab === 'about'" />
     </main>
   </div>
 </template>
