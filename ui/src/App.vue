@@ -1,544 +1,194 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from "vue";
-import {
-  api,
-  chatStream,
-  openFederationEventSource,
-  type AgentsResponse,
-  type Doctor,
-  type FederationRegistryResponse,
-  type Health,
-  type McpPingResult,
-  type McpServer,
-  type SessionsResponse,
-} from "./api";
+import { onMounted, ref } from "vue";
+import SidebarNav from "./components/SidebarNav.vue";
+import AboutPanel from "./panels/AboutPanel.vue";
+import ChatPanel from "./panels/ChatPanel.vue";
+import FederationPanel from "./panels/FederationPanel.vue";
+import GraphPanel from "./panels/GraphPanel.vue";
+import HomePanel from "./panels/HomePanel.vue";
+import McpPanel from "./panels/McpPanel.vue";
+import { api, chatStream } from "./api";
 
-const tab = ref<"home" | "mcp" | "chat" | "federation" | "graph">("home");
+const tab = ref<"home" | "mcp" | "chat" | "federation" | "graph" | "about">("chat");
+const sidebarCollapsed = ref(false);
 
-const health = ref<Health | null>(null);
-const healthErr = ref<string | null>(null);
+type ChatTurn = { role: "user" | "assistant"; content: string };
+type Conversation = {
+  id: string;
+  title: string;
+  sessionId: string | null;
+  chatMeta: string | null;
+  turns: ChatTurn[];
+  updatedAt: number;
+};
 
-const agents = ref<AgentsResponse | null>(null);
-const agentsErr = ref<string | null>(null);
-
-const sessions = ref<SessionsResponse | null>(null);
-const sessionsErr = ref<string | null>(null);
-
-const doctor = ref<Doctor | null>(null);
-const doctorErr = ref<string | null>(null);
-
-const servers = ref<McpServer[]>([]);
-const serversErr = ref<string | null>(null);
-
-const pingBusy = ref(false);
-const pingResults = ref<McpPingResult[] | null>(null);
-const pingErr = ref<string | null>(null);
-
-const chatIn = ref("");
-const chatOut = ref<string | null>(null);
-const chatMeta = ref<string | null>(null);
-const sessionId = ref<string | null>(null);
+const CHAT_LIST_KEY = "kowalski.ui.chat.list.v2";
+const conversations = ref<Conversation[]>([]);
+const activeConversationId = ref<string | null>(null);
 const chatBusy = ref(false);
 const resetBusy = ref(false);
 const chatErr = ref<string | null>(null);
-/** When true, SSE uses `tools_stream`: stream tokens only for the LLM turn after tool execution(s). */
 const chatToolsStream = ref(false);
+const appVersion = ref<string>("unknown");
 
-const fedTopic = ref("federation");
-const fedTaskId = ref("demo-1");
-const fedInstruction = ref("Smoke test");
-const fedCap = ref("chat");
-const fedResult = ref<string | null>(null);
-const fedErr = ref<string | null>(null);
-const fedBusy = ref(false);
-const fedCleanupBusy = ref(false);
-const fedStaleSecs = ref(300);
-const fedDeregisterId = ref("");
-const fedRegId = ref("");
-const fedRegCaps = ref("search, chat");
-const fedLines = ref<string[]>([]);
-const fedEs = ref<EventSource | null>(null);
-const fedRegistry = ref<FederationRegistryResponse | null>(null);
-const fedRegistryErr = ref<string | null>(null);
+function persistConversations() {
+  localStorage.setItem(CHAT_LIST_KEY, JSON.stringify(conversations.value));
+}
 
-const graphStatus = ref<Record<string, unknown> | null>(null);
-const graphErr = ref<string | null>(null);
-
-async function loadGraphStatus() {
-  graphErr.value = null;
+function restoreConversations() {
+  const raw = localStorage.getItem(CHAT_LIST_KEY);
+  if (!raw) return;
   try {
-    graphStatus.value = await api.graphStatus();
-  } catch (e) {
-    graphStatus.value = null;
-    graphErr.value = e instanceof Error ? e.message : String(e);
+    const parsed = JSON.parse(raw) as Conversation[];
+    if (Array.isArray(parsed)) {
+      conversations.value = parsed
+        .filter((c) => c && typeof c.id === "string" && Array.isArray(c.turns))
+        .map((c) => ({ ...c, updatedAt: c.updatedAt ?? Date.now() }));
+    }
+  } catch {
+    /* ignore invalid storage */
   }
 }
 
-async function loadFederationRegistry() {
-  fedRegistryErr.value = null;
-  try {
-    fedRegistry.value = await api.federationRegistry();
-  } catch (e) {
-    fedRegistry.value = null;
-    fedRegistryErr.value = e instanceof Error ? e.message : String(e);
-  }
+restoreConversations();
+
+function activeConversation(): Conversation | null {
+  if (!activeConversationId.value) return null;
+  return conversations.value.find((c) => c.id === activeConversationId.value) ?? null;
 }
 
-function fedDisconnect() {
-  fedEs.value?.close();
-  fedEs.value = null;
+function createConversation(): Conversation {
+  const id = `conv-${Date.now()}`;
+  return {
+    id,
+    title: "New conversation",
+    sessionId: null,
+    chatMeta: null,
+    turns: [],
+    updatedAt: Date.now(),
+  };
 }
 
-function fedConnect() {
-  fedDisconnect();
-  fedLines.value = [];
-  const es = openFederationEventSource(
-    fedTopic.value,
-    (data) => {
-      try {
-        const j = JSON.parse(data) as unknown;
-        fedLines.value = [
-          ...fedLines.value.slice(-99),
-          JSON.stringify(j, null, 2),
-        ];
-      } catch {
-        fedLines.value = [...fedLines.value.slice(-99), data];
-      }
-    },
-    () => {},
-  );
-  fedEs.value = es;
-}
-
-async function fedDelegate() {
-  fedBusy.value = true;
-  fedErr.value = null;
-  fedResult.value = null;
-  try {
-    const r = await api.federationDelegate({
-      task_id: fedTaskId.value.trim() || "task",
-      instruction: fedInstruction.value.trim() || "…",
-      capability: fedCap.value.trim() || "chat",
-    });
-    fedResult.value = JSON.stringify(r, null, 2);
-    void loadFederationRegistry();
-  } catch (e) {
-    fedErr.value = e instanceof Error ? e.message : String(e);
-  } finally {
-    fedBusy.value = false;
-  }
-}
-
-async function fedCleanupStale() {
-  fedCleanupBusy.value = true;
-  fedErr.value = null;
-  try {
-    const r = await api.federationCleanupStale(
-      Math.max(30, Math.floor(fedStaleSecs.value)),
-    );
-    fedResult.value = JSON.stringify(r, null, 2);
-    void loadFederationRegistry();
-  } catch (e) {
-    fedErr.value = e instanceof Error ? e.message : String(e);
-  } finally {
-    fedCleanupBusy.value = false;
-  }
-}
-
-async function fedDeregister() {
-  const id = fedDeregisterId.value.trim();
-  if (!id) return;
-  fedBusy.value = true;
-  fedErr.value = null;
-  try {
-    const r = await api.federationDeregister(id);
-    fedResult.value = JSON.stringify(r, null, 2);
-    fedDeregisterId.value = "";
-    void loadFederationRegistry();
-  } catch (e) {
-    fedErr.value = e instanceof Error ? e.message : String(e);
-  } finally {
-    fedBusy.value = false;
-  }
-}
-
-async function fedRegister() {
-  const id = fedRegId.value.trim();
-  if (!id) return;
-  const caps = fedRegCaps.value
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  fedBusy.value = true;
-  fedErr.value = null;
-  try {
-    const r = await api.federationRegister({ id, capabilities: caps });
-    fedResult.value = JSON.stringify(r, null, 2);
-    void loadFederationRegistry();
-  } catch (e) {
-    fedErr.value = e instanceof Error ? e.message : String(e);
-  } finally {
-    fedBusy.value = false;
-  }
-}
-
-watch(tab, (t) => {
-  if (t !== "federation") fedDisconnect();
-  else void loadFederationRegistry();
-});
-
-async function loadHealth() {
-  healthErr.value = null;
-  try {
-    health.value = await api.health();
-  } catch (e) {
-    health.value = null;
-    healthErr.value = e instanceof Error ? e.message : String(e);
-  }
-}
-
-async function loadAgents() {
-  agentsErr.value = null;
-  try {
-    agents.value = await api.agents();
-  } catch (e) {
-    agents.value = null;
-    agentsErr.value = e instanceof Error ? e.message : String(e);
-  }
-}
-
-async function loadSessions() {
-  sessionsErr.value = null;
-  try {
-    sessions.value = await api.sessions();
-  } catch (e) {
-    sessions.value = null;
-    sessionsErr.value = e instanceof Error ? e.message : String(e);
-  }
-}
-
-async function loadDoctor() {
-  doctorErr.value = null;
-  try {
-    doctor.value = await api.doctor();
-  } catch (e) {
-    doctor.value = null;
-    doctorErr.value = e instanceof Error ? e.message : String(e);
-  }
-}
-
-async function loadServers() {
-  serversErr.value = null;
-  try {
-    servers.value = await api.mcpServers();
-  } catch (e) {
-    servers.value = [];
-    serversErr.value = e instanceof Error ? e.message : String(e);
-  }
-}
-
-async function runMcpPing() {
-  pingBusy.value = true;
-  pingErr.value = null;
-  pingResults.value = null;
-  try {
-    pingResults.value = await api.mcpPing();
-  } catch (e) {
-    pingErr.value = e instanceof Error ? e.message : String(e);
-  } finally {
-    pingBusy.value = false;
-  }
-}
-
-async function sendChat() {
-  const msg = chatIn.value.trim();
-  if (!msg) return;
-  chatBusy.value = true;
-  chatErr.value = null;
-  chatOut.value = null;
-  chatMeta.value = null;
-  try {
-    const r = await api.chat(msg);
-    chatOut.value = r.reply;
-    chatMeta.value = `${r.mode} · ${r.model}`;
-  } catch (e) {
-    chatErr.value = e instanceof Error ? e.message : String(e);
-  } finally {
-    chatBusy.value = false;
-  }
-}
-
-async function sendChatStream() {
-  const msg = chatIn.value.trim();
-  if (!msg) return;
-  chatBusy.value = true;
-  chatErr.value = null;
-  chatOut.value = "";
-  chatMeta.value = null;
-  try {
-    await chatStream(msg, (ev) => {
-      if (ev.type === "start") {
-        sessionId.value = ev.conversation_id;
-        chatMeta.value = chatToolsStream.value
-          ? `SSE · tools_stream · ${ev.model}`
-          : `SSE · ${ev.model}`;
-      } else if (ev.type === "token") {
-        chatOut.value = (chatOut.value ?? "") + ev.content;
-      } else if (ev.type === "assistant") {
-        chatOut.value = ev.content;
-      } else if (ev.type === "error") {
-        chatErr.value = ev.message;
-      }
-    }, { toolsStream: chatToolsStream.value });
-  } catch (e) {
-    chatErr.value = e instanceof Error ? e.message : String(e);
-  } finally {
-    chatBusy.value = false;
-  }
-}
-
-async function resetChat() {
+async function newConversation() {
   resetBusy.value = true;
   chatErr.value = null;
+  const conv = createConversation();
+  conversations.value.unshift(conv);
+  activeConversationId.value = conv.id;
   try {
     const r = await api.chatReset();
-    sessionId.value = r.conversation_id;
-    chatOut.value = null;
-    chatMeta.value = `new session · ${r.model}`;
-    chatIn.value = "";
-    void loadSessions();
+    conv.sessionId = r.conversation_id;
+    conv.chatMeta = `new session · ${r.model}`;
   } catch (e) {
     chatErr.value = e instanceof Error ? e.message : String(e);
   } finally {
+    conv.updatedAt = Date.now();
+    persistConversations();
     resetBusy.value = false;
   }
 }
 
-onMounted(() => {
-  void loadHealth();
-  void loadAgents();
-  void loadSessions();
-});
+async function sendChat(payload: { message: string; stream: boolean }) {
+  let conv = activeConversation();
+  if (!conv) {
+    conv = createConversation();
+    conversations.value.unshift(conv);
+    activeConversationId.value = conv.id;
+  }
+  const msg = payload.message.trim();
+  if (!msg) return;
+  conv.turns.push({ role: "user", content: msg });
+  chatBusy.value = true;
+  chatErr.value = null;
+  conv.chatMeta = null;
+  try {
+    if (payload.stream) {
+      const assistantTurn: ChatTurn = { role: "assistant", content: "" };
+      conv.turns.push(assistantTurn);
+      await chatStream(
+        msg,
+        (ev) => {
+          if (ev.type === "start") {
+            conv!.sessionId = ev.conversation_id;
+            conv!.chatMeta = chatToolsStream.value
+              ? `SSE · tools_stream · ${ev.model}`
+              : `SSE · ${ev.model}`;
+          } else if (ev.type === "token") {
+            assistantTurn.content += ev.content;
+          } else if (ev.type === "assistant") {
+            assistantTurn.content = ev.content;
+          } else if (ev.type === "error") {
+            chatErr.value = ev.message;
+            assistantTurn.content = `[error] ${ev.message}`;
+          }
+        },
+        { toolsStream: chatToolsStream.value },
+      );
+      if (!assistantTurn.content.trim()) assistantTurn.content = "(no assistant output)";
+    } else {
+      const r = await api.chat(msg);
+      conv.chatMeta = `${r.mode} · ${r.model}`;
+      conv.turns.push({ role: "assistant", content: r.reply });
+    }
+    if (!conv.title || conv.title === "New conversation") {
+      conv.title = msg.slice(0, 42) || "Conversation";
+    }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    chatErr.value = message;
+    conv.turns.push({ role: "assistant", content: `[error] ${message}` });
+  } finally {
+    conv.updatedAt = Date.now();
+    conversations.value = [...conversations.value].sort((a, b) => b.updatedAt - a.updatedAt);
+    persistConversations();
+    chatBusy.value = false;
+  }
+}
 
-onUnmounted(() => {
-  fedDisconnect();
+function selectConversation(id: string) {
+  activeConversationId.value = id;
+}
+
+onMounted(async () => {
+  try {
+    const h = await api.health();
+    if (h.version) appVersion.value = h.version;
+  } catch {
+    /* keep unknown */
+  }
 });
 </script>
 
 <template>
-  <div class="app">
-    <header class="header">
-      <h1>Kowalski</h1>
-      <p class="tagline">Rust-native agents · MCP · optional Postgres</p>
-      <nav class="nav">
-        <button
-          type="button"
-          :class="{ active: tab === 'home' }"
-          @click="tab = 'home'"
-        >
-          Home
-        </button>
-        <button
-          type="button"
-          :class="{ active: tab === 'mcp' }"
-          @click="
-            tab = 'mcp';
-            loadServers();
-          "
-        >
-          MCP
-        </button>
-        <button type="button" :class="{ active: tab === 'chat' }" @click="tab = 'chat'">
-          Chat
-        </button>
-        <button
-          type="button"
-          :class="{ active: tab === 'federation' }"
-          @click="tab = 'federation'"
-        >
-          Federation
-        </button>
-        <button type="button" :class="{ active: tab === 'graph' }" @click="tab = 'graph'">
-          Graph
-        </button>
-      </nav>
-    </header>
-
+  <div class="app shell">
+    <SidebarNav
+      :active-tab="tab"
+      :collapsed="sidebarCollapsed"
+      :conversations="conversations"
+      :active-conversation-id="activeConversationId"
+      :app-version="appVersion"
+      @toggle-collapse="sidebarCollapsed = !sidebarCollapsed"
+      @select-tab="tab = $event"
+      @select-conversation="selectConversation"
+      @new-conversation="newConversation"
+    />
     <main class="main">
-      <section v-if="tab === 'home'" class="panel">
-        <h2>API status</h2>
-        <p class="hint">
-          Run
-          <code>kowalski-cli serve</code>
-          (default <code>127.0.0.1:3000</code>), then
-          <code>bun run dev</code>
-          in <code>ui/</code> — Vite proxies <code>/api</code> to the CLI.
-        </p>
-        <p>
-          <button type="button" class="primary" @click="loadHealth">Refresh health</button>
-          <button type="button" @click="loadAgents">Refresh agents</button>
-          <button type="button" @click="loadSessions">Refresh sessions</button>
-          <button type="button" @click="loadDoctor">Load doctor</button>
-        </p>
-        <pre v-if="health" class="json json-scroll">{{ JSON.stringify(health, null, 2) }}</pre>
-        <p v-if="healthErr" class="err">{{ healthErr }}</p>
-        <h3>Agents</h3>
-        <pre v-if="agents" class="json json-scroll">{{ JSON.stringify(agents, null, 2) }}</pre>
-        <p v-if="agentsErr" class="err">{{ agentsErr }}</p>
-        <h3>Sessions</h3>
-        <pre v-if="sessions" class="json json-scroll">{{ JSON.stringify(sessions, null, 2) }}</pre>
-        <p v-if="sessionsErr" class="err">{{ sessionsErr }}</p>
-        <h3>Ollama probe</h3>
-        <pre v-if="doctor" class="json json-scroll">{{ JSON.stringify(doctor, null, 2) }}</pre>
-        <p v-if="doctorErr" class="err">{{ doctorErr }}</p>
-      </section>
-
-      <section v-else-if="tab === 'graph'" class="panel">
-        <h2>Graph</h2>
-        <p class="hint">
-          <code>GET /api/graph/status</code> probes Postgres for <code>vector</code> and
-          <code>age</code> extensions when <code>memory.database_url</code> is set and the CLI is built
-          with <code>--features postgres</code>. Full Cypher / AGE integration is WP3.
-        </p>
-        <p>
-          <button type="button" class="primary" @click="loadGraphStatus">Load graph status</button>
-        </p>
-        <pre v-if="graphStatus" class="json json-scroll">{{ JSON.stringify(graphStatus, null, 2) }}</pre>
-        <p v-if="graphErr" class="err">{{ graphErr }}</p>
-      </section>
-
-      <section v-else-if="tab === 'federation'" class="panel">
-        <h2>Federation</h2>
-        <p class="hint">
-          In-process ACL via <code>GET /api/federation/stream</code> (SSE) and
-          <code>POST /api/federation/delegate</code>. With
-          <code>kowalski-cli --features postgres</code> and <code>memory.database_url</code>,
-          NOTIFY on channel <code>kowalski_federation</code> is also forwarded to this broker. Connect
-          the stream, then delegate — you should see one <code>AclEnvelope</code> per event.
-        </p>
-        <p>
-          <button type="button" class="primary" @click="loadFederationRegistry">
-            Refresh registry
-          </button>
-        </p>
-        <pre v-if="fedRegistry" class="json json-scroll">{{ JSON.stringify(fedRegistry, null, 2) }}</pre>
-        <p v-if="fedRegistryErr" class="err">{{ fedRegistryErr }}</p>
-        <p>
-          <label class="lbl">Topic</label>
-          <input v-model="fedTopic" class="inp" type="text" />
-        </p>
-        <p>
-          <button type="button" class="primary" @click="fedConnect">Connect stream</button>
-          <button type="button" @click="fedDisconnect">Disconnect</button>
-        </p>
-        <div v-if="fedLines.length" class="fed-events">
-          <details
-            v-for="(line, i) in fedLines"
-            :key="i"
-            class="fed-event"
-            :open="i >= fedLines.length - 3"
-          >
-            <summary>Event {{ i + 1 }}</summary>
-            <pre class="json fed-line">{{ line }}</pre>
-          </details>
-        </div>
-        <p v-else class="muted">(no events yet)</p>
-        <p class="row">
-          <label class="lbl">Mark stale (seconds)</label>
-          <input v-model.number="fedStaleSecs" class="inp" type="number" min="30" />
-          <button
-            type="button"
-            :disabled="fedCleanupBusy"
-            @click="fedCleanupStale"
-          >
-            {{ fedCleanupBusy ? "…" : "POST /api/federation/cleanup-stale" }}
-          </button>
-        </p>
-        <p class="row">
-          <label class="lbl">Register agent id</label>
-          <input v-model="fedRegId" class="inp" type="text" placeholder="worker-1" />
-        </p>
-        <p class="row">
-          <label class="lbl">Capabilities (comma-separated)</label>
-          <input v-model="fedRegCaps" class="inp" type="text" />
-          <button type="button" :disabled="fedBusy" @click="fedRegister">Register</button>
-        </p>
-        <p class="row">
-          <label class="lbl">Deregister agent id</label>
-          <input v-model="fedDeregisterId" class="inp" type="text" />
-          <button type="button" :disabled="fedBusy" @click="fedDeregister">Deregister</button>
-        </p>
-        <h3>Delegate (ranked match)</h3>
-        <p>
-          <label class="lbl">task_id</label>
-          <input v-model="fedTaskId" class="inp" type="text" />
-        </p>
-        <p>
-          <label class="lbl">instruction</label>
-          <input v-model="fedInstruction" class="inp" type="text" />
-        </p>
-        <p>
-          <label class="lbl">capability</label>
-          <input v-model="fedCap" class="inp" type="text" />
-        </p>
-        <p>
-          <button type="button" class="primary" :disabled="fedBusy" @click="fedDelegate">
-            {{ fedBusy ? "Delegating…" : "POST /api/federation/delegate" }}
-          </button>
-        </p>
-        <pre v-if="fedResult" class="json json-scroll">{{ fedResult }}</pre>
-        <p v-if="fedErr" class="err">{{ fedErr }}</p>
-      </section>
-
-      <section v-else-if="tab === 'mcp'" class="panel">
-        <h2>MCP</h2>
-        <p>
-          <button type="button" class="primary" @click="loadServers">Reload server list</button>
-          <button type="button" :disabled="pingBusy" @click="runMcpPing">
-            {{ pingBusy ? "Pinging…" : "Ping all (initialize + tools/list)" }}
-          </button>
-        </p>
-        <p v-if="serversErr" class="err">{{ serversErr }}</p>
-        <pre v-if="servers.length" class="json json-scroll">{{ JSON.stringify(servers, null, 2) }}</pre>
-        <p v-else-if="!serversErr" class="muted">No servers or empty config.</p>
-        <h3>Ping results</h3>
-        <pre v-if="pingResults" class="json json-scroll">{{ JSON.stringify(pingResults, null, 2) }}</pre>
-        <p v-if="pingErr" class="err">{{ pingErr }}</p>
-      </section>
-
-      <section v-else-if="tab === 'chat'" class="panel">
-        <h2>Chat</h2>
-        <p class="hint">
-          One in-process agent + Ollama via <code>POST /api/chat</code> or SSE
-          <code>POST /api/chat/stream</code> (one JSON event per line; assistant text arrives when
-          the turn completes). With <strong>Tool-aware stream</strong>, the server runs the tool loop
-          and emits <code>token</code> events only for the final LLM reply after tool result(s). Run
-          <code>kowalski-cli serve -c config.toml</code> with Ollama up and the model from
-          <code>[ollama]</code>.
-        </p>
-        <p class="row">
-          <label class="chk">
-            <input v-model="chatToolsStream" type="checkbox" />
-            Tool-aware stream (<code>tools_stream</code>)
-          </label>
-        </p>
-        <textarea v-model="chatIn" rows="4" class="ta" placeholder="Message…" />
-        <p>
-          <button type="button" class="primary" :disabled="chatBusy" @click="sendChat">
-            {{ chatBusy ? "Sending…" : "Send" }}
-          </button>
-          <button type="button" :disabled="chatBusy" @click="sendChatStream">
-            {{ chatBusy ? "Sending…" : "Send (SSE)" }}
-          </button>
-          <button type="button" :disabled="resetBusy" @click="resetChat">
-            {{ resetBusy ? "Resetting…" : "New conversation" }}
-          </button>
-        </p>
-        <p v-if="sessionId" class="muted">Session: {{ sessionId }}</p>
-        <p v-if="chatMeta" class="muted">{{ chatMeta }}</p>
-        <pre v-if="chatOut" class="json json-scroll chat-out">{{ chatOut }}</pre>
-        <p v-if="chatErr" class="err">{{ chatErr }}</p>
-      </section>
+      <HomePanel v-if="tab === 'home'" />
+      <McpPanel v-else-if="tab === 'mcp'" />
+      <ChatPanel
+        v-else-if="tab === 'chat'"
+        :active-conversation="activeConversation()"
+        :chat-busy="chatBusy"
+        :reset-busy="resetBusy"
+        :chat-err="chatErr"
+        :chat-tools-stream="chatToolsStream"
+        @toggle-tools-stream="chatToolsStream = $event"
+        @send-chat="sendChat"
+        @new-conversation="newConversation"
+      />
+      <FederationPanel v-else-if="tab === 'federation'" />
+      <GraphPanel v-else-if="tab === 'graph'" />
+      <AboutPanel v-else-if="tab === 'about'" />
     </main>
   </div>
 </template>
@@ -554,165 +204,19 @@ body {
 }
 .app {
   min-height: 100vh;
+}
+.shell {
   display: flex;
-  flex-direction: column;
-}
-.header {
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid #2a2e38;
-  background: #1a1d26;
-}
-.header h1 {
-  margin: 0;
-  font-size: 1.35rem;
-  font-weight: 600;
-}
-.tagline {
-  margin: 0.35rem 0 0.75rem;
-  color: #8b92a5;
-  font-size: 0.9rem;
-}
-.nav {
-  display: flex;
-  gap: 0.5rem;
-}
-.nav button {
-  background: #2a3142;
-  border: 1px solid #3d4658;
-  color: #c8cfdd;
-  padding: 0.4rem 0.75rem;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.9rem;
-}
-.nav button.active {
-  background: #3d5a8c;
-  border-color: #5a7ab8;
-  color: #fff;
 }
 .main {
   flex: 1;
   padding: 1.25rem 1.5rem;
-  max-width: 52rem;
-}
-.panel h2 {
-  margin-top: 0;
-  font-size: 1.1rem;
-}
-.panel h3 {
-  font-size: 1rem;
-  margin-top: 1.25rem;
-}
-.panel p {
-  line-height: 1.55;
-  color: #b8c0d0;
-}
-.hint {
-  font-size: 0.9rem;
-  color: #8b92a5;
-}
-.row {
-  margin: 0.35rem 0 0.5rem;
-}
-.chk {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  font-size: 0.9rem;
-  color: #b8c0d0;
-  cursor: pointer;
-}
-.chk input {
-  accent-color: #5a7ab8;
-}
-.muted {
-  color: #6a7285;
-  font-size: 0.9rem;
-}
-button.primary {
-  background: #3d5a8c;
-  border-color: #5a7ab8;
-  color: #fff;
-}
-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.ta {
-  width: 100%;
-  max-width: 40rem;
-  box-sizing: border-box;
-  background: #1a1d26;
-  border: 1px solid #3d4658;
-  color: #e8e8ec;
-  border-radius: 6px;
-  padding: 0.5rem 0.65rem;
-  font: inherit;
-}
-.json {
-  background: #1a1d26;
-  border: 1px solid #2a2e38;
-  border-radius: 6px;
-  padding: 0.75rem;
-  overflow-x: auto;
-  font-size: 0.82rem;
-  line-height: 1.45;
-  color: #c8cfdd;
-}
-.err {
-  color: #e88;
-  font-size: 0.9rem;
+  min-width: 0;
 }
 code {
   background: #2a3142;
   padding: 0.15rem 0.4rem;
   border-radius: 4px;
   font-size: 0.88em;
-}
-.lbl {
-  display: block;
-  font-size: 0.8rem;
-  color: #8b92a5;
-  margin-bottom: 0.25rem;
-}
-.inp {
-  width: 100%;
-  max-width: 28rem;
-  box-sizing: border-box;
-  background: #1a1d26;
-  border: 1px solid #3d4658;
-  color: #e8e8ec;
-  border-radius: 6px;
-  padding: 0.4rem 0.55rem;
-  font: inherit;
-}
-.json-scroll {
-  max-height: 18rem;
-  overflow: auto;
-}
-.chat-out {
-  max-height: 24rem;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.fed-events {
-  max-height: min(50vh, 28rem);
-  overflow-y: auto;
-  border: 1px solid #2a2e38;
-  border-radius: 6px;
-  padding: 0.35rem 0.5rem;
-}
-.fed-event {
-  margin: 0.35rem 0;
-}
-.fed-event summary {
-  cursor: pointer;
-  color: #9aa8c0;
-  font-size: 0.85rem;
-}
-.fed-line {
-  margin: 0.35rem 0 0;
-  padding: 0.5rem;
-  font-size: 0.78rem;
 }
 </style>

@@ -29,6 +29,16 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tower_http::cors::CorsLayer;
+use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
+
+#[derive(Serialize)]
+struct MemoryStatus {
+    backend: String,
+    episodic_buffer_count: usize,
+    embeddings_ok: bool,
+    embed_model: String,
+    last_embed_error: Option<String>,
+}
 
 struct ChatState {
     agent: TemplateAgent,
@@ -160,6 +170,7 @@ pub async fn serve(
         .route("/api/doctor", get(get_doctor))
         .route("/api/mcp/servers", get(get_mcp_servers))
         .route("/api/mcp/ping", post(post_mcp_ping))
+        .route("/api/memory/status", get(get_memory_status))
         .route("/api/chat", post(post_chat))
         .route("/api/chat/stream", post(post_chat_stream))
         .route("/api/chat/reset", post(post_chat_reset))
@@ -176,6 +187,11 @@ pub async fn serve(
     let router = router.route("/api/graph/cypher", post(post_graph_cypher));
     let app = router
         .with_state(state)
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().include_headers(false))
+                .on_response(DefaultOnResponse::new()),
+        )
         .layer(CorsLayer::permissive());
 
     if let Some((cert, key)) = tls {
@@ -263,6 +279,75 @@ async fn post_mcp_ping(
         .await
         .map(Json)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn get_memory_status(
+    State(state): State<ApiState>,
+) -> Result<Json<MemoryStatus>, (StatusCode, String)> {
+    let llm_provider: Arc<dyn kowalski_core::llm::LLMProvider> =
+        Arc::new(kowalski_core::llm::OllamaProvider::new(
+            &state.full_config.ollama.host,
+            state.full_config.ollama.port,
+        ));
+    let episodic = kowalski_core::memory::episodic::EpisodicBuffer::open(
+        &state.full_config.memory,
+        llm_provider,
+    )
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let memories = episodic
+        .retrieve_all()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let missing_embeddings = memories.iter().filter(|m| m.embedding.is_none()).count();
+
+    let ollama_url = state
+        .ollama_url
+        .clone()
+        .unwrap_or_else(|| format!("http://{}:{}", state.full_config.ollama.host, state.full_config.ollama.port));
+    let embed_model = "nomic-embed-text".to_string();
+    let probe = reqwest::Client::new()
+        .post(format!("{}/api/embeddings", ollama_url.trim_end_matches('/')))
+        .json(&json!({
+            "model": embed_model,
+            "prompt": "healthcheck",
+        }))
+        .send()
+        .await;
+
+    let (embeddings_ok, embed_error) = match probe {
+        Ok(resp) if resp.status().is_success() => (true, None),
+        Ok(resp) => {
+            let text = resp.text().await.unwrap_or_else(|_| "unknown error".to_string());
+            (false, Some(format!("embedding probe failed: {}", text)))
+        }
+        Err(e) => (false, Some(format!("embedding probe failed: {}", e))),
+    };
+
+    let last_embed_error = if !embeddings_ok {
+        embed_error
+    } else if missing_embeddings > 0 {
+        Some(format!(
+            "{} memory item(s) are missing embeddings",
+            missing_embeddings
+        ))
+    } else {
+        None
+    };
+
+    let backend = if state.full_config.memory.database_url.is_some() {
+        "postgres_or_external".to_string()
+    } else {
+        "sqlite".to_string()
+    };
+
+    Ok(Json(MemoryStatus {
+        backend,
+        episodic_buffer_count: memories.len(),
+        embeddings_ok,
+        embed_model,
+        last_embed_error,
+    }))
 }
 
 #[derive(Deserialize)]
