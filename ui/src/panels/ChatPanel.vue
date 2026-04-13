@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
 
 type ChatTurn = { role: "user" | "assistant"; content: string };
 type Conversation = {
@@ -35,10 +37,15 @@ async function revealLatestAssistantTurn() {
   if (!turns.length) return;
   const last = turns[turns.length - 1];
   if (last.classList.contains("turn-assistant")) {
-    last.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    root.scrollTop = root.scrollHeight;
   } else {
     root.scrollTop = root.scrollHeight;
   }
+}
+
+function renderAssistantMarkdown(content: string): string {
+  const html = marked.parse(content, { breaks: true, gfm: true }) as string;
+  return DOMPurify.sanitize(html);
 }
 
 watch(
@@ -76,7 +83,12 @@ function send(stream: boolean) {
         :class="`turn-${turn.role}`"
       >
         <header>{{ turn.role === "user" ? "You" : "Assistant" }}</header>
-        <pre class="chat-turn-content">{{ turn.content }}</pre>
+        <pre v-if="turn.role === 'user'" class="chat-turn-content">{{ turn.content }}</pre>
+        <div
+          v-else
+          class="chat-turn-content md-content"
+          v-html="renderAssistantMarkdown(turn.content)"
+        />
       </article>
       <p v-if="!(activeConversation?.turns?.length)" class="muted">
         Select conversation from left or start a new one.
@@ -130,7 +142,7 @@ function send(stream: boolean) {
   gap: 0.5rem;
   border: 1px solid #2a2e38;
   border-radius: 8px;
-  padding: 0.6rem;
+  padding: 0.6rem 0.6rem 5.5rem;
   background: #141820;
 }
 .chat-turn {
@@ -152,6 +164,28 @@ function send(stream: boolean) {
   color: #d2d9e8;
   font-size: 0.85rem;
   line-height: 1.4;
+}
+.md-content {
+  white-space: normal;
+}
+.md-content :deep(p) {
+  margin: 0.35rem 0;
+}
+.md-content :deep(pre) {
+  background: #10141b;
+  border: 1px solid #2a3142;
+  border-radius: 6px;
+  padding: 0.5rem;
+  overflow-x: auto;
+}
+.md-content :deep(code) {
+  background: #2a3142;
+  border-radius: 4px;
+  padding: 0.1rem 0.3rem;
+}
+.md-content :deep(ul),
+.md-content :deep(ol) {
+  margin: 0.35rem 0 0.35rem 1.1rem;
 }
 .composer {
   position: sticky;
