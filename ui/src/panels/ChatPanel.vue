@@ -1,167 +1,61 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from "vue";
-import { api, chatStream } from "../api";
+import { nextTick, ref, watch } from "vue";
 
 type ChatTurn = { role: "user" | "assistant"; content: string };
-const CHAT_STORAGE_KEY = "kowalski.ui.chat.v1";
+type Conversation = {
+  id: string;
+  title: string;
+  sessionId: string | null;
+  chatMeta: string | null;
+  turns: ChatTurn[];
+};
+
+const props = defineProps<{
+  activeConversation: Conversation | null;
+  chatBusy: boolean;
+  resetBusy: boolean;
+  chatErr: string | null;
+  chatToolsStream: boolean;
+}>();
+
+const emit = defineEmits<{
+  (e: "send-chat", payload: { message: string; stream: boolean }): void;
+  (e: "new-conversation"): void;
+  (e: "toggle-tools-stream", value: boolean): void;
+}>();
 
 const chatIn = ref("");
-const chatMeta = ref<string | null>(null);
-const sessionId = ref<string | null>(null);
-const chatBusy = ref(false);
-const resetBusy = ref(false);
-const chatErr = ref<string | null>(null);
-const chatToolsStream = ref(false);
-const chatTurns = ref<ChatTurn[]>([]);
 const transcriptEl = ref<HTMLElement | null>(null);
 
-function persistChatState() {
-  localStorage.setItem(
-    CHAT_STORAGE_KEY,
-    JSON.stringify({
-      turns: chatTurns.value.slice(-200),
-      sessionId: sessionId.value,
-      chatMeta: chatMeta.value,
-    }),
-  );
-}
-
-function restoreChatState() {
-  const raw = localStorage.getItem(CHAT_STORAGE_KEY);
-  if (!raw) return;
-  try {
-    const parsed = JSON.parse(raw) as {
-      turns?: ChatTurn[];
-      sessionId?: string | null;
-      chatMeta?: string | null;
-    };
-    if (Array.isArray(parsed.turns)) {
-      chatTurns.value = parsed.turns.filter(
-        (t) =>
-          (t.role === "user" || t.role === "assistant") &&
-          typeof t.content === "string",
-      );
-    }
-    sessionId.value = parsed.sessionId ?? null;
-    chatMeta.value = parsed.chatMeta ?? null;
-  } catch {
-    /* ignore bad storage */
-  }
-}
-
-async function scrollTranscriptBottom() {
+watch(() => props.activeConversation?.turns.length, async () => {
   await nextTick();
   if (transcriptEl.value) {
     transcriptEl.value.scrollTop = transcriptEl.value.scrollHeight;
   }
-}
-
-async function sendChat() {
-  const msg = chatIn.value.trim();
-  if (!msg) return;
-  chatTurns.value.push({ role: "user", content: msg });
-  chatBusy.value = true;
-  chatErr.value = null;
-  chatMeta.value = null;
-  try {
-    const r = await api.chat(msg);
-    chatMeta.value = `${r.mode} · ${r.model}`;
-    chatTurns.value.push({ role: "assistant", content: r.reply });
-    chatIn.value = "";
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    chatErr.value = message;
-    chatTurns.value.push({ role: "assistant", content: `[error] ${message}` });
-  } finally {
-    chatBusy.value = false;
-    persistChatState();
-    void scrollTranscriptBottom();
-  }
-}
-
-async function sendChatStream() {
-  const msg = chatIn.value.trim();
-  if (!msg) return;
-  chatTurns.value.push({ role: "user", content: msg });
-  const assistantTurn: ChatTurn = { role: "assistant", content: "" };
-  chatTurns.value.push(assistantTurn);
-  chatBusy.value = true;
-  chatErr.value = null;
-  chatMeta.value = null;
-  try {
-    await chatStream(
-      msg,
-      (ev) => {
-        if (ev.type === "start") {
-          sessionId.value = ev.conversation_id;
-          chatMeta.value = chatToolsStream.value
-            ? `SSE · tools_stream · ${ev.model}`
-            : `SSE · ${ev.model}`;
-        } else if (ev.type === "token") {
-          assistantTurn.content += ev.content;
-        } else if (ev.type === "assistant") {
-          assistantTurn.content = ev.content;
-        } else if (ev.type === "error") {
-          chatErr.value = ev.message;
-          assistantTurn.content = `[error] ${ev.message}`;
-        }
-      },
-      { toolsStream: chatToolsStream.value },
-    );
-    if (!assistantTurn.content.trim()) assistantTurn.content = "(no assistant output)";
-    chatIn.value = "";
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    chatErr.value = message;
-    assistantTurn.content = `[error] ${message}`;
-  } finally {
-    chatBusy.value = false;
-    persistChatState();
-    void scrollTranscriptBottom();
-  }
-}
-
-async function resetChat() {
-  resetBusy.value = true;
-  chatErr.value = null;
-  try {
-    const r = await api.chatReset();
-    sessionId.value = r.conversation_id;
-    chatMeta.value = `new session · ${r.model}`;
-    chatIn.value = "";
-    chatTurns.value = [];
-    persistChatState();
-  } catch (e) {
-    chatErr.value = e instanceof Error ? e.message : String(e);
-  } finally {
-    resetBusy.value = false;
-  }
-}
-
-watch(chatTurns, () => {
-  void scrollTranscriptBottom();
-}, { deep: true });
-
-onMounted(() => {
-  restoreChatState();
-  void scrollTranscriptBottom();
 });
+
+function send(stream: boolean) {
+  const msg = chatIn.value.trim();
+  if (!msg) return;
+  emit("send-chat", { message: msg, stream });
+  chatIn.value = "";
+}
 </script>
 
 <template>
   <section class="panel chat-layout">
     <h2>Chat</h2>
     <p class="hint">
-      Ask follow-ups in the same session. Use <strong>New conversation</strong> to clear context.
+      Ask follow-ups in the same session. Use <strong>New conversation</strong> to start a fresh one.
     </p>
     <div class="meta">
-      <p v-if="sessionId" class="muted">Session: {{ sessionId }}</p>
-      <p v-if="chatMeta" class="muted">{{ chatMeta }}</p>
+      <p v-if="activeConversation?.sessionId" class="muted">Session: {{ activeConversation.sessionId }}</p>
+      <p v-if="activeConversation?.chatMeta" class="muted">{{ activeConversation.chatMeta }}</p>
     </div>
 
     <div ref="transcriptEl" class="chat-history">
       <article
-        v-for="(turn, idx) in chatTurns"
+        v-for="(turn, idx) in activeConversation?.turns ?? []"
         :key="idx"
         class="chat-turn"
         :class="`turn-${turn.role}`"
@@ -169,12 +63,18 @@ onMounted(() => {
         <header>{{ turn.role === "user" ? "You" : "Assistant" }}</header>
         <pre class="chat-turn-content">{{ turn.content }}</pre>
       </article>
-      <p v-if="!chatTurns.length" class="muted">(no messages yet)</p>
+      <p v-if="!(activeConversation?.turns?.length)" class="muted">
+        Select conversation from left or start a new one.
+      </p>
     </div>
 
     <div class="composer">
       <label class="chk">
-        <input v-model="chatToolsStream" type="checkbox" />
+        <input
+          :checked="chatToolsStream"
+          type="checkbox"
+          @change="emit('toggle-tools-stream', ($event.target as HTMLInputElement).checked)"
+        />
         Tool-aware stream (<code>tools_stream</code>)
       </label>
       <textarea
@@ -184,13 +84,13 @@ onMounted(() => {
         placeholder="Type your message..."
       />
       <p class="actions">
-        <button type="button" class="primary" :disabled="chatBusy" @click="sendChat">
+        <button type="button" class="primary" :disabled="chatBusy" @click="send(false)">
           {{ chatBusy ? "Sending..." : "Send" }}
         </button>
-        <button type="button" :disabled="chatBusy" @click="sendChatStream">
+        <button type="button" :disabled="chatBusy" @click="send(true)">
           {{ chatBusy ? "Sending..." : "Send (SSE)" }}
         </button>
-        <button type="button" :disabled="resetBusy" @click="resetChat">
+        <button type="button" :disabled="resetBusy" @click="emit('new-conversation')">
           {{ resetBusy ? "Resetting..." : "New conversation" }}
         </button>
       </p>
