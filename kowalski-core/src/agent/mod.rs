@@ -877,13 +877,14 @@ impl BaseAgent {
 
     async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {
         // 2. STORAGE: Archive the message to the episodic buffer
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+        let timestamp = now.as_secs();
+        let nanos = now.as_nanos();
 
         let memory_unit = MemoryUnit {
-            id: format!("{}-{}", conversation_id, timestamp),
+            // Use nanosecond precision to avoid collisions when multiple messages
+            // are added in the same second.
+            id: format!("{}-{}-{}-{}", conversation_id, timestamp, nanos, role),
             timestamp,
             content: format!("[{}] {}", role, content),
             embedding: None, // Embeddings are generated during consolidation
