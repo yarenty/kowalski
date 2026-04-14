@@ -255,8 +255,15 @@ pub struct BaseAgent {
     pub tool_manager: crate::tools::manager::ToolManager,
 }
 
+#[derive(Debug, Clone)]
+pub struct MemoryDebugInfo {
+    pub memory_used: bool,
+    pub memory_source: String,
+    pub memory_items_count: usize,
+}
+
 impl BaseAgent {
-    fn recent_conversation_context(messages: &[Message], max_items: usize) -> String {
+    fn recent_conversation_items(messages: &[Message], max_items: usize) -> Vec<String> {
         let mut recent: Vec<String> = messages
             .iter()
             .rev()
@@ -265,12 +272,16 @@ impl BaseAgent {
             .map(|m| format!("[{}] {}", m.role, m.content))
             .collect();
         recent.reverse();
-        recent.join("\n---\n")
+        recent
     }
 
-    async fn build_memory_context(&self, content: &str, use_memory: bool) -> String {
+    fn recent_conversation_context(messages: &[Message], max_items: usize) -> String {
+        Self::recent_conversation_items(messages, max_items).join("\n---\n")
+    }
+
+    async fn retrieve_memory_items(&self, content: &str, use_memory: bool) -> Vec<MemoryUnit> {
         if !use_memory {
-            return String::new();
+            return Vec::new();
         }
 
         let working_memories = self
@@ -308,6 +319,11 @@ impl BaseAgent {
                 all_memories.push(m);
             }
         }
+        all_memories
+    }
+
+    async fn build_memory_context(&self, content: &str, use_memory: bool) -> String {
+        let all_memories = self.retrieve_memory_items(content, use_memory).await;
 
         if all_memories.is_empty() {
             return String::new();
@@ -322,6 +338,46 @@ impl BaseAgent {
             "\n--- Relevant Memories ---\n{}\n--- End Memories ---",
             concatenated_memories
         )
+    }
+
+    pub async fn preview_memory_debug(
+        &self,
+        conversation_id: &str,
+        content: &str,
+        use_memory: bool,
+    ) -> MemoryDebugInfo {
+        if !use_memory {
+            return MemoryDebugInfo {
+                memory_used: false,
+                memory_source: "disabled".to_string(),
+                memory_items_count: 0,
+            };
+        }
+        let retrieved = self.retrieve_memory_items(content, true).await;
+        if !retrieved.is_empty() {
+            return MemoryDebugInfo {
+                memory_used: true,
+                memory_source: "retrieved".to_string(),
+                memory_items_count: retrieved.len(),
+            };
+        }
+        let fallback_count = self
+            .conversations
+            .get(conversation_id)
+            .map(|c| Self::recent_conversation_items(&c.messages, 4).len())
+            .unwrap_or(0);
+        if fallback_count > 0 {
+            return MemoryDebugInfo {
+                memory_used: true,
+                memory_source: "fallback".to_string(),
+                memory_items_count: fallback_count,
+            };
+        }
+        MemoryDebugInfo {
+            memory_used: false,
+            memory_source: "none".to_string(),
+            memory_items_count: 0,
+        }
     }
 
     pub async fn new(

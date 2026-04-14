@@ -366,6 +366,9 @@ struct ChatResponse {
     reply: String,
     mode: &'static str,
     model: String,
+    memory_used: bool,
+    memory_source: String,
+    memory_items_count: usize,
 }
 
 #[derive(Serialize)]
@@ -400,6 +403,10 @@ async fn post_chat(
 ) -> Result<Json<ChatResponse>, (StatusCode, String)> {
     let mut guard = state.chat.lock().await;
     let conv_id = guard.conv_id.clone();
+    let memory_debug = guard
+        .agent
+        .preview_memory_debug(&conv_id, body.message.trim(), body.use_memory)
+        .await;
     let reply = guard
         .agent
         .chat_with_tools_with_options(&conv_id, body.message.trim(), body.use_memory)
@@ -409,6 +416,9 @@ async fn post_chat(
         reply,
         mode: "agent",
         model: state.model.clone(),
+        memory_used: memory_debug.memory_used,
+        memory_source: memory_debug.memory_source,
+        memory_items_count: memory_debug.memory_items_count,
     }))
 }
 
@@ -440,14 +450,22 @@ async fn post_chat_stream(
     let use_memory = body.use_memory;
     let api = state.clone();
     tokio::spawn(async move {
-        let conv_id = {
+        let (conv_id, memory_debug) = {
             let g = api.chat.lock().await;
-            g.conv_id.clone()
+            let cid = g.conv_id.clone();
+            let dbg = g
+                .agent
+                .preview_memory_debug(&cid, &msg, use_memory)
+                .await;
+            (cid, dbg)
         };
         let start = json!({
             "type": "start",
             "conversation_id": conv_id,
             "model": api.model,
+            "memory_used": memory_debug.memory_used,
+            "memory_source": memory_debug.memory_source,
+            "memory_items_count": memory_debug.memory_items_count,
         });
         if tx
             .send(Ok(Event::default().data(start.to_string())))

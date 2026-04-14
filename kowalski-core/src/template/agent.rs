@@ -298,6 +298,17 @@ impl TemplateAgent {
             .chat_with_tools_stream_final_with_options(conversation_id, user_input, token_tx, use_memory)
             .await
     }
+
+    pub async fn preview_memory_debug(
+        &self,
+        conversation_id: &str,
+        user_input: &str,
+        use_memory: bool,
+    ) -> crate::agent::MemoryDebugInfo {
+        self.base()
+            .preview_memory_debug(conversation_id, user_input, use_memory)
+            .await
+    }
 }
 
 #[async_trait]
