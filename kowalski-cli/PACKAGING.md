@@ -13,8 +13,8 @@ Copy `target/release/kowalski-cli` (or workspace package name if renamed) plus a
 ## systemd (sketch)
 
 - `User=` and `WorkingDirectory=` pointing at config.
-- `ExecStart=/usr/local/bin/kowalski-cli serve --bind 127.0.0.1:3000 -c /etc/kowalski/config.toml`
-- For TLS: add `--tls-cert` and `--tls-key` paths; or terminate TLS at **nginx** / **Caddy** and proxy to `localhost:3000`.
+- `ExecStart=/usr/local/bin/kowalski-cli serve --bind 127.0.0.1:3456 -c /etc/kowalski/config.toml`
+- For TLS: add `--tls-cert` and `--tls-key` paths; or terminate TLS at **nginx** / **Caddy** and proxy to `localhost:3456`.
 
 ## Container
 

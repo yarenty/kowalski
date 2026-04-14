@@ -8,4 +8,4 @@
 
 ## Done (1.0.0)
 - [x] Tabs: Home, MCP, Chat (including **Tool-aware stream** / `tools_stream`), Federation, Graph status.
-- [x] Vite proxy to local `serve` on port 3000.
+- [x] Vite proxy to local `serve` on port 3456.

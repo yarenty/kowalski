@@ -8,7 +8,7 @@ export default defineConfig({
     proxy: {
       // Forward API calls to a future Kowalski HTTP backend (configure when available)
       "/api": {
-        target: "http://127.0.0.1:3000",
+        target: "http://127.0.0.1:3456",
         changeOrigin: true,
       },
     },

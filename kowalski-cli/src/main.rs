@@ -108,8 +108,8 @@ enum Commands {
     },
     /// Expose a minimal JSON HTTP API for the Vue UI (`GET /api/health`, etc.)
     Serve {
-        /// Listen address (default 127.0.0.1:3000 — matches `ui/vite.config.ts` proxy)
-        #[clap(long, default_value = "127.0.0.1:3000")]
+        /// Listen address (default 127.0.0.1:3456 — matches `ui/vite.config.ts` proxy)
+        #[clap(long, default_value = "127.0.0.1:3456")]
         bind: String,
         /// Config TOML for MCP listing/ping (default ./config.toml)
         #[clap(short, long)]

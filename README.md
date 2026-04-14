@@ -45,7 +45,7 @@ kowalski/
 - [See details](./kowalski-core/README.md)
 
 ### **kowalski-cli**
-- The main command-line interface: `chat`, `run`, `serve` (HTTP JSON API on `127.0.0.1:3000` by default), `config`, `db migrate`, `doctor`, `mcp ping` / `mcp tools`.
+- The main command-line interface: `chat`, `run`, `serve` (HTTP JSON API on `127.0.0.1:3456` by default), `config`, `db migrate`, `doctor`, `mcp ping` / `mcp tools`.
 - Build with **`--features postgres`** for SQL memory + pgvector bindings and **`POST /api/graph/cypher`** (Apache AGE) on `serve`.
 
 ### **kowalski-mcp-datafusion**
@@ -105,7 +105,7 @@ Tools and MCP are driven by **`TemplateAgent`** + config, not separate `kowalski
 # Orchestrator REPL (TemplateAgent + tools; uses config.toml by default)
 ./target/release/kowalski-cli run -c config.toml
 
-# HTTP API for the Vue UI (default bind 127.0.0.1:3000)
+# HTTP API for the Vue UI (default bind 127.0.0.1:3456)
 ./target/release/kowalski-cli serve -c config.toml
 
 # MCP servers from config: initialize + tools/list
@@ -126,7 +126,7 @@ Build with **`--features postgres`** on `kowalski-cli` for Postgres memory, grap
 
 ### Vue UI (`ui/`)
 
-The web UI lives in **[`ui/`](./ui/)** at the repository root (Vue 3 + Vite). It talks to the backend via **`kowalski-cli serve`**: the dev server proxies **`/api`** to **`http://127.0.0.1:3000`** (see `ui/vite.config.ts`).
+The web UI lives in **[`ui/`](./ui/)** at the repository root (Vue 3 + Vite). It talks to the backend via **`kowalski-cli serve`**: the dev server proxies **`/api`** to **`http://127.0.0.1:3456`** (see `ui/vite.config.ts`).
 
 **Two terminals:**
 
