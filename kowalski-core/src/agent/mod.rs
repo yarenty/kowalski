@@ -256,6 +256,18 @@ pub struct BaseAgent {
 }
 
 impl BaseAgent {
+    fn recent_conversation_context(messages: &[Message], max_items: usize) -> String {
+        let mut recent: Vec<String> = messages
+            .iter()
+            .rev()
+            .filter(|m| m.role != "system")
+            .take(max_items)
+            .map(|m| format!("[{}] {}", m.role, m.content))
+            .collect();
+        recent.reverse();
+        recent.join("\n---\n")
+    }
+
     async fn build_memory_context(&self, content: &str, use_memory: bool) -> String {
         if !use_memory {
             return String::new();
@@ -396,11 +408,39 @@ impl BaseAgent {
             }
         }
 
-        let content_with_memory = format!("{}{}", content, memory_context);
-        conversation.add_message("user", &content_with_memory);
+        let fallback_context = if use_memory && memory_context.is_empty() {
+            Self::recent_conversation_context(&conversation.messages, 4)
+        } else {
+            String::new()
+        };
+
+        conversation.add_message("user", content);
 
         let model = conversation.model.clone();
-        let messages = conversation.messages.clone();
+        let mut messages = conversation.messages.clone();
+        let effective_context = if !memory_context.is_empty() {
+            memory_context
+        } else {
+            fallback_context
+        };
+        if !effective_context.is_empty() {
+            let memory_prompt = format!(
+                "Retrieved memory context (use only if relevant to the latest user request):{}",
+                format!(
+                    "\n--- Relevant Memories ---\n{}\n--- End Memories ---",
+                    effective_context
+                )
+            );
+            let insert_at = messages.len().saturating_sub(1);
+            messages.insert(
+                insert_at,
+                Message {
+                    role: "system".to_string(),
+                    content: memory_prompt,
+                    tool_calls: None,
+                },
+            );
+        }
         let llm = self.llm_provider.clone();
         Ok((model, messages, llm))
     }
@@ -751,14 +791,46 @@ impl BaseAgent {
             }
         }
 
-        // Inject memories into the user's message
-        let content_with_memory = format!("{}{}", content, memory_context);
-        conversation.add_message("user", &content_with_memory);
+        let fallback_context = if use_memory && memory_context.is_empty() {
+            Self::recent_conversation_context(&conversation.messages, 4)
+        } else {
+            String::new()
+        };
+
+        // Persist raw user input in conversation history.
+        conversation.add_message("user", content);
+
+        // Build request-time LLM messages: conversation history + optional memory context.
+        // Memory context is ephemeral (not persisted as conversation turns).
+        let mut llm_messages = conversation.messages.clone();
+        let effective_context = if !memory_context.is_empty() {
+            memory_context
+        } else {
+            fallback_context
+        };
+        if !effective_context.is_empty() {
+            let memory_prompt = format!(
+                "Retrieved memory context (use only if relevant to the latest user request):{}",
+                format!(
+                    "\n--- Relevant Memories ---\n{}\n--- End Memories ---",
+                    effective_context
+                )
+            );
+            let insert_at = llm_messages.len().saturating_sub(1);
+            llm_messages.insert(
+                insert_at,
+                Message {
+                    role: "system".to_string(),
+                    content: memory_prompt,
+                    tool_calls: None,
+                },
+            );
+        }
 
         // Delegate to LLM Provider
         let response = self
             .llm_provider
-            .chat(&conversation.model, &conversation.messages)
+            .chat(&conversation.model, &llm_messages)
             .await?;
 
         Ok(response)
