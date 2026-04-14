@@ -126,6 +126,7 @@ async function sendChat(payload: { message: string; stream: boolean }) {
       const assistantTurn: ChatTurn = { role: "assistant", content: "" };
       conv.turns.push(assistantTurn);
       const runStream = async () => {
+        let streamConversationNotFound = false;
         await chatStream(
           msg,
           (ev) => {
@@ -145,6 +146,9 @@ async function sendChat(payload: { message: string; stream: boolean }) {
             } else if (ev.type === "error") {
               chatErr.value = ev.message;
               assistantTurn.content = `[error] ${ev.message}`;
+              if (ev.message.includes("conversation not found")) {
+                streamConversationNotFound = true;
+              }
             }
           },
           {
@@ -153,6 +157,9 @@ async function sendChat(payload: { message: string; stream: boolean }) {
             conversationId: conv!.sessionId,
           },
         );
+        if (streamConversationNotFound) {
+          throw new Error(assistantTurn.content.replace(/^\[error\]\s*/, ""));
+        }
       };
       try {
         await runStream();
