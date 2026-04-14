@@ -1,11 +1,18 @@
 # Kowalski
 
+> [!IMPORTANT]
+> ## WIP 1.0.x - Refactoring Phase
+> Kowalski is currently in an active refactoring and hardening phase.
+> The project is moving from an original proof-of-concept/proof-of-knowledge stage toward a near-production release line.
+> During this transition, some modules, commands, and docs may still evolve quickly.
+> We are focused on stability, clearer module boundaries, production-ready operator workflows, and robust multi-agent federation.
+
 **Version 1.0.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-datafusion`, Vue `ui/`)
 
 > "AI agents are like pets – they're cute, but they make a mess."  
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"
 
-A sophisticated Rust-based multi-agent framework for interacting with various LLM providers (Ollama, OpenAI-compatible APIs), with MCP tool integration, optional PostgreSQL memory (**pgvector**, **Apache AGE** graph queries), federation hooks, and a small **Vue** operator UI backed by **`kowalski-cli serve`**.
+A sophisticated Rust-based multi-agent framework for interacting with various LLM providers (Ollama, OpenAI-compatible APIs), with MCP tool integration, optional PostgreSQL memory (**pgvector**, **Apache AGE** graph queries), federation hooks, and a small **Vue** operator UI backed by **`kowalski`**.
 
 ---
 
@@ -24,7 +31,8 @@ Kowalski is designed as a foundational framework for building intelligent, distr
 ```
 kowalski/
 ├── kowalski-core/           # Agents, LLM providers, memory, MCP client, federation types
-├── kowalski-cli/            # REPL, `serve` (HTTP API), config/db/mcp tools
+├── kowalski-cli/            # REPL, config/db/mcp tools
+├── kowalski/                # HTTP API server binary (`kowalski`)
 ├── kowalski-mcp-datafusion/ # Standalone MCP server: DataFusion SQL over CSV/Parquet
 ├── ui/                      # Vue 3 + Vite operator UI (Chat, MCP, federation, graph status)
 ├── migrations/
@@ -45,7 +53,10 @@ kowalski/
 - [See details](./kowalski-core/README.md)
 
 ### **kowalski-cli**
-- The main command-line interface: `chat`, `run`, `serve` (HTTP JSON API on `127.0.0.1:3000` by default), `config`, `db migrate`, `doctor`, `mcp ping` / `mcp tools`.
+- The command-line interface: `chat`, `run`, `config`, `db migrate`, `doctor`, `mcp ping` / `mcp tools`.
+
+### **kowalski**
+- The HTTP API server binary: `serve` (HTTP JSON API on `127.0.0.1:3456` by default).
 - Build with **`--features postgres`** for SQL memory + pgvector bindings and **`POST /api/graph/cypher`** (Apache AGE) on `serve`.
 
 ### **kowalski-mcp-datafusion**
@@ -74,7 +85,7 @@ cd kowalski
 cargo build --release
 ```
 
-The main binary is **`kowalski-cli`** (`target/release/kowalski-cli`). Adjust `config.toml` in the repo root (or pass `-c` / `--config` where supported) for models, MCP servers, and memory.
+Main binaries are **`kowalski-cli`** (`target/release/kowalski-cli`) and **`kowalski`** (`target/release/kowalski`). Adjust `config.toml` in the repo root (or pass `-c` / `--config` where supported) for models, MCP servers, and memory.
 
 ### 3. Ollama (typical local setup)
 
@@ -105,8 +116,8 @@ Tools and MCP are driven by **`TemplateAgent`** + config, not separate `kowalski
 # Orchestrator REPL (TemplateAgent + tools; uses config.toml by default)
 ./target/release/kowalski-cli run -c config.toml
 
-# HTTP API for the Vue UI (default bind 127.0.0.1:3000)
-./target/release/kowalski-cli serve -c config.toml
+# HTTP API for the Vue UI (default bind 127.0.0.1:3456)
+./target/release/kowalski -c config.toml
 
 # MCP servers from config: initialize + tools/list
 ./target/release/kowalski-cli mcp ping -c config.toml
@@ -122,17 +133,17 @@ Tools and MCP are driven by **`TemplateAgent`** + config, not separate `kowalski
 ./target/release/kowalski-cli chat my-agent-name
 ```
 
-Build with **`--features postgres`** on `kowalski-cli` for Postgres memory, graph routes, and federation helpers (`cargo build -p kowalski-cli --features postgres`).
+Build with **`--features postgres`** on `kowalski` for Postgres memory and graph routes (`cargo build -p kowalski --features postgres`).
 
 ### Vue UI (`ui/`)
 
-The web UI lives in **[`ui/`](./ui/)** at the repository root (Vue 3 + Vite). It talks to the backend via **`kowalski-cli serve`**: the dev server proxies **`/api`** to **`http://127.0.0.1:3000`** (see `ui/vite.config.ts`).
+The web UI lives in **[`ui/`](./ui/)** at the repository root (Vue 3 + Vite). It talks to the backend via **`kowalski`**: the dev server proxies **`/api`** to **`http://127.0.0.1:3456`** (see `ui/vite.config.ts`).
 
 **Two terminals:**
 
 ```bash
 # Terminal 1 — HTTP API (must be up first)
-./target/release/kowalski-cli serve -c config.toml
+./target/release/kowalski -c config.toml
 
 # Terminal 2 — Vite (default http://localhost:5173)
 cd ui && npm install && npm run dev
@@ -182,7 +193,7 @@ Legacy prompt configurations are currently stored in `migrations/legacy_prompts/
 - [CHANGELOG.md](./CHANGELOG.md)
 - [ROADMAP.md](./ROADMAP.md)
 - **[TODO.md](./TODO.md)** — manual & end-to-end verification (operator checklist)
-- **[`ui/README.md`](./ui/README.md)** — Vue operator UI (dev, build, proxy to `serve`)
+- **[`ui/README.md`](./ui/README.md)** — Vue operator UI (dev, build, proxy to `kowalski`)
 - [Each module's README](./kowalski-core/README.md), etc.
 
 ---

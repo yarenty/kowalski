@@ -119,7 +119,7 @@ onUnmounted(() => {
   <section class="panel">
     <h2>API status</h2>
     <p class="hint">
-      Run <code>kowalski-cli serve</code> (default <code>127.0.0.1:3000</code>), then
+      Run <code>kowalski</code> (default <code>127.0.0.1:3456</code>), then
       <code>bun run dev</code> in <code>ui/</code>.
     </p>
     <p class="row">

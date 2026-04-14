@@ -80,7 +80,7 @@
 | WP3-M2 | **Episodic tier on Postgres** | With `memory.database_url` set to Postgres: exercise chat, then query `episodic_kv` (or relevant tables) for expected rows; optional **restart CLI** and confirm recall if persistence path is enabled. |
 | WP3-M3 | **pgvector similarity** | With semantic memory on Postgres + embeddings: run a retrieval turn and confirm sensible rows (no strict CI assertion yet). |
 | WP3-M4 | **Apache AGE / Cypher** | With **`kowalski-cli --features postgres`**, AGE installed, graph created: call **`POST /api/graph/cypher`** or use `kowalski_core::postgres_age_cypher` — Cypher must **`RETURN … AS result`**. CI uses `apache/age` image for one integration test; production DBs need manual smoke. |
-| WP3-M5 | **Restart recalls memory** | Tier-2/3 persistence configured: send messages, restart `serve`, new session or same config — confirm expected memory behavior (manual; semantics depend on config). |
+| WP3-M5 | **Restart recalls memory** | Tier-2/3 persistence configured: send messages, restart `kowalski`, new session or same config — confirm expected memory behavior (manual; semantics depend on config). |
 
 ---
 
@@ -88,8 +88,8 @@
 
 | ID | What to verify | How (summary) |
 |----|----------------|----------------|
-| WP4-M1 | **Ollama end-to-end** | `ollama serve`, model pulled. `kowalski-cli serve` + UI or `POST /api/chat` — expect a normal reply. |
-| WP4-M2 | **OpenAI-compatible end-to-end** | `[llm] provider = "openai"`, `openai_api_base` (LM Studio, Groq, vLLM, …), optional key; `[ollama].model` as model id. Verify via `serve` + `/api/chat` or CLI `chat`. |
+| WP4-M1 | **Ollama end-to-end** | `ollama serve`, model pulled. `kowalski` + UI or `POST /api/chat` — expect a normal reply. |
+| WP4-M2 | **OpenAI-compatible end-to-end** | `[llm] provider = "openai"`, `openai_api_base` (LM Studio, Groq, vLLM, …), optional key; `[ollama].model` as model id. Verify via `kowalski` + `/api/chat` or CLI `chat`. |
 | WP4-M3 | **JSON parser under load** | Feed **mangled** tool-shaped responses (fences, partial JSON) through **`chat_with_tools`** with MCP or built-in tools; confirm repair / self-correction path without panic. |
 | WP4-M4 | **Self-correction loop** | Provoke invalid tool JSON once; confirm hint / next turn recovers (see `utils/json` + agent loop). |
 

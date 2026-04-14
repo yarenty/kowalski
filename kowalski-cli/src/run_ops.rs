@@ -21,7 +21,7 @@ pub async fn run_orchestrator(config_path: Option<&str>) -> Result<(), Box<dyn s
     );
     println!("Commands: /bye exit · /new new session · lines ending with \\ continue");
     println!("Lines are prefixed with [agent] (LLM) and [tool] (tool round) for readability.");
-    println!("Federation: use `serve` + Vue or `curl` to /api/federation/* (HTTP + optional Postgres NOTIFY).");
+    println!("Federation: use `kowalski` + Vue or `curl` to /api/federation/* (HTTP + optional Postgres NOTIFY).");
 
     let mut rl = DefaultEditor::new()?;
     let mut pending = String::new();

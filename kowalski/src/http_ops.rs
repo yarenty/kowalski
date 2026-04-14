@@ -1,18 +1,26 @@
-//! Operator commands: config validation, DB migrations, environment checks.
-
-use kowalski_core::config::Config;
-use serde::Serialize;
+use kowalski_core::config::{Config, McpConfig, McpTransport};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Default path for `[mcp]` and full config TOML (CLI and HTTP API).
+#[derive(Debug, Deserialize)]
+struct McpSection {
+    #[serde(default)]
+    mcp: McpConfig,
+}
+
+fn load_mcp_config_from_file(path: &Path) -> Result<McpConfig, Box<dyn std::error::Error>> {
+    let content = fs::read_to_string(path)?;
+    let section: McpSection = toml::from_str(&content)?;
+    Ok(section.mcp)
+}
+
 pub fn mcp_config_path(config_path: Option<&str>) -> PathBuf {
     config_path
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("config.toml"))
 }
 
-/// Load full [`Config`] for `kowalski` server mode (HTTP chat + MCP). Missing file → [`Config::default`].
 pub fn load_kowalski_config_for_serve(path: &Path) -> Result<Config, Box<dyn std::error::Error>> {
     if !path.exists() {
         log::warn!(
@@ -25,7 +33,6 @@ pub fn load_kowalski_config_for_serve(path: &Path) -> Result<Config, Box<dyn std
     Ok(toml::from_str(&raw)?)
 }
 
-/// Public MCP server metadata for JSON APIs (no auth headers).
 #[derive(Debug, Clone, Serialize)]
 pub struct McpServerPublic {
     pub name: String,
@@ -33,7 +40,6 @@ pub struct McpServerPublic {
     pub transport: String,
 }
 
-/// Result of probing one MCP server (initialize + tools/list).
 #[derive(Debug, Clone, Serialize)]
 pub struct McpPingResult {
     pub name: String,
@@ -46,26 +52,20 @@ pub struct McpPingResult {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DoctorJson {
-    pub cli_version: String,
+    pub server_version: String,
     pub ollama: OllamaProbeJson,
-    /// From `[llm]` + `[ollama].model` (no API keys).
     pub llm: LlmDoctorJson,
-    /// Non-secret operator hints (MCP count, Postgres flag, config deltas vs defaults).
     pub operator: DoctorOperatorJson,
 }
 
-/// Printable summary for `/api/doctor` and CLI `doctor`.
 #[derive(Debug, Clone, Serialize)]
 pub struct DoctorOperatorJson {
     pub mcp_servers_configured: usize,
     pub postgres_memory_configured: bool,
-    /// Short labels for settings that differ from [`Config::default`] (no secret values).
     pub config_divergence: Vec<String>,
-    /// How to observe Streamable HTTP MCP session ids after a server connects.
     pub mcp_streamable_session_note: &'static str,
 }
 
-/// High-signal differences versus [`Config::default`] (for operators comparing deployments).
 pub fn config_divergence_lines(c: &Config) -> Vec<String> {
     let d = Config::default();
     let mut v = Vec::new();
@@ -93,7 +93,6 @@ pub fn config_divergence_lines(c: &Config) -> Vec<String> {
     v
 }
 
-/// Non-secret LLM routing snapshot for `/api/doctor`.
 #[derive(Debug, Clone, Serialize)]
 pub struct LlmDoctorJson {
     pub provider: String,
@@ -108,10 +107,7 @@ pub struct OllamaProbeJson {
     pub detail: String,
 }
 
-/// List `[mcp.servers]` entries from TOML (headers omitted).
 pub fn list_mcp_servers_public(path: &Path) -> Result<Vec<McpServerPublic>, Box<dyn std::error::Error>> {
-    use crate::config::load_mcp_config_from_file;
-
     let mcp = load_mcp_config_from_file(path)?;
     Ok(
         mcp.servers
@@ -120,26 +116,23 @@ pub fn list_mcp_servers_public(path: &Path) -> Result<Vec<McpServerPublic>, Box<
                 name: s.name.clone(),
                 url: s.url.clone(),
                 transport: match s.transport {
-                    kowalski_core::config::McpTransport::Http => "http".to_string(),
-                    kowalski_core::config::McpTransport::Sse => "sse".to_string(),
-                    kowalski_core::config::McpTransport::Stdio => "stdio".to_string(),
+                    McpTransport::Http => "http".to_string(),
+                    McpTransport::Sse => "sse".to_string(),
+                    McpTransport::Stdio => "stdio".to_string(),
                 },
             })
             .collect(),
     )
 }
 
-/// Run initialize + tools/list for each configured MCP server.
 pub async fn mcp_ping_results(path: &Path) -> Result<Vec<McpPingResult>, Box<dyn std::error::Error>> {
-    use crate::config::load_mcp_config_from_file;
-
     let mcp = load_mcp_config_from_file(path)?;
     let mut out = Vec::with_capacity(mcp.servers.len());
     for server in &mcp.servers {
         let transport = match server.transport {
-            kowalski_core::config::McpTransport::Http => "http",
-            kowalski_core::config::McpTransport::Sse => "sse",
-            kowalski_core::config::McpTransport::Stdio => "stdio",
+            McpTransport::Http => "http",
+            McpTransport::Sse => "sse",
+            McpTransport::Stdio => "stdio",
         };
         let url_display = if server.url.trim().is_empty() {
             server.command.join(" ")
@@ -149,10 +142,7 @@ pub async fn mcp_ping_results(path: &Path) -> Result<Vec<McpPingResult>, Box<dyn
         let result: Result<
             Vec<kowalski_core::mcp::types::McpToolDescription>,
             kowalski_core::KowalskiError,
-        > = if matches!(
-            server.transport,
-            kowalski_core::config::McpTransport::Stdio
-        ) {
+        > = if matches!(server.transport, McpTransport::Stdio) {
             match kowalski_core::McpStdioClient::connect(server).await {
                 Ok(c) => c.list_tools().await,
                 Err(e) => Err(e),
@@ -212,7 +202,6 @@ async fn probe_ollama_tags(base: &str) -> OllamaProbeJson {
     }
 }
 
-/// JSON payload for `/api/doctor` (and similar UIs).
 pub async fn doctor_json(ollama_base: Option<String>, config: Option<&Config>) -> DoctorJson {
     let base = ollama_base.unwrap_or_else(|| "http://127.0.0.1:11434".to_string());
     let ollama = probe_ollama_tags(&base).await;
@@ -229,110 +218,9 @@ pub async fn doctor_json(ollama_base: Option<String>, config: Option<&Config>) -
         mcp_streamable_session_note: "After initialize, Streamable HTTP MCP session ids are available via `McpClient::session_id()` (and `McpClient::shutdown()` clears the session).",
     };
     DoctorJson {
-        cli_version: env!("CARGO_PKG_VERSION").to_string(),
+        server_version: env!("CARGO_PKG_VERSION").to_string(),
         ollama,
         llm,
         operator,
     }
-}
-
-/// Validate TOML and optionally a full [`Config`] parse.
-pub fn run_config_check(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let raw = fs::read_to_string(path)?;
-    let _toml: toml::Value = toml::from_str(&raw)?;
-    println!("OK — valid TOML ({})", path.display());
-
-    match toml::from_str::<Config>(&raw) {
-        Ok(c) => {
-            println!("OK — parses as Kowalski core `Config`");
-            println!("  ollama: {}:{} / model {}", c.ollama.host, c.ollama.port, c.ollama.model);
-            println!(
-                "  memory: episodic_path = {}",
-                c.memory.episodic_path
-            );
-            if let Some(ref u) = c.memory.database_url {
-                println!("  memory.database_url = {}", u);
-            } else {
-                println!("  memory.database_url = (unset — Tier 2 SQLite file only)");
-            }
-            println!("  mcp servers: {}", c.mcp.servers.len());
-            println!(
-                "  llm: provider = {}, model = {}",
-                c.llm.provider, c.ollama.model
-            );
-            if let Some(ref b) = c.llm.openai_api_base {
-                println!("  llm.openai_api_base = {}", b);
-            }
-        }
-        Err(e) => {
-            println!("Note — not a full core `Config` (fix or use partial TOML only):");
-            println!("  {}", e);
-        }
-    }
-    Ok(())
-}
-
-/// Run `memory.database_url` migrations from `--url` or from `memory.database_url` in TOML.
-pub async fn run_db_migrate(
-    url: Option<String>,
-    config: Option<String>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let resolved = if let Some(u) = url {
-        u
-    } else {
-        let path = config
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("config.toml"));
-        let raw = fs::read_to_string(&path)?;
-        let v: toml::Value = toml::from_str(&raw)?;
-        let url = v
-            .get("memory")
-            .and_then(|m| m.get("database_url"))
-            .and_then(|x| x.as_str())
-            .ok_or("No memory.database_url in config and no --url")?;
-        url.to_string()
-    };
-
-    println!("Running migrations for {}", resolved);
-    kowalski_core::db::run_migrations(&resolved).await?;
-    println!("Done.");
-    Ok(())
-}
-
-/// Print versions and probe local Ollama (default `http://127.0.0.1:11434`).
-pub async fn run_doctor(ollama_base: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
-    let config = load_optional_config_default_path();
-    let j = doctor_json(ollama_base, config.as_ref()).await;
-    println!("kowalski-cli {}", j.cli_version);
-    println!(
-        "LLM: provider = {}, model = {}",
-        j.llm.provider, j.llm.model
-    );
-    if let Some(ref b) = j.llm.openai_api_base {
-        println!("LLM: openai_api_base = {}", b);
-    }
-    if j.ollama.ok {
-        println!("Ollama: OK — {}", j.ollama.url);
-    } else if j.ollama.detail.starts_with("HTTP ") {
-        println!("Ollama: {} — {}", j.ollama.detail, j.ollama.url);
-    } else {
-        println!("Ollama: unreachable ({}) — {}", j.ollama.url, j.ollama.detail);
-    }
-    println!(
-        "Operator: MCP servers in config = {}, postgres memory URL = {}",
-        j.operator.mcp_servers_configured, j.operator.postgres_memory_configured
-    );
-    if !j.operator.config_divergence.is_empty() {
-        println!("Config vs defaults: {}", j.operator.config_divergence.join(", "));
-    }
-    Ok(())
-}
-
-fn load_optional_config_default_path() -> Option<Config> {
-    let path = PathBuf::from("config.toml");
-    if !path.exists() {
-        return None;
-    }
-    let raw = fs::read_to_string(&path).ok()?;
-    toml::from_str(&raw).ok()
 }

@@ -4,7 +4,7 @@
 
 ## Role
 
-Vue 3 + Vite + TypeScript single-page app. It is **not** the source of truth for business logic: the **`kowalski-cli serve`** API defines behavior. This UI only consumes `/api/*`.
+Vue 3 + Vite + TypeScript single-page app. It is **not** the source of truth for business logic: the **`kowalski`** API defines behavior. This UI only consumes `/api/*`.
 
 ## Conventions
 

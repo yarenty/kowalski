@@ -2,7 +2,7 @@
 
 **Crate version 1.0.0** · See [`ROADMAP.md`](./ROADMAP.md) and root [`README.md`](../README.md).
 
-A command-line interface for the Kowalski AI agent framework: REPL, **`serve`** (HTTP API for the Vue UI), and operator commands (`config`, `db`, `doctor`, `mcp`).
+A command-line interface for the Kowalski AI agent framework: REPL and operator commands (`config`, `db`, `doctor`, `mcp`). The HTTP API for the Vue UI is provided by **`kowalski`**.
 
 ## Overview
 
