@@ -129,11 +129,18 @@ async function sendChat(payload: { message: string; stream: boolean }) {
             assistantTurn.content = `[error] ${ev.message}`;
           }
         },
-        { toolsStream: chatToolsStream.value, useMemory: chatUseMemory.value },
+        {
+          toolsStream: chatToolsStream.value,
+          useMemory: chatUseMemory.value,
+          conversationId: conv!.sessionId,
+        },
       );
       if (!assistantTurn.content.trim()) assistantTurn.content = "(no assistant output)";
     } else {
-      const r = await api.chat(msg, { useMemory: chatUseMemory.value });
+      const r = await api.chat(msg, {
+        useMemory: chatUseMemory.value,
+        conversationId: conv.sessionId,
+      });
       conv.chatMeta = `${r.mode} · ${r.model} · memory=${r.memory_source}:${r.memory_items_count}`;
       conv.turns.push({ role: "assistant", content: r.reply });
     }
@@ -156,7 +163,7 @@ async function inspectChatMessages() {
   chatMessagesBusy.value = true;
   chatErr.value = null;
   try {
-    const payload = await api.chatMessages();
+    const payload = await api.chatMessages(activeConversation()?.sessionId ?? null);
     chatMessagesView.value = JSON.stringify(payload, null, 2);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

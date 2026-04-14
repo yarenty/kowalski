@@ -349,6 +349,9 @@ async fn get_memory_status(
 #[derive(Deserialize)]
 struct ChatBody {
     message: String,
+    /// Optional explicit conversation id to target.
+    #[serde(default)]
+    conversation_id: Option<String>,
     /// When true, include retrieved memory snippets in prompt assembly.
     #[serde(default = "default_true")]
     use_memory: bool,
@@ -378,6 +381,11 @@ struct ChatMessagesResponse {
     messages: Vec<kowalski_core::conversation::Message>,
 }
 
+#[derive(Deserialize)]
+struct ChatMessagesQuery {
+    conversation_id: Option<String>,
+}
+
 #[derive(Serialize)]
 struct ChatResetResponse {
     conversation_id: String,
@@ -402,7 +410,16 @@ async fn post_chat(
     Json(body): Json<ChatBody>,
 ) -> Result<Json<ChatResponse>, (StatusCode, String)> {
     let mut guard = state.chat.lock().await;
-    let conv_id = guard.conv_id.clone();
+    let conv_id = if let Some(ref cid) = body.conversation_id {
+        if guard.agent.get_conversation(cid).is_some() {
+            guard.conv_id = cid.clone();
+            cid.clone()
+        } else {
+            return Err((StatusCode::NOT_FOUND, format!("conversation not found: {}", cid)));
+        }
+    } else {
+        guard.conv_id.clone()
+    };
     let memory_debug = guard
         .agent
         .preview_memory_debug(&conv_id, body.message.trim(), body.use_memory)
@@ -432,9 +449,15 @@ async fn post_chat(
 
 async fn get_chat_messages(
     State(state): State<ApiState>,
+    Query(query): Query<ChatMessagesQuery>,
 ) -> Result<Json<ChatMessagesResponse>, (StatusCode, String)> {
     let guard = state.chat.lock().await;
-    let conv_id = guard.conv_id.clone();
+    let conv_id = query
+        .conversation_id
+        .as_ref()
+        .filter(|s| !s.trim().is_empty())
+        .cloned()
+        .unwrap_or_else(|| guard.conv_id.clone());
     let conversation = guard
         .agent
         .get_conversation(&conv_id)
@@ -456,11 +479,28 @@ async fn post_chat_stream(
     let msg = body.message.trim().to_string();
     let tools_stream = body.tools_stream;
     let use_memory = body.use_memory;
+    let requested_conv_id = body.conversation_id.clone();
     let api = state.clone();
     tokio::spawn(async move {
         let (conv_id, memory_debug) = {
-            let g = api.chat.lock().await;
-            let cid = g.conv_id.clone();
+            let mut g = api.chat.lock().await;
+            let cid = if let Some(ref requested) = requested_conv_id {
+                if g.agent.get_conversation(requested).is_some() {
+                    g.conv_id = requested.clone();
+                    requested.clone()
+                } else {
+                    let payload = json!({ "type": "error", "message": format!("conversation not found: {}", requested) });
+                    let _ = tx
+                        .send(Ok(Event::default().data(payload.to_string())))
+                        .await;
+                    let _ = tx
+                        .send(Ok(Event::default().data(r#"{"type":"done"}"#.to_string())))
+                        .await;
+                    return;
+                }
+            } else {
+                g.conv_id.clone()
+            };
             let dbg = g
                 .agent
                 .preview_memory_debug(&cid, &msg, use_memory)

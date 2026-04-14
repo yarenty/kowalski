@@ -127,12 +127,16 @@ export const api = {
   mcpPing: () =>
     json<McpPingResult[]>("/api/mcp/ping", { method: "POST", body: "{}" }),
   memoryStatus: () => json<MemoryStatus>("/api/memory/status"),
-  chat: (message: string, options?: { useMemory?: boolean }) =>
+  chat: (
+    message: string,
+    options?: { useMemory?: boolean; conversationId?: string | null },
+  ) =>
     json<ChatResponse>("/api/chat", {
       method: "POST",
       body: JSON.stringify({
         message,
         ...(options?.useMemory !== undefined ? { use_memory: options.useMemory } : {}),
+        ...(options?.conversationId ? { conversation_id: options.conversationId } : {}),
       }),
     }),
   chatReset: () =>
@@ -140,7 +144,12 @@ export const api = {
       method: "POST",
       body: "{}",
     }),
-  chatMessages: () => json<ChatMessagesResponse>("/api/chat/messages"),
+  chatMessages: (conversationId?: string | null) =>
+    json<ChatMessagesResponse>(
+      conversationId
+        ? `/api/chat/messages?conversation_id=${encodeURIComponent(conversationId)}`
+        : "/api/chat/messages",
+    ),
   federationRegistry: () => json<FederationRegistryResponse>("/api/federation/registry"),
   graphStatus: () => json<Record<string, unknown>>("/api/graph/status"),
   federationDelegate: (body: {
@@ -186,7 +195,7 @@ export function openFederationEventSource(
 export async function chatStream(
   message: string,
   onEvent: (ev: ChatStreamEvent) => void,
-  options?: { toolsStream?: boolean; useMemory?: boolean },
+  options?: { toolsStream?: boolean; useMemory?: boolean; conversationId?: string | null },
 ): Promise<void> {
   const res = await fetch(`${base}/api/chat/stream`, {
     method: "POST",
@@ -195,6 +204,7 @@ export async function chatStream(
       message,
       ...(options?.toolsStream ? { tools_stream: true } : {}),
       ...(options?.useMemory !== undefined ? { use_memory: options.useMemory } : {}),
+      ...(options?.conversationId ? { conversation_id: options.conversationId } : {}),
     }),
   });
   if (!res.ok) {
