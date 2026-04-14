@@ -85,6 +85,12 @@ export type ChatMessagesResponse = {
   messages: ChatMessage[];
 };
 
+export type ChatSyncResponse = {
+  conversation_id: string;
+  model: string;
+  message_count: number;
+};
+
 export type AgentsResponse = {
   mode: string;
   agents: { name: string; description: string }[];
@@ -143,6 +149,14 @@ export const api = {
     json<ChatResetResponse>("/api/chat/reset", {
       method: "POST",
       body: "{}",
+    }),
+  chatSync: (messages: ChatMessage[], conversationId?: string | null) =>
+    json<ChatSyncResponse>("/api/chat/sync", {
+      method: "POST",
+      body: JSON.stringify({
+        ...(conversationId ? { conversation_id: conversationId } : {}),
+        messages,
+      }),
     }),
   chatMessages: (conversationId?: string | null) =>
     json<ChatMessagesResponse>(

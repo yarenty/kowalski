@@ -100,47 +100,84 @@ async function sendChat(payload: { message: string; stream: boolean }) {
   }
   const msg = payload.message.trim();
   if (!msg) return;
+  const priorTurns = [...conv.turns];
   conv.turns.push({ role: "user", content: msg });
   chatBusy.value = true;
   chatErr.value = null;
   conv.chatMeta = null;
   try {
+    const isConversationNotFound = (error: unknown): boolean => {
+      const message = error instanceof Error ? error.message : String(error);
+      return message.includes("conversation not found");
+    };
+
+    const ensureBackendSession = async (): Promise<void> => {
+      const r = await api.chatReset();
+      conv!.sessionId = r.conversation_id;
+      conv!.chatMeta = `new session · ${r.model}`;
+      const syncMessages = [
+        { role: "system", content: "You are a helpful assistant.", tool_calls: null },
+        ...priorTurns.map((t) => ({ role: t.role, content: t.content, tool_calls: null })),
+      ];
+      await api.chatSync(syncMessages, conv!.sessionId);
+    };
+
     if (payload.stream) {
       const assistantTurn: ChatTurn = { role: "assistant", content: "" };
       conv.turns.push(assistantTurn);
-      await chatStream(
-        msg,
-        (ev) => {
-          if (ev.type === "start") {
-            conv!.sessionId = ev.conversation_id;
-            const memMeta =
-              ev.memory_source !== undefined
-                ? ` · memory=${ev.memory_source}:${ev.memory_items_count ?? 0}`
-                : "";
-            conv!.chatMeta = chatToolsStream.value
-              ? `SSE · tools_stream · ${ev.model}${memMeta}`
-              : `SSE · ${ev.model}${memMeta}`;
-          } else if (ev.type === "token") {
-            assistantTurn.content += ev.content;
-          } else if (ev.type === "assistant") {
-            assistantTurn.content = ev.content;
-          } else if (ev.type === "error") {
-            chatErr.value = ev.message;
-            assistantTurn.content = `[error] ${ev.message}`;
-          }
-        },
-        {
-          toolsStream: chatToolsStream.value,
-          useMemory: chatUseMemory.value,
-          conversationId: conv!.sessionId,
-        },
-      );
+      const runStream = async () => {
+        await chatStream(
+          msg,
+          (ev) => {
+            if (ev.type === "start") {
+              conv!.sessionId = ev.conversation_id;
+              const memMeta =
+                ev.memory_source !== undefined
+                  ? ` · memory=${ev.memory_source}:${ev.memory_items_count ?? 0}`
+                  : "";
+              conv!.chatMeta = chatToolsStream.value
+                ? `SSE · tools_stream · ${ev.model}${memMeta}`
+                : `SSE · ${ev.model}${memMeta}`;
+            } else if (ev.type === "token") {
+              assistantTurn.content += ev.content;
+            } else if (ev.type === "assistant") {
+              assistantTurn.content = ev.content;
+            } else if (ev.type === "error") {
+              chatErr.value = ev.message;
+              assistantTurn.content = `[error] ${ev.message}`;
+            }
+          },
+          {
+            toolsStream: chatToolsStream.value,
+            useMemory: chatUseMemory.value,
+            conversationId: conv!.sessionId,
+          },
+        );
+      };
+      try {
+        await runStream();
+      } catch (e) {
+        if (!isConversationNotFound(e)) throw e;
+        await ensureBackendSession();
+        assistantTurn.content = "";
+        chatErr.value = null;
+        await runStream();
+      }
       if (!assistantTurn.content.trim()) assistantTurn.content = "(no assistant output)";
     } else {
-      const r = await api.chat(msg, {
-        useMemory: chatUseMemory.value,
-        conversationId: conv.sessionId,
-      });
+      const runChat = async () =>
+        api.chat(msg, {
+          useMemory: chatUseMemory.value,
+          conversationId: conv!.sessionId,
+        });
+      let r;
+      try {
+        r = await runChat();
+      } catch (e) {
+        if (!isConversationNotFound(e)) throw e;
+        await ensureBackendSession();
+        r = await runChat();
+      }
       conv.chatMeta = `${r.mode} · ${r.model} · memory=${r.memory_source}:${r.memory_items_count}`;
       conv.turns.push({ role: "assistant", content: r.reply });
     }
@@ -167,7 +204,12 @@ async function inspectChatMessages() {
     chatMessagesView.value = JSON.stringify(payload, null, 2);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    chatErr.value = message;
+    if (message.includes("conversation not found")) {
+      chatErr.value =
+        "Conversation no longer exists on backend (likely server restart). Send a message to auto-create a fresh backend session for this thread.";
+    } else {
+      chatErr.value = message;
+    }
     chatMessagesView.value = "";
   } finally {
     chatMessagesBusy.value = false;

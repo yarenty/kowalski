@@ -168,6 +168,7 @@ pub async fn serve(
         .route("/api/chat", post(post_chat))
         .route("/api/chat/stream", post(post_chat_stream))
         .route("/api/chat/reset", post(post_chat_reset))
+        .route("/api/chat/sync", post(post_chat_sync))
         .route("/api/chat/messages", get(get_chat_messages))
         .route("/api/federation/stream", get(get_federation_stream))
         .route("/api/federation/ws", get(get_federation_ws))
@@ -392,6 +393,20 @@ struct ChatResetResponse {
     model: String,
 }
 
+#[derive(Deserialize)]
+struct ChatSyncBody {
+    #[serde(default)]
+    conversation_id: Option<String>,
+    messages: Vec<kowalski_core::conversation::Message>,
+}
+
+#[derive(Serialize)]
+struct ChatSyncResponse {
+    conversation_id: String,
+    model: String,
+    message_count: usize,
+}
+
 async fn post_chat_reset(
     State(state): State<ApiState>,
 ) -> Result<Json<ChatResetResponse>, (StatusCode, String)> {
@@ -402,6 +417,39 @@ async fn post_chat_reset(
     Ok(Json(ChatResetResponse {
         conversation_id,
         model: state.model.clone(),
+    }))
+}
+
+async fn post_chat_sync(
+    State(state): State<ApiState>,
+    Json(body): Json<ChatSyncBody>,
+) -> Result<Json<ChatSyncResponse>, (StatusCode, String)> {
+    if body.messages.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "messages must not be empty".to_string()));
+    }
+    let mut guard = state.chat.lock().await;
+    let conv_id = if let Some(ref cid) = body.conversation_id {
+        if guard.agent.get_conversation(cid).is_some() {
+            cid.clone()
+        } else {
+            let created = guard.agent.start_conversation(&state.model);
+            guard.conv_id = created.clone();
+            created
+        }
+    } else {
+        let created = guard.agent.start_conversation(&state.model);
+        guard.conv_id = created.clone();
+        created
+    };
+    guard
+        .agent
+        .replace_conversation_messages(&conv_id, body.messages.clone())
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    guard.conv_id = conv_id.clone();
+    Ok(Json(ChatSyncResponse {
+        conversation_id: conv_id,
+        model: state.model.clone(),
+        message_count: body.messages.len(),
     }))
 }
 

@@ -309,6 +309,21 @@ impl TemplateAgent {
             .preview_memory_debug(conversation_id, user_input, use_memory)
             .await
     }
+
+    pub fn replace_conversation_messages(
+        &mut self,
+        conversation_id: &str,
+        messages: Vec<crate::conversation::Message>,
+    ) -> Result<(), KowalskiError> {
+        if let Some(conv) = self.base_mut().conversations.get_mut(conversation_id) {
+            conv.messages = messages;
+            Ok(())
+        } else {
+            Err(KowalskiError::ConversationNotFound(
+                conversation_id.to_string(),
+            ))
+        }
+    }
 }
 
 #[async_trait]
