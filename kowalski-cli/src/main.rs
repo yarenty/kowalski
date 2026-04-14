@@ -106,6 +106,11 @@ enum Commands {
         #[clap(subcommand)]
         command: FederationCommands,
     },
+    /// Run extension commands discovered from PATH or local extension directory
+    Extension {
+        #[clap(subcommand)]
+        command: ExtensionCommands,
+    },
 }
 
 #[derive(Parser, Debug)]
@@ -154,6 +159,20 @@ enum McpCommands {
         /// TOML file containing an [mcp] section (default: ./config.toml)
         #[clap(short, long)]
         config: Option<String>,
+    },
+}
+
+#[derive(Parser, Debug)]
+enum ExtensionCommands {
+    /// List available extensions (PATH `kowalski-ext-*` and local `.kowalski/extensions/*`)
+    List,
+    /// Run an extension by name, forwarding trailing arguments as-is
+    Run {
+        /// Extension name (for binary `kowalski-ext-<name>`)
+        name: String,
+        /// Arguments forwarded to extension command
+        #[clap(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
     },
 }
 
@@ -492,6 +511,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 kowalski_cli::federation_ops::run_ping_notify(config.as_deref()).await?;
             }
         },
+        Some(Commands::Extension { command }) => match command {
+            ExtensionCommands::List => {
+                let items = kowalski_cli::extension_ops::list_extensions()?;
+                if items.is_empty() {
+                    println!("No extensions found.");
+                    println!("Install `kowalski-ext-<name>` in PATH or add `.kowalski/extensions/<name>/run`.");
+                } else {
+                    println!("Available extensions:");
+                    for name in items {
+                        println!("- {}", name);
+                    }
+                }
+            }
+            ExtensionCommands::Run { name, args } => {
+                kowalski_cli::extension_ops::run_extension(&name, &args)?;
+            }
+        },
         Some(Commands::Consolidate { delete }) => {
             let config = Config::default();
             let ollama_model = &config.ollama.model;
@@ -663,6 +699,8 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
                 println!("  kowalski-cli db migrate [--url] [-c config.toml]");
                 println!("  kowalski-cli doctor [--ollama-url URL]");
                 println!("  kowalski-cli federation ping-notify [-c config.toml]  — pg_notify smoke (needs --features postgres)");
+                println!("  kowalski-cli extension list");
+                println!("  kowalski-cli extension run <name> [-- <args...>]");
                 println!("  kowalski  — /api/federation/registry, /api/federation/stream (SSE), /api/federation/delegate; with --features postgres + memory.database_url, LISTEN kowalski_federation → broker");
             }
             "create" => {
