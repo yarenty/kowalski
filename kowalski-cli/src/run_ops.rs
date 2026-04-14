@@ -84,6 +84,14 @@ pub async fn run_orchestrator(config_path: Option<&str>) -> Result<(), Box<dyn s
             continue;
         }
 
+        let memory_debug = agent
+            .preview_memory_debug(&conv_id, input, use_memory)
+            .await;
+        println!(
+            "[memory] used={} source={} items={}",
+            memory_debug.memory_used, memory_debug.memory_source, memory_debug.memory_items_count
+        );
+
         {
             let _repl = kowalski_core::agent::repl_trace::ReplTraceGuard::enable();
             if let Err(e) = agent

@@ -113,9 +113,13 @@ async function sendChat(payload: { message: string; stream: boolean }) {
         (ev) => {
           if (ev.type === "start") {
             conv!.sessionId = ev.conversation_id;
+            const memMeta =
+              ev.memory_source !== undefined
+                ? ` · memory=${ev.memory_source}:${ev.memory_items_count ?? 0}`
+                : "";
             conv!.chatMeta = chatToolsStream.value
-              ? `SSE · tools_stream · ${ev.model}`
-              : `SSE · ${ev.model}`;
+              ? `SSE · tools_stream · ${ev.model}${memMeta}`
+              : `SSE · ${ev.model}${memMeta}`;
           } else if (ev.type === "token") {
             assistantTurn.content += ev.content;
           } else if (ev.type === "assistant") {
@@ -130,7 +134,7 @@ async function sendChat(payload: { message: string; stream: boolean }) {
       if (!assistantTurn.content.trim()) assistantTurn.content = "(no assistant output)";
     } else {
       const r = await api.chat(msg, { useMemory: chatUseMemory.value });
-      conv.chatMeta = `${r.mode} · ${r.model}`;
+      conv.chatMeta = `${r.mode} · ${r.model} · memory=${r.memory_source}:${r.memory_items_count}`;
       conv.turns.push({ role: "assistant", content: r.reply });
     }
     if (!conv.title || conv.title === "New conversation") {

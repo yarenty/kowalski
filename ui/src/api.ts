@@ -52,7 +52,14 @@ export type McpPingResult = {
   error?: string;
 };
 
-export type ChatResponse = { reply: string; mode: string; model: string };
+export type ChatResponse = {
+  reply: string;
+  mode: string;
+  model: string;
+  memory_used: boolean;
+  memory_source: string;
+  memory_items_count: number;
+};
 export type MemoryStatus = {
   backend: string;
   episodic_buffer_count: number;
@@ -92,7 +99,14 @@ export type SessionsResponse = {
 
 /** One SSE `data:` JSON line from `POST /api/chat/stream`. */
 export type ChatStreamEvent =
-  | { type: "start"; conversation_id: string; model: string }
+  | {
+      type: "start";
+      conversation_id: string;
+      model: string;
+      memory_used?: boolean;
+      memory_source?: string;
+      memory_items_count?: number;
+    }
   | { type: "token"; content: string }
   | { type: "assistant"; content: string }
   | { type: "error"; message: string }
