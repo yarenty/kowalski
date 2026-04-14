@@ -1,5 +1,12 @@
 # Kowalski
 
+> [!IMPORTANT]
+> ## WIP 1.0.x - Refactoring Phase
+> Kowalski is currently in an active refactoring and hardening phase.
+> The project is moving from an original proof-of-concept/proof-of-knowledge stage toward a near-production release line.
+> During this transition, some modules, commands, and docs may still evolve quickly.
+> We are focused on stability, clearer module boundaries, production-ready operator workflows, and robust multi-agent federation.
+
 **Version 1.0.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-datafusion`, Vue `ui/`)
 
 > "AI agents are like pets – they're cute, but they make a mess."  
