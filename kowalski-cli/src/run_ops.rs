@@ -14,12 +14,15 @@ pub async fn run_orchestrator(config_path: Option<&str>) -> Result<(), Box<dyn s
     let mut agent = TemplateAgent::new(cfg.clone()).await?;
     let model = cfg.ollama.model.clone();
     let mut conv_id = agent.start_conversation(&model);
+    let mut use_memory = true;
 
     println!(
         "Kowalski orchestrator REPL — model `{}` · session `{}`",
         model, conv_id
     );
-    println!("Commands: /bye exit · /new new session · lines ending with \\ continue");
+    println!(
+        "Commands: /bye exit · /new new session · /memory on|off · /messages show current payload · lines ending with \\ continue"
+    );
     println!("Lines are prefixed with [agent] (LLM) and [tool] (tool round) for readability.");
     println!("Federation: use `kowalski` + Vue or `curl` to /api/federation/* (HTTP + optional Postgres NOTIFY).");
 
@@ -58,10 +61,35 @@ pub async fn run_orchestrator(config_path: Option<&str>) -> Result<(), Box<dyn s
             println!("New session: {}", conv_id);
             continue;
         }
+        if input.eq_ignore_ascii_case("/memory on") {
+            use_memory = true;
+            println!("Memory context: ON");
+            continue;
+        }
+        if input.eq_ignore_ascii_case("/memory off") {
+            use_memory = false;
+            println!("Memory context: OFF");
+            continue;
+        }
+        if input.eq_ignore_ascii_case("/messages") {
+            if let Some(conv) = agent.get_conversation(&conv_id) {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&conv.messages)
+                        .unwrap_or_else(|_| "[]".to_string())
+                );
+            } else {
+                println!("No active conversation found for session {}", conv_id);
+            }
+            continue;
+        }
 
         {
             let _repl = kowalski_core::agent::repl_trace::ReplTraceGuard::enable();
-            if let Err(e) = agent.chat_with_tools(&conv_id, input).await {
+            if let Err(e) = agent
+                .chat_with_tools_with_options(&conv_id, input, use_memory)
+                .await
+            {
                 eprintln!("error: {}", e);
             }
         }
