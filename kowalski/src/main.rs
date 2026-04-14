@@ -1,5 +1,8 @@
 use clap::Parser;
 
+mod http_api;
+mod http_ops;
+
 #[derive(Parser, Debug)]
 #[clap(
     author,
@@ -59,7 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     );
                 }
             };
-            kowalski_cli::http_api::serve(addr, config, ollama_url, tls).await?;
+            http_api::serve(addr, config, ollama_url, tls).await?;
         }
     }
 

@@ -2,32 +2,30 @@
 //! `/api/chat` and `/api/chat/stream` use one in-process `TemplateAgent` + configured LLM (`[llm]` +
 //! `[ollama].model` — Ollama or OpenAI-compatible API).
 
-use axum::extract::State;
-use axum::http::StatusCode;
-use axum::response::sse::{Event, Sse};
 use axum::extract::Query;
+use axum::extract::State;
 use axum::extract::ws::{WebSocket, WebSocketUpgrade};
+use axum::http::StatusCode;
 use axum::response::IntoResponse;
+use axum::response::sse::{Event, Sse};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use futures::Stream;
 use futures::StreamExt;
-use std::convert::Infallible;
-use tokio_stream::wrappers::ReceiverStream;
 use kowalski_core::agent::Agent;
 use kowalski_core::config::Config;
-use kowalski_core::federation::{
-    AgentRecord, AgentRegistry, FederationOrchestrator, MpscBroker,
-};
+use kowalski_core::federation::{AgentRecord, AgentRegistry, FederationOrchestrator, MpscBroker};
 #[cfg(feature = "postgres")]
 use kowalski_core::federation::MessageBroker;
 use kowalski_core::template::agent::TemplateAgent;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tokio_stream::wrappers::ReceiverStream;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 
@@ -67,8 +65,8 @@ pub async fn serve(
     ollama_url: Option<String>,
     tls: Option<(PathBuf, PathBuf)>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let config_path = crate::ops::mcp_config_path(config.as_deref());
-    let full_config = crate::ops::load_kowalski_config_for_serve(&config_path)?;
+    let config_path = crate::http_ops::mcp_config_path(config.as_deref());
+    let full_config = crate::http_ops::load_kowalski_config_for_serve(&config_path)?;
     kowalski_core::db::run_memory_migrations_if_configured(&full_config).await?;
 
     let mut agent = TemplateAgent::new(full_config.clone()).await?;
@@ -80,9 +78,7 @@ pub async fn serve(
     #[cfg(feature = "postgres")]
     if let Some(ref url) = full_config.memory.database_url {
         if kowalski_core::config::memory_uses_postgres(&full_config.memory) {
-            if let Err(e) =
-                kowalski_core::load_registry_into(&federation_registry, url).await
-            {
+            if let Err(e) = kowalski_core::load_registry_into(&federation_registry, url).await {
                 log::warn!("federation registry DB load: {}", e);
             }
         }
@@ -106,10 +102,8 @@ pub async fn serve(
             }
         }
     }
-    let mut federation = FederationOrchestrator::new(
-        federation_registry.clone(),
-        federation_broker.clone(),
-    );
+    let mut federation =
+        FederationOrchestrator::new(federation_registry.clone(), federation_broker.clone());
     federation.orchestrator_id = "kowalski-serve".into();
     federation.default_topic = "federation".into();
     let federation = Arc::new(federation);
@@ -179,7 +173,10 @@ pub async fn serve(
         .route("/api/federation/registry", get(get_federation_registry))
         .route("/api/federation/register", post(post_federation_register))
         .route("/api/federation/deregister", post(post_federation_deregister))
-        .route("/api/federation/cleanup-stale", post(post_federation_cleanup_stale))
+        .route(
+            "/api/federation/cleanup-stale",
+            post(post_federation_cleanup_stale),
+        )
         .route("/api/federation/heartbeat", post(post_federation_heartbeat))
         .route("/api/federation/delegate", post(post_federation_delegate))
         .route("/api/graph/status", get(get_graph_status));
@@ -221,7 +218,7 @@ fn federation_postgres_notify_bridge(state: &ApiState) -> bool {
 async fn get_health(State(state): State<ApiState>) -> Json<serde_json::Value> {
     Json(json!({
         "status": "ok",
-        "service": "kowalski-cli",
+        "service": "kowalski",
         "version": env!("CARGO_PKG_VERSION"),
         "model": state.model,
         "federation": {
@@ -258,24 +255,22 @@ async fn get_sessions(State(state): State<ApiState>) -> Json<serde_json::Value> 
     }))
 }
 
-async fn get_doctor(State(state): State<ApiState>) -> Json<crate::ops::DoctorJson> {
-    Json(
-        crate::ops::doctor_json(state.ollama_url.clone(), Some(&state.full_config)).await,
-    )
+async fn get_doctor(State(state): State<ApiState>) -> Json<crate::http_ops::DoctorJson> {
+    Json(crate::http_ops::doctor_json(state.ollama_url.clone(), Some(&state.full_config)).await)
 }
 
 async fn get_mcp_servers(
     State(state): State<ApiState>,
-) -> Result<Json<Vec<crate::ops::McpServerPublic>>, (StatusCode, String)> {
-    crate::ops::list_mcp_servers_public(&state.config_path)
+) -> Result<Json<Vec<crate::http_ops::McpServerPublic>>, (StatusCode, String)> {
+    crate::http_ops::list_mcp_servers_public(&state.config_path)
         .map(Json)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
 async fn post_mcp_ping(
     State(state): State<ApiState>,
-) -> Result<Json<Vec<crate::ops::McpPingResult>>, (StatusCode, String)> {
-    crate::ops::mcp_ping_results(&state.config_path)
+) -> Result<Json<Vec<crate::http_ops::McpPingResult>>, (StatusCode, String)> {
+    crate::http_ops::mcp_ping_results(&state.config_path)
         .await
         .map(Json)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
@@ -289,22 +284,22 @@ async fn get_memory_status(
             &state.full_config.ollama.host,
             state.full_config.ollama.port,
         ));
-    let episodic = kowalski_core::memory::episodic::EpisodicBuffer::open(
-        &state.full_config.memory,
-        llm_provider,
-    )
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let episodic =
+        kowalski_core::memory::episodic::EpisodicBuffer::open(&state.full_config.memory, llm_provider)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let memories = episodic
         .retrieve_all()
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let missing_embeddings = memories.iter().filter(|m| m.embedding.is_none()).count();
 
-    let ollama_url = state
-        .ollama_url
-        .clone()
-        .unwrap_or_else(|| format!("http://{}:{}", state.full_config.ollama.host, state.full_config.ollama.port));
+    let ollama_url = state.ollama_url.clone().unwrap_or_else(|| {
+        format!(
+            "http://{}:{}",
+            state.full_config.ollama.host, state.full_config.ollama.port
+        )
+    });
     let embed_model = "nomic-embed-text".to_string();
     let probe = reqwest::Client::new()
         .post(format!("{}/api/embeddings", ollama_url.trim_end_matches('/')))
@@ -522,10 +517,7 @@ async fn post_chat_stream(
         }
         {
             let mut guard = api.chat.lock().await;
-            guard
-                .agent
-                .add_message(&conv_id, "assistant", &full)
-                .await;
+            guard.agent.add_message(&conv_id, "assistant", &full).await;
         }
         let summary = json!({ "type": "assistant", "content": full });
         let _ = tx
@@ -727,18 +719,15 @@ async fn post_federation_delegate(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     #[cfg(feature = "postgres")]
-    if let (Some(ref url), Some(o)) = (
-        state.full_config.memory.database_url.as_ref(),
-        outcome.as_ref(),
-    ) {
+    if let (Some(ref url), Some(o)) = (state.full_config.memory.database_url.as_ref(), outcome.as_ref())
+    {
         if kowalski_core::config::memory_uses_postgres(&state.full_config.memory) {
             let task_label = format!(
                 "{}: {}",
                 body.task_id,
                 body.instruction.chars().take(240).collect::<String>()
             );
-            if let Err(e) = kowalski_core::set_agent_current_task(url, &o.agent_id, &task_label).await
-            {
+            if let Err(e) = kowalski_core::set_agent_current_task(url, &o.agent_id, &task_label).await {
                 log::warn!("federation current_task: {}", e);
             }
         }
@@ -832,18 +821,19 @@ async fn post_federation_deregister(
 #[derive(Deserialize)]
 struct FederationCleanupBody {
     /// Heartbeats older than this many seconds are treated as stale (`active = false`).
-    stale_after_secs: u64,
+    #[serde(rename = "stale_after_secs")]
+    _stale_after_secs: u64,
 }
 
 async fn post_federation_cleanup_stale(
-    State(state): State<ApiState>,
-    Json(body): Json<FederationCleanupBody>,
+    State(_state): State<ApiState>,
+    Json(_body): Json<FederationCleanupBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     #[cfg(feature = "postgres")]
     {
-        if let Some(ref url) = state.full_config.memory.database_url {
-            if kowalski_core::config::memory_uses_postgres(&state.full_config.memory) {
-                let n = kowalski_core::mark_stale_agents_inactive(url, body.stale_after_secs)
+        if let Some(ref url) = _state.full_config.memory.database_url {
+            if kowalski_core::config::memory_uses_postgres(&_state.full_config.memory) {
+                let n = kowalski_core::mark_stale_agents_inactive(url, _body._stale_after_secs)
                     .await
                     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
                 return Ok(Json(json!({ "ok": true, "rows_updated": n })));
