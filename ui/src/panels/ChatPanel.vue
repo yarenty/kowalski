@@ -18,12 +18,17 @@ const props = defineProps<{
   resetBusy: boolean;
   chatErr: string | null;
   chatToolsStream: boolean;
+  chatUseMemory: boolean;
+  chatMessagesView: string;
+  chatMessagesBusy: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: "send-chat", payload: { message: string; stream: boolean }): void;
   (e: "new-conversation"): void;
   (e: "toggle-tools-stream", value: boolean): void;
+  (e: "toggle-use-memory", value: boolean): void;
+  (e: "inspect-chat-messages"): void;
 }>();
 
 const chatIn = ref("");
@@ -141,6 +146,14 @@ function send(stream: boolean) {
         />
         Tool-aware stream (<code>tools_stream</code>)
       </label>
+      <label class="chk">
+        <input
+          :checked="chatUseMemory"
+          type="checkbox"
+          @change="emit('toggle-use-memory', ($event.target as HTMLInputElement).checked)"
+        />
+        Use memory (<code>use_memory</code>)
+      </label>
       <textarea
         v-model="chatIn"
         rows="3"
@@ -157,7 +170,14 @@ function send(stream: boolean) {
         <button type="button" :disabled="resetBusy" @click="emit('new-conversation')">
           {{ resetBusy ? "Resetting..." : "New conversation" }}
         </button>
+        <button type="button" :disabled="chatMessagesBusy" @click="emit('inspect-chat-messages')">
+          {{ chatMessagesBusy ? "Loading..." : "View sent messages" }}
+        </button>
       </p>
+      <details v-if="chatMessagesView" class="raw-messages">
+        <summary>Last sent messages payload</summary>
+        <pre>{{ chatMessagesView }}</pre>
+      </details>
       <p v-if="chatErr" class="err">{{ chatErr }}</p>
     </div>
   </section>
@@ -279,6 +299,16 @@ function send(stream: boolean) {
   margin-top: 0.45rem;
 }
 .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0 0; }
+.raw-messages { margin-top: 0.5rem; }
+.raw-messages pre {
+  margin: 0.35rem 0 0;
+  padding: 0.55rem;
+  background: #10141b;
+  border: 1px solid #2a3142;
+  border-radius: 6px;
+  max-height: 16rem;
+  overflow: auto;
+}
 button { background: #2a3142; border: 1px solid #3d4658; color: #c8cfdd; padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; }
 button.primary { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
 button:disabled { opacity: 0.6; cursor: not-allowed; }

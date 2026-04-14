@@ -66,6 +66,18 @@ export type ChatResetResponse = {
   model: string;
 };
 
+export type ChatMessage = {
+  role: string;
+  content: string;
+  tool_calls?: unknown[] | null;
+};
+
+export type ChatMessagesResponse = {
+  conversation_id: string;
+  model: string;
+  messages: ChatMessage[];
+};
+
 export type AgentsResponse = {
   mode: string;
   agents: { name: string; description: string }[];
@@ -101,16 +113,20 @@ export const api = {
   mcpPing: () =>
     json<McpPingResult[]>("/api/mcp/ping", { method: "POST", body: "{}" }),
   memoryStatus: () => json<MemoryStatus>("/api/memory/status"),
-  chat: (message: string) =>
+  chat: (message: string, options?: { useMemory?: boolean }) =>
     json<ChatResponse>("/api/chat", {
       method: "POST",
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({
+        message,
+        ...(options?.useMemory !== undefined ? { use_memory: options.useMemory } : {}),
+      }),
     }),
   chatReset: () =>
     json<ChatResetResponse>("/api/chat/reset", {
       method: "POST",
       body: "{}",
     }),
+  chatMessages: () => json<ChatMessagesResponse>("/api/chat/messages"),
   federationRegistry: () => json<FederationRegistryResponse>("/api/federation/registry"),
   graphStatus: () => json<Record<string, unknown>>("/api/graph/status"),
   federationDelegate: (body: {
@@ -156,7 +172,7 @@ export function openFederationEventSource(
 export async function chatStream(
   message: string,
   onEvent: (ev: ChatStreamEvent) => void,
-  options?: { toolsStream?: boolean },
+  options?: { toolsStream?: boolean; useMemory?: boolean },
 ): Promise<void> {
   const res = await fetch(`${base}/api/chat/stream`, {
     method: "POST",
@@ -164,6 +180,7 @@ export async function chatStream(
     body: JSON.stringify({
       message,
       ...(options?.toolsStream ? { tools_stream: true } : {}),
+      ...(options?.useMemory !== undefined ? { use_memory: options.useMemory } : {}),
     }),
   });
   if (!res.ok) {

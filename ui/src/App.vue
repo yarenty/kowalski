@@ -29,6 +29,9 @@ const chatBusy = ref(false);
 const resetBusy = ref(false);
 const chatErr = ref<string | null>(null);
 const chatToolsStream = ref(false);
+const chatUseMemory = ref(true);
+const chatMessagesView = ref<string>("");
+const chatMessagesBusy = ref(false);
 const appVersion = ref<string>("unknown");
 
 function persistConversations() {
@@ -122,11 +125,11 @@ async function sendChat(payload: { message: string; stream: boolean }) {
             assistantTurn.content = `[error] ${ev.message}`;
           }
         },
-        { toolsStream: chatToolsStream.value },
+        { toolsStream: chatToolsStream.value, useMemory: chatUseMemory.value },
       );
       if (!assistantTurn.content.trim()) assistantTurn.content = "(no assistant output)";
     } else {
-      const r = await api.chat(msg);
+      const r = await api.chat(msg, { useMemory: chatUseMemory.value });
       conv.chatMeta = `${r.mode} · ${r.model}`;
       conv.turns.push({ role: "assistant", content: r.reply });
     }
@@ -142,6 +145,21 @@ async function sendChat(payload: { message: string; stream: boolean }) {
     conversations.value = [...conversations.value].sort((a, b) => b.updatedAt - a.updatedAt);
     persistConversations();
     chatBusy.value = false;
+  }
+}
+
+async function inspectChatMessages() {
+  chatMessagesBusy.value = true;
+  chatErr.value = null;
+  try {
+    const payload = await api.chatMessages();
+    chatMessagesView.value = JSON.stringify(payload, null, 2);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    chatErr.value = message;
+    chatMessagesView.value = "";
+  } finally {
+    chatMessagesBusy.value = false;
   }
 }
 
@@ -182,7 +200,12 @@ onMounted(async () => {
         :reset-busy="resetBusy"
         :chat-err="chatErr"
         :chat-tools-stream="chatToolsStream"
+        :chat-use-memory="chatUseMemory"
+        :chat-messages-view="chatMessagesView"
+        :chat-messages-busy="chatMessagesBusy"
         @toggle-tools-stream="chatToolsStream = $event"
+        @toggle-use-memory="chatUseMemory = $event"
+        @inspect-chat-messages="inspectChatMessages"
         @send-chat="sendChat"
         @new-conversation="newConversation"
       />
