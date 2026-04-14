@@ -12,7 +12,7 @@ pub fn mcp_config_path(config_path: Option<&str>) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("config.toml"))
 }
 
-/// Load full [`Config`] for `kowalski-cli serve` (HTTP chat + MCP). Missing file → [`Config::default`].
+/// Load full [`Config`] for `kowalski` server mode (HTTP chat + MCP). Missing file → [`Config::default`].
 pub fn load_kowalski_config_for_serve(path: &Path) -> Result<Config, Box<dyn std::error::Error>> {
     if !path.exists() {
         log::warn!(

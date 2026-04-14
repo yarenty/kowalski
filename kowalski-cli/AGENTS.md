@@ -56,7 +56,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 
 **Name**: kowalski-cli  
 **Release**: **1.0.0** (see crate `Cargo.toml`).  
-**Purpose**: Command-line interface and **HTTP server** (`serve`) for the Vue operator UI: `/api/chat`, `/api/chat/stream` (with **`tools_stream`**), MCP, federation, graph status / Cypher (Postgres + AGE).  
+**Purpose**: Command-line interface (REPL + operators). The HTTP server (`kowalski`) for the Vue operator UI exposes `/api/chat`, `/api/chat/stream` (with **`tools_stream`**), MCP, federation, graph status / Cypher (Postgres + AGE).  
 **Core Value Proposition**: Modular, extensible, and distributed architecture supporting standalone and federated deployments with privacy-preserving capabilities.  
 **Primary Mechanism**: Multi-agent orchestration and pluggable tools interfacing with local (Ollama) and remote LLMs.  
 **Target Users**: Kowalski framework agents and developers integrating kowalski-cli.  
@@ -336,7 +336,7 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-**1.0.0**: `kowalski`, `kowalski chat`, `kowalski run`, `kowalski serve`, `config`, `db`, `doctor`, `mcp ping` / `mcp tools`. Build with **`--features postgres`** for SQL memory alignment with `serve` graph routes.
+**1.0.0**: `kowalski-cli` provides CLI operators (`run`, `config`, `db`, `doctor`, `mcp`, `federation`). `kowalski` provides `serve`. Build with **`--features postgres`** for SQL memory alignment with `serve` graph routes.
 
 ### Roadmap
 See [`ROADMAP.md`](ROADMAP.md) here and root [`../ROADMAP.md`](../ROADMAP.md).
@@ -345,7 +345,7 @@ See [`ROADMAP.md`](ROADMAP.md) here and root [`../ROADMAP.md`](../ROADMAP.md).
 - Legacy “multi-agent” REPL sections in this file may predate the unified `TemplateAgent`; verify against `src/main.rs` and `ops.rs`.
 
 ### Known Issues
-- `serve` requires a valid TOML config and a running LLM endpoint for chat tabs.
+- `kowalski` requires a valid TOML config and a running LLM endpoint for chat tabs.
 
 ---
 

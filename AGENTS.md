@@ -56,7 +56,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 
 **Name**: Kowalski  
 **Release line**: **1.0.0** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).  
-**Purpose**: A Rust-native multi-agent framework: **`kowalski-core`** (agents, LLM, memory, MCP client), **`kowalski-cli`** (REPL + **`serve`** HTTP API), optional **`kowalski-mcp-datafusion`**, Vue **`ui/`**, optional PostgreSQL (**pgvector**, **Apache AGE**).  
+**Purpose**: A Rust-native multi-agent framework: **`kowalski-core`** (agents, LLM, memory, MCP client), **`kowalski-cli`** (REPL + operators), **`kowalski`** (**`serve`** HTTP API), optional **`kowalski-mcp-datafusion`**, Vue **`ui/`**, optional PostgreSQL (**pgvector**, **Apache AGE**).  
 **Core Value Proposition**: Modular, extensible deployment with MCP-first tools and federation-oriented APIs.  
 **Primary Mechanism**: `TemplateAgent` + pluggable tools (built-in + MCP), Ollama/OpenAI-compatible providers.  
 **Target Users**: Developers building operator-run or embedded agent systems on CPU-friendly stacks.  
@@ -124,7 +124,8 @@ Early work used **Qdrant** as a **proof of concept** for semantic (vector) memor
 ```
 kowalski/
 ├── kowalski-core/           # Agents, LLM, memory, MCP, federation (in-crate)
-├── kowalski-cli/            # REPL, `serve` HTTP API, operators
+├── kowalski-cli/            # REPL, operators
+├── kowalski/                # `serve` HTTP API
 ├── kowalski-mcp-datafusion/ # Optional MCP server (DataFusion SQL)
 ├── ui/                      # Vue 3 operator UI (Vite)
 ├── migrations/
@@ -328,7 +329,7 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-**1.0.0** shipped as a consolidated workspace: single **`TemplateAgent`** path in **`kowalski-core`**, **`kowalski-cli`** for REPL + **`serve`**, MCP HTTP client + **`kowalski-mcp-datafusion`** server crate, Vue operator UI, Postgres-backed memory and graph probes when built with **`--features postgres`**.
+**1.0.0** shipped as a consolidated workspace: single **`TemplateAgent`** path in **`kowalski-core`**, **`kowalski-cli`** for REPL/operators, **`kowalski`** for **`serve`**, MCP HTTP client + **`kowalski-mcp-datafusion`** server crate, Vue operator UI, Postgres-backed memory and graph probes when built with **`--features postgres`**.
 
 ### Roadmap
 See [`ROADMAP.md`](ROADMAP.md) (root and per-crate **`ROADMAP.md`** where present).

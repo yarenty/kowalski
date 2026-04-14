@@ -1,4 +1,4 @@
-/** Base for API calls. In dev, leave empty so Vite proxies `/api` to the CLI (see vite.config.ts). */
+/** Base for API calls. In dev, leave empty so Vite proxies `/api` to `kowalski` (see vite.config.ts). */
 const base = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 
 async function json<T>(path: string, init?: RequestInit): Promise<T> {
@@ -28,7 +28,7 @@ export type Health = {
 };
 
 export type Doctor = {
-  cli_version: string;
+  server_version: string;
   ollama: { url: string; ok: boolean; detail: string };
   llm: {
     provider: string;

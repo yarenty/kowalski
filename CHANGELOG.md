@@ -17,7 +17,7 @@ All notable changes to this project will be documented in this file, or at least
 ### Added
 
 - **Workspace version 1.0.0** for `kowalski-core`, `kowalski-cli`, `kowalski`, `kowalski-mcp-datafusion`, and the Vue **operator UI** (`ui/`).
-- **HTTP API** (`kowalski-cli serve`): chat, chat stream, tool-aware streaming via **`tools_stream`** on **`POST /api/chat/stream`** (tokens only after tool execution in the same request); graph status and **`POST /api/graph/cypher`** (Apache AGE) when built with **`--features postgres`**.
+- **HTTP API** (`kowalski`): chat, chat stream, tool-aware streaming via **`tools_stream`** on **`POST /api/chat/stream`** (tokens only after tool execution in the same request); graph status and **`POST /api/graph/cypher`** (Apache AGE) when built with **`--features postgres`**.
 - **Vue Chat:** checkbox **Tool-aware stream** (`tools_stream`).
 - **CI:** `pgvector/pgvector:pg16` for default Postgres tests; **`apache/age:release_PG16_1.6.0`** job for **`postgres_age_cypher`** integration test; **`kowalski-cli`** build with **`postgres`** feature.
 - **`kowalski-mcp-datafusion`:** Streamable HTTP MCP server over CSV/Parquet (DataFusion).

@@ -11,7 +11,8 @@
 
 Workspace layout:
 - **kowalski-core**: `TemplateAgent`, LLM providers, memory, MCP client/hub, federation types; optional **Postgres** + **pgvector** + **Apache AGE** helpers.
-- **kowalski-cli**: REPL, **`serve`** (HTTP API for the Vue UI), operator commands.
+- **kowalski-cli**: REPL and operator commands.
+- **kowalski**: **`serve`** HTTP API for the Vue UI.
 - **kowalski-mcp-datafusion**: standalone **MCP** Streamable HTTP server (DataFusion over CSV/Parquet).
 - **ui**: Vue 3 + Vite operator UI (Chat / MCP / federation / graph status).
 - **Legacy prompts**: `migrations/legacy_prompts/` (staged).
@@ -53,7 +54,7 @@ Workspace layout:
 - [x] Role assignment (coordinator, worker, observer)
 - [x] Task delegation and assignment
 - [x] Message passing and broadcasting
-- [x] In-process + SSE broker; optional Postgres `LISTEN`/`NOTIFY` bridge (see `kowalski-cli serve` with `--features postgres`)
+- [x] In-process + SSE broker; optional Postgres `LISTEN`/`NOTIFY` bridge (see `kowalski` with `--features postgres`)
 - [ ] Protocol selection (A2A, ACP, MCP, or custom) (open)
 - [ ] Secure agent authentication (planned)
 - [x] Persistent registry records (Postgres-backed when configured)
@@ -69,7 +70,7 @@ Workspace layout:
 
 ## User Interface & Integration
 - [x] CLI interface with rich formatting
-- [x] Vue operator UI (`ui/`) + **`kowalski-cli serve`** HTTP API
+- [x] Vue operator UI (`ui/`) + **`kowalski`** HTTP API
 - [x] REST-style JSON API under `/api/*` (chat, stream, MCP, federation, graph)
 - [x] WebSocket `/api/federation/ws` (and SSE stream) where enabled
 - [ ] Export conversations (PDF, HTML, Markdown) (planned)
