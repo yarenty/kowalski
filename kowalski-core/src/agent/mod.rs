@@ -256,6 +256,62 @@ pub struct BaseAgent {
 }
 
 impl BaseAgent {
+    async fn build_memory_context(&self, content: &str, use_memory: bool) -> String {
+        if !use_memory {
+            return String::new();
+        }
+
+        let working_memories = self
+            .working_memory
+            .lock()
+            .await
+            .retrieve(content, self.config.working_memory_retrieval_limit)
+            .await
+            .unwrap_or_default();
+
+        let episodic_memories = self
+            .episodic_memory
+            .lock()
+            .await
+            .retrieve(content, self.config.episodic_memory_retrieval_limit)
+            .await
+            .unwrap_or_default();
+
+        let semantic_memories = self
+            .semantic_memory
+            .lock()
+            .await
+            .retrieve(content, self.config.semantic_memory_retrieval_limit)
+            .await
+            .unwrap_or_default();
+
+        let mut seen_ids = HashSet::new();
+        let mut all_memories = Vec::new();
+        for m in working_memories
+            .into_iter()
+            .chain(episodic_memories)
+            .chain(semantic_memories)
+        {
+            if seen_ids.insert(m.id.clone()) {
+                all_memories.push(m);
+            }
+        }
+
+        if all_memories.is_empty() {
+            return String::new();
+        }
+
+        let concatenated_memories = all_memories
+            .iter()
+            .map(|m| m.content.as_str())
+            .collect::<Vec<&str>>()
+            .join("\n---\n");
+        format!(
+            "\n--- Relevant Memories ---\n{}\n--- End Memories ---",
+            concatenated_memories
+        )
+    }
+
     pub async fn new(
         config: Config,
         name: &str,
@@ -307,55 +363,19 @@ impl BaseAgent {
         role: Option<Role>,
     ) -> Result<(String, Vec<Message>, std::sync::Arc<dyn crate::llm::LLMProvider>), KowalskiError>
     {
-        let working_memories = self
-            .working_memory
-            .lock()
+        self.prepare_stream_turn_with_options(conversation_id, content, role, true)
             .await
-            .retrieve(content, self.config.working_memory_retrieval_limit)
-            .await
-            .unwrap_or_default();
+    }
 
-        let episodic_memories = self
-            .episodic_memory
-            .lock()
-            .await
-            .retrieve(content, self.config.episodic_memory_retrieval_limit)
-            .await
-            .unwrap_or_default();
-
-        let semantic_memories = self
-            .semantic_memory
-            .lock()
-            .await
-            .retrieve(content, self.config.semantic_memory_retrieval_limit)
-            .await
-            .unwrap_or_default();
-
-        let mut seen_ids = HashSet::new();
-        let mut all_memories = Vec::new();
-        for m in working_memories
-            .into_iter()
-            .chain(episodic_memories)
-            .chain(semantic_memories)
-        {
-            if seen_ids.insert(m.id.clone()) {
-                all_memories.push(m);
-            }
-        }
-
-        let memory_context = if !all_memories.is_empty() {
-            let concatenated_memories = all_memories
-                .iter()
-                .map(|m| m.content.as_str())
-                .collect::<Vec<&str>>()
-                .join("\n---\n");
-            format!(
-                "\n--- Relevant Memories ---\n{}\n--- End Memories ---",
-                concatenated_memories
-            )
-        } else {
-            String::new()
-        };
+    pub async fn prepare_stream_turn_with_options(
+        &mut self,
+        conversation_id: &str,
+        content: &str,
+        role: Option<Role>,
+        use_memory: bool,
+    ) -> Result<(String, Vec<Message>, std::sync::Arc<dyn crate::llm::LLMProvider>), KowalskiError>
+    {
+        let memory_context = self.build_memory_context(content, use_memory).await;
 
         let conversation = self
             .conversations
@@ -387,11 +407,95 @@ impl BaseAgent {
 
     /// Like [`Agent::chat_with_tools`] but emits **token deltas** over `token_tx` only for the first
     /// LLM completion **after at least one tool execution** in this request (final natural answer).
+    pub async fn chat_with_tools_with_options(
+        &mut self,
+        conversation_id: &str,
+        user_input: &str,
+        use_memory: bool,
+    ) -> Result<String, KowalskiError> {
+        let mut final_response = String::new();
+        let mut current_input = user_input.to_string();
+        let mut iteration_count = 0;
+        const MAX_ITERATIONS: usize = 5;
+        let mut last_tool_call: Option<(String, serde_json::Value)> = None;
+        let mut tool_parse_hint_sent = false;
+
+        while iteration_count < MAX_ITERATIONS {
+            iteration_count += 1;
+            let response_text = self
+                .chat_with_history_with_options(conversation_id, &current_input, None, use_memory)
+                .await?;
+
+            if repl_trace::repl_trace_enabled() {
+                println!("[agent] {}", response_text);
+            } else {
+                println!("{}", response_text);
+            }
+            io::stdout()
+                .flush()
+                .map_err(|e| KowalskiError::Server(e.to_string()))?;
+
+            let buffer = response_text.clone();
+            let tool_calls = crate::utils::json::extract_tool_calls(&buffer);
+
+            if !tool_calls.is_empty() {
+                let tool_call = &tool_calls[0];
+                let tool_call_key = (tool_call.name.clone(), tool_call.parameters.clone());
+                if let Some(last) = &last_tool_call {
+                    if *last == tool_call_key {
+                        break;
+                    }
+                }
+                last_tool_call = Some(tool_call_key);
+
+                let tool_result = match self
+                    .execute_tool(&tool_call.name, &tool_call.parameters)
+                    .await
+                {
+                    Ok(output) => output.result.to_string(),
+                    Err(e) => format!("{}", e),
+                };
+
+                let tool_message = format!("Tool result for {}: {}", tool_call.name, tool_result);
+                self.add_message(conversation_id, "assistant", &tool_message)
+                    .await;
+                current_input = format!("Based on the tool result: {}", tool_result);
+                continue;
+            }
+
+            if crate::utils::json::looks_like_tool_json_attempt(&buffer) && !tool_parse_hint_sent {
+                tool_parse_hint_sent = true;
+                self.add_message(conversation_id, "assistant", &buffer).await;
+                const HINT: &str = "Your previous reply appeared to include a tool call but it could not be parsed as JSON. Reply with a single JSON object only: {\"name\": \"<tool_name>\", \"parameters\": { ... } } matching the available tools. No markdown fences or extra text.";
+                current_input = HINT.to_string();
+                continue;
+            }
+
+            final_response = buffer;
+            self.add_message(conversation_id, "assistant", &final_response)
+                .await;
+            break;
+        }
+
+        Ok(final_response)
+    }
+
     pub async fn chat_with_tools_stream_final(
         &mut self,
         conversation_id: &str,
         user_input: &str,
         token_tx: &tokio::sync::mpsc::Sender<String>,
+    ) -> Result<String, KowalskiError> {
+        self.chat_with_tools_stream_final_with_options(conversation_id, user_input, token_tx, true)
+            .await
+    }
+
+    pub async fn chat_with_tools_stream_final_with_options(
+        &mut self,
+        conversation_id: &str,
+        user_input: &str,
+        token_tx: &tokio::sync::mpsc::Sender<String>,
+        use_memory: bool,
     ) -> Result<String, KowalskiError> {
         let mut final_response = String::new();
         let mut current_input = user_input.to_string();
@@ -417,7 +521,7 @@ impl BaseAgent {
 
             let response_text = if use_stream {
                 let (model, messages, llm) = self
-                    .prepare_stream_turn(conversation_id, &current_input, None)
+                    .prepare_stream_turn_with_options(conversation_id, &current_input, None, use_memory)
                     .await?;
                 let mut full = String::new();
                 let mut stream = llm.chat_stream(&model, messages);
@@ -430,7 +534,7 @@ impl BaseAgent {
                 }
                 full
             } else {
-                self.chat_with_history(conversation_id, &current_input, None)
+                self.chat_with_history_with_options(conversation_id, &current_input, None, use_memory)
                     .await?
             };
 
@@ -580,69 +684,53 @@ impl Agent for BaseAgent {
         content: &str,
         role: Option<Role>,
     ) -> Result<String, KowalskiError> {
-        // Retrieve from all memory tiers
-        let working_memories = self
-            .working_memory
-            .lock()
+        self.chat_with_history_with_options(conversation_id, content, role, true)
             .await
-            .retrieve(content, self.config.working_memory_retrieval_limit)
-            .await
-            .unwrap_or_default();
-        info!(
-            "Retrieved {} results from working memory",
-            working_memories.len()
-        );
+    }
 
-        let episodic_memories = self
-            .episodic_memory
-            .lock()
-            .await
-            .retrieve(content, self.config.episodic_memory_retrieval_limit)
-            .await
-            .unwrap_or_default();
-        info!(
-            "Retrieved {} results from episodic memory",
-            episodic_memories.len()
-        );
+    async fn process_stream_response(
+        &mut self,
+        conversation_id: &str,
+        chunk: &[u8],
+    ) -> Result<Option<Message>, KowalskiError> {
+        BaseAgent::process_stream_response(self, conversation_id, chunk).await
+    }
 
-        let semantic_memories = self
-            .semantic_memory
-            .lock()
-            .await
-            .retrieve(content, self.config.semantic_memory_retrieval_limit)
-            .await
-            .unwrap_or_default();
-        info!(
-            "Retrieved {} results from semantic memory",
-            semantic_memories.len()
-        );
+    async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {
+        BaseAgent::add_message(self, conversation_id, role, content).await;
+    }
 
-        // Combine all memories, deduplicate by id
-        let mut seen_ids = HashSet::new();
-        let mut all_memories = Vec::new();
-        for m in working_memories
-            .into_iter()
-            .chain(episodic_memories)
-            .chain(semantic_memories)
-        {
-            if seen_ids.insert(m.id.clone()) {
-                all_memories.push(m);
-            }
-        }
+    fn export_conversation(&self, id: &str) -> Result<String, KowalskiError> {
+        BaseAgent::export_conversation(self, id)
+    }
 
-        let memory_context = if !all_memories.is_empty() {
-            let concatenated_memories = all_memories
-                .iter()
-                .map(|m| m.content.as_str())
-                .collect::<Vec<&str>>()
-                .join("\n---\n");
-            format!(
-                "\n--- Relevant Memories ---\n{}\n--- End Memories ---",
-                concatenated_memories
-            )
-        } else {
-            String::new()
-        };
+    fn import_conversation(&mut self, json_str: &str) -> Result<String, KowalskiError> {
+        BaseAgent::import_conversation(self, json_str)
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn description(&self) -> &str {
+        &self.description
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+}
+
+impl BaseAgent {
+    pub async fn chat_with_history_with_options(
+        &mut self,
+        conversation_id: &str,
+        content: &str,
+        role: Option<Role>,
+        use_memory: bool,
+    ) -> Result<String, KowalskiError> {
+        let memory_context = self.build_memory_context(content, use_memory).await;
 
         let conversation = self
             .conversations
@@ -766,17 +854,6 @@ impl Agent for BaseAgent {
         Ok(id)
     }
 
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn description(&self) -> &str {
-        &self.description
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
 }
 
 #[async_trait]

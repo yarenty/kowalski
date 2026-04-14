@@ -168,6 +168,7 @@ pub async fn serve(
         .route("/api/chat", post(post_chat))
         .route("/api/chat/stream", post(post_chat_stream))
         .route("/api/chat/reset", post(post_chat_reset))
+        .route("/api/chat/messages", get(get_chat_messages))
         .route("/api/federation/stream", get(get_federation_stream))
         .route("/api/federation/ws", get(get_federation_ws))
         .route("/api/federation/registry", get(get_federation_registry))
@@ -348,9 +349,16 @@ async fn get_memory_status(
 #[derive(Deserialize)]
 struct ChatBody {
     message: String,
+    /// When true, include retrieved memory snippets in prompt assembly.
+    #[serde(default = "default_true")]
+    use_memory: bool,
     /// When true, `POST /api/chat/stream` runs the tool loop and streams **only** the first LLM turn after a tool result (final answer); earlier turns are non-streamed like `POST /api/chat`.
     #[serde(default)]
     tools_stream: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Serialize)]
@@ -358,6 +366,13 @@ struct ChatResponse {
     reply: String,
     mode: &'static str,
     model: String,
+}
+
+#[derive(Serialize)]
+struct ChatMessagesResponse {
+    conversation_id: String,
+    model: String,
+    messages: Vec<kowalski_core::conversation::Message>,
 }
 
 #[derive(Serialize)]
@@ -387,13 +402,29 @@ async fn post_chat(
     let conv_id = guard.conv_id.clone();
     let reply = guard
         .agent
-        .chat_with_tools(&conv_id, body.message.trim())
+        .chat_with_tools_with_options(&conv_id, body.message.trim(), body.use_memory)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(ChatResponse {
         reply,
         mode: "agent",
         model: state.model.clone(),
+    }))
+}
+
+async fn get_chat_messages(
+    State(state): State<ApiState>,
+) -> Result<Json<ChatMessagesResponse>, (StatusCode, String)> {
+    let guard = state.chat.lock().await;
+    let conv_id = guard.conv_id.clone();
+    let conversation = guard
+        .agent
+        .get_conversation(&conv_id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "conversation not found".to_string()))?;
+    Ok(Json(ChatMessagesResponse {
+        conversation_id: conv_id,
+        model: state.model.clone(),
+        messages: conversation.messages.clone(),
     }))
 }
 
@@ -406,6 +437,7 @@ async fn post_chat_stream(
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(256);
     let msg = body.message.trim().to_string();
     let tools_stream = body.tools_stream;
+    let use_memory = body.use_memory;
     let api = state.clone();
     tokio::spawn(async move {
         let conv_id = {
@@ -444,7 +476,7 @@ async fn post_chat_stream(
                 let mut guard = api.chat.lock().await;
                 guard
                     .agent
-                    .chat_with_tools_stream_final(&conv_id, &msg, &token_tx)
+                    .chat_with_tools_stream_final_with_options(&conv_id, &msg, &token_tx, use_memory)
                     .await
             };
             drop(token_tx);
@@ -471,7 +503,10 @@ async fn post_chat_stream(
 
         let prep = {
             let mut guard = api.chat.lock().await;
-            guard.agent.prepare_stream_turn(&conv_id, &msg).await
+            guard
+                .agent
+                .prepare_stream_turn_with_options(&conv_id, &msg, use_memory)
+                .await
         };
         let (model, messages, llm) = match prep {
             Ok(x) => x,
