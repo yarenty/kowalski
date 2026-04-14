@@ -407,6 +407,14 @@ async fn post_chat(
         .agent
         .preview_memory_debug(&conv_id, body.message.trim(), body.use_memory)
         .await;
+    log::info!(
+        "HTTP chat memory: used={} source={} items={} use_memory={} conv_id={}",
+        memory_debug.memory_used,
+        memory_debug.memory_source,
+        memory_debug.memory_items_count,
+        body.use_memory,
+        conv_id
+    );
     let reply = guard
         .agent
         .chat_with_tools_with_options(&conv_id, body.message.trim(), body.use_memory)
@@ -459,6 +467,14 @@ async fn post_chat_stream(
                 .await;
             (cid, dbg)
         };
+        log::info!(
+            "HTTP chat stream memory: used={} source={} items={} use_memory={} conv_id={}",
+            memory_debug.memory_used,
+            memory_debug.memory_source,
+            memory_debug.memory_items_count,
+            use_memory,
+            conv_id
+        );
         let start = json!({
             "type": "start",
             "conversation_id": conv_id,
