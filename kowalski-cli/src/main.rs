@@ -17,7 +17,7 @@ use kowalski_core::memory::consolidation::{Consolidator, MemoryWeaver};
     author,
     version,
     about = "Kowalski CLI — agents, memory, and MCP operators.",
-    long_about = "Operators: `run`, `config check`, `db migrate`, `doctor`, `mcp ping`, `mcp tools`, `federation ping-notify` (with `--features postgres`), `serve` (see --help on each)."
+    long_about = "Operators: `run`, `config check`, `db migrate`, `doctor`, `mcp ping`, `mcp tools`, `federation ping-notify` (with `--features postgres`) (see --help on each)."
 )]
 struct Cli {
     #[clap(subcommand)]
@@ -105,24 +105,6 @@ enum Commands {
     Federation {
         #[clap(subcommand)]
         command: FederationCommands,
-    },
-    /// Expose a minimal JSON HTTP API for the Vue UI (`GET /api/health`, etc.)
-    Serve {
-        /// Listen address (default 127.0.0.1:3456 — matches `ui/vite.config.ts` proxy)
-        #[clap(long, default_value = "127.0.0.1:3456")]
-        bind: String,
-        /// Config TOML for MCP listing/ping (default ./config.toml)
-        #[clap(short, long)]
-        config: Option<String>,
-        /// Ollama base URL for `/api/doctor` (default http://127.0.0.1:11434)
-        #[clap(long)]
-        ollama_url: Option<String>,
-        /// TLS certificate (PEM). Must be set together with `--tls-key`.
-        #[clap(long, value_name = "PEM")]
-        tls_cert: Option<std::path::PathBuf>,
-        /// TLS private key (PEM). Must be set together with `--tls-cert`.
-        #[clap(long, value_name = "PEM")]
-        tls_key: Option<std::path::PathBuf>,
     },
 }
 
@@ -510,28 +492,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 kowalski_cli::federation_ops::run_ping_notify(config.as_deref()).await?;
             }
         },
-        Some(Commands::Serve {
-            bind,
-            config,
-            ollama_url,
-            tls_cert,
-            tls_key,
-        }) => {
-            let addr: std::net::SocketAddr = bind.parse().map_err(|e| {
-                format!("Invalid --bind {:?}: {}", bind, e)
-            })?;
-            let tls = match (tls_cert, tls_key) {
-                (Some(c), Some(k)) => Some((c, k)),
-                (None, None) => None,
-                _ => {
-                    return Err(
-                        "--tls-cert and --tls-key must be set together (or both omitted)"
-                            .into(),
-                    );
-                }
-            };
-            kowalski_cli::http_api::serve(addr, config, ollama_url, tls).await?;
-        },
         Some(Commands::Consolidate { delete }) => {
             let config = Config::default();
             let ollama_model = &config.ollama.model;
@@ -703,7 +663,7 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
                 println!("  kowalski-cli db migrate [--url] [-c config.toml]");
                 println!("  kowalski-cli doctor [--ollama-url URL]");
                 println!("  kowalski-cli federation ping-notify [-c config.toml]  — pg_notify smoke (needs --features postgres)");
-                println!("  kowalski-cli serve …  — /api/federation/registry, /api/federation/stream (SSE), /api/federation/delegate; with --features postgres + memory.database_url, LISTEN kowalski_federation → broker");
+                println!("  kowalski serve …      — /api/federation/registry, /api/federation/stream (SSE), /api/federation/delegate; with --features postgres + memory.database_url, LISTEN kowalski_federation → broker");
             }
             "create" => {
                 let agent_type = parts.next();
