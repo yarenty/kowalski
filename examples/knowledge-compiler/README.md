@@ -3,12 +3,14 @@
 This example shows how to run a local-first, markdown-native "knowledge compiler" workflow on top of Kowalski conventions.
 
 ## What this demonstrates
+
 - Ingest raw sources into a stable folder contract.
 - Compile source material into linked markdown in `wiki/`.
 - Generate derived outputs (`reports`, `slides`, `notes`) in `derived/`.
 - Run repeatable quality checks ("knowledge linting").
 
 ## Folder layout
+
 ```text
 examples/knowledge-compiler/
 ├── config/
@@ -36,6 +38,7 @@ examples/knowledge-compiler/
 ```
 
 ## Quick start
+
 From repo root:
 
 ```bash
@@ -46,13 +49,50 @@ bash examples/knowledge-compiler/scripts/ask.sh "What are the core ideas?"
 bash examples/knowledge-compiler/scripts/lint.sh
 ```
 
+Or through the generic extension runner:
+
+```bash
+cargo run -p kowalski-cli -- extension run knowledge-compiler init
+cargo run -p kowalski-cli -- extension run knowledge-compiler ingest "https://example.com/article"
+cargo run -p kowalski-cli -- extension run knowledge-compiler compile
+```
+
+## Federation workflow (first app pattern)
+
+1. Start server:
+
+```bash
+cargo run -p kowalski --bin kowalski
+```
+
+1. Start worker:
+
+```bash
+cargo run -p kowalski-cli -- extension run knowledge-compiler worker kc-worker-1
+```
+
+1. Delegate work:
+
+```bash
+cargo run -p kowalski-cli -- extension run knowledge-compiler delegate kc.compile "kc.compile"
+cargo run -p kowalski-cli -- extension run knowledge-compiler delegate kc.ask "kc.ask:What changed in latest sources?"
+```
+
+1. Inspect registry:
+
+```bash
+cargo run -p kowalski-cli -- extension run knowledge-compiler federation-status
+```
+
 ## How to integrate with Kowalski runtime
+
 - Use `config/agents.yaml` roles to map one `TemplateAgent` per responsibility.
 - Feed prompt files in `prompts/` as role/task instructions.
 - Keep templates in `templates/` as hard output contracts for file-writing tools.
 - Keep all generated assets in this example tree for deterministic runs.
 
 ## Notes
+
 - Scripts are intentionally conservative and filesystem-first.
 - This scaffold does not require Python; it uses shell and markdown contracts.
 - Replace placeholder compile/query logic with your preferred Kowalski operator loop.
