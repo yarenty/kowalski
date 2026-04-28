@@ -56,7 +56,7 @@ kowalski/
 - The command-line interface: `chat`, `run`, `config`, `db migrate`, `doctor`, `mcp ping` / `mcp tools`.
 
 ### **kowalski**
-- The HTTP API server binary: `serve` (HTTP JSON API on `127.0.0.1:3456` by default).
+- The HTTP API server binary: `kowalski` (HTTP JSON API on `127.0.0.1:3456` by default).
 - Build with **`--features postgres`** for SQL memory + pgvector bindings and **`POST /api/graph/cypher`** (Apache AGE) on `serve`.
 
 ### **kowalski-mcp-datafusion**

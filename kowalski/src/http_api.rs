@@ -14,7 +14,9 @@ use futures::Stream;
 use futures::StreamExt;
 use kowalski_core::agent::Agent;
 use kowalski_core::config::Config;
-use kowalski_core::federation::{AgentRecord, AgentRegistry, FederationOrchestrator, MpscBroker};
+use kowalski_core::federation::{
+    AclEnvelope, AclMessage, AgentRecord, AgentRegistry, FederationOrchestrator, MpscBroker,
+};
 #[cfg(feature = "postgres")]
 use kowalski_core::federation::MessageBroker;
 use kowalski_core::template::agent::TemplateAgent;
@@ -181,6 +183,7 @@ pub async fn serve(
         )
         .route("/api/federation/heartbeat", post(post_federation_heartbeat))
         .route("/api/federation/delegate", post(post_federation_delegate))
+        .route("/api/federation/publish", post(post_federation_publish))
         .route("/api/graph/status", get(get_graph_status));
     #[cfg(feature = "postgres")]
     let router = router.route("/api/graph/cypher", post(post_graph_cypher));
@@ -900,6 +903,44 @@ async fn post_federation_delegate(
     Ok(Json(json!({
         "delegated_to": outcome.as_ref().map(|o| &o.agent_id),
         "topic": outcome.as_ref().map(|o| &o.envelope.topic),
+    })))
+}
+
+#[derive(Deserialize)]
+struct FederationPublishBody {
+    sender: String,
+    payload: AclMessage,
+    topic: Option<String>,
+}
+
+async fn post_federation_publish(
+    State(state): State<ApiState>,
+    Json(body): Json<FederationPublishBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let sender = body.sender.trim();
+    if sender.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "sender required".into()));
+    }
+    let topic = body.topic.unwrap_or_else(|| "federation".to_string());
+    let env = AclEnvelope::new(topic, sender.to_string(), body.payload);
+    state
+        .federation
+        .publish(&env)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    #[cfg(feature = "postgres")]
+    if let Some(pg) = &state.federation_pg_notify {
+        if let Err(e) = pg.publish(&env).await {
+            log::warn!("federation pg_notify fan-out (publish): {}", e);
+        }
+    }
+
+    Ok(Json(json!({
+        "ok": true,
+        "id": env.id,
+        "topic": env.topic,
+        "sender": env.sender,
     })))
 }
 

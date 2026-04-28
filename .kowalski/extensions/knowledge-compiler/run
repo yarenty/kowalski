@@ -3,6 +3,42 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 EXAMPLE_DIR="${ROOT_DIR}/examples/knowledge-compiler"
+KOWALSKI_API="${KOWALSKI_API:-http://127.0.0.1:8080}"
+DEFAULT_TOPIC="${KOWALSKI_FEDERATION_TOPIC:-federation}"
+DEFAULT_CAPABILITIES="${KOWALSKI_KC_CAPABILITIES:-knowledge-compiler,kc.compile,kc.ask,kc.lint,kc.ingest}"
+
+post_json() {
+  local url="$1"
+  local body="$2"
+  curl -fsS -X POST "${url}" \
+    -H "Content-Type: application/json" \
+    -d "${body}"
+}
+
+usage() {
+  cat <<'EOF'
+Usage:
+  kowalski-cli extension run knowledge-compiler init
+  kowalski-cli extension run knowledge-compiler ingest "<url-or-title>"
+  kowalski-cli extension run knowledge-compiler compile
+  kowalski-cli extension run knowledge-compiler ask "<question>"
+  kowalski-cli extension run knowledge-compiler lint
+
+Federation:
+  kowalski-cli extension run knowledge-compiler federation-status
+  kowalski-cli extension run knowledge-compiler register <agent-id> [capabilities_csv]
+  kowalski-cli extension run knowledge-compiler deregister <agent-id>
+  kowalski-cli extension run knowledge-compiler heartbeat <agent-id>
+  kowalski-cli extension run knowledge-compiler delegate <capability> "<instruction>" [task-id]
+  kowalski-cli extension run knowledge-compiler worker <agent-id> [topic]
+
+Instruction protocol for delegated tasks:
+  kc.compile
+  kc.lint
+  kc.ingest:<url-or-title>
+  kc.ask:<question>
+EOF
+}
 
 cmd="${1:-}"
 shift || true
@@ -23,8 +59,175 @@ case "${cmd}" in
   lint)
     exec bash "${EXAMPLE_DIR}/scripts/lint.sh" "$@"
     ;;
+  federation-status)
+    curl -fsS "${KOWALSKI_API}/api/federation/registry"
+    ;;
+  register)
+    agent_id="${1:-}"
+    capabilities_csv="${2:-${DEFAULT_CAPABILITIES}}"
+    if [[ -z "${agent_id}" ]]; then
+      echo "register requires <agent-id>"
+      exit 1
+    fi
+    body="$(python3 - "${agent_id}" "${capabilities_csv}" <<'PY'
+import json,sys
+agent_id=sys.argv[1]
+caps=[x.strip() for x in sys.argv[2].split(",") if x.strip()]
+print(json.dumps({"id":agent_id,"capabilities":caps}))
+PY
+)"
+    post_json "${KOWALSKI_API}/api/federation/register" "${body}"
+    ;;
+  deregister)
+    agent_id="${1:-}"
+    if [[ -z "${agent_id}" ]]; then
+      echo "deregister requires <agent-id>"
+      exit 1
+    fi
+    body="$(python3 - "${agent_id}" <<'PY'
+import json,sys
+print(json.dumps({"agent_id":sys.argv[1]}))
+PY
+)"
+    post_json "${KOWALSKI_API}/api/federation/deregister" "${body}"
+    ;;
+  heartbeat)
+    agent_id="${1:-}"
+    if [[ -z "${agent_id}" ]]; then
+      echo "heartbeat requires <agent-id>"
+      exit 1
+    fi
+    body="$(python3 - "${agent_id}" <<'PY'
+import json,sys
+print(json.dumps({"agent_id":sys.argv[1]}))
+PY
+)"
+    post_json "${KOWALSKI_API}/api/federation/heartbeat" "${body}"
+    ;;
+  delegate)
+    capability="${1:-}"
+    instruction="${2:-}"
+    task_id="${3:-kc-$(date +%s)}"
+    if [[ -z "${capability}" || -z "${instruction}" ]]; then
+      echo "delegate requires <capability> \"<instruction>\" [task-id]"
+      exit 1
+    fi
+    body="$(python3 - "${task_id}" "${instruction}" "${capability}" <<'PY'
+import json,sys
+print(json.dumps({
+  "task_id":sys.argv[1],
+  "instruction":sys.argv[2],
+  "capability":sys.argv[3],
+}))
+PY
+)"
+    post_json "${KOWALSKI_API}/api/federation/delegate" "${body}"
+    ;;
+  worker)
+    agent_id="${1:-}"
+    topic="${2:-${DEFAULT_TOPIC}}"
+    if [[ -z "${agent_id}" ]]; then
+      echo "worker requires <agent-id>"
+      exit 1
+    fi
+    echo "Starting worker '${agent_id}' on ${KOWALSKI_API}, topic=${topic}"
+    "${BASH_SOURCE[0]}" register "${agent_id}" >/dev/null
+    trap '"${BASH_SOURCE[0]}" deregister "'"${agent_id}"'" >/dev/null 2>&1 || true' EXIT
+    while true; do
+      curl -N -fsS "${KOWALSKI_API}/api/federation/stream?topic=${topic}" | while IFS= read -r line; do
+        [[ "${line}" == data:* ]] || continue
+        payload="${line#data: }"
+        parsed="$(python3 - "${payload}" "${agent_id}" <<'PY'
+import json,sys
+raw=sys.argv[1]
+agent_id=sys.argv[2]
+try:
+    env=json.loads(raw)
+    msg=env.get("payload",{})
+    if msg.get("kind")!="task_delegate":
+        print("")
+        raise SystemExit(0)
+    if msg.get("to_agent")!=agent_id:
+        print("")
+        raise SystemExit(0)
+    print(json.dumps({
+        "task_id":msg.get("task_id",""),
+        "instruction":msg.get("instruction",""),
+        "from_agent":msg.get("from_agent",""),
+    }))
+except Exception:
+    print("")
+PY
+)"
+        [[ -n "${parsed}" ]] || continue
+
+        task_id="$(python3 - "${parsed}" <<'PY'
+import json,sys
+print(json.loads(sys.argv[1])["task_id"])
+PY
+)"
+        instruction="$(python3 - "${parsed}" <<'PY'
+import json,sys
+print(json.loads(sys.argv[1])["instruction"])
+PY
+)"
+        from_agent="$(python3 - "${parsed}" <<'PY'
+import json,sys
+print(json.loads(sys.argv[1])["from_agent"])
+PY
+)"
+
+        success=true
+        outcome=""
+        if [[ "${instruction}" == "kc.compile" ]]; then
+          bash "${EXAMPLE_DIR}/scripts/compile.sh" || success=false
+          outcome="compiled latest source into wiki"
+        elif [[ "${instruction}" == "kc.lint" ]]; then
+          bash "${EXAMPLE_DIR}/scripts/lint.sh" || success=false
+          outcome="ran knowledge lint checks"
+        elif [[ "${instruction}" == kc.ingest:* ]]; then
+          value="${instruction#kc.ingest:}"
+          bash "${EXAMPLE_DIR}/scripts/ingest.sh" "${value}" || success=false
+          outcome="ingested source: ${value}"
+        elif [[ "${instruction}" == kc.ask:* ]]; then
+          value="${instruction#kc.ask:}"
+          bash "${EXAMPLE_DIR}/scripts/ask.sh" "${value}" || success=false
+          outcome="answered question: ${value}"
+        else
+          success=false
+          outcome="unsupported instruction '${instruction}'"
+        fi
+
+        result_body="$(python3 - "${agent_id}" "${task_id}" "${from_agent}" "${outcome}" "${success}" "${topic}" <<'PY'
+import json,sys
+sender=sys.argv[1]
+task_id=sys.argv[2]
+from_agent=sys.argv[3]
+outcome=sys.argv[4]
+success=sys.argv[5].lower()=="true"
+topic=sys.argv[6]
+payload={
+  "kind":"task_result",
+  "task_id":task_id,
+  "from_agent":sender,
+  "outcome":outcome,
+  "success":success
+}
+print(json.dumps({"sender":sender,"topic":topic,"payload":payload}))
+PY
+)"
+        post_json "${KOWALSKI_API}/api/federation/publish" "${result_body}" >/dev/null || true
+        "${BASH_SOURCE[0]}" heartbeat "${agent_id}" >/dev/null || true
+      done
+      sleep 1
+    done
+    ;;
+  help|-h|--help|"")
+    usage
+    ;;
   *)
-    echo "Usage: kowalski-cli extension run knowledge-compiler <init|ingest|compile|ask|lint> [args...]"
-    exit 1
+    echo "Unknown command: ${cmd}"
+    usage
+    exit 2
     ;;
 esac
