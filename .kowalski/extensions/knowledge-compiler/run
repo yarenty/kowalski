@@ -6,6 +6,7 @@ EXAMPLE_DIR="${ROOT_DIR}/examples/knowledge-compiler"
 KOWALSKI_API="${KOWALSKI_API:-http://127.0.0.1:8080}"
 DEFAULT_TOPIC="${KOWALSKI_FEDERATION_TOPIC:-federation}"
 DEFAULT_CAPABILITIES="${KOWALSKI_KC_CAPABILITIES:-knowledge-compiler,kc.compile,kc.ask,kc.lint,kc.ingest}"
+CHAT_ENDPOINT="${KOWALSKI_API}/api/chat"
 
 post_json() {
   local url="$1"
@@ -13,6 +14,223 @@ post_json() {
   curl -fsS -X POST "${url}" \
     -H "Content-Type: application/json" \
     -d "${body}"
+}
+
+require_kowalski_api() {
+  if ! curl -fsS "${KOWALSKI_API}/api/health" >/dev/null 2>&1; then
+    echo "Kowalski API unreachable at ${KOWALSKI_API}. Start it with:"
+    echo "  cargo run -p kowalski --bin kowalski"
+    exit 1
+  fi
+}
+
+kc_chat() {
+  local prompt="$1"
+  local response
+  response="$(python3 - "${CHAT_ENDPOINT}" "${prompt}" <<'PY'
+import json,sys,urllib.request,urllib.error
+url=sys.argv[1]
+msg=sys.argv[2]
+data=json.dumps({"message":msg,"use_memory":False}).encode()
+req=urllib.request.Request(url,data=data,headers={"Content-Type":"application/json"},method="POST")
+try:
+    with urllib.request.urlopen(req,timeout=120) as r:
+        body=r.read().decode("utf-8","replace")
+except urllib.error.HTTPError as e:
+    err=e.read().decode("utf-8","replace")
+    print(f"HTTP {e.code}: {err}",file=sys.stderr)
+    raise SystemExit(2)
+except Exception as e:
+    print(str(e),file=sys.stderr)
+    raise SystemExit(3)
+obj=json.loads(body)
+print(obj.get("reply","").strip())
+PY
+)"
+  printf "%s\n" "${response}"
+}
+
+read_file_or_empty() {
+  local f="$1"
+  [[ -f "${f}" ]] && cat "${f}" || true
+}
+
+compile_agent() {
+  require_kowalski_api
+  bash "${EXAMPLE_DIR}/scripts/init.sh" >/dev/null
+  local latest_source
+  latest_source="$(ls -1 "${EXAMPLE_DIR}/raw/sources"/*.md 2>/dev/null | sort | tail -n 1 || true)"
+  if [[ -z "${latest_source}" ]]; then
+    echo "No source files found. Ingest first."
+    exit 1
+  fi
+
+  local compiler_prompt
+  compiler_prompt="$(read_file_or_empty "${EXAMPLE_DIR}/prompts/compiler.md")"
+  local source_text
+  source_text="$(read_file_or_empty "${latest_source}")"
+  local index_text
+  index_text="$(read_file_or_empty "${EXAMPLE_DIR}/wiki/index.md")"
+
+  local summary_md
+  summary_md="$(kc_chat "${compiler_prompt}
+
+You are compiling the wiki for the Knowledge Compiler app.
+Return ONLY markdown for a source summary page.
+Use sections:
+# Source Summary
+## Summary
+## Extracted Concepts
+## Notable Claims
+## Sources
+
+Source file path: ${latest_source}
+Source content:
+${source_text}
+
+Existing wiki index:
+${index_text}
+")"
+
+  local base_name summary_file
+  base_name="$(basename "${latest_source}" .md)"
+  summary_file="${EXAMPLE_DIR}/wiki/summaries/${base_name}.md"
+  printf "%s\n" "${summary_md}" > "${summary_file}"
+
+  local concept_md
+  concept_md="$(kc_chat "${compiler_prompt}
+
+Return ONLY markdown for one concept page inferred from the source.
+Use sections:
+# <Concept Name>
+## Summary
+## Key Points
+## Related Concepts
+## Sources
+## Open Questions
+
+Source summary:
+${summary_md}
+")"
+
+  local concept_title concept_slug concept_file
+  concept_title="$(printf "%s\n" "${concept_md}" | awk 'NR==1{sub(/^# */,"");print;exit}')"
+  if [[ -z "${concept_title}" ]]; then
+    concept_title="knowledge-compiler"
+  fi
+  concept_slug="$(echo "${concept_title}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-')"
+  concept_file="${EXAMPLE_DIR}/wiki/concepts/${concept_slug}.md"
+  printf "%s\n" "${concept_md}" > "${concept_file}"
+
+  local index_md
+  index_md="$(python3 - "${EXAMPLE_DIR}/wiki/concepts" "${EXAMPLE_DIR}/wiki/summaries" <<'PY'
+import os,sys
+concept_dir=sys.argv[1]
+summary_dir=sys.argv[2]
+def links(d):
+    out=[]
+    if os.path.isdir(d):
+        for n in sorted(os.listdir(d)):
+            if n.endswith(".md"):
+                out.append(f"- [[{n[:-3]}]]")
+    return out or ["- (none yet)"]
+print("# Knowledge Compiler Index\n")
+print("## Concepts")
+print("\n".join(links(concept_dir)))
+print("\n## Source Summaries")
+print("\n".join(links(summary_dir)))
+PY
+)"
+  printf "%s\n" "${index_md}" > "${EXAMPLE_DIR}/wiki/index.md"
+  echo "Compiled latest source with TemplateAgent via /api/chat."
+}
+
+ask_agent() {
+  require_kowalski_api
+  local question="${1:-}"
+  if [[ -z "${question}" ]]; then
+    echo "ask requires a question"
+    exit 1
+  fi
+  bash "${EXAMPLE_DIR}/scripts/init.sh" >/dev/null
+  local query_prompt wiki_context answer stamp out
+  query_prompt="$(read_file_or_empty "${EXAMPLE_DIR}/prompts/query.md")"
+  wiki_context="$(python3 - "${EXAMPLE_DIR}/wiki" <<'PY'
+import os,sys
+root=sys.argv[1]
+chunks=[]
+for sub in ("index.md","concepts","summaries"):
+    p=os.path.join(root,sub)
+    if os.path.isfile(p):
+        with open(p,"r",encoding="utf-8",errors="replace") as f:
+            chunks.append(f"\n# FILE: {p}\n"+f.read())
+    elif os.path.isdir(p):
+        for n in sorted(os.listdir(p))[:40]:
+            if not n.endswith(".md"): continue
+            fp=os.path.join(p,n)
+            with open(fp,"r",encoding="utf-8",errors="replace") as f:
+                chunks.append(f"\n# FILE: {fp}\n"+f.read())
+print("\n".join(chunks))
+PY
+)"
+  answer="$(kc_chat "${query_prompt}
+
+Question:
+${question}
+
+Wiki context:
+${wiki_context}
+
+Return ONLY markdown. Include:
+# Knowledge Compiler Answer
+## Question
+## Response
+## Sources Used
+")"
+  stamp="$(date +%Y%m%d-%H%M%S)"
+  out="${EXAMPLE_DIR}/derived/reports/${stamp}-answer.md"
+  printf "%s\n" "${answer}" > "${out}"
+  echo "Wrote report: ${out}"
+}
+
+lint_agent() {
+  require_kowalski_api
+  bash "${EXAMPLE_DIR}/scripts/init.sh" >/dev/null
+  local lint_prompt wiki_context report out
+  lint_prompt="$(read_file_or_empty "${EXAMPLE_DIR}/prompts/lint.md")"
+  wiki_context="$(python3 - "${EXAMPLE_DIR}/wiki" <<'PY'
+import os,sys,re
+root=sys.argv[1]
+chunks=[]
+for sub in ("index.md","concepts","summaries"):
+    p=os.path.join(root,sub)
+    if os.path.isfile(p):
+        with open(p,"r",encoding="utf-8",errors="replace") as f:
+            chunks.append(f"\n# FILE: {p}\n"+f.read())
+    elif os.path.isdir(p):
+        for n in sorted(os.listdir(p))[:60]:
+            if not n.endswith(".md"): continue
+            fp=os.path.join(p,n)
+            with open(fp,"r",encoding="utf-8",errors="replace") as f:
+                chunks.append(f"\n# FILE: {fp}\n"+f.read())
+print("\n".join(chunks))
+PY
+)"
+  report="$(kc_chat "${lint_prompt}
+
+Wiki corpus:
+${wiki_context}
+
+Return ONLY markdown:
+# Knowledge Lint Report
+## Snapshot
+## Issues
+## Suggested Fixes
+## Candidate New Articles
+")"
+  out="${EXAMPLE_DIR}/derived/lint/latest.md"
+  printf "%s\n" "${report}" > "${out}"
+  echo "Wrote lint report: ${out}"
 }
 
 usage() {
@@ -51,13 +269,13 @@ case "${cmd}" in
     exec bash "${EXAMPLE_DIR}/scripts/ingest.sh" "$@"
     ;;
   compile)
-    exec bash "${EXAMPLE_DIR}/scripts/compile.sh" "$@"
+    compile_agent "$@"
     ;;
   ask)
-    exec bash "${EXAMPLE_DIR}/scripts/ask.sh" "$@"
+    ask_agent "$@"
     ;;
   lint)
-    exec bash "${EXAMPLE_DIR}/scripts/lint.sh" "$@"
+    lint_agent "$@"
     ;;
   federation-status)
     curl -fsS "${KOWALSKI_API}/api/federation/registry"
@@ -180,10 +398,10 @@ PY
         success=true
         outcome=""
         if [[ "${instruction}" == "kc.compile" ]]; then
-          bash "${EXAMPLE_DIR}/scripts/compile.sh" || success=false
+          compile_agent || success=false
           outcome="compiled latest source into wiki"
         elif [[ "${instruction}" == "kc.lint" ]]; then
-          bash "${EXAMPLE_DIR}/scripts/lint.sh" || success=false
+          lint_agent || success=false
           outcome="ran knowledge lint checks"
         elif [[ "${instruction}" == kc.ingest:* ]]; then
           value="${instruction#kc.ingest:}"
@@ -191,7 +409,7 @@ PY
           outcome="ingested source: ${value}"
         elif [[ "${instruction}" == kc.ask:* ]]; then
           value="${instruction#kc.ask:}"
-          bash "${EXAMPLE_DIR}/scripts/ask.sh" "${value}" || success=false
+          ask_agent "${value}" || success=false
           outcome="answered question: ${value}"
         else
           success=false
