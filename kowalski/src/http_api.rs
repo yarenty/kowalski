@@ -359,6 +359,9 @@ struct ChatBody {
     /// When true, include retrieved memory snippets in prompt assembly.
     #[serde(default = "default_true")]
     use_memory: bool,
+    /// When false, bypass tool loop and generate plain assistant text.
+    #[serde(default = "default_true")]
+    use_tools: bool,
     /// When true, `POST /api/chat/stream` runs the tool loop and streams **only** the first LLM turn after a tool result (final answer); earlier turns are non-streamed like `POST /api/chat`.
     #[serde(default)]
     tools_stream: bool,
@@ -483,11 +486,20 @@ async fn post_chat(
         body.use_memory,
         conv_id
     );
-    let reply = guard
-        .agent
-        .chat_with_tools_with_options(&conv_id, body.message.trim(), body.use_memory)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let reply = if body.use_tools {
+        guard
+            .agent
+            .chat_with_tools_with_options(&conv_id, body.message.trim(), body.use_memory)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    } else {
+        // Plain generation path for deterministic app-level workflows.
+        guard
+            .agent
+            .chat_with_history(&conv_id, body.message.trim(), None)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    };
     Ok(Json(ChatResponse {
         reply,
         mode: "agent",

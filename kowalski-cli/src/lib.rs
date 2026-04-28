@@ -1,3 +1,4 @@
+pub mod agent_app_ops;
 pub mod config;
 pub mod error;
 pub mod extension_ops;

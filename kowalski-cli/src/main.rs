@@ -111,6 +111,11 @@ enum Commands {
         #[clap(subcommand)]
         command: ExtensionCommands,
     },
+    /// Markdown-defined app agents (main + sub-agents in .md files)
+    AgentApp {
+        #[clap(subcommand)]
+        command: AgentAppCommands,
+    },
 }
 
 #[derive(Parser, Debug)]
@@ -173,6 +178,36 @@ enum ExtensionCommands {
         /// Arguments forwarded to extension command
         #[clap(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
+    },
+}
+
+#[derive(Parser, Debug)]
+enum AgentAppCommands {
+    /// List declared agents and pipeline
+    List {
+        /// App root path (default: examples/knowledge-compiler)
+        #[clap(short, long)]
+        path: Option<String>,
+    },
+    /// Validate main-agent/sub-agent definitions and references
+    Validate {
+        /// App root path (default: examples/knowledge-compiler)
+        #[clap(short, long)]
+        path: Option<String>,
+    },
+    /// Run main agent orchestration
+    Run {
+        /// Source URL or text
+        source: String,
+        /// Optional question for query phase
+        #[clap(short, long)]
+        question: Option<String>,
+        /// App root path (default: examples/knowledge-compiler)
+        #[clap(short, long)]
+        path: Option<String>,
+        /// Kowalski API base URL (default: http://127.0.0.1:3456)
+        #[clap(long)]
+        api: Option<String>,
     },
 }
 
@@ -528,6 +563,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 kowalski_cli::extension_ops::run_extension(&name, &args)?;
             }
         },
+        Some(Commands::AgentApp { command }) => match command {
+            AgentAppCommands::List { path } => {
+                kowalski_cli::agent_app_ops::list_agents(path.as_deref())?;
+            }
+            AgentAppCommands::Validate { path } => {
+                kowalski_cli::agent_app_ops::validate(path.as_deref())?;
+            }
+            AgentAppCommands::Run {
+                source,
+                question,
+                path,
+                api,
+            } => {
+                kowalski_cli::agent_app_ops::run(
+                    path.as_deref(),
+                    &source,
+                    question.as_deref(),
+                    api.as_deref(),
+                )?;
+            }
+        },
         Some(Commands::Consolidate { delete }) => {
             let config = Config::default();
             let ollama_model = &config.ollama.model;
@@ -701,6 +757,7 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
                 println!("  kowalski-cli federation ping-notify [-c config.toml]  — pg_notify smoke (needs --features postgres)");
                 println!("  kowalski-cli extension list");
                 println!("  kowalski-cli extension run <name> [-- <args...>]");
+                println!("  kowalski-cli agent-app <list|validate|run> [args]");
                 println!("  kowalski  — /api/federation/registry, /api/federation/stream (SSE), /api/federation/delegate; with --features postgres + memory.database_url, LISTEN kowalski_federation → broker");
             }
             "create" => {

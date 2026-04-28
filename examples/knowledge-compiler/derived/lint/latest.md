@@ -1,13 +1,14 @@
 # Knowledge Lint Report
 
 ## Snapshot
-- Concept pages: 1
-- Summary pages: 1
-- Broken links detected: 0
+- Fallback report generated due to empty model output.
 
 ## Issues
-- Placeholder lint implementation; integrate `prompts/lint.md` with a Kowalski lint agent.
+- Model returned empty payload.
 
 ## Suggested Fixes
-- Add link integrity check against actual wiki filenames.
-- Add duplicate concept detection by normalized title.
+- Re-run lint after confirming LLM backend behavior.
+
+## Candidate New Articles
+- Knowledge Compiler Workflow
+- Source Quality Checklist

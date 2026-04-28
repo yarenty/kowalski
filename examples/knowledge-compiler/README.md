@@ -52,10 +52,22 @@ bash examples/knowledge-compiler/scripts/lint.sh
 Or through the generic extension runner:
 
 ```bash
-cargo run -p kowalski-cli -- extension run knowledge-compiler init
-cargo run -p kowalski-cli -- extension run knowledge-compiler ingest "https://example.com/article"
-cargo run -p kowalski-cli -- extension run knowledge-compiler compile
+cargo run -p kowalski-cli -- extension run knowledge-compiler list
+cargo run -p kowalski-cli -- extension run knowledge-compiler validate
+cargo run -p kowalski-cli -- extension run knowledge-compiler run "https://example.com/article" --question "What changed?"
 ```
+
+## Main/sub-agent definitions (markdown only)
+
+- Main agent definition: `main-agent.md`
+- Sub-agent definitions: `agents/*.md`
+- Prompts remain in `prompts/*.md`
+
+The runtime validates:
+
+- declared available agent names
+- pipeline references against declared agents
+- presence of sub-agent definition files
 
 ## Federation workflow (first app pattern)
 
@@ -65,23 +77,22 @@ cargo run -p kowalski-cli -- extension run knowledge-compiler compile
 cargo run -p kowalski --bin kowalski
 ```
 
-1. Start worker:
+1. Start worker/orchestrator client:
 
 ```bash
-cargo run -p kowalski-cli -- extension run knowledge-compiler worker kc-worker-1
+cargo run -p kowalski-cli -- extension run knowledge-compiler run "https://example.com/article" --question "What changed?"
 ```
 
-1. Delegate work:
+1. Validate current agent definition set:
 
 ```bash
-cargo run -p kowalski-cli -- extension run knowledge-compiler delegate kc.compile "kc.compile"
-cargo run -p kowalski-cli -- extension run knowledge-compiler delegate kc.ask "kc.ask:What changed in latest sources?"
+cargo run -p kowalski-cli -- extension run knowledge-compiler validate
 ```
 
-1. Inspect registry:
+1. Inspect main/sub-agent map:
 
 ```bash
-cargo run -p kowalski-cli -- extension run knowledge-compiler federation-status
+cargo run -p kowalski-cli -- extension run knowledge-compiler list
 ```
 
 ## How to integrate with Kowalski runtime
@@ -90,9 +101,11 @@ cargo run -p kowalski-cli -- extension run knowledge-compiler federation-status
 - Feed prompt files in `prompts/` as role/task instructions.
 - Keep templates in `templates/` as hard output contracts for file-writing tools.
 - Keep all generated assets in this example tree for deterministic runs.
+- Use markdown definitions (`main-agent.md` + `agents/*.md`) as the source of truth for orchestration and specialist agents.
 
 ## Notes
 
 - Scripts are intentionally conservative and filesystem-first.
 - This scaffold does not require Python; it uses shell and markdown contracts.
-- Replace placeholder compile/query logic with your preferred Kowalski operator loop.
+- `agent-app run` executes specialist agents from markdown definitions and writes a run log under `scratch/`.
+- generation uses `/api/chat` no-tools mode for deterministic markdown output.
