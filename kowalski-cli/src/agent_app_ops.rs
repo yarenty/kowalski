@@ -208,6 +208,196 @@ fn ensure_dirs(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn normalize_markdown_sections(
+    raw: &str,
+    title: &str,
+    required_sections: &[&str],
+    fallback_body: &str,
+) -> String {
+    let trimmed = raw.trim();
+    let mut out = String::new();
+    if trimmed.is_empty() || trimmed == "{}" || trimmed == "null" {
+        out.push_str(&format!("# {}\n\n", title));
+        for s in required_sections {
+            out.push_str(&format!("## {}\n", s));
+            if *s == "Summary" || *s == "Response" || *s == "Issues" {
+                out.push_str(fallback_body);
+                out.push('\n');
+            }
+            out.push('\n');
+        }
+        return out;
+    }
+
+    let mut body = trimmed.to_string();
+    if !body.starts_with("# ") {
+        body = format!("# {}\n\n{}", title, body);
+    }
+    for s in required_sections {
+        let marker = format!("## {}", s);
+        if !body.contains(&marker) {
+            body.push_str(&format!("\n\n{}\n", marker));
+            if *s == "Summary" || *s == "Response" || *s == "Issues" {
+                body.push_str(fallback_body);
+                body.push('\n');
+            }
+        }
+    }
+    body.push('\n');
+    body
+}
+
+fn rebuild_index(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let concept_dir = root.join("wiki/concepts");
+    let summary_dir = root.join("wiki/summaries");
+    let mut concepts = Vec::new();
+    let mut summaries = Vec::new();
+
+    if concept_dir.exists() {
+        for e in fs::read_dir(&concept_dir)? {
+            let p = e?.path();
+            if p.extension().and_then(|x| x.to_str()) == Some("md")
+                && let Some(stem) = p.file_stem().and_then(|x| x.to_str())
+            {
+                concepts.push(format!("- [[{}]]", stem));
+            }
+        }
+    }
+    if summary_dir.exists() {
+        for e in fs::read_dir(&summary_dir)? {
+            let p = e?.path();
+            if p.extension().and_then(|x| x.to_str()) == Some("md")
+                && let Some(stem) = p.file_stem().and_then(|x| x.to_str())
+            {
+                summaries.push(format!("- [[{}]]", stem));
+            }
+        }
+    }
+    concepts.sort();
+    summaries.sort();
+    if concepts.is_empty() {
+        concepts.push("- (none yet)".to_string());
+    }
+    if summaries.is_empty() {
+        summaries.push("- (none yet)".to_string());
+    }
+    let idx = format!(
+        "# Knowledge Compiler Index\n\n## Concepts\n{}\n\n## Source Summaries\n{}\n",
+        concepts.join("\n"),
+        summaries.join("\n")
+    );
+    fs::write(root.join("wiki/index.md"), idx)?;
+    Ok(())
+}
+
+fn extract_wikilinks(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let bytes = text.as_bytes();
+    let mut i = 0usize;
+    while i + 3 < bytes.len() {
+        if bytes[i] == b'[' && bytes[i + 1] == b'[' {
+            let start = i + 2;
+            let mut j = start;
+            while j + 1 < bytes.len() && !(bytes[j] == b']' && bytes[j + 1] == b']') {
+                j += 1;
+            }
+            if j + 1 < bytes.len() && j > start {
+                let raw = text[start..j].trim();
+                if !raw.is_empty() {
+                    out.push(raw.to_string());
+                }
+                i = j + 2;
+                continue;
+            }
+            break;
+        }
+        i += 1;
+    }
+    out
+}
+
+fn ensure_concept_source_backlink(
+    concept_path: &Path,
+    concept_title: &str,
+    summary_stem: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut body = read_or_empty(concept_path);
+    let source_link = format!("[[{}]]", summary_stem);
+    if body.contains(&source_link) {
+        return Ok(());
+    }
+    if body.trim().is_empty() {
+        body = format!(
+            "# {}\n\n## Summary\nStub concept generated from summary links.\n\n## Sources\n- {}\n",
+            concept_title, source_link
+        );
+    } else if body.contains("## Sources") {
+        body.push_str(&format!("\n- {}\n", source_link));
+    } else {
+        body.push_str(&format!("\n\n## Sources\n- {}\n", source_link));
+    }
+    fs::write(concept_path, body)?;
+    Ok(())
+}
+
+fn normalize_and_repair_wiki(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let concept_dir = root.join("wiki/concepts");
+    let summary_dir = root.join("wiki/summaries");
+    fs::create_dir_all(&concept_dir)?;
+    fs::create_dir_all(&summary_dir)?;
+
+    // 1) Normalize concept filenames to slug format.
+    let mut concept_files = Vec::new();
+    for e in fs::read_dir(&concept_dir)? {
+        let p = e?.path();
+        if p.extension().and_then(|x| x.to_str()) == Some("md") {
+            concept_files.push(p);
+        }
+    }
+    for p in concept_files {
+        let stem = p.file_stem().and_then(|x| x.to_str()).unwrap_or("");
+        let normalized = slugify(stem);
+        if normalized.is_empty() || normalized == stem {
+            continue;
+        }
+        let target = concept_dir.join(format!("{normalized}.md"));
+        if target.exists() {
+            let src = read_or_empty(&p);
+            let mut dst = read_or_empty(&target);
+            if !src.trim().is_empty() {
+                dst.push_str("\n\n");
+                dst.push_str(&src);
+                fs::write(&target, dst)?;
+            }
+            fs::remove_file(&p)?;
+        } else {
+            fs::rename(&p, &target)?;
+        }
+    }
+
+    // 2) Ensure concept pages exist for summary wikilinks and include backlinks.
+    for e in fs::read_dir(&summary_dir)? {
+        let p = e?.path();
+        if p.extension().and_then(|x| x.to_str()) != Some("md") {
+            continue;
+        }
+        let summary_stem = p.file_stem().and_then(|x| x.to_str()).unwrap_or("summary");
+        let summary_text = read_or_empty(&p);
+        let links = extract_wikilinks(&summary_text);
+        for link in links {
+            let slug = slugify(&link);
+            if slug.is_empty() || slug == "index" {
+                continue;
+            }
+            let concept_path = concept_dir.join(format!("{slug}.md"));
+            ensure_concept_source_backlink(&concept_path, &link, summary_stem)?;
+        }
+    }
+
+    rebuild_index(root)?;
+    Ok(())
+}
+
 fn ingest_source(root: &Path, source: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
     ensure_dirs(root)?;
     let stamp = Utc::now().format("%Y%m%d-%H%M%S");
@@ -272,11 +462,15 @@ pub fn run(
                 let summary_out = root.join(agent.meta.output.as_deref().unwrap_or("wiki/summaries/latest.md"));
                 let src = read_or_empty(&latest_source);
                 let msg = format!("{prompt}\n\nSource file: {}\n\n{}\n", latest_source.display(), src);
-                let mut reply = chat_no_tools(api, &msg)?;
-                if reply.trim().is_empty() || reply.trim() == "{}" {
-                    reply = "# Source Summary\n\n## Summary\nFallback summary due to empty model output.\n".to_string();
-                }
+                let reply = chat_no_tools(api, &msg)?;
+                let reply = normalize_markdown_sections(
+                    &reply,
+                    "Source Summary",
+                    &["Summary", "Extracted Concepts", "Notable Claims", "Sources"],
+                    "Fallback summary due to empty or malformed model output.",
+                );
                 fs::write(&summary_out, &reply)?;
+                normalize_and_repair_wiki(root)?;
                 log.push_str(&format!("- output: {}\n\n", summary_out.display()));
             }
             "ask" => {
@@ -285,10 +479,13 @@ pub fn run(
                 let out = root.join(agent.meta.output.as_deref().unwrap_or("derived/reports/latest.md"));
                 let idx = read_or_empty(&root.join("wiki/index.md"));
                 let msg = format!("{prompt}\n\nQuestion: {q}\n\nWiki index:\n{idx}\n");
-                let mut reply = chat_no_tools(api, &msg)?;
-                if reply.trim().is_empty() || reply.trim() == "{}" {
-                    reply = format!("# Knowledge Compiler Answer\n\n## Question\n{q}\n\n## Response\nFallback answer.\n");
-                }
+                let reply = chat_no_tools(api, &msg)?;
+                let reply = normalize_markdown_sections(
+                    &reply,
+                    "Knowledge Compiler Answer",
+                    &["Question", "Response", "Sources Used"],
+                    "Fallback answer due to empty or malformed model output.",
+                );
                 fs::write(&out, &reply)?;
                 log.push_str(&format!("- output: {}\n\n", out.display()));
             }
@@ -298,10 +495,13 @@ pub fn run(
                 let out = root.join(agent.meta.output.as_deref().unwrap_or("derived/lint/latest.md"));
                 let idx = read_or_empty(&root.join("wiki/index.md"));
                 let msg = format!("{prompt}\n\nWiki index:\n{idx}\n");
-                let mut reply = chat_no_tools(api, &msg)?;
-                if reply.trim().is_empty() || reply.trim() == "{}" {
-                    reply = "# Knowledge Lint Report\n\n## Issues\n- Fallback lint output.\n".to_string();
-                }
+                let reply = chat_no_tools(api, &msg)?;
+                let reply = normalize_markdown_sections(
+                    &reply,
+                    "Knowledge Lint Report",
+                    &["Snapshot", "Issues", "Suggested Fixes", "Candidate New Articles"],
+                    "- Fallback lint output due to empty or malformed model output.",
+                );
                 fs::write(&out, &reply)?;
                 log.push_str(&format!("- output: {}\n\n", out.display()));
             }
