@@ -1,5 +1,5 @@
 <script setup lang="ts">
-type TabId = "home" | "mcp" | "chat" | "federation" | "graph" | "about";
+type TabId = "home" | "mcp" | "chat" | "federation-management" | "federation-run" | "graph" | "about";
 type ConversationItem = {
   id: string;
   title: string;
@@ -33,7 +33,8 @@ const emit = defineEmits<{
       <nav class="nav">
         <button :class="{ active: activeTab === 'chat' }" @click="emit('select-tab', 'chat')">Chat</button>
         <button :class="{ active: activeTab === 'mcp' }" @click="emit('select-tab', 'mcp')">MCP</button>
-        <button :class="{ active: activeTab === 'federation' }" @click="emit('select-tab', 'federation')">Federation</button>
+        <button :class="{ active: activeTab === 'federation-management' }" @click="emit('select-tab', 'federation-management')">Federation Mgmt</button>
+        <button :class="{ active: activeTab === 'federation-run' }" @click="emit('select-tab', 'federation-run')">Horde Run</button>
         <button :class="{ active: activeTab === 'graph' }" @click="emit('select-tab', 'graph')">Graph</button>
       </nav>
 

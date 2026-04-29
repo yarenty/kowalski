@@ -3,13 +3,14 @@ import { onMounted, ref } from "vue";
 import SidebarNav from "./components/SidebarNav.vue";
 import AboutPanel from "./panels/AboutPanel.vue";
 import ChatPanel from "./panels/ChatPanel.vue";
-import FederationPanel from "./panels/FederationPanel.vue";
+import FederationManagementPanel from "./panels/FederationManagementPanel.vue";
+import FederationRunPanel from "./panels/FederationRunPanel.vue";
 import GraphPanel from "./panels/GraphPanel.vue";
 import HomePanel from "./panels/HomePanel.vue";
 import McpPanel from "./panels/McpPanel.vue";
 import { api, chatStream } from "./api";
 
-const tab = ref<"home" | "mcp" | "chat" | "federation" | "graph" | "about">("chat");
+const tab = ref<"home" | "mcp" | "chat" | "federation-management" | "federation-run" | "graph" | "about">("chat");
 const sidebarCollapsed = ref(false);
 
 type ChatTurn = { role: "user" | "assistant"; content: string };
@@ -269,7 +270,8 @@ onMounted(async () => {
         @send-chat="sendChat"
         @new-conversation="newConversation"
       />
-      <FederationPanel v-else-if="tab === 'federation'" />
+      <FederationManagementPanel v-else-if="tab === 'federation-management'" />
+      <FederationRunPanel v-else-if="tab === 'federation-run'" />
       <GraphPanel v-else-if="tab === 'graph'" />
       <AboutPanel v-else-if="tab === 'about'" />
     </main>

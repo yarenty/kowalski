@@ -222,7 +222,8 @@ enum AgentAppCommands {
         #[clap(long)]
         api: Option<String>,
     },
-    /// Run a federated worker that executes `kc.run:<source>|<question>` delegates
+    /// Run a federated worker that executes `kc.run:<source>|<question>` delegates,
+    /// or a single sub-agent role (ingest|compile|ask|lint) when `--role` is set.
     Worker {
         /// Worker agent id
         agent_id: String,
@@ -235,6 +236,14 @@ enum AgentAppCommands {
         /// Federation topic (default: federation)
         #[clap(long)]
         topic: Option<String>,
+        /// Restrict the worker to a single sub-agent role: ingest, compile, ask, or lint.
+        /// When omitted the worker handles legacy `kc.run` whole-pipeline delegations.
+        #[clap(long)]
+        role: Option<String>,
+        /// Override the registered capability. Defaults to `kc.<role>` when role is set,
+        /// or `kc.run`+`knowledge-compiler` for legacy mode.
+        #[clap(long)]
+        capability: Option<String>,
     },
     /// Print reproducible end-to-end federation proof-run checklist
     Proof {
@@ -663,6 +672,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 path,
                 api,
                 topic,
+                role,
+                capability,
             } => {
                 let out = tokio::task::spawn_blocking(move || {
                     kowalski_cli::agent_app_ops::federate_worker(
@@ -670,6 +681,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         api.as_deref(),
                         &agent_id,
                         topic.as_deref(),
+                        role.as_deref(),
+                        capability.as_deref(),
                     )
                     .map_err(|e| e.to_string())
                 })

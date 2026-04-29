@@ -67,10 +67,23 @@ impl MpscBroker {
             let g = self.inner.lock().expect("mpsc broker lock");
             g.get(&topic).cloned().unwrap_or_default()
         };
+        let mut any_sent = false;
+        let mut dropped = 0usize;
         for s in senders {
-            s.send(envelope.clone())
-                .await
-                .map_err(|e| KowalskiError::Federation(format!("subscriber dropped: {e}")))?;
+            match s.send(envelope.clone()).await {
+                Ok(_) => any_sent = true,
+                Err(_) => dropped += 1,
+            }
+        }
+        if dropped > 0 {
+            let mut g = self.inner.lock().expect("mpsc broker lock");
+            if let Some(existing) = g.get_mut(&topic) {
+                existing.retain(|s| !s.is_closed());
+            }
+        }
+        if !any_sent {
+            // No live subscribers is a valid runtime state; publishing remains best-effort.
+            return Ok(());
         }
         Ok(())
     }

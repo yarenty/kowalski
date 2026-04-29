@@ -124,6 +124,81 @@ export type FederationRegistryResponse = {
   agents: { id: string; capabilities: string[]; state?: unknown }[];
 };
 
+export type FederationWorkerProfile = {
+  id: string;
+  horde_id?: string;
+  horde_name?: string;
+  step?: string;
+  name: string;
+  description: string;
+  capability: string;
+  agent_id: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  managed_running: boolean;
+  pid?: number | null;
+  last_exit?: string | null;
+  registered_exact?: boolean;
+  stale_registration?: boolean;
+  registry_agents: string[];
+};
+
+export type FederationWorkersResponse = {
+  profiles: FederationWorkerProfile[];
+};
+
+export type HordeSubAgent = {
+  name: string;
+  kind: string;
+  capability: string;
+  default_agent_id: string;
+  display_name: string;
+  description: string;
+  output?: string | null;
+};
+
+export type HordeCatalogItem = {
+  id: string;
+  display_name: string;
+  description: string;
+  capability_prefix: string;
+  pipeline: string[];
+  default_question: string;
+  topic: string;
+  root_path: string;
+  sub_agents: HordeSubAgent[];
+};
+
+export type HordeCatalogResponse = {
+  hordes: HordeCatalogItem[];
+};
+
+export type HordeWorkersResponse = {
+  horde_id: string;
+  workers: FederationWorkerProfile[];
+};
+
+export type HordeRunStepRecord = {
+  step: string;
+  agent_id: string;
+  task_id: string;
+  status: string;
+  artifact?: string | null;
+  summary?: string | null;
+};
+
+export type HordeRunRecord = {
+  run_id: string;
+  horde_id: string;
+  prompt: string;
+  source?: string | null;
+  question: string;
+  status: string;
+  steps: HordeRunStepRecord[];
+  events: Array<Record<string, unknown>>;
+};
+
 export const api = {
   health: () => json<Health>("/api/health"),
   agents: () => json<AgentsResponse>("/api/agents"),
@@ -165,6 +240,45 @@ export const api = {
         : "/api/chat/messages",
     ),
   federationRegistry: () => json<FederationRegistryResponse>("/api/federation/registry"),
+  federationWorkers: () => json<FederationWorkersResponse>("/api/federation/workers"),
+  federationWorkerStart: (profile_id: string) =>
+    json<{ ok: boolean; profile_id: string; already_running: boolean; pid?: number | null }>(
+      "/api/federation/workers/start",
+      {
+        method: "POST",
+        body: JSON.stringify({ profile_id }),
+      },
+    ),
+  federationWorkerStop: (profile_id: string) =>
+    json<{ ok: boolean; profile_id: string; pid?: number | null }>("/api/federation/workers/stop", {
+      method: "POST",
+      body: JSON.stringify({ profile_id }),
+    }),
+  hordes: () => json<HordeCatalogResponse>("/api/hordes"),
+  horde: (hordeId: string) => json<HordeCatalogItem>(`/api/hordes/${encodeURIComponent(hordeId)}`),
+  hordeWorkers: (hordeId: string) =>
+    json<HordeWorkersResponse>(`/api/hordes/${encodeURIComponent(hordeId)}/workers`),
+  hordeWorkersStart: (hordeId: string, step?: string) =>
+    json<{ ok: boolean; started: unknown[] }>(`/api/hordes/${encodeURIComponent(hordeId)}/workers/start`, {
+      method: "POST",
+      body: JSON.stringify(step ? { step } : {}),
+    }),
+  hordeWorkersStop: (hordeId: string, step?: string) =>
+    json<{ ok: boolean; stopped: unknown[] }>(`/api/hordes/${encodeURIComponent(hordeId)}/workers/stop`, {
+      method: "POST",
+      body: JSON.stringify(step ? { step } : {}),
+    }),
+  hordeRun: (hordeId: string, body: { prompt?: string; source?: string; question?: string }) =>
+    json<{ ok: boolean; run: HordeRunRecord }>(`/api/hordes/${encodeURIComponent(hordeId)}/run`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  hordeRuns: (hordeId: string) =>
+    json<{ horde_id: string; runs: HordeRunRecord[] }>(`/api/hordes/${encodeURIComponent(hordeId)}/runs`),
+  hordeRunDetail: (hordeId: string, runId: string) =>
+    json<{ run: HordeRunRecord }>(
+      `/api/hordes/${encodeURIComponent(hordeId)}/runs/${encodeURIComponent(runId)}`,
+    ),
   graphStatus: () => json<Record<string, unknown>>("/api/graph/status"),
   federationDelegate: (body: {
     task_id: string;

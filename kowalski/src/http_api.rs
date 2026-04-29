@@ -2,6 +2,7 @@
 //! `/api/chat` and `/api/chat/stream` use one in-process `TemplateAgent` + configured LLM (`[llm]` +
 //! `[ollama].model` — Ollama or OpenAI-compatible API).
 
+use axum::extract::Path as AxumPath;
 use axum::extract::Query;
 use axum::extract::State;
 use axum::extract::ws::{WebSocket, WebSocketUpgrade};
@@ -22,10 +23,13 @@ use kowalski_core::federation::MessageBroker;
 use kowalski_core::template::agent::TemplateAgent;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::fs::OpenOptions;
 use std::sync::Arc;
+use tokio::process::Child;
 use tokio::sync::Mutex;
 use tokio_stream::wrappers::ReceiverStream;
 use tower_http::cors::CorsLayer;
@@ -54,6 +58,9 @@ struct ApiState {
     chat: Arc<Mutex<ChatState>>,
     federation_broker: Arc<MpscBroker>,
     federation: Arc<FederationOrchestrator>,
+    managed_workers: Arc<Mutex<HashMap<String, Child>>>,
+    managed_worker_last_exit: Arc<Mutex<HashMap<String, String>>>,
+    horde_manager: crate::horde::HordeManager,
     /// Same DB pool as the LISTEN bridge — used to fan out delegates via `NOTIFY`.
     #[cfg(feature = "postgres")]
     federation_pg_notify: Option<Arc<kowalski_core::PgBroker>>,
@@ -147,6 +154,20 @@ pub async fn serve(
         model
     );
 
+    let horde_roots = crate::horde::default_horde_roots(state_config_dir(&config_path).as_deref());
+    let horde_specs = crate::horde::discover_hordes(&horde_roots);
+    log::info!(
+        "horde catalog: {} horde(s) discovered ({:?})",
+        horde_specs.len(),
+        horde_specs.iter().map(|s| &s.id).collect::<Vec<_>>()
+    );
+    let horde_manager = crate::horde::HordeManager::new(
+        horde_specs,
+        federation_broker.clone(),
+        federation.clone(),
+    );
+    crate::horde::spawn_orchestrator_loop(horde_manager.clone());
+
     let state = ApiState {
         config_path,
         ollama_url,
@@ -155,6 +176,9 @@ pub async fn serve(
         chat: Arc::new(Mutex::new(ChatState { agent, conv_id })),
         federation_broker: federation_broker.clone(),
         federation,
+        managed_workers: Arc::new(Mutex::new(HashMap::new())),
+        managed_worker_last_exit: Arc::new(Mutex::new(HashMap::new())),
+        horde_manager,
         #[cfg(feature = "postgres")]
         federation_pg_notify,
     };
@@ -175,6 +199,17 @@ pub async fn serve(
         .route("/api/federation/stream", get(get_federation_stream))
         .route("/api/federation/ws", get(get_federation_ws))
         .route("/api/federation/registry", get(get_federation_registry))
+        .route("/api/federation/workers", get(get_federation_workers))
+        .route("/api/federation/workers/start", post(post_federation_worker_start))
+        .route("/api/federation/workers/stop", post(post_federation_worker_stop))
+        .route("/api/hordes", get(get_hordes))
+        .route("/api/hordes/{horde_id}", get(get_horde_detail))
+        .route("/api/hordes/{horde_id}/workers", get(get_horde_workers))
+        .route("/api/hordes/{horde_id}/workers/start", post(post_horde_worker_start))
+        .route("/api/hordes/{horde_id}/workers/stop", post(post_horde_worker_stop))
+        .route("/api/hordes/{horde_id}/run", post(post_horde_run))
+        .route("/api/hordes/{horde_id}/runs", get(get_horde_runs))
+        .route("/api/hordes/{horde_id}/runs/{run_id}", get(get_horde_run_detail))
         .route("/api/federation/register", post(post_federation_register))
         .route("/api/federation/deregister", post(post_federation_deregister))
         .route(
@@ -736,6 +771,263 @@ async fn get_federation_registry(State(state): State<ApiState>) -> Json<serde_js
     Json(json!({ "agents": agents }))
 }
 
+#[derive(Clone, Serialize)]
+struct WorkerProfile {
+    id: String,
+    horde_id: String,
+    horde_name: String,
+    step: String,
+    name: String,
+    description: String,
+    capability: String,
+    agent_id: String,
+    command: String,
+    args: Vec<String>,
+    cwd: String,
+}
+
+#[derive(Deserialize)]
+struct WorkerControlBody {
+    profile_id: String,
+}
+
+fn repo_root_from_state(state: &ApiState) -> PathBuf {
+    if let Ok(cwd) = std::env::current_dir() {
+        if cwd.join("Cargo.toml").exists() && cwd.join("kowalski-cli").exists() {
+            return cwd;
+        }
+    }
+    let mut p = state.config_path.clone();
+    while let Some(parent) = p.parent() {
+        if parent.join("Cargo.toml").exists() && parent.join("kowalski-cli").exists() {
+            return parent.to_path_buf();
+        }
+        p = parent.to_path_buf();
+    }
+    PathBuf::from("/opt/ml/kowalski")
+}
+
+fn worker_profiles(state: &ApiState) -> Vec<WorkerProfile> {
+    let root = repo_root_from_state(state);
+    let mut out = Vec::new();
+    for spec in state.horde_manager.specs.iter() {
+        for sub in &spec.sub_agents {
+            let id = format!("{}::{}", spec.id, sub.name);
+            out.push(WorkerProfile {
+                id: id.clone(),
+                horde_id: spec.id.clone(),
+                horde_name: spec.display_name.clone(),
+                step: sub.name.clone(),
+                name: sub.display_name.clone(),
+                description: sub.description.clone(),
+                capability: sub.capability.clone(),
+                agent_id: sub.default_agent_id.clone(),
+                command: "cargo".into(),
+                args: vec![
+                    "run".into(),
+                    "-p".into(),
+                    "kowalski-cli".into(),
+                    "--".into(),
+                    "agent-app".into(),
+                    "worker".into(),
+                    "--role".into(),
+                    sub.kind.clone(),
+                    "--capability".into(),
+                    sub.capability.clone(),
+                    "--path".into(),
+                    spec.root_path.display().to_string(),
+                    sub.default_agent_id.clone(),
+                ],
+                cwd: root.display().to_string(),
+            });
+        }
+    }
+    out
+}
+
+fn worker_log_stdio(cwd: &str, profile_id: &str) -> Option<(std::process::Stdio, std::process::Stdio)> {
+    let dir = PathBuf::from(cwd).join("examples/knowledge-compiler/scratch/workers");
+    if std::fs::create_dir_all(&dir).is_err() {
+        return None;
+    }
+    let log_name = profile_id.replace("::", "--");
+    let path = dir.join(format!("{}.log", log_name));
+    let stdout_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .ok()?;
+    let stderr_file = stdout_file.try_clone().ok()?;
+    Some((
+        std::process::Stdio::from(stdout_file),
+        std::process::Stdio::from(stderr_file),
+    ))
+}
+
+async fn get_federation_workers(State(state): State<ApiState>) -> Json<serde_json::Value> {
+    let profiles = worker_profiles(&state);
+    let registry = state.federation.registry.list();
+    let mut managed = state.managed_workers.lock().await;
+    let mut last_exit = state.managed_worker_last_exit.lock().await;
+
+    managed.retain(|profile_id, child| match child.try_wait() {
+        Ok(Some(status)) => {
+            last_exit.insert(
+                profile_id.clone(),
+                format!("exited: code={:?} success={}", status.code(), status.success()),
+            );
+            false
+        }
+        Ok(None) => true,
+        Err(e) => {
+            last_exit.insert(profile_id.clone(), format!("wait error: {}", e));
+            false
+        }
+    });
+
+    let rows: Vec<serde_json::Value> = profiles
+        .iter()
+        .map(|p| worker_row(p, &managed, &last_exit, &registry))
+        .collect();
+
+    Json(json!({ "profiles": rows }))
+}
+
+fn worker_row(
+    p: &WorkerProfile,
+    managed: &HashMap<String, Child>,
+    last_exit: &HashMap<String, String>,
+    registry: &[kowalski_core::federation::AgentRecord],
+) -> serde_json::Value {
+    let pid = managed.get(&p.id).and_then(|c| c.id());
+    let registered_exact = registry.iter().any(|a| a.id == p.agent_id);
+    let registry_ids: Vec<String> = registry
+        .iter()
+        .filter(|a| a.capabilities.iter().any(|c| c == &p.capability))
+        .map(|a| a.id.clone())
+        .collect();
+    json!({
+        "id": p.id,
+        "horde_id": p.horde_id,
+        "horde_name": p.horde_name,
+        "step": p.step,
+        "name": p.name,
+        "description": p.description,
+        "capability": p.capability,
+        "agent_id": p.agent_id,
+        "command": p.command,
+        "args": p.args,
+        "cwd": p.cwd,
+        "managed_running": pid.is_some(),
+        "pid": pid,
+        "last_exit": last_exit.get(&p.id).cloned(),
+        "registered_exact": registered_exact,
+        "stale_registration": registered_exact && pid.is_none(),
+        "registry_agents": registry_ids,
+    })
+}
+
+async fn post_federation_worker_start(
+    State(state): State<ApiState>,
+    Json(body): Json<WorkerControlBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let profile = worker_profiles(&state)
+        .into_iter()
+        .find(|p| p.id == body.profile_id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("unknown worker profile: {}", body.profile_id)))?;
+
+    let mut managed = state.managed_workers.lock().await;
+    let mut last_exit = state.managed_worker_last_exit.lock().await;
+    if let Some(existing) = managed.get_mut(&profile.id) {
+        match existing.try_wait() {
+            Ok(Some(_)) | Err(_) => {
+                managed.remove(&profile.id);
+            }
+            Ok(None) => {
+                return Ok(Json(json!({
+                    "ok": true,
+                    "already_running": true,
+                    "profile_id": profile.id,
+                    "pid": existing.id(),
+                })));
+            }
+        }
+    }
+
+    // If registry still contains a stale agent id for this profile, remove it first.
+    if state.federation.registry.deregister(&profile.agent_id).is_ok() {
+        log::info!(
+            "federation worker start: removed stale registry agent_id={}",
+            profile.agent_id
+        );
+    }
+
+    let mut cmd = tokio::process::Command::new(&profile.command);
+    cmd.args(profile.args.iter()).current_dir(&profile.cwd);
+    if let Some((out, err)) = worker_log_stdio(&profile.cwd, &profile.id) {
+        cmd.stdout(out).stderr(err);
+    } else {
+        cmd.stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+    }
+    let child = cmd
+        .spawn()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("spawn failed: {}", e)))?;
+    log::info!(
+        "federation worker start profile={} agent_id={} pid={:?}",
+        profile.id,
+        profile.agent_id,
+        child.id()
+    );
+    let pid = child.id();
+    managed.insert(profile.id.clone(), child);
+    last_exit.remove(&profile.id);
+
+    Ok(Json(json!({
+        "ok": true,
+        "already_running": false,
+        "profile_id": profile.id,
+        "pid": pid,
+        "command": profile.command,
+        "args": profile.args,
+        "cwd": profile.cwd,
+    })))
+}
+
+async fn post_federation_worker_stop(
+    State(state): State<ApiState>,
+    Json(body): Json<WorkerControlBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let profile = worker_profiles(&state)
+        .into_iter()
+        .find(|p| p.id == body.profile_id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("unknown worker profile: {}", body.profile_id)))?;
+    let mut managed = state.managed_workers.lock().await;
+    let mut last_exit = state.managed_worker_last_exit.lock().await;
+    let mut child = managed
+        .remove(&body.profile_id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("worker not running: {}", body.profile_id)))?;
+    let pid = child.id();
+    child
+        .kill()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("stop failed: {}", e)))?;
+    last_exit.insert(profile.id.clone(), "killed by management".to_string());
+    let _ = state.federation.registry.deregister(&profile.agent_id);
+    log::info!(
+        "federation worker stop profile={} agent_id={} pid={:?}",
+        profile.id,
+        profile.agent_id,
+        pid
+    );
+    Ok(Json(json!({
+        "ok": true,
+        "profile_id": body.profile_id,
+        "pid": pid,
+        "deregistered_agent_id": profile.agent_id
+    })))
+}
+
 #[derive(Deserialize)]
 struct FederationHeartbeatBody {
     agent_id: String,
@@ -1033,6 +1325,313 @@ struct FederationCleanupBody {
     /// Heartbeats older than this many seconds are treated as stale (`active = false`).
     #[serde(rename = "stale_after_secs")]
     _stale_after_secs: u64,
+}
+
+fn state_config_dir(config_path: &PathBuf) -> Option<PathBuf> {
+    config_path.parent().map(|p| p.to_path_buf())
+}
+
+#[derive(Deserialize)]
+struct HordeRunBody {
+    #[serde(default)]
+    prompt: Option<String>,
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    question: Option<String>,
+}
+
+async fn get_hordes(State(state): State<ApiState>) -> Json<serde_json::Value> {
+    let hordes: Vec<serde_json::Value> = state
+        .horde_manager
+        .specs
+        .iter()
+        .map(|s| {
+            json!({
+                "id": s.id,
+                "display_name": s.display_name,
+                "description": s.description,
+                "capability_prefix": s.capability_prefix,
+                "pipeline": s.pipeline,
+                "default_question": s.default_question,
+                "topic": s.topic,
+                "root_path": s.root_path.display().to_string(),
+                "sub_agents": s.sub_agents,
+            })
+        })
+        .collect();
+    Json(json!({ "hordes": hordes }))
+}
+
+async fn get_horde_detail(
+    State(state): State<ApiState>,
+    AxumPath(horde_id): AxumPath<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let spec = state
+        .horde_manager
+        .find(&horde_id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("unknown horde id: {}", horde_id)))?;
+    Ok(Json(json!({
+        "id": spec.id,
+        "display_name": spec.display_name,
+        "description": spec.description,
+        "capability_prefix": spec.capability_prefix,
+        "pipeline": spec.pipeline,
+        "default_question": spec.default_question,
+        "topic": spec.topic,
+        "root_path": spec.root_path.display().to_string(),
+        "sub_agents": spec.sub_agents,
+    })))
+}
+
+async fn get_horde_workers(
+    State(state): State<ApiState>,
+    AxumPath(horde_id): AxumPath<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let _spec = state
+        .horde_manager
+        .find(&horde_id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("unknown horde id: {}", horde_id)))?;
+    let mut managed = state.managed_workers.lock().await;
+    let mut last_exit = state.managed_worker_last_exit.lock().await;
+    managed.retain(|profile_id, child| match child.try_wait() {
+        Ok(Some(status)) => {
+            last_exit.insert(
+                profile_id.clone(),
+                format!("exited: code={:?} success={}", status.code(), status.success()),
+            );
+            false
+        }
+        Ok(None) => true,
+        Err(e) => {
+            last_exit.insert(profile_id.clone(), format!("wait error: {}", e));
+            false
+        }
+    });
+    let registry = state.federation.registry.list();
+    let rows: Vec<serde_json::Value> = worker_profiles(&state)
+        .into_iter()
+        .filter(|p| p.horde_id == horde_id)
+        .map(|p| worker_row(&p, &managed, &last_exit, &registry))
+        .collect();
+    Ok(Json(json!({
+        "horde_id": horde_id,
+        "workers": rows,
+    })))
+}
+
+#[derive(Deserialize)]
+struct HordeWorkerControlBody {
+    /// When provided, only manage this sub-agent's worker. When omitted, target all sub-agents.
+    #[serde(default)]
+    step: Option<String>,
+}
+
+async fn post_horde_worker_start(
+    State(state): State<ApiState>,
+    AxumPath(horde_id): AxumPath<String>,
+    Json(body): Json<HordeWorkerControlBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let _spec = state
+        .horde_manager
+        .find(&horde_id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("unknown horde id: {}", horde_id)))?
+        .clone();
+    let profiles: Vec<WorkerProfile> = worker_profiles(&state)
+        .into_iter()
+        .filter(|p| p.horde_id == horde_id)
+        .filter(|p| body.step.as_deref().map(|s| s == p.step).unwrap_or(true))
+        .collect();
+    if profiles.is_empty() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            format!("no sub-agent workers matched (horde={}, step={:?})", horde_id, body.step),
+        ));
+    }
+
+    let mut started: Vec<serde_json::Value> = Vec::new();
+    {
+        let mut managed = state.managed_workers.lock().await;
+        let mut last_exit = state.managed_worker_last_exit.lock().await;
+        for profile in profiles {
+            if let Some(existing) = managed.get_mut(&profile.id) {
+                match existing.try_wait() {
+                    Ok(Some(_)) | Err(_) => {
+                        managed.remove(&profile.id);
+                    }
+                    Ok(None) => {
+                        started.push(json!({
+                            "profile_id": profile.id,
+                            "already_running": true,
+                            "pid": existing.id(),
+                        }));
+                        continue;
+                    }
+                }
+            }
+            if state.federation.registry.deregister(&profile.agent_id).is_ok() {
+                log::info!(
+                    "horde worker start: removed stale registry entry for agent_id={}",
+                    profile.agent_id
+                );
+            }
+            let mut cmd = tokio::process::Command::new(&profile.command);
+            cmd.args(profile.args.iter()).current_dir(&profile.cwd);
+            if let Some((out, err)) = worker_log_stdio(&profile.cwd, &profile.id) {
+                cmd.stdout(out).stderr(err);
+            } else {
+                cmd.stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null());
+            }
+            match cmd.spawn() {
+                Ok(child) => {
+                    let pid = child.id();
+                    log::info!(
+                        "horde worker start horde={} step={} agent_id={} pid={:?}",
+                        profile.horde_id,
+                        profile.step,
+                        profile.agent_id,
+                        pid
+                    );
+                    managed.insert(profile.id.clone(), child);
+                    last_exit.remove(&profile.id);
+                    started.push(json!({
+                        "profile_id": profile.id,
+                        "already_running": false,
+                        "pid": pid,
+                    }));
+                }
+                Err(e) => {
+                    started.push(json!({
+                        "profile_id": profile.id,
+                        "error": format!("spawn failed: {}", e),
+                    }));
+                }
+            }
+        }
+    }
+    Ok(Json(json!({ "ok": true, "started": started })))
+}
+
+async fn post_horde_worker_stop(
+    State(state): State<ApiState>,
+    AxumPath(horde_id): AxumPath<String>,
+    Json(body): Json<HordeWorkerControlBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let _spec = state
+        .horde_manager
+        .find(&horde_id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("unknown horde id: {}", horde_id)))?
+        .clone();
+    let profiles: Vec<WorkerProfile> = worker_profiles(&state)
+        .into_iter()
+        .filter(|p| p.horde_id == horde_id)
+        .filter(|p| body.step.as_deref().map(|s| s == p.step).unwrap_or(true))
+        .collect();
+    let mut stopped: Vec<serde_json::Value> = Vec::new();
+    {
+        let mut managed = state.managed_workers.lock().await;
+        let mut last_exit = state.managed_worker_last_exit.lock().await;
+        for profile in profiles {
+            match managed.remove(&profile.id) {
+                Some(mut child) => {
+                    let pid = child.id();
+                    if let Err(e) = child.kill().await {
+                        stopped.push(json!({
+                            "profile_id": profile.id,
+                            "error": format!("kill failed: {}", e),
+                        }));
+                        continue;
+                    }
+                    last_exit.insert(profile.id.clone(), "killed by management".to_string());
+                    let _ = state.federation.registry.deregister(&profile.agent_id);
+                    stopped.push(json!({
+                        "profile_id": profile.id,
+                        "pid": pid,
+                        "deregistered_agent_id": profile.agent_id,
+                    }));
+                }
+                None => {
+                    let _ = state.federation.registry.deregister(&profile.agent_id);
+                    stopped.push(json!({
+                        "profile_id": profile.id,
+                        "skipped": "not running",
+                        "deregistered_agent_id": profile.agent_id,
+                    }));
+                }
+            }
+        }
+    }
+    Ok(Json(json!({ "ok": true, "stopped": stopped })))
+}
+
+async fn post_horde_run(
+    State(state): State<ApiState>,
+    AxumPath(horde_id): AxumPath<String>,
+    Json(body): Json<HordeRunBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let prompt = body.prompt.unwrap_or_default();
+    let source_extracted = body
+        .source
+        .clone()
+        .or_else(|| extract_url(&prompt))
+        .filter(|s| !s.is_empty());
+    let record = state
+        .horde_manager
+        .start_run(
+            &horde_id,
+            &prompt,
+            source_extracted.as_deref(),
+            body.question.as_deref(),
+        )
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    Ok(Json(json!({
+        "ok": true,
+        "run": record,
+    })))
+}
+
+fn extract_url(text: &str) -> Option<String> {
+    for token in text.split_whitespace() {
+        let trimmed = token.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '/' && c != ':' && c != '.' && c != '-' && c != '_' && c != '?' && c != '=' && c != '&' && c != '#' && c != '~' && c != '%');
+        if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+            return Some(trimmed.to_string());
+        }
+    }
+    None
+}
+
+async fn get_horde_runs(
+    State(state): State<ApiState>,
+    AxumPath(horde_id): AxumPath<String>,
+) -> Json<serde_json::Value> {
+    let runs: Vec<crate::horde::RunRecord> = state
+        .horde_manager
+        .list_runs()
+        .await
+        .into_iter()
+        .filter(|r| r.horde_id == horde_id)
+        .collect();
+    Json(json!({ "horde_id": horde_id, "runs": runs }))
+}
+
+async fn get_horde_run_detail(
+    State(state): State<ApiState>,
+    AxumPath((horde_id, run_id)): AxumPath<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let snap = state
+        .horde_manager
+        .snapshot(&run_id)
+        .await
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("run {} not found", run_id)))?;
+    if snap.horde_id != horde_id {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("run {} belongs to horde {}", run_id, snap.horde_id),
+        ));
+    }
+    Ok(Json(json!({ "run": snap })))
 }
 
 async fn post_federation_cleanup_stale(
