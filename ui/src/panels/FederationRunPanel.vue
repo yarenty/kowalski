@@ -359,7 +359,7 @@ onUnmounted(() => {
       <pre class="json">{{ JSON.stringify(runHistory.slice(0, 8), null, 2) }}</pre>
     </details>
     <section v-if="runResult" class="delivery">
-      <h3 style="margin:0 0 0.35rem;">Final delivery</h3>
+      <h3 style="margin:0 0 0.35rem;">Output</h3>
       <div>
         <p class="muted">
           {{ finalDelivery?.text || "Run completed." }}
@@ -385,13 +385,12 @@ onUnmounted(() => {
     </section>
     <p v-if="runErr" class="err">{{ runErr }}</p>
     <section v-if="runCompleted || latestCompletedRun" class="delivery">
-      <h3 style="margin:0 0 0.35rem;">Follow-up output</h3>
       <div class="chat-feed followup-feed">
         <article
           v-for="(m, i) in followupMsgs"
           :key="`f-${i}`"
           class="msg"
-          :class="m.role === 'user' ? 'msg-orchestrator' : m.role === 'orchestrator' ? 'msg-system' : 'msg-worker'"
+          :class="m.role === 'user' ? 'msg-user' : m.role === 'orchestrator' ? 'msg-system' : 'msg-worker'"
         >
           <header>{{ m.speaker }}</header>
           <pre>{{ m.text }}</pre>
@@ -459,6 +458,7 @@ onUnmounted(() => {
 .msg header { color: #9aa8c0; font-size: 0.8rem; margin-bottom: 0.2rem; text-transform: capitalize; }
 .msg pre { margin: 0; white-space: pre-wrap; word-break: break-word; color: #d2d9e8; font-size: 0.85rem; }
 .msg-orchestrator { border-color: #5a7ab8; }
+.msg-user { border-color: #5a7ab8; margin-left: auto; max-width: 80%; background: #1d2a42; }
 .msg-worker { border-color: #2f7c47; }
 .msg-system { border-color: #555f74; }
 .json { background: #1a1d26; border: 1px solid #2a2e38; border-radius: 6px; padding: 0.75rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.45; color: #c8cfdd; }
