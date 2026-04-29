@@ -20,7 +20,7 @@ Cargo.lock
 */*/*/*/*/*/*/*/*/target/
 */*/*/*/*/*/*/*/*/*/target/
 
-/opt/ml/kowalski/examples/knowledge-compiler/derived/*
-/opt/ml/kowalski/examples/knowledge-compiler/wiki/*
-/opt/ml/kowalski/examples/knowledge-compiler/scratch/*
-/opt/ml/kowalski/examples/knowledge-compiler/raw/*
+/opt/ml/kowalski/examples/knowledge-compiler/derived
+/opt/ml/kowalski/examples/knowledge-compiler/wiki
+/opt/ml/kowalski/examples/knowledge-compiler/scratch
+/opt/ml/kowalski/examples/knowledge-compiler/raw
