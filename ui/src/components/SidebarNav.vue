@@ -28,6 +28,7 @@ const emit = defineEmits<{
   (e: "new-conversation"): void;
   (e: "select-horde-interaction", id: string): void;
   (e: "new-horde-interaction"): void;
+  (e: "delete-horde-interaction", id: string): void;
 }>();
 
 function timeAgo(ts: number): string {
@@ -84,16 +85,24 @@ function timeAgo(ts: number): string {
           <button class="new-btn" @click="emit('new-horde-interaction')">+</button>
         </div>
         <div class="chat-list-scroll">
-          <button
-            v-for="h in hordeInteractions"
-            :key="h.id"
-            class="conv-btn"
-            :class="{ active: h.id === activeHordeInteractionId }"
-            @click="emit('select-horde-interaction', h.id)"
-          >
-            <span class="title">{{ h.title }}</span>
-            <span class="time">{{ timeAgo(h.updatedAt) }}</span>
-          </button>
+          <div v-for="h in hordeInteractions" :key="h.id" class="horde-row">
+            <button
+              class="conv-btn horde-item-btn"
+              :class="{ active: h.id === activeHordeInteractionId }"
+              @click="emit('select-horde-interaction', h.id)"
+            >
+              <span class="title">{{ h.title }}</span>
+              <span class="time">{{ timeAgo(h.updatedAt) }}</span>
+            </button>
+            <button
+              class="delete-btn"
+              title="Delete interaction"
+              aria-label="Delete interaction"
+              @click.stop="emit('delete-horde-interaction', h.id)"
+            >
+              ×
+            </button>
+          </div>
           <p v-if="!hordeInteractions.length" class="muted">No horde interactions yet.</p>
         </div>
       </section>
@@ -135,6 +144,34 @@ h1 { margin: 0; font-size: 1.05rem; }
   overflow: auto;
   display: grid;
   gap: 0.35rem;
+}
+.horde-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+}
+.horde-item-btn {
+  width: 100%;
+  min-width: 0;
+}
+.delete-btn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid #6d3f47;
+  background: #3b2328;
+  color: #f2b8c1;
+  cursor: pointer;
+  opacity: 0.45;
+  pointer-events: auto;
+  transition: opacity 0.15s ease;
+}
+.horde-row:hover .delete-btn,
+.horde-row:focus-within .delete-btn {
+  opacity: 1;
 }
 .title { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .time { display: block; font-size: 0.72rem; color: #8b92a5; margin-top: 0.2rem; }

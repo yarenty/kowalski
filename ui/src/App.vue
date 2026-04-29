@@ -109,6 +109,25 @@ function selectHordeInteraction(id: string) {
   activeHordeInteractionId.value = id;
 }
 
+function threadStateKey(id: string): string {
+  return `kowalski.ui.horde.thread.${id}`;
+}
+
+function deleteHordeInteraction(id: string) {
+  const idx = hordeInteractions.value.findIndex((h) => h.id === id);
+  if (idx < 0) return;
+  hordeInteractions.value = hordeInteractions.value.filter((h) => h.id !== id);
+  localStorage.removeItem(threadStateKey(id));
+  if (!hordeInteractions.value.length) {
+    newHordeInteraction();
+    return;
+  }
+  if (activeHordeInteractionId.value === id) {
+    activeHordeInteractionId.value = hordeInteractions.value[0].id;
+  }
+  persistHordeInteractions();
+}
+
 function upsertHordeInteraction(item: HordeInteraction) {
   const existing = hordeInteractions.value.find((h) => h.id === item.id);
   if (existing) {
@@ -319,6 +338,7 @@ onMounted(async () => {
       @new-conversation="newConversation"
       @select-horde-interaction="selectHordeInteraction"
       @new-horde-interaction="newHordeInteraction"
+      @delete-horde-interaction="deleteHordeInteraction"
     />
     <main class="main">
       <HomePanel v-if="tab === 'home'" />
