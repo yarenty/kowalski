@@ -289,6 +289,7 @@ export const api = {
       horde_id: string;
       run_id: string;
       reply: string;
+      output_path?: string;
       mode: string;
       decision?: { strategy?: string; selected_step?: string; reason?: string };
       rerun_id?: string;

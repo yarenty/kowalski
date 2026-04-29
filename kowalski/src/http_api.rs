@@ -1674,7 +1674,10 @@ async fn post_horde_followup(
         "You are the continuation assistant for a completed multi-agent horde run.\n\
          Continue the conversation naturally using artifact context below.\n\
          Do not perform keyword routing or fixed intent rules; just answer the user's follow-up.\n\
-         Keep answer practical and concise, include uncertainty if needed.\n\n\
+         Keep answer practical and concise, include uncertainty if needed.\n\
+         IMPORTANT:\n\
+         - Do NOT invent nonexistent files, templates, or paths.\n\
+         - Ground suggestions in the provided artifacts only.\n\n\
          {}\n\
          User follow-up: {}\n",
         context,
@@ -1688,11 +1691,33 @@ async fn post_horde_followup(
         .chat_with_history(&conv_id, &llm_prompt, None)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Persist follow-up output as a concrete artifact so this interaction is actionable.
+    let follow_dir = spec.root_path.join("derived/reports/followups");
+    if let Err(e) = std::fs::create_dir_all(&follow_dir) {
+        log::warn!("follow-up artifact mkdir failed: {}", e);
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let out_path = follow_dir.join(format!("{}-{}.md", run.run_id, stamp));
+    let saved = format!(
+        "# Horde Follow-up Response\n\n- Horde: {}\n- Run: {}\n- Follow-up: {}\n\n## Response\n\n{}\n",
+        spec.display_name,
+        run.run_id,
+        body.message.trim(),
+        reply
+    );
+    if let Err(e) = std::fs::write(&out_path, saved) {
+        log::warn!("follow-up artifact write failed: {}", e);
+    }
     Ok(Json(json!({
         "ok": true,
         "horde_id": horde_id,
         "run_id": run.run_id,
         "reply": reply,
+        "output_path": out_path.display().to_string(),
         "mode": "horde_followup_chat_continuation",
     })))
 }

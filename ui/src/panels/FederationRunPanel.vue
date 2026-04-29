@@ -23,7 +23,7 @@ const workerProfiles = ref<FederationWorkerProfile[]>([]);
 const runHistory = ref<HordeRunRecord[]>([]);
 const followupInput = ref("");
 const followupBusy = ref(false);
-const followupMsgs = ref<Array<{ role: "user" | "assistant" | "orchestrator"; text: string }>>([]);
+const followupMsgs = ref<Array<{ role: "user" | "assistant" | "orchestrator"; speaker: string; text: string }>>([]);
 
 const selectedHorde = computed(() => hordes.value.find((h) => h.id === selectedHordeId.value) ?? null);
 const selectedHordeWorkers = computed(() => workerProfiles.value.filter((w) => w.horde_id === selectedHordeId.value));
@@ -234,7 +234,7 @@ async function askFollowup() {
   if (!runId.value || !selectedHordeId.value) return;
   const q = followupInput.value.trim();
   if (!q) return;
-  followupMsgs.value = [...followupMsgs.value, { role: "user", text: q }];
+  followupMsgs.value = [...followupMsgs.value, { role: "user", speaker: "You", text: q }];
   followupInput.value = "";
   followupBusy.value = true;
   try {
@@ -242,10 +242,20 @@ async function askFollowup() {
       run_id: runId.value,
       message: q,
     });
-    followupMsgs.value = [...followupMsgs.value, { role: "assistant", text: out.reply }];
+    followupMsgs.value = [
+      ...followupMsgs.value,
+      {
+        role: "assistant",
+        speaker: selectedHorde.value?.display_name || "Horde",
+        text: out.output_path ? `${out.reply}\n\nSaved output: ${out.output_path}` : out.reply,
+      },
+    ];
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    followupMsgs.value = [...followupMsgs.value, { role: "assistant", text: `[error] ${msg}` }];
+    followupMsgs.value = [
+      ...followupMsgs.value,
+      { role: "assistant", speaker: "System", text: `[error] ${msg}` },
+    ];
   } finally {
     followupBusy.value = false;
   }
@@ -355,7 +365,7 @@ onUnmounted(() => {
             class="msg"
             :class="m.role === 'user' ? 'msg-orchestrator' : m.role === 'orchestrator' ? 'msg-system' : 'msg-worker'"
           >
-            <header>{{ m.role }}</header>
+            <header>{{ m.speaker }}</header>
             <pre>{{ m.text }}</pre>
           </article>
           <p v-if="!followupMsgs.length" class="muted">(no follow-up messages yet)</p>
