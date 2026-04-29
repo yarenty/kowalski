@@ -7,12 +7,15 @@ import {
   type HordeCatalogItem,
   type HordeRunRecord,
 } from "../api";
+const props = defineProps<{ activeThreadId: string | null }>();
+const emit = defineEmits<{
+  (e: "thread-upsert", item: { id: string; title: string; updatedAt: number }): void;
+}>();
 
 const fedTopic = ref("federation");
 const fedEs = ref<EventSource | null>(null);
 const hordes = ref<HordeCatalogItem[]>([]);
 const selectedHordeId = ref<string>("");
-const runPrompt = ref("can you check https://yarenty.com and get summary into obsidian?");
 const runBusy = ref(false);
 const runId = ref<string | null>(null);
 const runMessages = ref<Array<{ role: "orchestrator" | "worker" | "system"; speaker: string; text: string }>>([]);
@@ -58,6 +61,7 @@ const obsidianRoot = computed(() =>
     : "(unknown)",
 );
 const finalShortSummary = computed(() => selectedHorde.value?.delivery_summary_note || "Run completed.");
+const hasCompletedRun = computed(() => runCompleted.value || !!latestCompletedRun.value);
 
 watch(
   () => selectedHordeId.value,
@@ -162,7 +166,72 @@ async function loadProfiles() {
   }
 }
 
+async function refreshAll() {
+  await loadHordes();
+  await Promise.all([loadProfiles(), loadRunHistory()]);
+}
+
 const RUN_HISTORY_KEY = "kowalski.ui.horde-runs.v1";
+function threadStateKey(id: string) {
+  return `kowalski.ui.horde.thread.${id}`;
+}
+
+function saveActiveThreadState() {
+  if (!props.activeThreadId) return;
+  const snapshot = {
+    selectedHordeId: selectedHordeId.value,
+    runId: runId.value,
+    runMessages: runMessages.value,
+    runResult: runResult.value,
+    followupMsgs: followupMsgs.value,
+  };
+  localStorage.setItem(threadStateKey(props.activeThreadId), JSON.stringify(snapshot));
+}
+
+function loadActiveThreadState(id: string) {
+  const raw = localStorage.getItem(threadStateKey(id));
+  if (!raw) {
+    runId.value = null;
+    runMessages.value = [];
+    runResult.value = null;
+    followupMsgs.value = [];
+    return;
+  }
+  try {
+    const parsed = JSON.parse(raw) as {
+      selectedHordeId?: string;
+      runId?: string | null;
+      runMessages?: Array<{ role: "orchestrator" | "worker" | "system"; speaker: string; text: string }>;
+      runResult?: string | null;
+      followupMsgs?: Array<{ role: "user" | "assistant" | "orchestrator"; speaker: string; text: string }>;
+    };
+    if (parsed.selectedHordeId) selectedHordeId.value = parsed.selectedHordeId;
+    runId.value = parsed.runId ?? null;
+    runMessages.value = parsed.runMessages ?? [];
+    runResult.value = parsed.runResult ?? null;
+    followupMsgs.value = parsed.followupMsgs ?? [];
+  } catch {
+    runId.value = null;
+    runMessages.value = [];
+    runResult.value = null;
+    followupMsgs.value = [];
+  }
+}
+
+function upsertThreadMeta() {
+  if (!props.activeThreadId) return;
+  const lastUser = [...followupMsgs.value].reverse().find((m) => m.role === "user")?.text;
+  const title =
+    lastUser?.slice(0, 42) ||
+    runMessages.value.find((m) => m.speaker === "Agent: Boss" && m.text.startsWith("source:"))?.text.replace("source: ", "") ||
+    "New horde interaction";
+  emit("thread-upsert", {
+    id: props.activeThreadId,
+    title,
+    updatedAt: Date.now(),
+  });
+}
+
 function persistRunHistory() {
   localStorage.setItem(RUN_HISTORY_KEY, JSON.stringify(runHistory.value.slice(0, 30)));
 }
@@ -204,9 +273,27 @@ async function loadRunHistory() {
   persistRunHistory();
 }
 
+watch(
+  () => props.activeThreadId,
+  (id) => {
+    if (!id) return;
+    loadActiveThreadState(id);
+  },
+  { immediate: true },
+);
+watch(
+  [selectedHordeId, runId, runResult, runMessages, followupMsgs],
+  () => {
+    saveActiveThreadState();
+    upsertThreadMeta();
+  },
+  { deep: true },
+);
+
 async function runKnowledgeCompiler() {
   await Promise.all([loadHordes(), loadProfiles()]);
-  const source = extractUrl(runPrompt.value);
+  const prompt = followupInput.value.trim();
+  const source = extractUrl(prompt);
   if (!source) {
     runErr.value = "Prompt must include URL, e.g. https://yarenty.com.";
     return;
@@ -242,9 +329,10 @@ async function runKnowledgeCompiler() {
   feed("orchestrator", `source: ${source}`, "Agent: Boss");
   try {
     const out = await api.hordeRun(selectedHordeId.value, {
-      prompt: runPrompt.value.trim(),
+      prompt,
       source,
     });
+    followupInput.value = "";
     runId.value = out.run.run_id;
     feed("orchestrator", `run started: ${out.run.run_id}`, "Agent: Boss");
     runWatchdog.value = window.setTimeout(() => {
@@ -263,6 +351,10 @@ async function runKnowledgeCompiler() {
 }
 
 async function askFollowup() {
+  if (!hasCompletedRun.value) {
+    await runKnowledgeCompiler();
+    return;
+  }
   if (!selectedHordeId.value) return;
   if (!runId.value) {
     const fallbackRunId = latestCompletedRun.value?.run_id;
@@ -301,9 +393,7 @@ async function askFollowup() {
 onMounted(() => {
   restoreRunHistory();
   connectStream();
-  void loadHordes();
-  void loadProfiles();
-  void loadRunHistory();
+  void refreshAll();
 });
 
 onUnmounted(() => {
@@ -318,8 +408,11 @@ onUnmounted(() => {
     <p class="muted">
       Talk to a whole horde. The orchestrator coordinates all internal sub-agents and streams their collaboration.
     </p>
-    <p><button type="button" class="primary" @click="loadHordes">Refresh hordes</button></p>
-    <p><button type="button" @click="loadProfiles">Refresh horde readiness</button></p>
+    <div class="toolbar">
+      <button type="button" class="icon-btn" title="Refresh all" aria-label="Refresh all" @click="refreshAll">
+        ↻
+      </button>
+    </div>
     <p>
       <label class="lbl">Horde</label>
       <select v-model="selectedHordeId" class="inp">
@@ -336,12 +429,6 @@ onUnmounted(() => {
       </p>
     </div>
 
-    <p><label class="lbl">Prompt</label><input v-model="runPrompt" class="inp" type="text" /></p>
-    <p>
-      <button type="button" class="primary" :disabled="runBusy" @click="runKnowledgeCompiler">
-        {{ runBusy ? "Running Horde..." : "Run Horde" }}
-      </button>
-    </p>
     <p v-if="runBusy" class="muted thinking">Thinking... {{ progressText }}</p>
     <p v-if="followupBusy" class="muted thinking">Thinking... follow-up in progress</p>
     <p v-if="runId" class="muted">Run ID: {{ runId }}</p>
@@ -351,7 +438,6 @@ onUnmounted(() => {
         <header>{{ m.speaker }}</header>
         <pre>{{ m.text }}</pre>
       </article>
-      <p v-if="!runMessages.length" class="muted">(no run messages yet)</p>
     </div>
 
     <details v-if="runHistory.length">
@@ -399,18 +485,21 @@ onUnmounted(() => {
       </div>
     </section>
     <section class="followup-composer">
-      <h3 style="margin:0 0 0.35rem;">Follow-up chat on this run</h3>
+      <h3 style="margin:0 0 0.35rem;">{{ hasCompletedRun ? "Follow-up chat on this run" : "Run horde" }}</h3>
       <p class="muted">
-        Ask refining questions about this run, e.g. "emphasize AI findings" or
-        "only technology part in simple language".
+        {{
+          hasCompletedRun
+            ? 'Ask refining questions about this run, e.g. "emphasize AI findings" or "only technology part in simple language".'
+            : (selectedHorde?.prompt_tip || "Enter your prompt with source URL to start a new horde interaction.")
+        }}
       </p>
       <p>
-        <label class="lbl">Follow-up question</label>
+        <label class="lbl">{{ hasCompletedRun ? "Follow-up question" : "Prompt" }}</label>
         <input
           v-model="followupInput"
           class="inp"
           type="text"
-          :disabled="!(runCompleted || latestCompletedRun) || followupBusy"
+          :disabled="runBusy || followupBusy"
           @keydown.enter.prevent="askFollowup"
         />
       </p>
@@ -418,14 +507,19 @@ onUnmounted(() => {
         <button
           type="button"
           class="primary"
-          :disabled="!(runCompleted || latestCompletedRun) || followupBusy || !followupInput.trim()"
+          :disabled="runBusy || followupBusy || !followupInput.trim()"
           @click="askFollowup"
         >
-          {{ followupBusy ? "Asking..." : "Ask follow-up" }}
+          {{
+            followupBusy
+              ? "Asking..."
+              : runBusy
+                ? "Running Horde..."
+                : hasCompletedRun
+                  ? "Ask follow-up"
+                  : "Run Horde"
+          }}
         </button>
-      </p>
-      <p v-if="!(runCompleted || latestCompletedRun)" class="muted">
-        Follow-up input is enabled after run completion.
       </p>
     </section>
   </section>
@@ -465,4 +559,6 @@ onUnmounted(() => {
 .thinking { color: #9cc2ff; }
 button { background: #2a3142; border: 1px solid #3d4658; color: #c8cfdd; padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; margin-right: 0.5rem; }
 button.primary { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
+.toolbar { display: flex; justify-content: flex-end; margin-bottom: 0.45rem; }
+.icon-btn { width: 34px; height: 34px; padding: 0; font-size: 1rem; line-height: 1; margin-right: 0; }
 </style>

@@ -22,10 +22,18 @@ type Conversation = {
   turns: ChatTurn[];
   updatedAt: number;
 };
+type HordeInteraction = {
+  id: string;
+  title: string;
+  updatedAt: number;
+};
 
 const CHAT_LIST_KEY = "kowalski.ui.chat.list.v2";
+const HORDE_LIST_KEY = "kowalski.ui.horde.list.v1";
 const conversations = ref<Conversation[]>([]);
 const activeConversationId = ref<string | null>(null);
+const hordeInteractions = ref<HordeInteraction[]>([]);
+const activeHordeInteractionId = ref<string | null>(null);
 const chatBusy = ref(false);
 const resetBusy = ref(false);
 const chatErr = ref<string | null>(null);
@@ -54,7 +62,64 @@ function restoreConversations() {
   }
 }
 
+function persistHordeInteractions() {
+  localStorage.setItem(HORDE_LIST_KEY, JSON.stringify(hordeInteractions.value));
+}
+
+function restoreHordeInteractions() {
+  const raw = localStorage.getItem(HORDE_LIST_KEY);
+  if (!raw) return;
+  try {
+    const parsed = JSON.parse(raw) as HordeInteraction[];
+    if (Array.isArray(parsed)) {
+      hordeInteractions.value = parsed
+        .filter((h) => h && typeof h.id === "string")
+        .map((h) => ({ ...h, updatedAt: h.updatedAt ?? Date.now() }));
+      if (!activeHordeInteractionId.value && hordeInteractions.value.length) {
+        activeHordeInteractionId.value = hordeInteractions.value[0].id;
+      }
+    }
+  } catch {
+    /* ignore invalid storage */
+  }
+}
+
 restoreConversations();
+restoreHordeInteractions();
+if (!hordeInteractions.value.length) {
+  const id = `horde-${Date.now()}`;
+  hordeInteractions.value = [{ id, title: "New horde interaction", updatedAt: Date.now() }];
+  activeHordeInteractionId.value = id;
+  persistHordeInteractions();
+}
+
+function newHordeInteraction() {
+  const id = `horde-${Date.now()}`;
+  const item: HordeInteraction = {
+    id,
+    title: "New horde interaction",
+    updatedAt: Date.now(),
+  };
+  hordeInteractions.value = [item, ...hordeInteractions.value];
+  activeHordeInteractionId.value = id;
+  persistHordeInteractions();
+}
+
+function selectHordeInteraction(id: string) {
+  activeHordeInteractionId.value = id;
+}
+
+function upsertHordeInteraction(item: HordeInteraction) {
+  const existing = hordeInteractions.value.find((h) => h.id === item.id);
+  if (existing) {
+    existing.title = item.title;
+    existing.updatedAt = item.updatedAt;
+  } else {
+    hordeInteractions.value.unshift(item);
+  }
+  hordeInteractions.value = [...hordeInteractions.value].sort((a, b) => b.updatedAt - a.updatedAt);
+  persistHordeInteractions();
+}
 
 function activeConversation(): Conversation | null {
   if (!activeConversationId.value) return null;
@@ -245,11 +310,15 @@ onMounted(async () => {
       :collapsed="sidebarCollapsed"
       :conversations="conversations"
       :active-conversation-id="activeConversationId"
+      :horde-interactions="hordeInteractions"
+      :active-horde-interaction-id="activeHordeInteractionId"
       :app-version="appVersion"
       @toggle-collapse="sidebarCollapsed = !sidebarCollapsed"
       @select-tab="tab = $event"
       @select-conversation="selectConversation"
       @new-conversation="newConversation"
+      @select-horde-interaction="selectHordeInteraction"
+      @new-horde-interaction="newHordeInteraction"
     />
     <main class="main">
       <HomePanel v-if="tab === 'home'" />
@@ -271,7 +340,11 @@ onMounted(async () => {
         @new-conversation="newConversation"
       />
       <FederationManagementPanel v-else-if="tab === 'federation-management'" />
-      <FederationRunPanel v-else-if="tab === 'federation-run'" />
+      <FederationRunPanel
+        v-else-if="tab === 'federation-run'"
+        :active-thread-id="activeHordeInteractionId"
+        @thread-upsert="upsertHordeInteraction"
+      />
       <GraphPanel v-else-if="tab === 'graph'" />
       <AboutPanel v-else-if="tab === 'about'" />
     </main>

@@ -1367,6 +1367,7 @@ async fn get_hordes(State(state): State<ApiState>) -> Json<serde_json::Value> {
                 "delivery_note": s.delivery_note,
                 "delivery_root_rel": s.delivery_root_rel,
                 "delivery_summary_note": s.delivery_summary_note,
+                "prompt_tip": s.prompt_tip,
                 "sub_agents": s.sub_agents,
             })
         })
@@ -1395,6 +1396,7 @@ async fn get_horde_detail(
         "delivery_note": spec.delivery_note,
         "delivery_root_rel": spec.delivery_root_rel,
         "delivery_summary_note": spec.delivery_summary_note,
+        "prompt_tip": spec.prompt_tip,
         "sub_agents": spec.sub_agents,
     })))
 }

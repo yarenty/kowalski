@@ -5,12 +5,19 @@ type ConversationItem = {
   title: string;
   updatedAt: number;
 };
+type HordeInteractionItem = {
+  id: string;
+  title: string;
+  updatedAt: number;
+};
 
 defineProps<{
   activeTab: TabId;
   collapsed: boolean;
   conversations: ConversationItem[];
   activeConversationId: string | null;
+  hordeInteractions: HordeInteractionItem[];
+  activeHordeInteractionId: string | null;
   appVersion: string;
 }>();
 
@@ -19,7 +26,21 @@ const emit = defineEmits<{
   (e: "toggle-collapse"): void;
   (e: "select-conversation", id: string): void;
   (e: "new-conversation"): void;
+  (e: "select-horde-interaction", id: string): void;
+  (e: "new-horde-interaction"): void;
 }>();
+
+function timeAgo(ts: number): string {
+  const diff = Math.max(0, Date.now() - ts);
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return "now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  return `${day}d ago`;
+}
 </script>
 
 <template>
@@ -54,6 +75,26 @@ const emit = defineEmits<{
             <span class="title">{{ c.title }}</span>
           </button>
           <p v-if="!conversations.length" class="muted">No conversations yet.</p>
+        </div>
+      </section>
+
+      <section v-if="activeTab === 'federation-run'" class="chat-list">
+        <div class="chat-list-head">
+          <strong>Horde Interactions</strong>
+          <button class="new-btn" @click="emit('new-horde-interaction')">+</button>
+        </div>
+        <div class="chat-list-scroll">
+          <button
+            v-for="h in hordeInteractions"
+            :key="h.id"
+            class="conv-btn"
+            :class="{ active: h.id === activeHordeInteractionId }"
+            @click="emit('select-horde-interaction', h.id)"
+          >
+            <span class="title">{{ h.title }}</span>
+            <span class="time">{{ timeAgo(h.updatedAt) }}</span>
+          </button>
+          <p v-if="!hordeInteractions.length" class="muted">No horde interactions yet.</p>
         </div>
       </section>
 
@@ -96,6 +137,7 @@ h1 { margin: 0; font-size: 1.05rem; }
   gap: 0.35rem;
 }
 .title { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.time { display: block; font-size: 0.72rem; color: #8b92a5; margin-top: 0.2rem; }
 .muted { color: #6a7285; font-size: 0.85rem; }
 .admin {
   margin-top: auto;

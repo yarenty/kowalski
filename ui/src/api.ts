@@ -171,6 +171,7 @@ export type HordeCatalogItem = {
   delivery_note?: string;
   delivery_root_rel?: string;
   delivery_summary_note?: string;
+  prompt_tip?: string;
   sub_agents: HordeSubAgent[];
 };
 
