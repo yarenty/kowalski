@@ -51,6 +51,12 @@ pub struct HordeMeta {
     pub default_topic: Option<String>,
     #[serde(default)]
     pub artifacts_root: Option<String>,
+    #[serde(default)]
+    pub delivery_title: Option<String>,
+    #[serde(default)]
+    pub delivery_note: Option<String>,
+    #[serde(default)]
+    pub delivery_root_rel: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -93,6 +99,9 @@ pub struct HordeSpec {
     pub default_question: String,
     pub topic: String,
     pub artifacts_root: PathBuf,
+    pub delivery_title: String,
+    pub delivery_note: String,
+    pub delivery_root_rel: String,
     pub root_path: PathBuf,
     pub sub_agents: Vec<SubAgentSpec>,
 }
@@ -198,6 +207,16 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
             .unwrap_or_else(|| "What changed?".to_string()),
         topic: meta.default_topic.unwrap_or_else(|| DEFAULT_TOPIC.to_string()),
         artifacts_root: root.join(meta.artifacts_root.unwrap_or_else(|| ".".to_string())),
+        delivery_title: meta
+            .delivery_title
+            .unwrap_or_else(|| "Final delivery".to_string()),
+        delivery_note: meta.delivery_note.unwrap_or_else(|| {
+            "Review generated artifacts and import the horde output folder into your target knowledge system."
+                .to_string()
+        }),
+        delivery_root_rel: meta
+            .delivery_root_rel
+            .unwrap_or_else(|| "wiki".to_string()),
         root_path: root.to_path_buf(),
         sub_agents,
     })

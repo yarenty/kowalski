@@ -167,6 +167,9 @@ export type HordeCatalogItem = {
   default_question: string;
   topic: string;
   root_path: string;
+  delivery_title?: string;
+  delivery_note?: string;
+  delivery_root_rel?: string;
   sub_agents: HordeSubAgent[];
 };
 
@@ -278,6 +281,14 @@ export const api = {
   hordeRunDetail: (hordeId: string, runId: string) =>
     json<{ run: HordeRunRecord }>(
       `/api/hordes/${encodeURIComponent(hordeId)}/runs/${encodeURIComponent(runId)}`,
+    ),
+  hordeFollowup: (hordeId: string, body: { run_id: string; message: string }) =>
+    json<{ ok: boolean; horde_id: string; run_id: string; reply: string; mode: string }>(
+      `/api/hordes/${encodeURIComponent(hordeId)}/followup`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
     ),
   graphStatus: () => json<Record<string, unknown>>("/api/graph/status"),
   federationDelegate: (body: {

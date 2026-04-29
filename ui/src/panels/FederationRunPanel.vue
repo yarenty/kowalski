@@ -21,6 +21,9 @@ const runErr = ref<string | null>(null);
 const runWatchdog = ref<number | null>(null);
 const workerProfiles = ref<FederationWorkerProfile[]>([]);
 const runHistory = ref<HordeRunRecord[]>([]);
+const followupInput = ref("");
+const followupBusy = ref(false);
+const followupMsgs = ref<Array<{ role: "user" | "assistant"; text: string }>>([]);
 
 const selectedHorde = computed(() => hordes.value.find((h) => h.id === selectedHordeId.value) ?? null);
 const selectedHordeWorkers = computed(() => workerProfiles.value.filter((w) => w.horde_id === selectedHordeId.value));
@@ -39,7 +42,7 @@ const finalDelivery = computed(() => {
 const finalArtifacts = computed(() => finalDelivery.value?.artifacts ?? []);
 const obsidianRoot = computed(() =>
   selectedHorde.value?.root_path
-    ? `${selectedHorde.value.root_path}/wiki`
+    ? `${selectedHorde.value.root_path}/${selectedHorde.value.delivery_root_rel || "wiki"}`
     : "(unknown)",
 );
 
@@ -175,6 +178,7 @@ async function runKnowledgeCompiler() {
     return;
   }
   runResult.value = null;
+  followupMsgs.value = [];
   runBusy.value = true;
   runId.value = null;
   runMessages.value = [];
@@ -199,6 +203,27 @@ async function runKnowledgeCompiler() {
   } catch (e) {
     runBusy.value = false;
     runErr.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
+async function askFollowup() {
+  if (!runId.value || !selectedHordeId.value) return;
+  const q = followupInput.value.trim();
+  if (!q) return;
+  followupMsgs.value = [...followupMsgs.value, { role: "user", text: q }];
+  followupInput.value = "";
+  followupBusy.value = true;
+  try {
+    const out = await api.hordeFollowup(selectedHordeId.value, {
+      run_id: runId.value,
+      message: q,
+    });
+    followupMsgs.value = [...followupMsgs.value, { role: "assistant", text: out.reply }];
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    followupMsgs.value = [...followupMsgs.value, { role: "assistant", text: `[error] ${msg}` }];
+  } finally {
+    followupBusy.value = false;
   }
 }
 
@@ -262,6 +287,8 @@ onUnmounted(() => {
         <p class="muted">
           {{ finalDelivery?.text || "Run completed." }}
         </p>
+        <p class="muted"><strong>{{ selectedHorde?.delivery_title || "Final delivery" }}</strong></p>
+        <p class="muted">{{ selectedHorde?.delivery_note || "" }}</p>
         <p class="muted"><strong>Obsidian-ready folder:</strong> <code>{{ obsidianRoot }}</code></p>
         <p class="muted">
           Copy/sync this folder into your Obsidian vault (or set your vault root there).
@@ -276,6 +303,31 @@ onUnmounted(() => {
           <summary>Raw run_finished payload</summary>
           <pre class="json">{{ runResult }}</pre>
         </details>
+      </div>
+    </details>
+    <details v-if="runId">
+      <summary>Follow-up chat on this run</summary>
+      <div class="delivery">
+        <p class="muted">
+          Ask refining questions about this run, e.g. "emphasize AI findings" or
+          "only technology part in simple language".
+        </p>
+        <p>
+          <label class="lbl">Follow-up question</label>
+          <input v-model="followupInput" class="inp" type="text" />
+        </p>
+        <p>
+          <button type="button" class="primary" :disabled="followupBusy || !followupInput.trim()" @click="askFollowup">
+            {{ followupBusy ? "Asking..." : "Ask follow-up" }}
+          </button>
+        </p>
+        <div class="chat-feed" style="max-height: 24vh;">
+          <article v-for="(m, i) in followupMsgs" :key="`f-${i}`" class="msg" :class="m.role === 'user' ? 'msg-orchestrator' : 'msg-worker'">
+            <header>{{ m.role }}</header>
+            <pre>{{ m.text }}</pre>
+          </article>
+          <p v-if="!followupMsgs.length" class="muted">(no follow-up messages yet)</p>
+        </div>
       </div>
     </details>
     <details v-if="runHistory.length">

@@ -208,6 +208,7 @@ pub async fn serve(
         .route("/api/hordes/{horde_id}/workers/start", post(post_horde_worker_start))
         .route("/api/hordes/{horde_id}/workers/stop", post(post_horde_worker_stop))
         .route("/api/hordes/{horde_id}/run", post(post_horde_run))
+        .route("/api/hordes/{horde_id}/followup", post(post_horde_followup))
         .route("/api/hordes/{horde_id}/runs", get(get_horde_runs))
         .route("/api/hordes/{horde_id}/runs/{run_id}", get(get_horde_run_detail))
         .route("/api/federation/register", post(post_federation_register))
@@ -1341,6 +1342,12 @@ struct HordeRunBody {
     question: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct HordeFollowupBody {
+    run_id: String,
+    message: String,
+}
+
 async fn get_hordes(State(state): State<ApiState>) -> Json<serde_json::Value> {
     let hordes: Vec<serde_json::Value> = state
         .horde_manager
@@ -1356,6 +1363,9 @@ async fn get_hordes(State(state): State<ApiState>) -> Json<serde_json::Value> {
                 "default_question": s.default_question,
                 "topic": s.topic,
                 "root_path": s.root_path.display().to_string(),
+                "delivery_title": s.delivery_title,
+                "delivery_note": s.delivery_note,
+                "delivery_root_rel": s.delivery_root_rel,
                 "sub_agents": s.sub_agents,
             })
         })
@@ -1380,6 +1390,9 @@ async fn get_horde_detail(
         "default_question": spec.default_question,
         "topic": spec.topic,
         "root_path": spec.root_path.display().to_string(),
+        "delivery_title": spec.delivery_title,
+        "delivery_note": spec.delivery_note,
+        "delivery_root_rel": spec.delivery_root_rel,
         "sub_agents": spec.sub_agents,
     })))
 }
@@ -1602,6 +1615,82 @@ async fn post_horde_run(
     Ok(Json(json!({
         "ok": true,
         "run": record,
+    })))
+}
+
+async fn post_horde_followup(
+    State(state): State<ApiState>,
+    AxumPath(horde_id): AxumPath<String>,
+    Json(body): Json<HordeFollowupBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let spec = state
+        .horde_manager
+        .find(&horde_id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("unknown horde id: {}", horde_id)))?
+        .clone();
+    let run = state
+        .horde_manager
+        .snapshot(&body.run_id)
+        .await
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("run {} not found", body.run_id)))?;
+    if run.horde_id != horde_id {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("run {} belongs to horde {}", body.run_id, run.horde_id),
+        ));
+    }
+    if body.message.trim().is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "message required".to_string()));
+    }
+
+    let mut context = String::new();
+    context.push_str(&format!(
+        "Horde: {}\nRun ID: {}\nOriginal prompt: {}\n\n",
+        spec.display_name, run.run_id, run.prompt
+    ));
+    context.push_str("Artifacts:\n");
+    for s in &run.steps {
+        if let Some(a) = &s.artifact {
+            context.push_str(&format!("- {}: {}\n", s.step, a));
+        }
+    }
+    let mut included = 0usize;
+    for s in &run.steps {
+        if let Some(a) = &s.artifact
+            && let Ok(raw) = std::fs::read_to_string(a)
+        {
+            let excerpt: String = raw.chars().take(6000).collect();
+            context.push_str(&format!("\n## {} artifact excerpt ({})\n{}\n", s.step, a, excerpt));
+            included += 1;
+            if included >= 3 {
+                break;
+            }
+        }
+    }
+
+    let llm_prompt = format!(
+        "You are the follow-up agent for a multi-agent horde run.\n\
+         Answer the user follow-up using the provided artifact context.\n\
+         Keep answer practical and concise, include uncertainty if needed.\n\n\
+         {}\n\
+         User follow-up: {}\n",
+        context,
+        body.message.trim()
+    );
+
+    let mut guard = state.chat.lock().await;
+    let conv_id = guard.conv_id.clone();
+    let reply = guard
+        .agent
+        .chat_with_history(&conv_id, &llm_prompt, None)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(json!({
+        "ok": true,
+        "horde_id": horde_id,
+        "run_id": run.run_id,
+        "reply": reply,
+        "mode": "horde_followup",
     })))
 }
 
