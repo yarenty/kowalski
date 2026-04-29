@@ -19,3 +19,8 @@ Cargo.lock
 */*/*/*/*/*/*/*/target/
 */*/*/*/*/*/*/*/*/target/
 */*/*/*/*/*/*/*/*/*/target/
+
+/examples/knowledge-compiler/derived
+/examples/knowledge-compiler/wiki
+/examples/knowledge-compiler/scratch
+/examples/knowledge-compiler/raw

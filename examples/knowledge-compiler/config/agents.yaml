@@ -1,0 +1,42 @@
+version: 1
+name: knowledge-compiler
+
+agents:
+  - id: ingest_agent
+    role: source_ingestion
+    goal: Normalize incoming sources into markdown-ready inputs in raw/.
+    tools:
+      - read_file
+      - write_file
+      - web_fetch
+
+  - id: compiler_agent
+    role: knowledge_compilation
+    goal: Convert raw source notes into linked wiki concept pages.
+    tools:
+      - read_file
+      - write_file
+      - list_files
+
+  - id: query_agent
+    role: question_answering
+    goal: Answer user questions from wiki context and write durable reports.
+    tools:
+      - read_file
+      - write_file
+      - list_files
+
+  - id: lint_agent
+    role: knowledge_quality
+    goal: Detect contradictions, duplicates, and missing links.
+    tools:
+      - read_file
+      - write_file
+      - list_files
+
+  - id: output_agent
+    role: artifact_generation
+    goal: Generate markdown reports and marp slide drafts in derived/.
+    tools:
+      - read_file
+      - write_file

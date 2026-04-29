@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { api, openFederationEventSource, type FederationRegistryResponse } from "../api";
+import {
+  api,
+  openFederationEventSource,
+  type FederationRegistryResponse,
+  type FederationWorkerProfile,
+} from "../api";
 
 const fedTopic = ref("federation");
 const fedTaskId = ref("demo-1");
@@ -19,23 +24,89 @@ const fedEs = ref<EventSource | null>(null);
 const fedRegistry = ref<FederationRegistryResponse | null>(null);
 const fedRegistryErr = ref<string | null>(null);
 const federationAgents = computed(() => fedRegistry.value?.agents ?? []);
+const workerProfiles = ref<FederationWorkerProfile[]>([]);
+const workerProfilesErr = ref<string | null>(null);
+const workerBusy = ref<string | null>(null);
+const knowledgeCompilerAgents = computed(() =>
+  federationAgents.value.filter((a) =>
+    a.capabilities.some((c) => c === "knowledge-compiler" || c === "kc.run"),
+  ),
+);
+
+const runPrompt = ref("can you check https://yarenty.com and get summary into obsidian?");
+const runBusy = ref(false);
+const runTaskId = ref<string | null>(null);
+const runTimeline = ref<string[]>([]);
+const runResult = ref<string | null>(null);
+const runWatchdog = ref<number | null>(null);
+
+function extractUrl(input: string): string | null {
+  const m = input.match(/https?:\/\/\S+/);
+  return m ? m[0] : null;
+}
+
+function buildInstructionFromPrompt(prompt: string): { instruction: string; source: string; question: string } | null {
+  const source = extractUrl(prompt);
+  if (!source) return null;
+  const question = prompt.trim() || "What changed?";
+  return { instruction: `kc.run:${source}|${question}`, source, question };
+}
 
 function fedDisconnect() {
   fedEs.value?.close();
   fedEs.value = null;
 }
 
+function clearRunWatchdog() {
+  if (runWatchdog.value !== null) {
+    window.clearTimeout(runWatchdog.value);
+    runWatchdog.value = null;
+  }
+}
+
+function processFederationEvent(data: string) {
+  let parsed: unknown = data;
+  try {
+    parsed = JSON.parse(data) as unknown;
+  } catch {
+    fedLines.value = [...fedLines.value.slice(-99), data];
+    return;
+  }
+  fedLines.value = [...fedLines.value.slice(-99), JSON.stringify(parsed, null, 2)];
+
+  const envelope = parsed as { payload?: Record<string, unknown> };
+  const payload = envelope.payload;
+  if (!payload || typeof payload !== "object") return;
+  const kind = String(payload.kind ?? "");
+  const taskId = String(payload.task_id ?? "");
+  if (!runTaskId.value || taskId !== runTaskId.value) return;
+
+  if (kind === "task_progress") {
+    const phase = String(payload.phase ?? "");
+    const step = String(payload.step ?? "");
+    const stepKind = String(payload.step_kind ?? "");
+    const output = String(payload.output ?? "");
+    if (phase === "step_complete" && step) {
+      runTimeline.value = [
+        ...runTimeline.value,
+        `${step} (${stepKind || "agent"}) -> ${output || "(no output path)"}`,
+      ];
+    } else {
+      runTimeline.value = [...runTimeline.value, `phase: ${phase}`];
+    }
+  } else if (kind === "task_result") {
+    runResult.value = String(payload.outcome ?? "(no outcome)");
+    const ok = Boolean(payload.success);
+    runTimeline.value = [...runTimeline.value, ok ? "done: success" : "done: failed"];
+    runBusy.value = false;
+    clearRunWatchdog();
+  }
+}
+
 function fedConnect() {
   fedDisconnect();
   fedLines.value = [];
-  fedEs.value = openFederationEventSource(fedTopic.value, (data) => {
-    try {
-      const j = JSON.parse(data) as unknown;
-      fedLines.value = [...fedLines.value.slice(-99), JSON.stringify(j, null, 2)];
-    } catch {
-      fedLines.value = [...fedLines.value.slice(-99), data];
-    }
-  });
+  fedEs.value = openFederationEventSource(fedTopic.value, processFederationEvent);
 }
 
 async function loadFederationRegistry() {
@@ -45,6 +116,43 @@ async function loadFederationRegistry() {
   } catch (e) {
     fedRegistry.value = null;
     fedRegistryErr.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
+async function loadWorkerProfiles() {
+  workerProfilesErr.value = null;
+  try {
+    const r = await api.federationWorkers();
+    workerProfiles.value = r.profiles ?? [];
+  } catch (e) {
+    workerProfilesErr.value = e instanceof Error ? e.message : String(e);
+    workerProfiles.value = [];
+  }
+}
+
+async function startWorker(profileId: string) {
+  workerBusy.value = profileId;
+  fedErr.value = null;
+  try {
+    await api.federationWorkerStart(profileId);
+    await Promise.all([loadWorkerProfiles(), loadFederationRegistry()]);
+  } catch (e) {
+    fedErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    workerBusy.value = null;
+  }
+}
+
+async function stopWorker(profileId: string) {
+  workerBusy.value = profileId;
+  fedErr.value = null;
+  try {
+    await api.federationWorkerStop(profileId);
+    await Promise.all([loadWorkerProfiles(), loadFederationRegistry()]);
+  } catch (e) {
+    fedErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    workerBusy.value = null;
   }
 }
 
@@ -64,6 +172,59 @@ async function fedDelegate() {
     fedErr.value = e instanceof Error ? e.message : String(e);
   } finally {
     fedBusy.value = false;
+  }
+}
+
+async function runKnowledgeCompiler() {
+  const built = buildInstructionFromPrompt(runPrompt.value);
+  if (!built) {
+    fedErr.value = "Prompt must include a URL (e.g. https://yarenty.com).";
+    return;
+  }
+  fedErr.value = null;
+  runBusy.value = true;
+  runResult.value = null;
+  runTimeline.value = [];
+  clearRunWatchdog();
+  runTaskId.value = `ui-kc-${Date.now()}`;
+  if (!fedEs.value) fedConnect();
+
+  try {
+    const out = await api.federationDelegate({
+      task_id: runTaskId.value,
+      instruction: built.instruction,
+      capability: "kc.run",
+    });
+    runTimeline.value = [
+      ...runTimeline.value,
+      `delegated to: ${out.delegated_to ?? "(no target)"}`,
+      `source: ${built.source}`,
+    ];
+    if (!out.delegated_to) {
+      runBusy.value = false;
+      runResult.value =
+        "No federation worker matched capability `kc.run`.\n\nHow to fix:\n- Start worker: cargo run -p kowalski-cli -- extension run knowledge-compiler worker kc-worker-1\n- Click Refresh registry and verify an agent with `kc.run` capability is active.\n- Retry this run.";
+      runTimeline.value = [
+        ...runTimeline.value,
+        "blocked: no target worker available for capability kc.run",
+      ];
+      return;
+    }
+    runWatchdog.value = window.setTimeout(() => {
+      if (!runBusy.value) return;
+      runBusy.value = false;
+      runTimeline.value = [
+        ...runTimeline.value,
+        "timeout: no progress events received within 30s",
+      ];
+      runResult.value =
+        "Run was delegated but no worker progress arrived.\n\nPotential causes:\n- Worker process is down or subscribed to another topic.\n- Worker cannot publish progress/result events.\n\nHow to fix:\n- Ensure worker is running with default topic `federation`.\n- Check server logs and worker terminal output.\n- Retry run.";
+    }, 30_000);
+    void loadFederationRegistry();
+  } catch (e) {
+    runBusy.value = false;
+    clearRunWatchdog();
+    fedErr.value = e instanceof Error ? e.message : String(e);
   }
 }
 
@@ -117,10 +278,12 @@ async function fedRegister() {
 
 onMounted(() => {
   void loadFederationRegistry();
+  void loadWorkerProfiles();
 });
 
 onUnmounted(() => {
   fedDisconnect();
+  clearRunWatchdog();
 });
 </script>
 
@@ -128,6 +291,48 @@ onUnmounted(() => {
   <section class="panel">
     <h2>Federation</h2>
     <p><button type="button" class="primary" @click="loadFederationRegistry">Refresh registry</button></p>
+    <h3>Worker Profiles (UI-managed)</h3>
+    <p class="muted">
+      Worker = runtime process registered in federation by capability. Sub-agents are internal pipeline steps and are not required to be separate federation workers.
+    </p>
+    <div v-if="workerProfiles.length" class="cards">
+      <article v-for="p in workerProfiles" :key="p.id" class="card">
+        <header>
+          <strong>{{ p.name }}</strong>
+          <span class="status-badge" :class="p.managed_running ? 'status-ok' : 'status-off'">
+            {{ p.managed_running ? "RUNNING" : "STOPPED" }}
+          </span>
+        </header>
+        <p class="muted">{{ p.description }}</p>
+        <p class="muted">Capability: {{ p.capability }}</p>
+        <p class="muted">Registry agents: {{ p.registry_agents.join(", ") || "(none)" }}</p>
+        <p class="muted">Command: {{ p.command }} {{ p.args.join(" ") }}</p>
+        <p class="muted">Cwd: {{ p.cwd }}</p>
+        <p>
+          <button
+            type="button"
+            class="primary"
+            :disabled="workerBusy === p.id || p.managed_running"
+            @click="startWorker(p.id)"
+          >
+            {{ workerBusy === p.id ? "Starting..." : "Start" }}
+          </button>
+          <button
+            type="button"
+            :disabled="workerBusy === p.id || !p.managed_running"
+            @click="stopWorker(p.id)"
+          >
+            {{ workerBusy === p.id ? "Stopping..." : "Stop" }}
+          </button>
+        </p>
+      </article>
+    </div>
+    <p v-else class="muted">No worker profiles found.</p>
+    <p v-if="workerProfilesErr" class="err">{{ workerProfilesErr }}</p>
+    <p class="muted" v-if="knowledgeCompilerAgents.length">
+      Knowledge Compiler agents: {{ knowledgeCompilerAgents.map((a) => a.id).join(", ") }}
+    </p>
+    <p class="muted" v-else>No active `knowledge-compiler`/`kc.run` workers in registry.</p>
     <div v-if="federationAgents.length" class="cards">
       <article v-for="agent in federationAgents" :key="agent.id" class="card">
         <header><strong>{{ agent.id }}</strong><span class="status-badge status-ok">ACTIVE</span></header>
@@ -140,6 +345,37 @@ onUnmounted(() => {
       <pre v-if="fedRegistry" class="json json-scroll">{{ JSON.stringify(fedRegistry, null, 2) }}</pre>
     </details>
     <p v-if="fedRegistryErr" class="err">{{ fedRegistryErr }}</p>
+
+    <h3>Knowledge Compiler (chat-style run)</h3>
+    <p class="muted">
+      Send one prompt (with URL), then follow step-by-step sub-agent outputs and final artifacts below.
+    </p>
+    <p>
+      <label class="lbl">Prompt</label>
+      <input
+        v-model="runPrompt"
+        class="inp"
+        type="text"
+        placeholder="can you check https://yarenty.com and get summary into obsidian?"
+      />
+    </p>
+    <p>
+      <button type="button" class="primary" :disabled="runBusy" @click="runKnowledgeCompiler">
+        {{ runBusy ? "Running..." : "Run knowledge-compiler" }}
+      </button>
+    </p>
+    <p v-if="runTaskId" class="muted">Task ID: {{ runTaskId }}</p>
+    <div v-if="runTimeline.length" class="fed-events">
+      <details v-for="(line, i) in runTimeline" :key="`run-${i}`" class="fed-event" :open="i >= runTimeline.length - 6">
+        <summary>Step {{ i + 1 }}</summary>
+        <pre class="json fed-line">{{ line }}</pre>
+      </details>
+    </div>
+    <p v-else class="muted">(no run steps yet)</p>
+    <details v-if="runResult">
+      <summary>Final delivery</summary>
+      <pre class="json fed-line">{{ runResult }}</pre>
+    </details>
 
     <p><label class="lbl">Topic</label><input v-model="fedTopic" class="inp" type="text" /></p>
     <p>
@@ -196,6 +432,7 @@ onUnmounted(() => {
 .card { border: 1px solid #2a2e38; border-radius: 8px; background: #171b22; padding: 0.55rem 0.65rem; }
 .card header { display: flex; justify-content: space-between; align-items: center; }
 .status-badge { border-radius: 999px; font-size: 0.72rem; padding: 0.12rem 0.45rem; border: 1px solid #2f7c47; color: #8de3a8; background: #153323; }
+.status-off { border-color: #555f74; color: #b0b7c7; background: #2a3142; }
 .json { background: #1a1d26; border: 1px solid #2a2e38; border-radius: 6px; padding: 0.75rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.45; color: #c8cfdd; }
 .json-scroll { max-height: 18rem; overflow: auto; }
 .row { margin: 0.35rem 0 0.5rem; }

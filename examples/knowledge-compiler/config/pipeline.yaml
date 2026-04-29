@@ -1,0 +1,17 @@
+version: 1
+pipeline:
+  - step: ingest
+    script: scripts/ingest.sh
+    description: Add source notes to raw/sources/.
+
+  - step: compile
+    script: scripts/compile.sh
+    description: Generate or update wiki summaries and index metadata.
+
+  - step: ask
+    script: scripts/ask.sh
+    description: Resolve user questions into derived markdown reports.
+
+  - step: lint
+    script: scripts/lint.sh
+    description: Run consistency checks and emit a lint report.

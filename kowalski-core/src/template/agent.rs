@@ -245,6 +245,24 @@ impl TemplateAgent {
             .await
     }
 
+    pub async fn prepare_stream_turn_with_options(
+        &mut self,
+        conversation_id: &str,
+        user: &str,
+        use_memory: bool,
+    ) -> Result<
+        (
+            String,
+            Vec<crate::conversation::Message>,
+            std::sync::Arc<dyn crate::llm::LLMProvider>,
+        ),
+        KowalskiError,
+    > {
+        self.base_mut()
+            .prepare_stream_turn_with_options(conversation_id, user, None, use_memory)
+            .await
+    }
+
     /// Like [`crate::agent::Agent::chat_with_tools`], but streams token deltas only for the LLM
     /// completion after at least one tool execution (see [`crate::agent::BaseAgent::chat_with_tools_stream_final`]).
     pub async fn chat_with_tools_stream_final(
@@ -256,6 +274,55 @@ impl TemplateAgent {
         self.base_mut()
             .chat_with_tools_stream_final(conversation_id, user_input, token_tx)
             .await
+    }
+
+    pub async fn chat_with_tools_with_options(
+        &mut self,
+        conversation_id: &str,
+        user_input: &str,
+        use_memory: bool,
+    ) -> Result<String, KowalskiError> {
+        self.base_mut()
+            .chat_with_tools_with_options(conversation_id, user_input, use_memory)
+            .await
+    }
+
+    pub async fn chat_with_tools_stream_final_with_options(
+        &mut self,
+        conversation_id: &str,
+        user_input: &str,
+        token_tx: &tokio::sync::mpsc::Sender<String>,
+        use_memory: bool,
+    ) -> Result<String, KowalskiError> {
+        self.base_mut()
+            .chat_with_tools_stream_final_with_options(conversation_id, user_input, token_tx, use_memory)
+            .await
+    }
+
+    pub async fn preview_memory_debug(
+        &self,
+        conversation_id: &str,
+        user_input: &str,
+        use_memory: bool,
+    ) -> crate::agent::MemoryDebugInfo {
+        self.base()
+            .preview_memory_debug(conversation_id, user_input, use_memory)
+            .await
+    }
+
+    pub fn replace_conversation_messages(
+        &mut self,
+        conversation_id: &str,
+        messages: Vec<crate::conversation::Message>,
+    ) -> Result<(), KowalskiError> {
+        if let Some(conv) = self.base_mut().conversations.get_mut(conversation_id) {
+            conv.messages = messages;
+            Ok(())
+        } else {
+            Err(KowalskiError::ConversationNotFound(
+                conversation_id.to_string(),
+            ))
+        }
     }
 }
 

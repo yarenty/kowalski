@@ -106,6 +106,16 @@ enum Commands {
         #[clap(subcommand)]
         command: FederationCommands,
     },
+    /// Run extension commands discovered from PATH or local extension directory
+    Extension {
+        #[clap(subcommand)]
+        command: ExtensionCommands,
+    },
+    /// Markdown-defined app agents (main + sub-agents in .md files)
+    AgentApp {
+        #[clap(subcommand)]
+        command: AgentAppCommands,
+    },
 }
 
 #[derive(Parser, Debug)]
@@ -154,6 +164,107 @@ enum McpCommands {
         /// TOML file containing an [mcp] section (default: ./config.toml)
         #[clap(short, long)]
         config: Option<String>,
+    },
+}
+
+#[derive(Parser, Debug)]
+enum ExtensionCommands {
+    /// List available extensions (PATH `kowalski-ext-*` and local `.kowalski/extensions/*`)
+    List,
+    /// Run an extension by name, forwarding trailing arguments as-is
+    Run {
+        /// Extension name (for binary `kowalski-ext-<name>`)
+        name: String,
+        /// Arguments forwarded to extension command
+        #[clap(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+}
+
+#[derive(Parser, Debug)]
+enum AgentAppCommands {
+    /// List declared agents and pipeline
+    List {
+        /// App root path (default: examples/knowledge-compiler)
+        #[clap(short, long)]
+        path: Option<String>,
+    },
+    /// Validate main-agent/sub-agent definitions and references
+    Validate {
+        /// App root path (default: examples/knowledge-compiler)
+        #[clap(short, long)]
+        path: Option<String>,
+    },
+    /// Run main agent orchestration
+    Run {
+        /// Source URL or text
+        source: String,
+        /// Optional question for query phase
+        #[clap(short, long)]
+        question: Option<String>,
+        /// App root path (default: examples/knowledge-compiler)
+        #[clap(short, long)]
+        path: Option<String>,
+        /// Kowalski API base URL (default: http://127.0.0.1:3456)
+        #[clap(long)]
+        api: Option<String>,
+    },
+    /// Delegate one orchestrated run via federation `/api/federation/delegate`
+    Delegate {
+        /// Required capability selector (e.g. `kc.run`)
+        capability: String,
+        /// Source URL or text
+        source: String,
+        /// Optional question for query phase
+        #[clap(short, long)]
+        question: Option<String>,
+        /// Kowalski API base URL
+        #[clap(long)]
+        api: Option<String>,
+    },
+    /// Run a federated worker that executes `kc.run:<source>|<question>` delegates,
+    /// or a single sub-agent role (ingest|compile|ask|lint) when `--role` is set.
+    Worker {
+        /// Worker agent id
+        agent_id: String,
+        /// App root path (default: examples/knowledge-compiler)
+        #[clap(short, long)]
+        path: Option<String>,
+        /// Kowalski API base URL
+        #[clap(long)]
+        api: Option<String>,
+        /// Federation topic (default: federation)
+        #[clap(long)]
+        topic: Option<String>,
+        /// Restrict the worker to a single sub-agent role: ingest, compile, ask, or lint.
+        /// When omitted the worker handles legacy `kc.run` whole-pipeline delegations.
+        #[clap(long)]
+        role: Option<String>,
+        /// Override the registered capability. Defaults to `kc.<role>` when role is set,
+        /// or `kc.run`+`knowledge-compiler` for legacy mode.
+        #[clap(long)]
+        capability: Option<String>,
+    },
+    /// Print reproducible end-to-end federation proof-run checklist
+    Proof {
+        /// App root path (default: examples/knowledge-compiler)
+        #[clap(short, long)]
+        path: Option<String>,
+        /// Kowalski API base URL
+        #[clap(long)]
+        api: Option<String>,
+        /// Worker agent id
+        #[clap(long)]
+        agent_id: Option<String>,
+        /// Capability to delegate
+        #[clap(long)]
+        capability: Option<String>,
+        /// Source to delegate
+        #[clap(long)]
+        source: Option<String>,
+        /// Question to delegate
+        #[clap(long)]
+        question: Option<String>,
     },
 }
 
@@ -492,6 +603,119 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 kowalski_cli::federation_ops::run_ping_notify(config.as_deref()).await?;
             }
         },
+        Some(Commands::Extension { command }) => match command {
+            ExtensionCommands::List => {
+                let items = kowalski_cli::extension_ops::list_extensions()?;
+                if items.is_empty() {
+                    println!("No extensions found.");
+                    println!("Install `kowalski-ext-<name>` in PATH or add `.kowalski/extensions/<name>/run`.");
+                } else {
+                    println!("Available extensions:");
+                    for name in items {
+                        println!("- {}", name);
+                    }
+                }
+            }
+            ExtensionCommands::Run { name, args } => {
+                kowalski_cli::extension_ops::run_extension(&name, &args)?;
+            }
+        },
+        Some(Commands::AgentApp { command }) => match command {
+            AgentAppCommands::List { path } => {
+                kowalski_cli::agent_app_ops::list_agents(path.as_deref())?;
+            }
+            AgentAppCommands::Validate { path } => {
+                kowalski_cli::agent_app_ops::validate(path.as_deref())?;
+            }
+            AgentAppCommands::Run {
+                source,
+                question,
+                path,
+                api,
+            } => {
+                let out = tokio::task::spawn_blocking(move || {
+                    kowalski_cli::agent_app_ops::run(
+                        path.as_deref(),
+                        &source,
+                        question.as_deref(),
+                        api.as_deref(),
+                    )
+                    .map_err(|e| e.to_string())
+                })
+                .await?;
+                if let Err(e) = out {
+                    return Err(e.into());
+                }
+            }
+            AgentAppCommands::Delegate {
+                capability,
+                source,
+                question,
+                api,
+            } => {
+                let out = tokio::task::spawn_blocking(move || {
+                    kowalski_cli::agent_app_ops::federate_delegate(
+                        api.as_deref(),
+                        &capability,
+                        &source,
+                        question.as_deref(),
+                    )
+                    .map_err(|e| e.to_string())
+                })
+                .await?;
+                if let Err(e) = out {
+                    return Err(e.into());
+                }
+            }
+            AgentAppCommands::Worker {
+                agent_id,
+                path,
+                api,
+                topic,
+                role,
+                capability,
+            } => {
+                let out = tokio::task::spawn_blocking(move || {
+                    kowalski_cli::agent_app_ops::federate_worker(
+                        path.as_deref(),
+                        api.as_deref(),
+                        &agent_id,
+                        topic.as_deref(),
+                        role.as_deref(),
+                        capability.as_deref(),
+                    )
+                    .map_err(|e| e.to_string())
+                })
+                .await?;
+                if let Err(e) = out {
+                    return Err(e.into());
+                }
+            }
+            AgentAppCommands::Proof {
+                path,
+                api,
+                agent_id,
+                capability,
+                source,
+                question,
+            } => {
+                let out = tokio::task::spawn_blocking(move || {
+                    kowalski_cli::agent_app_ops::proof_check(
+                        path.as_deref(),
+                        api.as_deref(),
+                        agent_id.as_deref(),
+                        capability.as_deref(),
+                        source.as_deref(),
+                        question.as_deref(),
+                    )
+                    .map_err(|e| e.to_string())
+                })
+                .await?;
+                if let Err(e) = out {
+                    return Err(e.into());
+                }
+            }
+        },
         Some(Commands::Consolidate { delete }) => {
             let config = Config::default();
             let ollama_model = &config.ollama.model;
@@ -663,6 +887,9 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
                 println!("  kowalski-cli db migrate [--url] [-c config.toml]");
                 println!("  kowalski-cli doctor [--ollama-url URL]");
                 println!("  kowalski-cli federation ping-notify [-c config.toml]  — pg_notify smoke (needs --features postgres)");
+                println!("  kowalski-cli extension list");
+                println!("  kowalski-cli extension run <name> [-- <args...>]");
+                println!("  kowalski-cli agent-app <list|validate|run> [args]");
                 println!("  kowalski  — /api/federation/registry, /api/federation/stream (SSE), /api/federation/delegate; with --features postgres + memory.database_url, LISTEN kowalski_federation → broker");
             }
             "create" => {

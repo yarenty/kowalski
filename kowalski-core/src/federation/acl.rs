@@ -64,6 +64,74 @@ pub enum AclMessage {
         code: String,
         message: String,
     },
+    /// Horde run lifecycle: orchestrator announces a run has begun.
+    RunStarted {
+        run_id: String,
+        horde: String,
+        prompt: String,
+        #[serde(default)]
+        source: Option<String>,
+        #[serde(default)]
+        question: Option<String>,
+        #[serde(default)]
+        pipeline: Vec<String>,
+    },
+    /// Horde run lifecycle: orchestrator delegated a sub-agent task (UI conversation).
+    TaskAssigned {
+        run_id: String,
+        horde: String,
+        step: String,
+        from: String,
+        to: String,
+        task_id: String,
+        instruction: String,
+    },
+    /// Horde run lifecycle: a sub-agent worker started executing a task.
+    TaskStarted {
+        run_id: String,
+        horde: String,
+        step: String,
+        agent: String,
+        #[serde(default)]
+        text: Option<String>,
+    },
+    /// Horde run lifecycle: arbitrary inter-agent or progress message.
+    AgentMessage {
+        run_id: String,
+        horde: String,
+        from: String,
+        #[serde(default)]
+        step: Option<String>,
+        text: String,
+    },
+    /// Horde run lifecycle: a sub-agent finished (carries artifact path for chaining).
+    TaskFinished {
+        run_id: String,
+        horde: String,
+        step: String,
+        agent: String,
+        success: bool,
+        #[serde(default)]
+        artifact: Option<String>,
+        summary: String,
+    },
+    /// Horde run lifecycle: orchestrator declares the run completed successfully.
+    RunFinished {
+        run_id: String,
+        horde: String,
+        #[serde(default)]
+        artifacts: Vec<(String, String)>,
+        #[serde(default)]
+        text: Option<String>,
+    },
+    /// Horde run lifecycle: orchestrator declares the run failed.
+    RunFailed {
+        run_id: String,
+        horde: String,
+        reason: String,
+        #[serde(default)]
+        step: Option<String>,
+    },
 }
 
 /// Reject [`AclMessage::TaskDelegate`] when `delegation_depth` exceeds the effective max.
