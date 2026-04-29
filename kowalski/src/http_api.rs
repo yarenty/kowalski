@@ -1053,13 +1053,18 @@ async fn post_federation_heartbeat(
             }
         }
     }
-    Err((
-        StatusCode::SERVICE_UNAVAILABLE,
-        format!(
-            "Postgres memory URL not configured (config {}; build with --features postgres for heartbeat persistence)",
+    // Heartbeat persistence is optional. When Postgres is unavailable, keep worker runtime healthy
+    // and report a non-fatal volatile heartbeat status instead of returning 503.
+    Ok(Json(json!({
+        "ok": true,
+        "agent_id": id,
+        "persisted": false,
+        "mode": "volatile",
+        "note": format!(
+            "Postgres heartbeat persistence disabled (config {}; run with --features postgres and database_url to persist).",
             state.config_path.display()
-        ),
-    ))
+        )
+    })))
 }
 
 async fn get_federation_ws(
@@ -1621,8 +1626,16 @@ async fn post_horde_run(
     let source_extracted = body
         .source
         .clone()
-        .or_else(|| extract_url(&prompt))
-        .filter(|s| !s.is_empty());
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| {
+            let p = prompt.trim();
+            if p.is_empty() {
+                None
+            } else {
+                // Keep run input transport generic: prompt can contain URLs, file paths, or plain text.
+                Some(p.to_string())
+            }
+        });
     let inferred_question = body
         .question
         .clone()
@@ -1752,16 +1765,6 @@ async fn post_horde_followup(
         "output_path": out_path.display().to_string(),
         "mode": "horde_followup_chat_continuation",
     })))
-}
-
-fn extract_url(text: &str) -> Option<String> {
-    for token in text.split_whitespace() {
-        let trimmed = token.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '/' && c != ':' && c != '.' && c != '-' && c != '_' && c != '?' && c != '=' && c != '&' && c != '#' && c != '~' && c != '%');
-        if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-            return Some(trimmed.to_string());
-        }
-    }
-    None
 }
 
 async fn get_horde_runs(

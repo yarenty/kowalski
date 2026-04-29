@@ -95,6 +95,12 @@ function extractUrl(input: string): string | null {
   return m ? m[0] : null;
 }
 
+function extractUrls(input: string): string[] {
+  const matches = input.match(/https?:\/\/\S+/g) ?? [];
+  const cleaned = matches.map((u) => u.trim().replace(/[),.;]+$/, ""));
+  return [...new Set(cleaned)];
+}
+
 function processFederationEvent(data: string) {
   let parsed: unknown = data;
   try {
@@ -321,11 +327,11 @@ watch(
 async function runKnowledgeCompiler() {
   await Promise.all([loadHordes(), loadProfiles()]);
   const prompt = followupInput.value.trim();
-  const source = extractUrl(prompt);
-  if (!source) {
-    runErr.value = "Prompt must include URL, e.g. https://yarenty.com.";
+  if (!prompt) {
+    runErr.value = "Prompt is required.";
     return;
   }
+  const sources = extractUrls(prompt);
   runErr.value = null;
   if (!selectedHordeWorkers.value.length) {
     runErr.value = "No workers loaded for selected horde.";
@@ -352,11 +358,13 @@ async function runKnowledgeCompiler() {
   connectStream();
   feed("user", prompt, "You");
   feed("orchestrator", "creating run", "Agent: Boss");
-  feed("orchestrator", `source: ${source}`, "Agent: Boss");
+  if (sources.length) {
+    feed("orchestrator", `source(s): ${sources.join(", ")}`, "Agent: Boss");
+  }
   try {
     const out = await api.hordeRun(selectedHordeId.value, {
       prompt,
-      source,
+      source: prompt,
     });
     followupInput.value = "";
     runId.value = out.run.run_id;

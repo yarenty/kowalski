@@ -5,4 +5,5 @@ pub mod extension_ops;
 pub mod federation_ops;
 pub mod run_ops;
 pub mod interactive;
+pub mod input_assets;
 pub mod ops;

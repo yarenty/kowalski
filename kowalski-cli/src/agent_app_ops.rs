@@ -1,6 +1,7 @@
 //! Markdown-defined app agent orchestration (`main-agent.md` + `agents/*.md`).
 
 use chrono::Utc;
+use crate::input_assets::{ingest_assets_markdown, parse_input_assets};
 use reqwest::blocking as reqwest_blocking;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
@@ -408,32 +409,6 @@ fn normalize_and_repair_wiki(root: &Path) -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
-fn ingest_source(root: &Path, source: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    ensure_dirs(root)?;
-    let stamp = Utc::now().format("%Y%m%d-%H%M%S");
-    let out = root.join("raw/sources").join(format!("{stamp}-{}.md", slugify(source)));
-    let now = Utc::now().to_rfc3339();
-    let content = if source.starts_with("http://") || source.starts_with("https://") {
-        match reqwest_blocking::get(source) {
-            Ok(resp) => {
-                let text = resp.text().unwrap_or_else(|_| "(unable to decode body)".to_string());
-                format!(
-                    "# Raw Source\n\n- Input: {source}\n- Ingested At: {now}\n\n## Content\n{}\n",
-                    text.chars().take(24000).collect::<String>()
-                )
-            }
-            Err(e) => format!(
-                "# Raw Source\n\n- Input: {source}\n- Ingested At: {now}\n\n## Fetch Error\n{e}\n"
-            ),
-        }
-    } else {
-        format!(
-            "# Raw Source\n\n- Input: {source}\n- Ingested At: {now}\n\n## Notes\nText input captured. Prefer full URL for web ingest.\n"
-        )
-    };
-    fs::write(&out, content)?;
-    Ok(out)
-}
 
 fn run_with_progress<F>(
     path: Option<&str>,
@@ -455,7 +430,7 @@ where
         .or(main.meta.default_question.clone())
         .unwrap_or_else(|| "What changed?".to_string());
 
-    let mut latest_source = ingest_source(&root, source)?;
+    let mut latest_source = ingest_assets_markdown(&root, source)?;
     let run_stamp = Utc::now().format("%Y%m%d-%H%M%S");
     let log_file = root.join("scratch").join(format!("orchestration-{run_stamp}.md"));
     let mut log = String::new();
@@ -473,7 +448,7 @@ where
         log.push_str(&format!("## Step: {} ({})\n\n", step, agent.meta.kind));
         match agent.meta.kind.as_str() {
             "ingest" => {
-                latest_source = ingest_source(&root, source)?;
+                latest_source = ingest_assets_markdown(&root, source)?;
                 log.push_str(&format!("- output: {}\n\n", latest_source.display()));
                 task_outputs.push((step.clone(), latest_source.clone()));
                 on_step(step, agent.meta.kind.as_str(), latest_source.as_path());
@@ -1035,10 +1010,15 @@ fn execute_ingest(
         .as_deref()
         .ok_or("ingest: missing `source` in horde instruction")?;
     ensure_dirs(root)?;
-    let path = ingest_source(root, source)?;
+    let source_list = parse_input_assets(source);
+    let path = ingest_assets_markdown(root, source)?;
     Ok((
         path.display().to_string(),
-        format!("Captured raw source ({} bytes path).", path.display().to_string().len()),
+        format!(
+            "Captured {} source(s) into raw collection: {}",
+            source_list.len(),
+            path.display()
+        ),
     ))
 }
 
