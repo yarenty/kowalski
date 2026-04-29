@@ -209,6 +209,33 @@ enum AgentAppCommands {
         #[clap(long)]
         api: Option<String>,
     },
+    /// Delegate one orchestrated run via federation `/api/federation/delegate`
+    Delegate {
+        /// Required capability selector (e.g. `kc.run`)
+        capability: String,
+        /// Source URL or text
+        source: String,
+        /// Optional question for query phase
+        #[clap(short, long)]
+        question: Option<String>,
+        /// Kowalski API base URL
+        #[clap(long)]
+        api: Option<String>,
+    },
+    /// Run a federated worker that executes `kc.run:<source>|<question>` delegates
+    Worker {
+        /// Worker agent id
+        agent_id: String,
+        /// App root path (default: examples/knowledge-compiler)
+        #[clap(short, long)]
+        path: Option<String>,
+        /// Kowalski API base URL
+        #[clap(long)]
+        api: Option<String>,
+        /// Federation topic (default: federation)
+        #[clap(long)]
+        topic: Option<String>,
+    },
 }
 
 struct AgentManager {
@@ -581,6 +608,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     &source,
                     question.as_deref(),
                     api.as_deref(),
+                )?;
+            }
+            AgentAppCommands::Delegate {
+                capability,
+                source,
+                question,
+                api,
+            } => {
+                kowalski_cli::agent_app_ops::federate_delegate(
+                    api.as_deref(),
+                    &capability,
+                    &source,
+                    question.as_deref(),
+                )?;
+            }
+            AgentAppCommands::Worker {
+                agent_id,
+                path,
+                api,
+                topic,
+            } => {
+                kowalski_cli::agent_app_ops::federate_worker(
+                    path.as_deref(),
+                    api.as_deref(),
+                    &agent_id,
+                    topic.as_deref(),
                 )?;
             }
         },

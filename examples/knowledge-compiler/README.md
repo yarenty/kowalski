@@ -55,6 +55,7 @@ Or through the generic extension runner:
 cargo run -p kowalski-cli -- extension run knowledge-compiler list
 cargo run -p kowalski-cli -- extension run knowledge-compiler validate
 cargo run -p kowalski-cli -- extension run knowledge-compiler run "https://example.com/article" --question "What changed?"
+cargo run -p kowalski-cli -- extension run knowledge-compiler delegate "kc.run" "https://example.com/article" --question "What changed?"
 ```
 
 ## Main/sub-agent definitions (markdown only)
@@ -77,22 +78,22 @@ The runtime validates:
 cargo run -p kowalski --bin kowalski
 ```
 
-1. Start worker/orchestrator client:
+1. Start worker:
 
 ```bash
-cargo run -p kowalski-cli -- extension run knowledge-compiler run "https://example.com/article" --question "What changed?"
+cargo run -p kowalski-cli -- extension run knowledge-compiler worker kc-worker-1
+```
+
+1. Delegate orchestrated run:
+
+```bash
+cargo run -p kowalski-cli -- extension run knowledge-compiler delegate "kc.run" "https://example.com/article" --question "What changed?"
 ```
 
 1. Validate current agent definition set:
 
 ```bash
 cargo run -p kowalski-cli -- extension run knowledge-compiler validate
-```
-
-1. Inspect main/sub-agent map:
-
-```bash
-cargo run -p kowalski-cli -- extension run knowledge-compiler list
 ```
 
 ## How to integrate with Kowalski runtime

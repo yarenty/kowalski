@@ -11,6 +11,8 @@ Usage:
   kowalski-cli extension run knowledge-compiler list
   kowalski-cli extension run knowledge-compiler validate
   kowalski-cli extension run knowledge-compiler run "<source>" [--question "<q>"]
+  kowalski-cli extension run knowledge-compiler delegate "<capability>" "<source>" [--question "<q>"]
+  kowalski-cli extension run knowledge-compiler worker "<agent-id>" [--topic "<topic>"]
 
 Federation:
   use `kowalski` / `/api/federation/*` with CLI operators (`kowalski-cli federation ...`)
@@ -42,6 +44,39 @@ case "${cmd}" in
       exec cargo run -q -p kowalski-cli -- agent-app run --path "${APP_PATH}" --api "${KOWALSKI_API}" --question "${question}" "${source}"
     fi
     exec cargo run -q -p kowalski-cli -- agent-app run --path "${APP_PATH}" --api "${KOWALSKI_API}" "${source}"
+    ;;
+  delegate)
+    capability="${1:-}"
+    source="${2:-}"
+    shift 2 || true
+    question=""
+    if [[ "${1:-}" == "--question" ]]; then
+      question="${2:-}"
+    fi
+    if [[ -z "${capability}" || -z "${source}" ]]; then
+      echo "delegate requires <capability> <source>"
+      exit 1
+    fi
+    if [[ -n "${question}" ]]; then
+      exec cargo run -q -p kowalski-cli -- agent-app delegate --api "${KOWALSKI_API}" --question "${question}" "${capability}" "${source}"
+    fi
+    exec cargo run -q -p kowalski-cli -- agent-app delegate --api "${KOWALSKI_API}" "${capability}" "${source}"
+    ;;
+  worker)
+    agent_id="${1:-}"
+    shift || true
+    topic=""
+    if [[ "${1:-}" == "--topic" ]]; then
+      topic="${2:-}"
+    fi
+    if [[ -z "${agent_id}" ]]; then
+      echo "worker requires <agent-id>"
+      exit 1
+    fi
+    if [[ -n "${topic}" ]]; then
+      exec cargo run -q -p kowalski-cli -- agent-app worker --path "${APP_PATH}" --api "${KOWALSKI_API}" --topic "${topic}" "${agent_id}"
+    fi
+    exec cargo run -q -p kowalski-cli -- agent-app worker --path "${APP_PATH}" --api "${KOWALSKI_API}" "${agent_id}"
     ;;
   help|-h|--help|"")
     usage

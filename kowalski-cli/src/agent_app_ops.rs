@@ -5,6 +5,7 @@ use reqwest::blocking as reqwest_blocking;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::io::BufRead;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize)]
@@ -470,7 +471,7 @@ pub fn run(
                     "Fallback summary due to empty or malformed model output.",
                 );
                 fs::write(&summary_out, &reply)?;
-                normalize_and_repair_wiki(root)?;
+                normalize_and_repair_wiki(&root)?;
                 log.push_str(&format!("- output: {}\n\n", summary_out.display()));
             }
             "ask" => {
@@ -511,5 +512,173 @@ pub fn run(
 
     fs::write(&log_file, log)?;
     println!("Agent app run complete. Log: {}", log_file.display());
+    Ok(())
+}
+
+fn post_json(
+    api: &str,
+    route: &str,
+    payload: serde_json::Value,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let client = reqwest_blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()?;
+    let resp = client
+        .post(format!("{}{}", api.trim_end_matches('/'), route))
+        .json(&payload)
+        .send()?;
+    let status = resp.status();
+    let v: serde_json::Value = resp.json().unwrap_or_else(|_| serde_json::json!({}));
+    if !status.is_success() {
+        return Err(format!("{} failed ({}): {}", route, status, v).into());
+    }
+    Ok(v)
+}
+
+fn latest_md_in(dir: &Path) -> Option<PathBuf> {
+    let mut files: Vec<PathBuf> = fs::read_dir(dir)
+        .ok()?
+        .filter_map(|e| e.ok().map(|x| x.path()))
+        .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("md"))
+        .collect();
+    files.sort();
+    files.pop()
+}
+
+pub fn federate_delegate(
+    api_url: Option<&str>,
+    capability: &str,
+    source: &str,
+    question: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let api = api_url.unwrap_or("http://127.0.0.1:3456");
+    let task_id = format!("kc-{}", Utc::now().timestamp());
+    let instruction = format!(
+        "kc.run:{}|{}",
+        source,
+        question.unwrap_or("What changed in the latest source?")
+    );
+    let body = serde_json::json!({
+        "task_id": task_id,
+        "instruction": instruction,
+        "capability": capability,
+    });
+    let out = post_json(api, "/api/federation/delegate", body)?;
+    println!("{}", serde_json::to_string_pretty(&out)?);
+    Ok(())
+}
+
+pub fn federate_worker(
+    path: Option<&str>,
+    api_url: Option<&str>,
+    agent_id: &str,
+    topic: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let api = api_url.unwrap_or("http://127.0.0.1:3456");
+    let root = app_root(path);
+    let topic = topic.unwrap_or("federation");
+
+    let reg = serde_json::json!({
+        "id": agent_id,
+        "capabilities": ["knowledge-compiler", "kc.run"]
+    });
+    let _ = post_json(api, "/api/federation/register", reg)?;
+    println!("Registered worker `{}`. Listening on topic `{}`.", agent_id, topic);
+
+    let client = reqwest_blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(0))
+        .build()?;
+    let stream_url = format!(
+        "{}/api/federation/stream?topic={}",
+        api.trim_end_matches('/'),
+        topic
+    );
+    let resp = client.get(stream_url).send()?;
+    if !resp.status().is_success() {
+        return Err(format!("stream failed: HTTP {}", resp.status()).into());
+    }
+    let reader = std::io::BufReader::new(resp);
+    for line in reader.lines() {
+        let line = line?;
+        if !line.starts_with("data: ") {
+            continue;
+        }
+        let data = &line[6..];
+        let env: serde_json::Value = match serde_json::from_str(data) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let payload = env.get("payload").cloned().unwrap_or_else(|| serde_json::json!({}));
+        if payload.get("kind").and_then(|x| x.as_str()) != Some("task_delegate") {
+            continue;
+        }
+        if payload.get("to_agent").and_then(|x| x.as_str()) != Some(agent_id) {
+            continue;
+        }
+        let task_id = payload
+            .get("task_id")
+            .and_then(|x| x.as_str())
+            .unwrap_or("unknown-task")
+            .to_string();
+        let instruction = payload
+            .get("instruction")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string();
+        let mut success = true;
+        let mut outcome = String::new();
+
+        if let Some(raw) = instruction.strip_prefix("kc.run:") {
+            let mut parts = raw.splitn(2, '|');
+            let source = parts.next().unwrap_or("").trim();
+            let question = parts
+                .next()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("What changed in the latest source?");
+            if source.is_empty() {
+                success = false;
+                outcome = "missing source in instruction".to_string();
+            } else {
+                let root_s = root.to_string_lossy().to_string();
+                if let Err(e) = run(Some(root_s.as_str()), source, Some(question), Some(api)) {
+                success = false;
+                outcome = format!("run failed: {}", e);
+                } else {
+                    let report = latest_md_in(&root.join("derived/reports"))
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "(none)".to_string());
+                    let lint = root.join("derived/lint/latest.md");
+                    let lint_disp = if lint.exists() {
+                        lint.display().to_string()
+                    } else {
+                        "(none)".to_string()
+                    };
+                    outcome = format!("run complete; report={}; lint={}", report, lint_disp);
+                }
+            }
+        } else {
+            success = false;
+            outcome = format!("unsupported instruction: {}", instruction);
+        }
+
+        let publish = serde_json::json!({
+            "sender": agent_id,
+            "topic": topic,
+            "payload": {
+                "kind": "task_result",
+                "task_id": task_id,
+                "from_agent": agent_id,
+                "outcome": outcome,
+                "success": success
+            }
+        });
+        let _ = post_json(api, "/api/federation/publish", publish);
+        let _ = post_json(
+            api,
+            "/api/federation/heartbeat",
+            serde_json::json!({ "agent_id": agent_id }),
+        );
+    }
     Ok(())
 }
