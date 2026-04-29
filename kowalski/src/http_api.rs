@@ -1576,13 +1576,26 @@ async fn post_horde_run(
         .clone()
         .or_else(|| extract_url(&prompt))
         .filter(|s| !s.is_empty());
+    let inferred_question = body
+        .question
+        .clone()
+        .filter(|q| !q.trim().is_empty())
+        .or_else(|| {
+            let p = prompt.trim();
+            if p.is_empty() {
+                None
+            } else {
+                // Use the full user prompt as run question when explicit `question` is omitted.
+                Some(p.to_string())
+            }
+        });
     let record = state
         .horde_manager
         .start_run(
             &horde_id,
             &prompt,
             source_extracted.as_deref(),
-            body.question.as_deref(),
+            inferred_question.as_deref(),
         )
         .await
         .map_err(|e| (StatusCode::BAD_REQUEST, e))?;

@@ -24,6 +24,24 @@ const runHistory = ref<HordeRunRecord[]>([]);
 
 const selectedHorde = computed(() => hordes.value.find((h) => h.id === selectedHordeId.value) ?? null);
 const selectedHordeWorkers = computed(() => workerProfiles.value.filter((w) => w.horde_id === selectedHordeId.value));
+const finalDelivery = computed(() => {
+  if (!runResult.value) return null;
+  try {
+    return JSON.parse(runResult.value) as {
+      kind?: string;
+      text?: string;
+      artifacts?: Array<[string, string]>;
+    };
+  } catch {
+    return null;
+  }
+});
+const finalArtifacts = computed(() => finalDelivery.value?.artifacts ?? []);
+const obsidianRoot = computed(() =>
+  selectedHorde.value?.root_path
+    ? `${selectedHorde.value.root_path}/wiki`
+    : "(unknown)",
+);
 
 watch(
   () => selectedHordeId.value,
@@ -240,7 +258,25 @@ onUnmounted(() => {
 
     <details v-if="runResult">
       <summary>Final delivery</summary>
-      <pre class="json">{{ runResult }}</pre>
+      <div class="delivery">
+        <p class="muted">
+          {{ finalDelivery?.text || "Run completed." }}
+        </p>
+        <p class="muted"><strong>Obsidian-ready folder:</strong> <code>{{ obsidianRoot }}</code></p>
+        <p class="muted">
+          Copy/sync this folder into your Obsidian vault (or set your vault root there).
+        </p>
+        <div v-if="finalArtifacts.length" class="artifact-list">
+          <article v-for="a in finalArtifacts" :key="`${a[0]}-${a[1]}`" class="artifact-item">
+            <strong>{{ a[0] }}</strong>
+            <code>{{ a[1] }}</code>
+          </article>
+        </div>
+        <details>
+          <summary>Raw run_finished payload</summary>
+          <pre class="json">{{ runResult }}</pre>
+        </details>
+      </div>
     </details>
     <details v-if="runHistory.length">
       <summary>Previous runs</summary>
@@ -258,6 +294,9 @@ onUnmounted(() => {
 .inp { width: 100%; max-width: 48rem; box-sizing: border-box; background: #1a1d26; border: 1px solid #3d4658; color: #e8e8ec; border-radius: 6px; padding: 0.4rem 0.55rem; font: inherit; }
 .chat-feed { border: 1px solid #2a2e38; border-radius: 8px; background: #141820; padding: 0.6rem; display: grid; gap: 0.45rem; max-height: 55vh; overflow: auto; }
 .horde-box { border: 1px solid #2a2e38; border-radius: 8px; background: #161b22; padding: 0.55rem 0.65rem; margin-bottom: 0.55rem; }
+.delivery { border: 1px solid #2a2e38; border-radius: 8px; background: #151922; padding: 0.55rem 0.65rem; margin-top: 0.45rem; }
+.artifact-list { display: grid; gap: 0.35rem; margin-top: 0.45rem; }
+.artifact-item { border: 1px solid #2a2e38; border-radius: 6px; background: #12161d; padding: 0.45rem 0.55rem; display: grid; gap: 0.25rem; }
 .msg { border: 1px solid #2a2e38; border-radius: 8px; background: #171b22; padding: 0.5rem 0.65rem; }
 .msg header { color: #9aa8c0; font-size: 0.8rem; margin-bottom: 0.2rem; text-transform: capitalize; }
 .msg pre { margin: 0; white-space: pre-wrap; word-break: break-word; color: #d2d9e8; font-size: 0.85rem; }
