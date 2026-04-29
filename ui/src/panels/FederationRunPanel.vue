@@ -20,13 +20,10 @@ const runResult = ref<string | null>(null);
 const runErr = ref<string | null>(null);
 const runWatchdog = ref<number | null>(null);
 const workerProfiles = ref<FederationWorkerProfile[]>([]);
-const selectedProfileId = ref<string>("");
 const runHistory = ref<HordeRunRecord[]>([]);
 
 const selectedHorde = computed(() => hordes.value.find((h) => h.id === selectedHordeId.value) ?? null);
-const selectedProfile = computed(() =>
-  workerProfiles.value.find((p) => p.id === selectedProfileId.value) ?? null,
-);
+const selectedHordeWorkers = computed(() => workerProfiles.value.filter((w) => w.horde_id === selectedHordeId.value));
 
 watch(
   () => selectedHordeId.value,
@@ -108,9 +105,6 @@ async function loadProfiles() {
   try {
     const r = await api.hordeWorkers(selectedHordeId.value);
     workerProfiles.value = r.workers ?? [];
-    if (!workerProfiles.value.some((p) => p.id === selectedProfileId.value) && workerProfiles.value.length) {
-      selectedProfileId.value = workerProfiles.value[0].id;
-    }
   } catch {
     workerProfiles.value = [];
   }
@@ -144,25 +138,22 @@ async function runKnowledgeCompiler() {
     return;
   }
   runErr.value = null;
-  if (!selectedProfile.value) {
-    runErr.value = "Select worker profile first.";
+  if (!selectedHordeWorkers.value.length) {
+    runErr.value = "No workers loaded for selected horde.";
     return;
   }
-  if (!selectedProfile.value.managed_running) {
-    const lastExit = selectedProfile.value.last_exit ? ` Last exit: ${selectedProfile.value.last_exit}.` : "";
-    runErr.value = `Selected worker is not running: ${selectedProfile.value.name}.${lastExit} Start it in Federation Management first.`;
-    return;
-  }
-  if (!selectedProfile.value.registered_exact) {
+  const notRunning = selectedHordeWorkers.value.filter((w) => !w.managed_running);
+  if (notRunning.length) {
     runErr.value =
-      `Selected worker is starting but not registered yet: ${selectedProfile.value.name}. ` +
-      "Wait a few seconds, click Refresh worker profiles, and retry.";
+      `Horde ${selectedHorde.value?.display_name ?? selectedHordeId.value} is not fully ready. ` +
+      `Start all sub-agents in Federation Management. Missing: ${notRunning.map((w) => w.step).join(", ")}.`;
     return;
   }
-  if (selectedProfile.value.stale_registration) {
+  const notRegistered = selectedHordeWorkers.value.filter((w) => !w.registered_exact || w.stale_registration);
+  if (notRegistered.length) {
     runErr.value =
-      `Selected worker has stale registration: ${selectedProfile.value.name}. ` +
-      "Stop and start worker in Federation Management, then retry.";
+      `Horde has stale/unregistered agents: ${notRegistered.map((w) => w.step).join(", ")}. ` +
+      "Refresh profiles or restart all workers in Federation Management.";
     return;
   }
   runResult.value = null;
@@ -211,31 +202,30 @@ onUnmounted(() => {
   <section class="panel">
     <h2>Horde Run</h2>
     <p class="muted">
-      Orchestrator delegates by capability. Worker executes internal sub-agents and streams step progress.
+      Talk to a whole horde. The orchestrator coordinates all internal sub-agents and streams their collaboration.
     </p>
     <p><button type="button" class="primary" @click="loadHordes">Refresh hordes</button></p>
-    <p><button type="button" @click="loadProfiles">Refresh worker profiles</button></p>
+    <p><button type="button" @click="loadProfiles">Refresh horde readiness</button></p>
     <p>
       <label class="lbl">Horde</label>
       <select v-model="selectedHordeId" class="inp">
         <option v-for="h in hordes" :key="h.id" :value="h.id">{{ h.display_name }}</option>
       </select>
     </p>
-    <p v-if="selectedHorde" class="muted">{{ selectedHorde.description }}</p>
-    <p>
-      <label class="lbl">Worker profile</label>
-      <select v-model="selectedProfileId" class="inp">
-        <option v-for="p in workerProfiles" :key="p.id" :value="p.id">
-          {{ p.name }} ({{ p.managed_running ? "RUNNING" : "STOPPED" }})
-        </option>
-      </select>
-    </p>
-    <p class="muted">Capability: {{ selectedProfile?.capability || "(none)" }}</p>
+    <div v-if="selectedHorde" class="horde-box">
+      <p class="muted">{{ selectedHorde.description }}</p>
+      <p class="muted"><strong>Pipeline:</strong> {{ selectedHorde.pipeline.join(" → ") }}</p>
+      <p class="muted">
+        <strong>Readiness:</strong>
+        {{ selectedHordeWorkers.filter((w) => w.managed_running && w.registered_exact && !w.stale_registration).length }}/{{ selectedHordeWorkers.length }}
+        agents ready
+      </p>
+    </div>
 
     <p><label class="lbl">Prompt</label><input v-model="runPrompt" class="inp" type="text" /></p>
     <p>
       <button type="button" class="primary" :disabled="runBusy" @click="runKnowledgeCompiler">
-        {{ runBusy ? "Running..." : "Run via orchestrator" }}
+        {{ runBusy ? "Running Horde..." : "Run Horde" }}
       </button>
     </p>
     <p v-if="runId" class="muted">Run ID: {{ runId }}</p>
@@ -267,6 +257,7 @@ onUnmounted(() => {
 .lbl { display: block; font-size: 0.8rem; color: #8b92a5; margin-bottom: 0.25rem; }
 .inp { width: 100%; max-width: 48rem; box-sizing: border-box; background: #1a1d26; border: 1px solid #3d4658; color: #e8e8ec; border-radius: 6px; padding: 0.4rem 0.55rem; font: inherit; }
 .chat-feed { border: 1px solid #2a2e38; border-radius: 8px; background: #141820; padding: 0.6rem; display: grid; gap: 0.45rem; max-height: 55vh; overflow: auto; }
+.horde-box { border: 1px solid #2a2e38; border-radius: 8px; background: #161b22; padding: 0.55rem 0.65rem; margin-bottom: 0.55rem; }
 .msg { border: 1px solid #2a2e38; border-radius: 8px; background: #171b22; padding: 0.5rem 0.65rem; }
 .msg header { color: #9aa8c0; font-size: 0.8rem; margin-bottom: 0.2rem; text-transform: capitalize; }
 .msg pre { margin: 0; white-space: pre-wrap; word-break: break-word; color: #d2d9e8; font-size: 0.85rem; }
