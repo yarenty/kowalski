@@ -15,7 +15,7 @@ const selectedHordeId = ref<string>("");
 const runPrompt = ref("can you check https://yarenty.com and get summary into obsidian?");
 const runBusy = ref(false);
 const runId = ref<string | null>(null);
-const runMessages = ref<Array<{ role: "orchestrator" | "worker" | "system"; text: string }>>([]);
+const runMessages = ref<Array<{ role: "orchestrator" | "worker" | "system"; speaker: string; text: string }>>([]);
 const runResult = ref<string | null>(null);
 const runErr = ref<string | null>(null);
 const runWatchdog = ref<number | null>(null);
@@ -23,7 +23,7 @@ const workerProfiles = ref<FederationWorkerProfile[]>([]);
 const runHistory = ref<HordeRunRecord[]>([]);
 const followupInput = ref("");
 const followupBusy = ref(false);
-const followupMsgs = ref<Array<{ role: "user" | "assistant"; text: string }>>([]);
+const followupMsgs = ref<Array<{ role: "user" | "assistant" | "orchestrator"; text: string }>>([]);
 
 const selectedHorde = computed(() => hordes.value.find((h) => h.id === selectedHordeId.value) ?? null);
 const selectedHordeWorkers = computed(() => workerProfiles.value.filter((w) => w.horde_id === selectedHordeId.value));
@@ -40,11 +40,14 @@ const finalDelivery = computed(() => {
   }
 });
 const finalArtifacts = computed(() => finalDelivery.value?.artifacts ?? []);
+const runCompleted = computed(() => finalDelivery.value?.kind === "run_finished");
+const progressText = ref("idle");
 const obsidianRoot = computed(() =>
   selectedHorde.value?.root_path
     ? `${selectedHorde.value.root_path}/${selectedHorde.value.delivery_root_rel || "wiki"}`
     : "(unknown)",
 );
+const finalShortSummary = computed(() => selectedHorde.value?.delivery_summary_note || "Run completed.");
 
 watch(
   () => selectedHordeId.value,
@@ -61,8 +64,18 @@ function clearRunWatchdog() {
   }
 }
 
-function feed(role: "orchestrator" | "worker" | "system", text: string) {
-  runMessages.value = [...runMessages.value, { role, text }];
+function titleCase(input: string): string {
+  if (!input) return input;
+  return input.slice(0, 1).toUpperCase() + input.slice(1);
+}
+
+function speakerNameFromStep(step?: string): string {
+  if (!step) return "Agent: Worker";
+  return `Agent: ${titleCase(step)}`;
+}
+
+function feed(role: "orchestrator" | "worker" | "system", text: string, speaker?: string) {
+  runMessages.value = [...runMessages.value, { role, speaker: speaker || (role === "orchestrator" ? "Agent: Boss" : "System"), text }];
 }
 
 function extractUrl(input: string): string | null {
@@ -85,25 +98,33 @@ function processFederationEvent(data: string) {
   if (runId.value && evRunId && evRunId !== runId.value) return;
 
   if (kind === "task_assigned") {
-    feed("orchestrator", `${String(payload.step ?? "?")} assigned to ${String(payload.to ?? "?")}`);
+    const step = String(payload.step ?? "?");
+    progressText.value = `assigned ${step}`;
+    feed("orchestrator", `${step} assigned to ${String(payload.to ?? "?")}`, "Agent: Boss");
   } else if (kind === "task_started") {
-    feed("worker", `${String(payload.step ?? "?")} started by ${String(payload.agent ?? "?")}`);
+    const step = String(payload.step ?? "?");
+    progressText.value = `${step} running`;
+    feed("worker", `${step} started by ${String(payload.agent ?? "?")}`, speakerNameFromStep(step));
   } else if (kind === "agent_message") {
-    feed("worker", String(payload.text ?? "(message)"));
+    const step = String(payload.step ?? "");
+    feed("worker", String(payload.text ?? "(message)"), speakerNameFromStep(step || "worker"));
   } else if (kind === "task_finished") {
     const step = String(payload.step ?? "?");
     const artifact = String(payload.artifact ?? "");
     const ok = Boolean(payload.success);
-    feed("worker", `${step} ${ok ? "completed" : "failed"}${artifact ? ` -> ${artifact}` : ""}`);
+    progressText.value = ok ? `${step} completed` : `${step} failed`;
+    feed("worker", `${step} ${ok ? "completed" : "failed"}${artifact ? ` -> ${artifact}` : ""}`, speakerNameFromStep(step));
   } else if (kind === "run_finished") {
     runResult.value = JSON.stringify(payload, null, 2);
-    feed("system", "run finished");
+    progressText.value = "finished";
+    feed("system", "run finished", "System");
     runBusy.value = false;
     clearRunWatchdog();
     void loadRunHistory();
   } else if (kind === "run_failed") {
     runResult.value = JSON.stringify(payload, null, 2);
-    feed("system", "run failed");
+    progressText.value = "failed";
+    feed("system", "run failed", "System");
     runBusy.value = false;
     clearRunWatchdog();
     void loadRunHistory();
@@ -180,28 +201,31 @@ async function runKnowledgeCompiler() {
   runResult.value = null;
   followupMsgs.value = [];
   runBusy.value = true;
+  progressText.value = "starting";
   runId.value = null;
   runMessages.value = [];
   clearRunWatchdog();
   connectStream();
-  feed("orchestrator", "creating run");
-  feed("orchestrator", `source: ${source}`);
+  feed("orchestrator", "creating run", "Agent: Boss");
+  feed("orchestrator", `source: ${source}`, "Agent: Boss");
   try {
     const out = await api.hordeRun(selectedHordeId.value, {
       prompt: runPrompt.value.trim(),
       source,
     });
     runId.value = out.run.run_id;
-    feed("orchestrator", `run started: ${out.run.run_id}`);
+    feed("orchestrator", `run started: ${out.run.run_id}`, "Agent: Boss");
     runWatchdog.value = window.setTimeout(() => {
       if (!runBusy.value) return;
       runBusy.value = false;
-      feed("system", "timeout: no progress events within 60s");
+      progressText.value = "timeout";
+      feed("system", "timeout: no progress events within 60s", "System");
       runResult.value =
         "Run created, but no worker progress arrived in 60s. Check sub-agent worker status in Federation Management.";
     }, 60_000);
   } catch (e) {
     runBusy.value = false;
+    progressText.value = "failed";
     runErr.value = e instanceof Error ? e.message : String(e);
   }
 }
@@ -271,22 +295,25 @@ onUnmounted(() => {
         {{ runBusy ? "Running Horde..." : "Run Horde" }}
       </button>
     </p>
+    <p v-if="runBusy" class="muted thinking">Thinking... {{ progressText }}</p>
+    <p v-if="followupBusy" class="muted thinking">Thinking... follow-up in progress</p>
     <p v-if="runId" class="muted">Run ID: {{ runId }}</p>
 
     <div class="chat-feed">
       <article v-for="(m, i) in runMessages" :key="i" class="msg" :class="`msg-${m.role}`">
-        <header>{{ m.role }}</header>
+        <header>{{ m.speaker }}</header>
         <pre>{{ m.text }}</pre>
       </article>
       <p v-if="!runMessages.length" class="muted">(no run messages yet)</p>
     </div>
 
-    <details v-if="runResult">
-      <summary>Final delivery</summary>
-      <div class="delivery">
+    <section v-if="runResult" class="delivery">
+      <h3 style="margin:0 0 0.35rem;">Final delivery</h3>
+      <div>
         <p class="muted">
           {{ finalDelivery?.text || "Run completed." }}
         </p>
+        <p class="muted"><strong>Summary:</strong> {{ finalShortSummary }}</p>
         <p class="muted"><strong>{{ selectedHorde?.delivery_title || "Final delivery" }}</strong></p>
         <p class="muted">{{ selectedHorde?.delivery_note || "" }}</p>
         <p class="muted"><strong>Obsidian-ready folder:</strong> <code>{{ obsidianRoot }}</code></p>
@@ -304,10 +331,10 @@ onUnmounted(() => {
           <pre class="json">{{ runResult }}</pre>
         </details>
       </div>
-    </details>
-    <details v-if="runId">
-      <summary>Follow-up chat on this run</summary>
-      <div class="delivery">
+    </section>
+    <section v-if="runCompleted" class="delivery">
+      <h3 style="margin:0 0 0.35rem;">Follow-up chat on this run</h3>
+      <div v-if="runId && runCompleted">
         <p class="muted">
           Ask refining questions about this run, e.g. "emphasize AI findings" or
           "only technology part in simple language".
@@ -322,14 +349,22 @@ onUnmounted(() => {
           </button>
         </p>
         <div class="chat-feed" style="max-height: 24vh;">
-          <article v-for="(m, i) in followupMsgs" :key="`f-${i}`" class="msg" :class="m.role === 'user' ? 'msg-orchestrator' : 'msg-worker'">
+          <article
+            v-for="(m, i) in followupMsgs"
+            :key="`f-${i}`"
+            class="msg"
+            :class="m.role === 'user' ? 'msg-orchestrator' : m.role === 'orchestrator' ? 'msg-system' : 'msg-worker'"
+          >
             <header>{{ m.role }}</header>
             <pre>{{ m.text }}</pre>
           </article>
           <p v-if="!followupMsgs.length" class="muted">(no follow-up messages yet)</p>
         </div>
       </div>
-    </details>
+      <p v-else class="muted">
+        Run a horde first, then follow-up chat becomes active for that run.
+      </p>
+    </section>
     <details v-if="runHistory.length">
       <summary>Previous runs</summary>
       <pre class="json">{{ JSON.stringify(runHistory.slice(0, 8), null, 2) }}</pre>
@@ -356,6 +391,7 @@ onUnmounted(() => {
 .msg-worker { border-color: #2f7c47; }
 .msg-system { border-color: #555f74; }
 .json { background: #1a1d26; border: 1px solid #2a2e38; border-radius: 6px; padding: 0.75rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.45; color: #c8cfdd; }
+.thinking { color: #9cc2ff; }
 button { background: #2a3142; border: 1px solid #3d4658; color: #c8cfdd; padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; margin-right: 0.5rem; }
 button.primary { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
 </style>

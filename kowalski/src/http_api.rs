@@ -1366,6 +1366,7 @@ async fn get_hordes(State(state): State<ApiState>) -> Json<serde_json::Value> {
                 "delivery_title": s.delivery_title,
                 "delivery_note": s.delivery_note,
                 "delivery_root_rel": s.delivery_root_rel,
+                "delivery_summary_note": s.delivery_summary_note,
                 "sub_agents": s.sub_agents,
             })
         })
@@ -1393,6 +1394,7 @@ async fn get_horde_detail(
         "delivery_title": spec.delivery_title,
         "delivery_note": spec.delivery_note,
         "delivery_root_rel": spec.delivery_root_rel,
+        "delivery_summary_note": spec.delivery_summary_note,
         "sub_agents": spec.sub_agents,
     })))
 }
@@ -1669,8 +1671,9 @@ async fn post_horde_followup(
     }
 
     let llm_prompt = format!(
-        "You are the follow-up agent for a multi-agent horde run.\n\
-         Answer the user follow-up using the provided artifact context.\n\
+        "You are the continuation assistant for a completed multi-agent horde run.\n\
+         Continue the conversation naturally using artifact context below.\n\
+         Do not perform keyword routing or fixed intent rules; just answer the user's follow-up.\n\
          Keep answer practical and concise, include uncertainty if needed.\n\n\
          {}\n\
          User follow-up: {}\n",
@@ -1690,7 +1693,7 @@ async fn post_horde_followup(
         "horde_id": horde_id,
         "run_id": run.run_id,
         "reply": reply,
-        "mode": "horde_followup",
+        "mode": "horde_followup_chat_continuation",
     })))
 }
 

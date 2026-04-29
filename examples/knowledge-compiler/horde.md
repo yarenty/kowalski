@@ -7,6 +7,10 @@ pipeline = ["ingest", "compile", "ask", "lint"]
 default_question = "What changed in the latest source?"
 default_topic = "federation"
 artifacts_root = "."
+delivery_title = "Obsidian Delivery"
+delivery_note = "Import the wiki folder into your Obsidian vault. Reports/lint are optional side artifacts."
+delivery_root_rel = "wiki"
+delivery_summary_note = "Knowledge Sucking Swarm ingests your source, compiles Obsidian-friendly notes, generates a focused answer, and validates note consistency."
 ---
 
 # Knowledge Sucking Swarm

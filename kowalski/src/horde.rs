@@ -57,6 +57,8 @@ pub struct HordeMeta {
     pub delivery_note: Option<String>,
     #[serde(default)]
     pub delivery_root_rel: Option<String>,
+    #[serde(default)]
+    pub delivery_summary_note: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -102,6 +104,7 @@ pub struct HordeSpec {
     pub delivery_title: String,
     pub delivery_note: String,
     pub delivery_root_rel: String,
+    pub delivery_summary_note: String,
     pub root_path: PathBuf,
     pub sub_agents: Vec<SubAgentSpec>,
 }
@@ -217,6 +220,10 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
         delivery_root_rel: meta
             .delivery_root_rel
             .unwrap_or_else(|| "wiki".to_string()),
+        delivery_summary_note: meta.delivery_summary_note.unwrap_or_else(|| {
+            "This horde extracts source knowledge, compiles it into wiki notes, answers the user question, and produces a lint report."
+                .to_string()
+        }),
         root_path: root.to_path_buf(),
         sub_agents,
     })
