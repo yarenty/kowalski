@@ -100,7 +100,7 @@ function timeAgo(ts: number): string {
               aria-label="Delete interaction"
               @click.stop="emit('delete-horde-interaction', h.id)"
             >
-              ×
+              🗑
             </button>
           </div>
           <p v-if="!hordeInteractions.length" class="muted">No horde interactions yet.</p>
@@ -153,25 +153,30 @@ h1 { margin: 0; font-size: 1.05rem; }
   width: 100%;
 }
 .horde-item-btn {
+  display: block;
   width: 100%;
   min-width: 0;
+  margin-right: 0;
 }
 .delete-btn {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   padding: 0;
   border-radius: 6px;
-  border: 1px solid #6d3f47;
-  background: #3b2328;
+  border: 1px solid #5a606f;
+  background: #252c3b;
   color: #f2b8c1;
+  font-size: 0.72rem;
+  line-height: 1;
   cursor: pointer;
-  opacity: 0.45;
+  opacity: 0.15;
   pointer-events: auto;
+  margin-right: 0;
   transition: opacity 0.15s ease;
 }
 .horde-row:hover .delete-btn,
 .horde-row:focus-within .delete-btn {
-  opacity: 1;
+  opacity: 0.95;
 }
 .title { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .time { display: block; font-size: 0.72rem; color: #8b92a5; margin-top: 0.2rem; }

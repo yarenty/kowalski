@@ -10,6 +10,7 @@ import {
 const props = defineProps<{ activeThreadId: string | null }>();
 const emit = defineEmits<{
   (e: "thread-upsert", item: { id: string; title: string; updatedAt: number }): void;
+  (e: "new-thread-from-suggestion", payload: { prompt: string; hordeId: string }): void;
 }>();
 
 const fedTopic = ref("federation");
@@ -18,7 +19,7 @@ const hordes = ref<HordeCatalogItem[]>([]);
 const selectedHordeId = ref<string>("");
 const runBusy = ref(false);
 const runId = ref<string | null>(null);
-const runMessages = ref<Array<{ role: "orchestrator" | "worker" | "system"; speaker: string; text: string }>>([]);
+const runMessages = ref<Array<{ role: "orchestrator" | "worker" | "system" | "user"; speaker: string; text: string }>>([]);
 const runResult = ref<string | null>(null);
 const runErr = ref<string | null>(null);
 const runWatchdog = ref<number | null>(null);
@@ -85,7 +86,7 @@ function speakerNameFromStep(step?: string): string {
   return `Agent: ${titleCase(step)}`;
 }
 
-function feed(role: "orchestrator" | "worker" | "system", text: string, speaker?: string) {
+function feed(role: "orchestrator" | "worker" | "system" | "user", text: string, speaker?: string) {
   runMessages.value = [...runMessages.value, { role, speaker: speaker || (role === "orchestrator" ? "Agent: Boss" : "System"), text }];
 }
 
@@ -208,6 +209,7 @@ function saveActiveThreadState() {
     runMessages: runMessages.value,
     runResult: runResult.value,
     followupMsgs: followupMsgs.value,
+    followupInput: followupInput.value,
   };
   localStorage.setItem(threadStateKey(props.activeThreadId), JSON.stringify(snapshot));
 }
@@ -225,20 +227,23 @@ function loadActiveThreadState(id: string) {
     const parsed = JSON.parse(raw) as {
       selectedHordeId?: string;
       runId?: string | null;
-      runMessages?: Array<{ role: "orchestrator" | "worker" | "system"; speaker: string; text: string }>;
+      runMessages?: Array<{ role: "orchestrator" | "worker" | "system" | "user"; speaker: string; text: string }>;
       runResult?: string | null;
       followupMsgs?: Array<{ role: "user" | "assistant" | "orchestrator"; speaker: string; text: string }>;
+      followupInput?: string;
     };
     if (parsed.selectedHordeId) selectedHordeId.value = parsed.selectedHordeId;
     runId.value = parsed.runId ?? null;
     runMessages.value = parsed.runMessages ?? [];
     runResult.value = parsed.runResult ?? null;
     followupMsgs.value = parsed.followupMsgs ?? [];
+    followupInput.value = parsed.followupInput ?? "";
   } catch {
     runId.value = null;
     runMessages.value = [];
     runResult.value = null;
     followupMsgs.value = [];
+    followupInput.value = "";
   }
 }
 
@@ -253,6 +258,28 @@ function upsertThreadMeta() {
     id: props.activeThreadId,
     title,
     updatedAt: Date.now(),
+  });
+}
+
+function suggestedPromptFromConversation(): string {
+  const source =
+    runMessages.value.find((m) => m.speaker === "Agent: Boss" && m.text.startsWith("source:"))?.text.replace("source:", "").trim() ||
+    activeRunFromHistory.value?.source?.trim() ||
+    extractUrl(activeRunFromHistory.value?.prompt ?? "") ||
+    "";
+  const latestUserFocus =
+    [...followupMsgs.value].reverse().find((m) => m.role === "user")?.text?.trim() ||
+    activeRunFromHistory.value?.question?.trim() ||
+    "summarize key findings and practical improvements";
+  const base = source ? `Analyze ${source}.` : "Analyze the provided source URL.";
+  return `${base} Focus on: ${latestUserFocus}. Produce Obsidian-ready summary and clear action points.`;
+}
+
+function redefineAndStartAgain() {
+  if (!selectedHordeId.value) return;
+  emit("new-thread-from-suggestion", {
+    prompt: suggestedPromptFromConversation(),
+    hordeId: selectedHordeId.value,
   });
 }
 
@@ -287,7 +314,6 @@ watch(
   [selectedHordeId, runId, runResult, runMessages, followupMsgs],
   () => {
     saveActiveThreadState();
-    upsertThreadMeta();
   },
   { deep: true },
 );
@@ -321,8 +347,10 @@ async function runKnowledgeCompiler() {
   progressText.value = "starting";
   runId.value = null;
   runMessages.value = [];
+  upsertThreadMeta();
   clearRunWatchdog();
   connectStream();
+  feed("user", prompt, "You");
   feed("orchestrator", "creating run", "Agent: Boss");
   feed("orchestrator", `source: ${source}`, "Agent: Boss");
   try {
@@ -362,6 +390,7 @@ async function askFollowup() {
   const q = followupInput.value.trim();
   if (!q) return;
   followupMsgs.value = [...followupMsgs.value, { role: "user", speaker: "You", text: q }];
+  upsertThreadMeta();
   followupInput.value = "";
   followupBusy.value = true;
   try {
@@ -431,7 +460,7 @@ onUnmounted(() => {
       </article>
     </div>
 
-    <section v-if="runResult" class="delivery">
+    <section v-if="runCompleted && runResult" class="delivery">
       <h3 style="margin:0 0 0.35rem;">Output</h3>
       <div>
         <p class="muted">
@@ -504,6 +533,14 @@ onUnmounted(() => {
                   ? "Ask follow-up"
                   : "Run Horde"
           }}
+        </button>
+        <button
+          v-if="hasCompletedRun"
+          type="button"
+          :disabled="runBusy || followupBusy"
+          @click="redefineAndStartAgain"
+        >
+          Redefine and start again
         </button>
       </p>
     </section>

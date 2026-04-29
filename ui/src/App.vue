@@ -105,6 +105,30 @@ function newHordeInteraction() {
   persistHordeInteractions();
 }
 
+function newHordeInteractionFromSuggestion(payload: { prompt: string; hordeId: string }) {
+  const id = `horde-${Date.now()}`;
+  const title = payload.prompt.slice(0, 42) || "New horde interaction";
+  const item: HordeInteraction = {
+    id,
+    title,
+    updatedAt: Date.now(),
+  };
+  hordeInteractions.value = [item, ...hordeInteractions.value];
+  activeHordeInteractionId.value = id;
+  localStorage.setItem(
+    threadStateKey(id),
+    JSON.stringify({
+      selectedHordeId: payload.hordeId,
+      runId: null,
+      runMessages: [],
+      runResult: null,
+      followupMsgs: [],
+      followupInput: payload.prompt,
+    }),
+  );
+  persistHordeInteractions();
+}
+
 function selectHordeInteraction(id: string) {
   activeHordeInteractionId.value = id;
 }
@@ -364,6 +388,7 @@ onMounted(async () => {
         v-else-if="tab === 'federation-run'"
         :active-thread-id="activeHordeInteractionId"
         @thread-upsert="upsertHordeInteraction"
+        @new-thread-from-suggestion="newHordeInteractionFromSuggestion"
       />
       <GraphPanel v-else-if="tab === 'graph'" />
       <AboutPanel v-else-if="tab === 'about'" />

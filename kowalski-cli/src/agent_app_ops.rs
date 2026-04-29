@@ -745,7 +745,13 @@ pub fn federate_worker(
     let reader = std::io::BufReader::new(resp);
 
     for line in reader.lines() {
-        let line = line?;
+        let line = match line {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("federation stream decode warning (ignored): {}", e);
+                continue;
+            }
+        };
         if !line.starts_with("data: ") {
             continue;
         }
