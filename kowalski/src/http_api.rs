@@ -1417,18 +1417,48 @@ async fn get_horde_workers(
                 profile_id.clone(),
                 format!("exited: code={:?} success={}", status.code(), status.success()),
             );
+            log::info!(
+                "horde worker exited profile={} status_code={:?} success={}",
+                profile_id,
+                status.code(),
+                status.success()
+            );
             false
         }
         Ok(None) => true,
         Err(e) => {
             last_exit.insert(profile_id.clone(), format!("wait error: {}", e));
+            log::warn!("horde worker wait error profile={} error={}", profile_id, e);
             false
         }
     });
-    let registry = state.federation.registry.list();
-    let rows: Vec<serde_json::Value> = worker_profiles(&state)
+    let profiles: Vec<WorkerProfile> = worker_profiles(&state)
         .into_iter()
         .filter(|p| p.horde_id == horde_id)
+        .collect();
+    // Auto-prune stale registry entries for workers that are no longer managed/running.
+    for p in &profiles {
+        let pid = managed.get(&p.id).and_then(|c| c.id());
+        let is_registered = state
+            .federation
+            .registry
+            .list()
+            .iter()
+            .any(|a| a.id == p.agent_id);
+        let has_exit = last_exit.get(&p.id).is_some();
+        if pid.is_none() && is_registered && has_exit
+            && state.federation.registry.deregister(&p.agent_id).is_ok()
+        {
+            log::info!(
+                "horde worker cleanup: deregistered stale agent_id={} profile={}",
+                p.agent_id,
+                p.id
+            );
+        }
+    }
+    let registry = state.federation.registry.list();
+    let rows: Vec<serde_json::Value> = profiles
+        .into_iter()
         .map(|p| worker_row(&p, &managed, &last_exit, &registry))
         .collect();
     Ok(Json(json!({

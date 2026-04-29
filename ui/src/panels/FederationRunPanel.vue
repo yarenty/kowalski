@@ -33,9 +33,6 @@ const selectedHordeWorkers = computed(() => workerProfiles.value.filter((w) => w
 const activeRunFromHistory = computed(() =>
   runId.value ? runHistory.value.find((r) => r.run_id === runId.value) ?? null : null,
 );
-const latestCompletedRun = computed(() =>
-  runHistory.value.find((r) => r.status === "completed") ?? null,
-);
 const finalDelivery = computed(() => {
   if (!runResult.value) return null;
   try {
@@ -61,7 +58,7 @@ const obsidianRoot = computed(() =>
     : "(unknown)",
 );
 const finalShortSummary = computed(() => selectedHorde.value?.delivery_summary_note || "Run completed.");
-const hasCompletedRun = computed(() => runCompleted.value || !!latestCompletedRun.value);
+const hasCompletedRun = computed(() => runCompleted.value);
 
 watch(
   () => selectedHordeId.value,
@@ -171,6 +168,33 @@ async function refreshAll() {
   await Promise.all([loadProfiles(), loadRunHistory()]);
 }
 
+function isWorkerReady(w: FederationWorkerProfile): boolean {
+  return Boolean(w.managed_running && w.registered_exact && !w.stale_registration);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function ensureSelectedHordeReady() {
+  if (!selectedHordeId.value) return false;
+  const maxAttempts = 8;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    await loadProfiles();
+    const workers = selectedHordeWorkers.value;
+    if (workers.length > 0 && workers.every((w) => isWorkerReady(w))) {
+      return true;
+    }
+    const notReady = workers.filter((w) => !isWorkerReady(w));
+    for (const w of notReady) {
+      await api.hordeWorkersStart(selectedHordeId.value, w.step);
+    }
+    await sleep(650);
+  }
+  await loadProfiles();
+  return selectedHordeWorkers.value.length > 0 && selectedHordeWorkers.value.every((w) => isWorkerReady(w));
+}
+
 const RUN_HISTORY_KEY = "kowalski.ui.horde-runs.v1";
 function threadStateKey(id: string) {
   return `kowalski.ui.horde.thread.${id}`;
@@ -248,28 +272,6 @@ async function loadRunHistory() {
   if (!selectedHordeId.value) return;
   const res = await api.hordeRuns(selectedHordeId.value);
   runHistory.value = res.runs ?? [];
-  if (!runId.value && runHistory.value.length) {
-    runId.value = runHistory.value[0].run_id;
-  }
-  if (!runResult.value) {
-    const completed = runHistory.value.find((r) => r.status === "completed");
-    if (completed) {
-      const artifacts = completed.steps
-        .filter((s) => !!s.artifact)
-        .map((s) => [s.step, s.artifact] as [string, string]);
-      runResult.value = JSON.stringify(
-        {
-          kind: "run_finished",
-          run_id: completed.run_id,
-          horde: completed.horde_id,
-          artifacts,
-          text: `${selectedHorde.value?.display_name || "Horde"} run completed; ${artifacts.length} artifact(s).`,
-        },
-        null,
-        2,
-      );
-    }
-  }
   persistRunHistory();
 }
 
@@ -303,18 +305,14 @@ async function runKnowledgeCompiler() {
     runErr.value = "No workers loaded for selected horde.";
     return;
   }
-  const notRunning = selectedHordeWorkers.value.filter((w) => !w.managed_running);
-  if (notRunning.length) {
-    runErr.value =
-      `Horde ${selectedHorde.value?.display_name ?? selectedHordeId.value} is not fully ready. ` +
-      `Start all sub-agents in Federation Management. Missing: ${notRunning.map((w) => w.step).join(", ")}.`;
-    return;
-  }
-  const notRegistered = selectedHordeWorkers.value.filter((w) => !w.registered_exact || w.stale_registration);
-  if (notRegistered.length) {
-    runErr.value =
-      `Horde has stale/unregistered agents: ${notRegistered.map((w) => w.step).join(", ")}. ` +
-      "Refresh profiles or restart all workers in Federation Management.";
+  progressText.value = "ensuring workers are ready";
+  const ready = await ensureSelectedHordeReady();
+  if (!ready) {
+    const missing = selectedHordeWorkers.value
+      .filter((w) => !isWorkerReady(w))
+      .map((w) => w.step || w.agent_id)
+      .join(", ");
+    runErr.value = `Some sub-agents are still unavailable: ${missing || "unknown"}.`;
     return;
   }
   runResult.value = null;
@@ -357,7 +355,7 @@ async function askFollowup() {
   }
   if (!selectedHordeId.value) return;
   if (!runId.value) {
-    const fallbackRunId = latestCompletedRun.value?.run_id;
+    const fallbackRunId = runHistory.value.find((r) => r.status === "completed")?.run_id;
     if (fallbackRunId) runId.value = fallbackRunId;
   }
   if (!runId.value) return;
@@ -421,14 +419,7 @@ onUnmounted(() => {
     </p>
     <div v-if="selectedHorde" class="horde-box">
       <p class="muted">{{ selectedHorde.description }}</p>
-      <p class="muted"><strong>Pipeline:</strong> {{ selectedHorde.pipeline.join(" → ") }}</p>
-      <p class="muted">
-        <strong>Readiness:</strong>
-        {{ selectedHordeWorkers.filter((w) => w.managed_running && w.registered_exact && !w.stale_registration).length }}/{{ selectedHordeWorkers.length }}
-        agents ready
-      </p>
     </div>
-
     <p v-if="runBusy" class="muted thinking">Thinking... {{ progressText }}</p>
     <p v-if="followupBusy" class="muted thinking">Thinking... follow-up in progress</p>
     <p v-if="runId" class="muted">Run ID: {{ runId }}</p>
@@ -440,10 +431,6 @@ onUnmounted(() => {
       </article>
     </div>
 
-    <details v-if="runHistory.length">
-      <summary>Previous runs</summary>
-      <pre class="json">{{ JSON.stringify(runHistory.slice(0, 8), null, 2) }}</pre>
-    </details>
     <section v-if="runResult" class="delivery">
       <h3 style="margin:0 0 0.35rem;">Output</h3>
       <div>
@@ -470,7 +457,7 @@ onUnmounted(() => {
       </div>
     </section>
     <p v-if="runErr" class="err">{{ runErr }}</p>
-    <section v-if="runCompleted || latestCompletedRun" class="delivery">
+    <section v-if="hasCompletedRun" class="delivery">
       <div class="chat-feed followup-feed">
         <article
           v-for="(m, i) in followupMsgs"
@@ -481,11 +468,9 @@ onUnmounted(() => {
           <header>{{ m.speaker }}</header>
           <pre>{{ m.text }}</pre>
         </article>
-        <p v-if="!followupMsgs.length" class="muted">(no follow-up messages yet)</p>
       </div>
     </section>
     <section class="followup-composer">
-      <h3 v-if="hasCompletedRun" style="margin:0 0 0.35rem;">Follow-up chat on this run</h3>
       <p class="muted">
         {{
           hasCompletedRun
