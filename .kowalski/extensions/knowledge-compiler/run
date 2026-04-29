@@ -13,6 +13,7 @@ Usage:
   kowalski-cli extension run knowledge-compiler run "<source>" [--question "<q>"]
   kowalski-cli extension run knowledge-compiler delegate "<capability>" "<source>" [--question "<q>"]
   kowalski-cli extension run knowledge-compiler worker "<agent-id>" [--topic "<topic>"]
+  kowalski-cli extension run knowledge-compiler proof
 
 Federation:
   use `kowalski` / `/api/federation/*` with CLI operators (`kowalski-cli federation ...`)
@@ -77,6 +78,9 @@ case "${cmd}" in
       exec cargo run -q -p kowalski-cli -- agent-app worker --path "${APP_PATH}" --api "${KOWALSKI_API}" --topic "${topic}" "${agent_id}"
     fi
     exec cargo run -q -p kowalski-cli -- agent-app worker --path "${APP_PATH}" --api "${KOWALSKI_API}" "${agent_id}"
+    ;;
+  proof)
+    exec cargo run -q -p kowalski-cli -- agent-app proof --path "${APP_PATH}" --api "${KOWALSKI_API}"
     ;;
   help|-h|--help|"")
     usage

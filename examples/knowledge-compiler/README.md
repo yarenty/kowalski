@@ -56,6 +56,7 @@ cargo run -p kowalski-cli -- extension run knowledge-compiler list
 cargo run -p kowalski-cli -- extension run knowledge-compiler validate
 cargo run -p kowalski-cli -- extension run knowledge-compiler run "https://example.com/article" --question "What changed?"
 cargo run -p kowalski-cli -- extension run knowledge-compiler delegate "kc.run" "https://example.com/article" --question "What changed?"
+cargo run -p kowalski-cli -- extension run knowledge-compiler proof
 ```
 
 ## Main/sub-agent definitions (markdown only)
@@ -88,6 +89,12 @@ cargo run -p kowalski-cli -- extension run knowledge-compiler worker kc-worker-1
 
 ```bash
 cargo run -p kowalski-cli -- extension run knowledge-compiler delegate "kc.run" "https://example.com/article" --question "What changed?"
+```
+
+1. Print reproducible proof-run checklist:
+
+```bash
+cargo run -p kowalski-cli -- extension run knowledge-compiler proof
 ```
 
 1. Validate current agent definition set:

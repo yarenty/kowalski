@@ -236,6 +236,27 @@ enum AgentAppCommands {
         #[clap(long)]
         topic: Option<String>,
     },
+    /// Print reproducible end-to-end federation proof-run checklist
+    Proof {
+        /// App root path (default: examples/knowledge-compiler)
+        #[clap(short, long)]
+        path: Option<String>,
+        /// Kowalski API base URL
+        #[clap(long)]
+        api: Option<String>,
+        /// Worker agent id
+        #[clap(long)]
+        agent_id: Option<String>,
+        /// Capability to delegate
+        #[clap(long)]
+        capability: Option<String>,
+        /// Source to delegate
+        #[clap(long)]
+        source: Option<String>,
+        /// Question to delegate
+        #[clap(long)]
+        question: Option<String>,
+    },
 }
 
 struct AgentManager {
@@ -634,6 +655,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     api.as_deref(),
                     &agent_id,
                     topic.as_deref(),
+                )?;
+            }
+            AgentAppCommands::Proof {
+                path,
+                api,
+                agent_id,
+                capability,
+                source,
+                question,
+            } => {
+                kowalski_cli::agent_app_ops::proof_check(
+                    path.as_deref(),
+                    api.as_deref(),
+                    agent_id.as_deref(),
+                    capability.as_deref(),
+                    source.as_deref(),
+                    question.as_deref(),
                 )?;
             }
         },

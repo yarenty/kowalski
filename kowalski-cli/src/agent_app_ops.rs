@@ -27,7 +27,6 @@ struct SubAgentMeta {
 #[derive(Debug)]
 struct AgentDoc<T> {
     meta: T,
-    body: String,
     path: PathBuf,
 }
 
@@ -40,7 +39,6 @@ fn parse_markdown_with_toml_frontmatter<T: for<'de> Deserialize<'de>>(
         return Err(format!("Missing frontmatter start in {}", path.display()).into());
     }
     let mut fm = String::new();
-    let mut body = String::new();
     let mut in_fm = true;
     for line in raw.lines().skip(1) {
         if in_fm && line.trim() == "---" {
@@ -50,9 +48,6 @@ fn parse_markdown_with_toml_frontmatter<T: for<'de> Deserialize<'de>>(
         if in_fm {
             fm.push_str(line);
             fm.push('\n');
-        } else {
-            body.push_str(line);
-            body.push('\n');
         }
     }
     if in_fm {
@@ -61,7 +56,6 @@ fn parse_markdown_with_toml_frontmatter<T: for<'de> Deserialize<'de>>(
     let meta: T = toml::from_str(&fm)?;
     Ok(AgentDoc {
         meta,
-        body: body.trim().to_string(),
         path: path.to_path_buf(),
     })
 }
@@ -626,7 +620,7 @@ pub fn federate_worker(
             .unwrap_or("")
             .to_string();
         let mut success = true;
-        let mut outcome = String::new();
+        let outcome: String;
 
         if let Some(raw) = instruction.strip_prefix("kc.run:") {
             let mut parts = raw.splitn(2, '|');
@@ -642,8 +636,8 @@ pub fn federate_worker(
             } else {
                 let root_s = root.to_string_lossy().to_string();
                 if let Err(e) = run(Some(root_s.as_str()), source, Some(question), Some(api)) {
-                success = false;
-                outcome = format!("run failed: {}", e);
+                    success = false;
+                    outcome = format!("run failed: {}", e);
                 } else {
                     let report = latest_md_in(&root.join("derived/reports"))
                         .map(|p| p.display().to_string())
@@ -680,5 +674,66 @@ pub fn federate_worker(
             serde_json::json!({ "agent_id": agent_id }),
         );
     }
+    Ok(())
+}
+
+pub fn proof_check(
+    path: Option<&str>,
+    api_url: Option<&str>,
+    agent_id: Option<&str>,
+    capability: Option<&str>,
+    source: Option<&str>,
+    question: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = app_root(path);
+    let api = api_url.unwrap_or("http://127.0.0.1:3456");
+    let agent_id = agent_id.unwrap_or("kc-worker-1");
+    let capability = capability.unwrap_or("kc.run");
+    let source = source.unwrap_or("https://example.com/article");
+    let question = question.unwrap_or("What changed?");
+
+    // Preflight checks
+    println!("Preflight:");
+    validate(Some(root.to_string_lossy().as_ref()))?;
+    let health = reqwest_blocking::get(format!("{}/api/health", api.trim_end_matches('/')));
+    match health {
+        Ok(r) if r.status().is_success() => println!("- API reachable at {}", api),
+        Ok(r) => println!("- API responded with HTTP {} at {}", r.status(), api),
+        Err(e) => println!("- API not reachable at {} ({})", api, e),
+    }
+    println!("- App path: {}", root.display());
+
+    println!("\nProof-run checklist (3 terminals):");
+    println!("1) Terminal A: start server");
+    println!("   cargo run -p kowalski --bin kowalski");
+    println!("2) Terminal B: start worker");
+    println!(
+        "   cargo run -p kowalski-cli -- agent-app worker --path \"{}\" --api \"{}\" \"{}\"",
+        root.display(),
+        api,
+        agent_id
+    );
+    println!("3) Terminal C: delegate task");
+    println!(
+        "   cargo run -p kowalski-cli -- agent-app delegate --api \"{}\" --question \"{}\" \"{}\" \"{}\"",
+        api, question, capability, source
+    );
+    println!("\nVerify artifacts:");
+    println!(
+        "- latest report: {}",
+        latest_md_in(&root.join("derived/reports"))
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "(none yet)".to_string())
+    );
+    println!(
+        "- lint report: {}",
+        root.join("derived/lint/latest.md").display()
+    );
+    println!(
+        "- latest run log: {}",
+        latest_md_in(&root.join("scratch"))
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "(none yet)".to_string())
+    );
     Ok(())
 }
