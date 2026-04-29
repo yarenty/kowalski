@@ -624,12 +624,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 path,
                 api,
             } => {
-                kowalski_cli::agent_app_ops::run(
-                    path.as_deref(),
-                    &source,
-                    question.as_deref(),
-                    api.as_deref(),
-                )?;
+                let out = tokio::task::spawn_blocking(move || {
+                    kowalski_cli::agent_app_ops::run(
+                        path.as_deref(),
+                        &source,
+                        question.as_deref(),
+                        api.as_deref(),
+                    )
+                    .map_err(|e| e.to_string())
+                })
+                .await?;
+                if let Err(e) = out {
+                    return Err(e.into());
+                }
             }
             AgentAppCommands::Delegate {
                 capability,
@@ -637,12 +644,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 question,
                 api,
             } => {
-                kowalski_cli::agent_app_ops::federate_delegate(
-                    api.as_deref(),
-                    &capability,
-                    &source,
-                    question.as_deref(),
-                )?;
+                let out = tokio::task::spawn_blocking(move || {
+                    kowalski_cli::agent_app_ops::federate_delegate(
+                        api.as_deref(),
+                        &capability,
+                        &source,
+                        question.as_deref(),
+                    )
+                    .map_err(|e| e.to_string())
+                })
+                .await?;
+                if let Err(e) = out {
+                    return Err(e.into());
+                }
             }
             AgentAppCommands::Worker {
                 agent_id,
@@ -650,12 +664,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 api,
                 topic,
             } => {
-                kowalski_cli::agent_app_ops::federate_worker(
-                    path.as_deref(),
-                    api.as_deref(),
-                    &agent_id,
-                    topic.as_deref(),
-                )?;
+                let out = tokio::task::spawn_blocking(move || {
+                    kowalski_cli::agent_app_ops::federate_worker(
+                        path.as_deref(),
+                        api.as_deref(),
+                        &agent_id,
+                        topic.as_deref(),
+                    )
+                    .map_err(|e| e.to_string())
+                })
+                .await?;
+                if let Err(e) = out {
+                    return Err(e.into());
+                }
             }
             AgentAppCommands::Proof {
                 path,
@@ -665,14 +686,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 source,
                 question,
             } => {
-                kowalski_cli::agent_app_ops::proof_check(
-                    path.as_deref(),
-                    api.as_deref(),
-                    agent_id.as_deref(),
-                    capability.as_deref(),
-                    source.as_deref(),
-                    question.as_deref(),
-                )?;
+                let out = tokio::task::spawn_blocking(move || {
+                    kowalski_cli::agent_app_ops::proof_check(
+                        path.as_deref(),
+                        api.as_deref(),
+                        agent_id.as_deref(),
+                        capability.as_deref(),
+                        source.as_deref(),
+                        question.as_deref(),
+                    )
+                    .map_err(|e| e.to_string())
+                })
+                .await?;
+                if let Err(e) = out {
+                    return Err(e.into());
+                }
             }
         },
         Some(Commands::Consolidate { delete }) => {

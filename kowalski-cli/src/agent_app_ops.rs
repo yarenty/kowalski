@@ -164,7 +164,11 @@ pub fn validate(path: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn chat_no_tools(api: &str, prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let client = reqwest_blocking::Client::builder().timeout(std::time::Duration::from_secs(120)).build()?;
+    let client = reqwest_blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()?;
+    let route = "/api/chat";
+    let url = format!("{}{}", api.trim_end_matches('/'), route);
     let resp = client
         .post(format!("{}/api/chat", api.trim_end_matches('/')))
         .json(&serde_json::json!({
@@ -172,9 +176,12 @@ fn chat_no_tools(api: &str, prompt: &str) -> Result<String, Box<dyn std::error::
             "use_memory": false,
             "use_tools": false
         }))
-        .send()?;
+        .send()
+        .map_err(|e| friendly_http_error(api, route, &url, &e))?;
     if !resp.status().is_success() {
-        return Err(format!("chat failed: HTTP {}", resp.status()).into());
+        return Err(
+            friendly_http_status_error(api, route, &url, resp.status().as_u16(), None).into(),
+        );
     }
     let v: serde_json::Value = resp.json()?;
     Ok(v.get("reply")
@@ -440,16 +447,23 @@ pub fn run(
     let run_stamp = Utc::now().format("%Y%m%d-%H%M%S");
     let log_file = root.join("scratch").join(format!("orchestration-{run_stamp}.md"));
     let mut log = String::new();
+    let mut task_outputs: Vec<(String, PathBuf)> = Vec::new();
+    let total_steps = main.meta.pipeline.len();
     log.push_str("# Agent App Run\n\n");
     log.push_str(&format!("- Main agent: {}\n- Source: {}\n- Question: {}\n\n", main.meta.name, source, q));
+    println!("Starting agent app run: {}", main.meta.name);
+    println!("Task count: {}", total_steps);
 
-    for step in &main.meta.pipeline {
+    for (idx, step) in main.meta.pipeline.iter().enumerate() {
         let agent = agents.get(step).ok_or_else(|| format!("missing step agent: {step}"))?;
+        println!("[{}/{}] {} ({})", idx + 1, total_steps, step, agent.meta.kind);
         log.push_str(&format!("## Step: {} ({})\n\n", step, agent.meta.kind));
         match agent.meta.kind.as_str() {
             "ingest" => {
                 latest_source = ingest_source(&root, source)?;
                 log.push_str(&format!("- output: {}\n\n", latest_source.display()));
+                task_outputs.push((step.clone(), latest_source.clone()));
+                println!("  -> {}", latest_source.display());
             }
             "compile" => {
                 let prompt_path = root.join(agent.meta.prompt_file.as_deref().unwrap_or("prompts/compiler.md"));
@@ -467,6 +481,8 @@ pub fn run(
                 fs::write(&summary_out, &reply)?;
                 normalize_and_repair_wiki(&root)?;
                 log.push_str(&format!("- output: {}\n\n", summary_out.display()));
+                task_outputs.push((step.clone(), summary_out.clone()));
+                println!("  -> {}", summary_out.display());
             }
             "ask" => {
                 let prompt_path = root.join(agent.meta.prompt_file.as_deref().unwrap_or("prompts/query.md"));
@@ -483,6 +499,8 @@ pub fn run(
                 );
                 fs::write(&out, &reply)?;
                 log.push_str(&format!("- output: {}\n\n", out.display()));
+                task_outputs.push((step.clone(), out.clone()));
+                println!("  -> {}", out.display());
             }
             "lint" => {
                 let prompt_path = root.join(agent.meta.prompt_file.as_deref().unwrap_or("prompts/lint.md"));
@@ -499,12 +517,33 @@ pub fn run(
                 );
                 fs::write(&out, &reply)?;
                 log.push_str(&format!("- output: {}\n\n", out.display()));
+                task_outputs.push((step.clone(), out.clone()));
+                println!("  -> {}", out.display());
             }
             other => return Err(format!("unsupported agent kind: {other}").into()),
         }
     }
 
     fs::write(&log_file, log)?;
+    println!("\nSub-agent execution trace:");
+    for (task, out) in &task_outputs {
+        println!("- {} -> {}", task, out.display());
+    }
+
+    let latest_summary = latest_md_in(&root.join("wiki").join("summaries"));
+    let latest_report = latest_md_in(&root.join("derived").join("reports"));
+    let latest_lint = latest_md_in(&root.join("derived").join("lint"));
+
+    println!("\nFinal output artifacts:");
+    if let Some(p) = latest_summary {
+        println!("- summary: {}", p.display());
+    }
+    if let Some(p) = latest_report {
+        println!("- report: {}", p.display());
+    }
+    if let Some(p) = latest_lint {
+        println!("- lint: {}", p.display());
+    }
     println!("Agent app run complete. Log: {}", log_file.display());
     Ok(())
 }
@@ -520,13 +559,77 @@ fn post_json(
     let resp = client
         .post(format!("{}{}", api.trim_end_matches('/'), route))
         .json(&payload)
-        .send()?;
+        .send()
+        .map_err(|e| friendly_http_error(api, route, &format!("{}{}", api.trim_end_matches('/'), route), &e))?;
     let status = resp.status();
     let v: serde_json::Value = resp.json().unwrap_or_else(|_| serde_json::json!({}));
     if !status.is_success() {
-        return Err(format!("{} failed ({}): {}", route, status, v).into());
+        return Err(friendly_http_status_error(
+            api,
+            route,
+            &format!("{}{}", api.trim_end_matches('/'), route),
+            status.as_u16(),
+            Some(v),
+        )
+        .into());
     }
     Ok(v)
+}
+
+fn friendly_http_error(api: &str, route: &str, url: &str, err: &reqwest::Error) -> String {
+    let mut msg = format!("request failed for {} ({}): {}", route, url, err);
+    msg.push_str("\nPossible root causes:");
+    if err.is_connect() {
+        msg.push_str("\n- Kowalski server is not running or not reachable.");
+        msg.push_str("\n- API URL is wrong.");
+    } else if err.is_timeout() {
+        msg.push_str("\n- Server is running but timed out.");
+        msg.push_str("\n- LLM/provider backend is slow or blocked.");
+    } else {
+        msg.push_str("\n- Network or server-side error.");
+    }
+    msg.push_str("\nHow to fix:");
+    msg.push_str("\n- Start server: cargo run -p kowalski --bin kowalski");
+    msg.push_str(&format!("\n- Verify health: curl {}/api/health", api.trim_end_matches('/')));
+    msg.push_str(&format!(
+        "\n- If using custom API, set KOWALSKI_API and retry (current: {}).",
+        api
+    ));
+    msg
+}
+
+fn friendly_http_status_error(
+    api: &str,
+    route: &str,
+    url: &str,
+    status_code: u16,
+    body: Option<serde_json::Value>,
+) -> String {
+    let mut msg = format!("request failed for {} ({}): HTTP {}", route, url, status_code);
+    if let Some(v) = body {
+        if v != serde_json::json!({}) {
+            msg.push_str(&format!("\nResponse body: {}", v));
+        }
+    }
+    msg.push_str("\nPossible root causes:");
+    if status_code == 404 {
+        msg.push_str("\n- Endpoint is missing (version mismatch or wrong API URL).");
+    } else if status_code >= 500 {
+        msg.push_str("\n- Kowalski server internal error.");
+        msg.push_str("\n- Upstream LLM/provider failure.");
+    } else if status_code == 401 || status_code == 403 {
+        msg.push_str("\n- Authentication/authorization problem.");
+    } else {
+        msg.push_str("\n- Request rejected by server configuration.");
+    }
+    msg.push_str("\nHow to fix:");
+    msg.push_str("\n- Ensure server is running: cargo run -p kowalski --bin kowalski");
+    msg.push_str(&format!("\n- Verify health: curl {}/api/health", api.trim_end_matches('/')));
+    msg.push_str(&format!(
+        "\n- Confirm API URL and route availability (current API: {}, route: {}).",
+        api, route
+    ));
+    msg
 }
 
 fn latest_md_in(dir: &Path) -> Option<PathBuf> {

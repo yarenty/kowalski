@@ -55,6 +55,7 @@ Or through the generic extension runner:
 cargo run -p kowalski-cli -- extension run knowledge-compiler list
 cargo run -p kowalski-cli -- extension run knowledge-compiler validate
 cargo run -p kowalski-cli -- extension run knowledge-compiler run "https://example.com/article" --question "What changed?"
+cargo run -p kowalski-cli -- extension run knowledge-compiler "can you check https://yarenty.com and get summary into obsidian?"
 cargo run -p kowalski-cli -- extension run knowledge-compiler delegate "kc.run" "https://example.com/article" --question "What changed?"
 cargo run -p kowalski-cli -- extension run knowledge-compiler proof
 ```
@@ -116,4 +117,5 @@ cargo run -p kowalski-cli -- extension run knowledge-compiler validate
 - Scripts are intentionally conservative and filesystem-first.
 - This scaffold does not require Python; it uses shell and markdown contracts.
 - `agent-app run` executes specialist agents from markdown definitions and writes a run log under `scratch/`.
+- each run prints serialized sub-agent execution (`[1/N] step (kind)`) and a final artifact summary.
 - generation uses `/api/chat` no-tools mode for deterministic markdown output.
