@@ -40,7 +40,7 @@ env_logger = "0.11"
 tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["sync"] }
 axum = { workspace = true, features = ["ws"] }
-reqwest = { workspace = true }
+reqwest = { workspace = true, features = ["blocking"] }
 async-trait = { workspace = true }
 log = { workspace = true }
 futures = { workspace = true }
@@ -50,8 +50,8 @@ tower-http = { workspace = true, features = ["cors", "trace"] }
 url = { workspace = true }
 regex = { workspace = true }
 markdown = { workspace = true }
-rustyline = "13.0"
-colored = "2.1"
-toml = "0.8"
+rustyline = "18.0"
+colored = "3.1"
+toml = "1.1"
 axum-server = { version = "0.8.0", features = ["tls-rustls"] }
 
