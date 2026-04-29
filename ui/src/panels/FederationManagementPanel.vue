@@ -57,15 +57,47 @@ async function refreshAll() {
   await Promise.all([loadWorkers(), loadRegistry()]);
 }
 
+function isWorkerReady(w: FederationWorkerProfile): boolean {
+  return Boolean(w.managed_running && w.registered_exact && !w.stale_registration);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function ensureHordeReady(hordeId: string) {
+  const maxAttempts = 8;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    await Promise.all([loadWorkers(), loadRegistry()]);
+    const workers = workersByHorde.value[hordeId] ?? [];
+    if (workers.length > 0 && workers.every((w) => isWorkerReady(w))) {
+      return true;
+    }
+    const notReady = workers.filter((w) => !isWorkerReady(w));
+    for (const w of notReady) {
+      // Retry only the specific step that is not yet fully registered.
+      await api.hordeWorkersStart(hordeId, w.step);
+    }
+    await sleep(650);
+  }
+  return false;
+}
+
 async function startWorker(hordeId: string, step?: string) {
   workerBusy.value = `${hordeId}:${step ?? "all"}`;
   workerAction.value = null;
   try {
     await api.hordeWorkersStart(hordeId, step);
-    workerAction.value = step
-      ? `Started worker for ${hordeId}/${step}`
-      : `Started all workers for ${hordeId}`;
-    await Promise.all([loadWorkers(), loadRegistry()]);
+    if (step) {
+      workerAction.value = `Started worker for ${hordeId}/${step}`;
+      await Promise.all([loadWorkers(), loadRegistry()]);
+    } else {
+      workerAction.value = `Starting all workers for ${hordeId} and waiting for readiness...`;
+      const ready = await ensureHordeReady(hordeId);
+      workerAction.value = ready
+        ? `Started all workers for ${hordeId} (ready).`
+        : `Started all workers for ${hordeId}, but some are still warming up.`;
+    }
   } catch (e) {
     workerErr.value = e instanceof Error ? e.message : String(e);
   } finally {

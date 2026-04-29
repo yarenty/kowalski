@@ -404,15 +404,15 @@ onUnmounted(() => {
 
 <template>
   <section class="panel">
-    <h2>Horde Run</h2>
-    <p class="muted">
-      Talk to a whole horde. The orchestrator coordinates all internal sub-agents and streams their collaboration.
-    </p>
-    <div class="toolbar">
+    <div class="panel-top">
+      <h2>Horde Run</h2>
       <button type="button" class="icon-btn" title="Refresh all" aria-label="Refresh all" @click="refreshAll">
         ↻
       </button>
     </div>
+    <p class="muted">
+      Talk to a whole horde. The orchestrator coordinates all internal sub-agents and streams their collaboration.
+    </p>
     <p>
       <label class="lbl">Horde</label>
       <select v-model="selectedHordeId" class="inp">
@@ -485,7 +485,7 @@ onUnmounted(() => {
       </div>
     </section>
     <section class="followup-composer">
-      <h3 style="margin:0 0 0.35rem;">{{ hasCompletedRun ? "Follow-up chat on this run" : "Run horde" }}</h3>
+      <h3 v-if="hasCompletedRun" style="margin:0 0 0.35rem;">Follow-up chat on this run</h3>
       <p class="muted">
         {{
           hasCompletedRun
@@ -527,6 +527,7 @@ onUnmounted(() => {
 
 <style scoped>
 .panel h2 { margin-top: 0; font-size: 1.1rem; }
+.panel-top { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
 .muted { color: #6a7285; font-size: 0.9rem; }
 .err { color: #e88; font-size: 0.9rem; }
 .lbl { display: block; font-size: 0.8rem; color: #8b92a5; margin-bottom: 0.25rem; }
@@ -559,6 +560,5 @@ onUnmounted(() => {
 .thinking { color: #9cc2ff; }
 button { background: #2a3142; border: 1px solid #3d4658; color: #c8cfdd; padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; margin-right: 0.5rem; }
 button.primary { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
-.toolbar { display: flex; justify-content: flex-end; margin-bottom: 0.45rem; }
 .icon-btn { width: 34px; height: 34px; padding: 0; font-size: 1rem; line-height: 1; margin-right: 0; }
 </style>
