@@ -71,7 +71,7 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
-.sidebar { width: 260px; border-right: 1px solid #2a2e38; background: #171b22; padding: 0.75rem; box-sizing: border-box; }
+.sidebar { width: 260px; border-right: 1px solid #2a2e38; background: #171b22; padding: 0.75rem; box-sizing: border-box; position: sticky; top: 0; height: 100vh; overflow: auto; flex-shrink: 0; }
 .sidebar.collapsed { width: 42px; padding: 0.5rem 0.35rem; }
 .sidebar > div { display: flex; flex-direction: column; min-height: calc(100vh - 2.25rem); }
 .collapse-btn { width: 100%; margin-bottom: 0.5rem; background: #2a3142; border: 1px solid #3d4658; color: #c8cfdd; border-radius: 6px; cursor: pointer; }

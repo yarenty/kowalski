@@ -27,6 +27,12 @@ const followupMsgs = ref<Array<{ role: "user" | "assistant" | "orchestrator"; sp
 
 const selectedHorde = computed(() => hordes.value.find((h) => h.id === selectedHordeId.value) ?? null);
 const selectedHordeWorkers = computed(() => workerProfiles.value.filter((w) => w.horde_id === selectedHordeId.value));
+const activeRunFromHistory = computed(() =>
+  runId.value ? runHistory.value.find((r) => r.run_id === runId.value) ?? null : null,
+);
+const latestCompletedRun = computed(() =>
+  runHistory.value.find((r) => r.status === "completed") ?? null,
+);
 const finalDelivery = computed(() => {
   if (!runResult.value) return null;
   try {
@@ -40,7 +46,11 @@ const finalDelivery = computed(() => {
   }
 });
 const finalArtifacts = computed(() => finalDelivery.value?.artifacts ?? []);
-const runCompleted = computed(() => finalDelivery.value?.kind === "run_finished");
+const runCompleted = computed(
+  () =>
+    finalDelivery.value?.kind === "run_finished" ||
+    activeRunFromHistory.value?.status === "completed",
+);
 const progressText = ref("idle");
 const obsidianRoot = computed(() =>
   selectedHorde.value?.root_path
@@ -169,6 +179,28 @@ async function loadRunHistory() {
   if (!selectedHordeId.value) return;
   const res = await api.hordeRuns(selectedHordeId.value);
   runHistory.value = res.runs ?? [];
+  if (!runId.value && runHistory.value.length) {
+    runId.value = runHistory.value[0].run_id;
+  }
+  if (!runResult.value) {
+    const completed = runHistory.value.find((r) => r.status === "completed");
+    if (completed) {
+      const artifacts = completed.steps
+        .filter((s) => !!s.artifact)
+        .map((s) => [s.step, s.artifact] as [string, string]);
+      runResult.value = JSON.stringify(
+        {
+          kind: "run_finished",
+          run_id: completed.run_id,
+          horde: completed.horde_id,
+          artifacts,
+          text: `${selectedHorde.value?.display_name || "Horde"} run completed; ${artifacts.length} artifact(s).`,
+        },
+        null,
+        2,
+      );
+    }
+  }
   persistRunHistory();
 }
 
@@ -231,7 +263,12 @@ async function runKnowledgeCompiler() {
 }
 
 async function askFollowup() {
-  if (!runId.value || !selectedHordeId.value) return;
+  if (!selectedHordeId.value) return;
+  if (!runId.value) {
+    const fallbackRunId = latestCompletedRun.value?.run_id;
+    if (fallbackRunId) runId.value = fallbackRunId;
+  }
+  if (!runId.value) return;
   const q = followupInput.value.trim();
   if (!q) return;
   followupMsgs.value = [...followupMsgs.value, { role: "user", speaker: "You", text: q }];
@@ -317,6 +354,10 @@ onUnmounted(() => {
       <p v-if="!runMessages.length" class="muted">(no run messages yet)</p>
     </div>
 
+    <details v-if="runHistory.length">
+      <summary>Previous runs</summary>
+      <pre class="json">{{ JSON.stringify(runHistory.slice(0, 8), null, 2) }}</pre>
+    </details>
     <section v-if="runResult" class="delivery">
       <h3 style="margin:0 0 0.35rem;">Final delivery</h3>
       <div>
@@ -342,44 +383,52 @@ onUnmounted(() => {
         </details>
       </div>
     </section>
-    <section v-if="runCompleted" class="delivery">
-      <h3 style="margin:0 0 0.35rem;">Follow-up chat on this run</h3>
-      <div v-if="runId && runCompleted">
-        <p class="muted">
-          Ask refining questions about this run, e.g. "emphasize AI findings" or
-          "only technology part in simple language".
-        </p>
-        <p>
-          <label class="lbl">Follow-up question</label>
-          <input v-model="followupInput" class="inp" type="text" />
-        </p>
-        <p>
-          <button type="button" class="primary" :disabled="followupBusy || !followupInput.trim()" @click="askFollowup">
-            {{ followupBusy ? "Asking..." : "Ask follow-up" }}
-          </button>
-        </p>
-        <div class="chat-feed" style="max-height: 24vh;">
-          <article
-            v-for="(m, i) in followupMsgs"
-            :key="`f-${i}`"
-            class="msg"
-            :class="m.role === 'user' ? 'msg-orchestrator' : m.role === 'orchestrator' ? 'msg-system' : 'msg-worker'"
-          >
-            <header>{{ m.speaker }}</header>
-            <pre>{{ m.text }}</pre>
-          </article>
-          <p v-if="!followupMsgs.length" class="muted">(no follow-up messages yet)</p>
-        </div>
+    <p v-if="runErr" class="err">{{ runErr }}</p>
+    <section v-if="runCompleted || latestCompletedRun" class="delivery">
+      <h3 style="margin:0 0 0.35rem;">Follow-up output</h3>
+      <div class="chat-feed followup-feed">
+        <article
+          v-for="(m, i) in followupMsgs"
+          :key="`f-${i}`"
+          class="msg"
+          :class="m.role === 'user' ? 'msg-orchestrator' : m.role === 'orchestrator' ? 'msg-system' : 'msg-worker'"
+        >
+          <header>{{ m.speaker }}</header>
+          <pre>{{ m.text }}</pre>
+        </article>
+        <p v-if="!followupMsgs.length" class="muted">(no follow-up messages yet)</p>
       </div>
-      <p v-else class="muted">
-        Run a horde first, then follow-up chat becomes active for that run.
+    </section>
+    <section class="followup-composer">
+      <h3 style="margin:0 0 0.35rem;">Follow-up chat on this run</h3>
+      <p class="muted">
+        Ask refining questions about this run, e.g. "emphasize AI findings" or
+        "only technology part in simple language".
+      </p>
+      <p>
+        <label class="lbl">Follow-up question</label>
+        <input
+          v-model="followupInput"
+          class="inp"
+          type="text"
+          :disabled="!(runCompleted || latestCompletedRun) || followupBusy"
+          @keydown.enter.prevent="askFollowup"
+        />
+      </p>
+      <p>
+        <button
+          type="button"
+          class="primary"
+          :disabled="!(runCompleted || latestCompletedRun) || followupBusy || !followupInput.trim()"
+          @click="askFollowup"
+        >
+          {{ followupBusy ? "Asking..." : "Ask follow-up" }}
+        </button>
+      </p>
+      <p v-if="!(runCompleted || latestCompletedRun)" class="muted">
+        Follow-up input is enabled after run completion.
       </p>
     </section>
-    <details v-if="runHistory.length">
-      <summary>Previous runs</summary>
-      <pre class="json">{{ JSON.stringify(runHistory.slice(0, 8), null, 2) }}</pre>
-    </details>
-    <p v-if="runErr" class="err">{{ runErr }}</p>
   </section>
 </template>
 
@@ -390,8 +439,20 @@ onUnmounted(() => {
 .lbl { display: block; font-size: 0.8rem; color: #8b92a5; margin-bottom: 0.25rem; }
 .inp { width: 100%; max-width: 48rem; box-sizing: border-box; background: #1a1d26; border: 1px solid #3d4658; color: #e8e8ec; border-radius: 6px; padding: 0.4rem 0.55rem; font: inherit; }
 .chat-feed { border: 1px solid #2a2e38; border-radius: 8px; background: #141820; padding: 0.6rem; display: grid; gap: 0.45rem; max-height: 55vh; overflow: auto; }
+.followup-feed { max-height: none; overflow: visible; }
 .horde-box { border: 1px solid #2a2e38; border-radius: 8px; background: #161b22; padding: 0.55rem 0.65rem; margin-bottom: 0.55rem; }
 .delivery { border: 1px solid #2a2e38; border-radius: 8px; background: #151922; padding: 0.55rem 0.65rem; margin-top: 0.45rem; }
+.followup-composer {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  border: 1px solid #2a2e38;
+  border-radius: 10px;
+  background: #171b22;
+  padding: 0.65rem 0.75rem;
+  margin-top: 0.55rem;
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.35);
+}
 .artifact-list { display: grid; gap: 0.35rem; margin-top: 0.45rem; }
 .artifact-item { border: 1px solid #2a2e38; border-radius: 6px; background: #12161d; padding: 0.45rem 0.55rem; display: grid; gap: 0.25rem; }
 .msg { border: 1px solid #2a2e38; border-radius: 8px; background: #171b22; padding: 0.5rem 0.65rem; }

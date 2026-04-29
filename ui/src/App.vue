@@ -297,6 +297,8 @@ body {
   flex: 1;
   padding: 1.25rem 1.5rem;
   min-width: 0;
+  height: 100vh;
+  overflow-y: auto;
 }
 code {
   background: #2a3142;
