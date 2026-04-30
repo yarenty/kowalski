@@ -62,12 +62,21 @@ async function openOutputFolder(path?: string) {
   if (!path) return;
   pathAction.value = null;
   const normalized = path.startsWith("file://") ? path : `file://${path}`;
-  window.open(normalized, "_blank", "noopener");
+  let opened = false;
+  try {
+    opened = Boolean(window.open(normalized, "_blank", "noopener"));
+  } catch {
+    opened = false;
+  }
   try {
     await navigator.clipboard.writeText(path);
-    pathAction.value = `Opened and copied path: ${path}`;
+    pathAction.value = opened
+      ? `Opened and copied path: ${path}`
+      : `Copied path (browser blocked opening local folder): ${path}`;
   } catch {
-    pathAction.value = `Opened path: ${path}`;
+    pathAction.value = opened
+      ? `Opened path: ${path}`
+      : `Could not auto-open local folder. Path: ${path}`;
   }
 }
 
@@ -157,7 +166,12 @@ onMounted(() => void refreshAll());
         </header>
         <p class="muted">{{ card.horde.description }}</p>
         <p class="muted">Sub-agents: {{ card.horde.pipeline.join(" → ") }}</p>
-        <p class="muted">Workdir: <code>{{ card.horde.workdir || card.horde.root_path }}</code></p>
+        <p class="muted workdir-row">
+          Workdir: <code>{{ card.horde.workdir || card.horde.root_path }}</code>
+          <button type="button" class="inline-btn" @click="openOutputFolder(card.horde.workdir || card.horde.root_path)">
+            Open output folder
+          </button>
+        </p>
         <p class="muted">Clean on startup: <strong>{{ card.horde.config_on_startup ? "true" : "false" }}</strong></p>
         <p>
           <button
@@ -174,11 +188,6 @@ onMounted(() => void refreshAll());
             @click="stopWorker(card.horde.id)"
           >
             {{ workerBusy === `${card.horde.id}:all` ? "Stopping..." : "Stop All" }}
-          </button>
-        </p>
-        <p>
-          <button type="button" @click="openOutputFolder(card.horde.workdir || card.horde.root_path)">
-            Open output folder
           </button>
         </p>
         <details open>
@@ -229,7 +238,9 @@ onMounted(() => void refreshAll());
 .status-badge { border-radius: 999px; font-size: 0.72rem; padding: 0.12rem 0.45rem; border: 1px solid #2f7c47; color: #8de3a8; background: #153323; }
 .status-off { border-color: #555f74; color: #b0b7c7; background: #2a3142; }
 .muted { color: #6a7285; font-size: 0.9rem; }
+.workdir-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .err { color: #e88; font-size: 0.9rem; }
 button { background: #2a3142; border: 1px solid #3d4658; color: #c8cfdd; padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; margin-right: 0.5rem; }
 button.primary { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
+.inline-btn { padding: 0.2rem 0.5rem; font-size: 0.78rem; margin-right: 0; }
 </style>

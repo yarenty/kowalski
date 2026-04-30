@@ -203,12 +203,21 @@ async function openOutputFolder(path?: string) {
   if (!path) return;
   pathAction.value = null;
   const normalized = path.startsWith("file://") ? path : `file://${path}`;
-  window.open(normalized, "_blank", "noopener");
+  let opened = false;
+  try {
+    opened = Boolean(window.open(normalized, "_blank", "noopener"));
+  } catch {
+    opened = false;
+  }
   try {
     await navigator.clipboard.writeText(path);
-    pathAction.value = `Opened and copied path: ${path}`;
+    pathAction.value = opened
+      ? `Opened and copied path: ${path}`
+      : `Copied path (browser blocked opening local folder): ${path}`;
   } catch {
-    pathAction.value = `Opened path: ${path}`;
+    pathAction.value = opened
+      ? `Opened path: ${path}`
+      : `Could not auto-open local folder. Path: ${path}`;
   }
 }
 
@@ -525,13 +534,13 @@ onUnmounted(() => {
     </p>
     <div v-if="selectedHorde" class="horde-box">
       <p class="muted">{{ selectedHorde.description }}</p>
-      <p class="muted">Workdir: <code>{{ selectedHorde.workdir || selectedHorde.root_path }}</code></p>
-      <p class="muted">Clean on startup: <strong>{{ selectedHorde.config_on_startup ? "true" : "false" }}</strong></p>
-      <p>
-        <button type="button" @click="openOutputFolder(selectedHorde.workdir || selectedHorde.root_path)">
+      <p class="muted workdir-row">
+        Workdir: <code>{{ selectedHorde.workdir || selectedHorde.root_path }}</code>
+        <button type="button" class="inline-btn" @click="openOutputFolder(selectedHorde.workdir || selectedHorde.root_path)">
           Open output folder
         </button>
       </p>
+      <p class="muted">Clean on startup: <strong>{{ selectedHorde.config_on_startup ? "true" : "false" }}</strong></p>
     </div>
     <p v-if="pathAction" class="muted">{{ pathAction }}</p>
     <div v-if="isProcessing" class="processing-inline" aria-live="polite" aria-busy="true">
@@ -644,6 +653,12 @@ onUnmounted(() => {
 .panel h2 { margin-top: 0; font-size: 1.1rem; }
 .panel-top { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
 .muted { color: #6a7285; font-size: 0.9rem; }
+.workdir-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
 .err { color: #e88; font-size: 0.9rem; }
 .lbl { display: block; font-size: 0.8rem; color: #8b92a5; margin-bottom: 0.25rem; }
 .inp { width: 100%; max-width: 48rem; box-sizing: border-box; background: #1a1d26; border: 1px solid #3d4658; color: #e8e8ec; border-radius: 6px; padding: 0.4rem 0.55rem; font: inherit; }
@@ -751,4 +766,9 @@ onUnmounted(() => {
 button { background: #2a3142; border: 1px solid #3d4658; color: #c8cfdd; padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; margin-right: 0.5rem; }
 button.primary { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
 .icon-btn { width: 34px; height: 34px; padding: 0; font-size: 1rem; line-height: 1; margin-right: 0; }
+.inline-btn {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.78rem;
+  margin-right: 0;
+}
 </style>
