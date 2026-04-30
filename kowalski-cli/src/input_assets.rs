@@ -66,6 +66,10 @@ fn slugify(input: &str) -> String {
     out.trim_matches('-').to_string()
 }
 
+fn md_cell(input: &str) -> String {
+    input.replace('|', "\\|").replace('\n', " ")
+}
+
 pub fn ingest_assets_markdown(
     root: &Path,
     source_input: &str,
@@ -83,6 +87,11 @@ pub fn ingest_assets_markdown(
         assets.len(),
         now
     ));
+    doc.push_str("## Sources Metadata\n\n");
+    doc.push_str("| # | Type | Source | Status | Chars | Notes |\n");
+    doc.push_str("|---:|---|---|---|---:|---|\n");
+
+    let mut sections = String::new();
 
     for (idx, asset) in assets.iter().enumerate() {
         match asset {
@@ -92,43 +101,83 @@ pub fn ingest_assets_markdown(
                         let text = resp
                             .text()
                             .unwrap_or_else(|_| "(unable to decode body)".to_string());
+                        let clipped = text.chars().take(24000).collect::<String>();
+                        doc.push_str(&format!(
+                            "| {} | url | {} | ok | {} | fetched |\n",
+                            idx + 1,
+                            md_cell(url),
+                            clipped.chars().count()
+                        ));
                         format!(
-                            "## Input {} (url): {}\n\n{}\n\n",
+                            "<!-- source:{}:url:begin -->\n## Source {}: URL\n\n- URL: `{}`\n\n{}\n\n<!-- source:{}:url:end -->\n\n",
+                            idx + 1,
                             idx + 1,
                             url,
-                            text.chars().take(24000).collect::<String>()
+                            clipped,
+                            idx + 1
                         )
                     }
-                    Err(e) => format!(
-                        "## Input {} (url): {}\n\nFetch error: {}\n\n",
-                        idx + 1,
-                        url,
-                        e
-                    ),
+                    Err(e) => {
+                        let err = format!("Fetch error: {}", e);
+                        doc.push_str(&format!(
+                            "| {} | url | {} | error | 0 | {} |\n",
+                            idx + 1,
+                            md_cell(url),
+                            md_cell(&err)
+                        ));
+                        format!(
+                            "<!-- source:{}:url:begin -->\n## Source {}: URL\n\n- URL: `{}`\n\n{}\n\n<!-- source:{}:url:end -->\n\n",
+                            idx + 1,
+                            idx + 1,
+                            url,
+                            err,
+                            idx + 1
+                        )
+                    }
                 };
-                doc.push_str(&section);
+                sections.push_str(&section);
             }
             InputAsset::FilePath(path) => {
                 let content = fs::read_to_string(path)
                     .unwrap_or_else(|_| "(unable to read file content as text)".to_string());
+                let clipped = content.chars().take(24000).collect::<String>();
                 doc.push_str(&format!(
-                    "## Input {} (file): {}\n\n{}\n\n",
+                    "| {} | file | {} | ok | {} | local file |\n",
                     idx + 1,
                     path,
-                    content.chars().take(24000).collect::<String>()
+                    clipped.chars().count()
+                ));
+                sections.push_str(&format!(
+                    "<!-- source:{}:file:begin -->\n## Source {}: File\n\n- Path: `{}`\n\n{}\n\n<!-- source:{}:file:end -->\n\n",
+                    idx + 1,
+                    idx + 1,
+                    path,
+                    clipped,
+                    idx + 1
                 ));
             }
             InputAsset::Text(text) => {
                 let slug = slugify(text);
                 doc.push_str(&format!(
-                    "## Input {} (text): {}\n\n{}\n\n",
+                    "| {} | text | {} | ok | {} | direct prompt text |\n",
+                    idx + 1,
+                    md_cell(if slug.is_empty() { "prompt" } else { &slug }),
+                    text.chars().count()
+                ));
+                sections.push_str(&format!(
+                    "<!-- source:{}:text:begin -->\n## Source {}: Text\n\n- Label: `{}`\n\n{}\n\n<!-- source:{}:text:end -->\n\n",
+                    idx + 1,
                     idx + 1,
                     if slug.is_empty() { "prompt" } else { &slug },
-                    text
+                    text,
+                    idx + 1
                 ));
             }
         }
     }
+    doc.push('\n');
+    doc.push_str("## Source Collection\n\n");
+    doc.push_str(&sections);
     fs::write(&out, doc)?;
     Ok(out)
 }
