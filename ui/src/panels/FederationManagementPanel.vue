@@ -61,22 +61,18 @@ async function refreshAll() {
 async function openOutputFolder(path?: string) {
   if (!path) return;
   pathAction.value = null;
-  const normalized = path.startsWith("file://") ? path : `file://${path}`;
-  let opened = false;
   try {
-    opened = Boolean(window.open(normalized, "_blank", "noopener"));
-  } catch {
-    opened = false;
-  }
-  try {
+    await api.openPath(path);
     await navigator.clipboard.writeText(path);
-    pathAction.value = opened
-      ? `Opened and copied path: ${path}`
-      : `Copied path (browser blocked opening local folder): ${path}`;
-  } catch {
-    pathAction.value = opened
-      ? `Opened path: ${path}`
-      : `Could not auto-open local folder. Path: ${path}`;
+    pathAction.value = `Opened and copied path: ${path}`;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    try {
+      await navigator.clipboard.writeText(path);
+      pathAction.value = `Open failed (${msg}). Copied path: ${path}`;
+    } catch {
+      pathAction.value = `Open failed (${msg}). Path: ${path}`;
+    }
   }
 }
 

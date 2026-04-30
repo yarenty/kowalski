@@ -29,7 +29,7 @@ use std::fs::OpenOptions;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::process::Child;
+use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 use tokio_stream::wrappers::ReceiverStream;
 use tower_http::cors::CorsLayer;
@@ -213,6 +213,7 @@ pub async fn serve(
         .route("/api/chat/reset", post(post_chat_reset))
         .route("/api/chat/sync", post(post_chat_sync))
         .route("/api/chat/messages", get(get_chat_messages))
+        .route("/api/system/open-path", post(post_open_path))
         .route("/api/federation/stream", get(get_federation_stream))
         .route("/api/federation/ws", get(get_federation_ws))
         .route("/api/federation/registry", get(get_federation_registry))
@@ -498,6 +499,78 @@ struct ChatSyncResponse {
     conversation_id: String,
     model: String,
     message_count: usize,
+}
+
+#[derive(Deserialize)]
+struct OpenPathBody {
+    path: String,
+}
+
+#[derive(Serialize)]
+struct OpenPathResponse {
+    ok: bool,
+    path: String,
+}
+
+async fn post_open_path(
+    Json(body): Json<OpenPathBody>,
+) -> Result<Json<OpenPathResponse>, (StatusCode, String)> {
+    let trimmed = body.path.trim();
+    if trimmed.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "path is required".into()));
+    }
+    let path = PathBuf::from(trimmed);
+    if !path.is_absolute() {
+        return Err((StatusCode::BAD_REQUEST, "path must be absolute".into()));
+    }
+    if !path.exists() {
+        return Err((StatusCode::NOT_FOUND, format!("path not found: {}", path.display())));
+    }
+
+    let mut cmd: Command;
+    #[cfg(target_os = "macos")]
+    {
+        cmd = Command::new("open");
+        cmd.arg(&path);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        cmd = Command::new("xdg-open");
+        cmd.arg(&path);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        cmd = Command::new("cmd");
+        cmd.args(["/C", "start", "", &path.to_string_lossy()]);
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        return Err((
+            StatusCode::NOT_IMPLEMENTED,
+            "opening local paths is not supported on this OS".into(),
+        ));
+    }
+
+    let out = cmd
+        .output()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("failed to launch opener: {e}")))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            if stderr.is_empty() {
+                format!("opener exited with status: {}", out.status)
+            } else {
+                format!("opener failed: {}", stderr)
+            },
+        ));
+    }
+
+    Ok(Json(OpenPathResponse {
+        ok: true,
+        path: path.to_string_lossy().to_string(),
+    }))
 }
 
 async fn post_chat_reset(
