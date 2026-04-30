@@ -54,7 +54,7 @@ function timeAgo(ts: number): string {
       <p class="tagline">Operator UI</p>
       <nav class="nav">
         <button :class="{ active: activeTab === 'chat' }" @click="emit('select-tab', 'chat')">Chat</button>
-        <button :class="{ active: activeTab === 'federation-run' }" @click="emit('select-tab', 'federation-run')">Horde Run</button>
+        <button :class="{ active: activeTab === 'federation-run' }" @click="emit('select-tab', 'federation-run')">Horde</button>
         <button
           class="is-disabled"
           :class="{ active: activeTab === 'mcp' }"
