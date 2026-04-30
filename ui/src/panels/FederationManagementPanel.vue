@@ -9,6 +9,7 @@ const workerAction = ref<string | null>(null);
 const workerBusy = ref<string | null>(null);
 const fedRegistry = ref<FederationRegistryResponse | null>(null);
 const fedRegistryErr = ref<string | null>(null);
+const pathAction = ref<string | null>(null);
 
 const federationAgents = computed(() => fedRegistry.value?.agents ?? []);
 const hordeCards = computed(() =>
@@ -55,6 +56,19 @@ async function loadWorkers() {
 async function refreshAll() {
   await loadHordes();
   await Promise.all([loadWorkers(), loadRegistry()]);
+}
+
+async function openOutputFolder(path?: string) {
+  if (!path) return;
+  pathAction.value = null;
+  const normalized = path.startsWith("file://") ? path : `file://${path}`;
+  window.open(normalized, "_blank", "noopener");
+  try {
+    await navigator.clipboard.writeText(path);
+    pathAction.value = `Opened and copied path: ${path}`;
+  } catch {
+    pathAction.value = `Opened path: ${path}`;
+  }
 }
 
 function isWorkerReady(w: FederationWorkerProfile): boolean {
@@ -143,6 +157,8 @@ onMounted(() => void refreshAll());
         </header>
         <p class="muted">{{ card.horde.description }}</p>
         <p class="muted">Sub-agents: {{ card.horde.pipeline.join(" → ") }}</p>
+        <p class="muted">Workdir: <code>{{ card.horde.workdir || card.horde.root_path }}</code></p>
+        <p class="muted">Clean on startup: <strong>{{ card.horde.config_on_startup ? "true" : "false" }}</strong></p>
         <p>
           <button
             type="button"
@@ -158,6 +174,11 @@ onMounted(() => void refreshAll());
             @click="stopWorker(card.horde.id)"
           >
             {{ workerBusy === `${card.horde.id}:all` ? "Stopping..." : "Stop All" }}
+          </button>
+        </p>
+        <p>
+          <button type="button" @click="openOutputFolder(card.horde.workdir || card.horde.root_path)">
+            Open output folder
           </button>
         </p>
         <details open>
@@ -180,6 +201,7 @@ onMounted(() => void refreshAll());
     </div>
     <p v-else class="muted">No horde cards found.</p>
     <p v-if="workerAction" class="muted">{{ workerAction }}</p>
+    <p v-if="pathAction" class="muted">{{ pathAction }}</p>
     <p v-if="workerErr" class="err">{{ workerErr }}</p>
 
     <h3>Registry (Active Agents)</h3>

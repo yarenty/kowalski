@@ -28,6 +28,7 @@ const runHistory = ref<HordeRunRecord[]>([]);
 const followupInput = ref("");
 const followupBusy = ref(false);
 const followupMsgs = ref<Array<{ role: "user" | "assistant" | "orchestrator"; speaker: string; text: string }>>([]);
+const pathAction = ref<string | null>(null);
 
 const selectedHorde = computed(() => hordes.value.find((h) => h.id === selectedHordeId.value) ?? null);
 const selectedHordeWorkers = computed(() => workerProfiles.value.filter((w) => w.horde_id === selectedHordeId.value));
@@ -173,6 +174,19 @@ async function loadProfiles() {
 async function refreshAll() {
   await loadHordes();
   await Promise.all([loadProfiles(), loadRunHistory()]);
+}
+
+async function openOutputFolder(path?: string) {
+  if (!path) return;
+  pathAction.value = null;
+  const normalized = path.startsWith("file://") ? path : `file://${path}`;
+  window.open(normalized, "_blank", "noopener");
+  try {
+    await navigator.clipboard.writeText(path);
+    pathAction.value = `Opened and copied path: ${path}`;
+  } catch {
+    pathAction.value = `Opened path: ${path}`;
+  }
 }
 
 function isWorkerReady(w: FederationWorkerProfile): boolean {
@@ -458,7 +472,15 @@ onUnmounted(() => {
     </p>
     <div v-if="selectedHorde" class="horde-box">
       <p class="muted">{{ selectedHorde.description }}</p>
+      <p class="muted">Workdir: <code>{{ selectedHorde.workdir || selectedHorde.root_path }}</code></p>
+      <p class="muted">Clean on startup: <strong>{{ selectedHorde.config_on_startup ? "true" : "false" }}</strong></p>
+      <p>
+        <button type="button" @click="openOutputFolder(selectedHorde.workdir || selectedHorde.root_path)">
+          Open output folder
+        </button>
+      </p>
     </div>
+    <p v-if="pathAction" class="muted">{{ pathAction }}</p>
     <p v-if="runBusy" class="muted thinking">Thinking... {{ progressText }}</p>
     <p v-if="followupBusy" class="muted thinking">Thinking... follow-up in progress</p>
     <p v-if="runId" class="muted">Run ID: {{ runId }}</p>
