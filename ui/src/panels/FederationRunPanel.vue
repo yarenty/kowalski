@@ -536,7 +536,10 @@ onUnmounted(() => {
           Open output folder
         </button>
       </p>
-      <p class="muted">Clean on startup: <strong>{{ selectedHorde.config_on_startup ? "true" : "false" }}</strong></p>
+      <p class="muted">
+        Clean on startup:
+        <strong>{{ (selectedHorde.config_on_startup_effective ?? selectedHorde.config_on_startup) ? "true" : "false" }}</strong>
+      </p>
     </div>
     <p v-if="pathAction" class="muted">{{ pathAction }}</p>
     <div v-if="isProcessing" class="processing-inline" aria-live="polite" aria-busy="true">

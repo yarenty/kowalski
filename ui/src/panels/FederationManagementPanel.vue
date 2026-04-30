@@ -168,7 +168,10 @@ onMounted(() => void refreshAll());
             Open output folder
           </button>
         </p>
-        <p class="muted">Clean on startup: <strong>{{ card.horde.config_on_startup ? "true" : "false" }}</strong></p>
+        <p class="muted">
+          Clean on startup:
+          <strong>{{ (card.horde.config_on_startup_effective ?? card.horde.config_on_startup) ? "true" : "false" }}</strong>
+        </p>
         <p>
           <button
             type="button"

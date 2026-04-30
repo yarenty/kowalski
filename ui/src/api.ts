@@ -169,6 +169,7 @@ export type HordeCatalogItem = {
   root_path: string;
   workdir?: string;
   config_on_startup?: boolean;
+  config_on_startup_effective?: boolean;
   delivery_title?: string;
   delivery_note?: string;
   delivery_root_rel?: string;

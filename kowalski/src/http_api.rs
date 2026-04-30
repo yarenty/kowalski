@@ -1516,11 +1516,13 @@ struct HordeFollowupBody {
 }
 
 async fn get_hordes(State(state): State<ApiState>) -> Json<serde_json::Value> {
+    let global_clean_on_startup = global_horde_clean_on_startup(&state.full_config);
     let hordes: Vec<serde_json::Value> = state
         .horde_manager
         .specs
         .iter()
         .map(|s| {
+            let effective_clean_on_startup = global_clean_on_startup.unwrap_or(s.config_on_startup);
             json!({
                 "id": s.id,
                 "display_name": s.display_name,
@@ -1532,6 +1534,7 @@ async fn get_hordes(State(state): State<ApiState>) -> Json<serde_json::Value> {
                 "root_path": s.root_path.display().to_string(),
                 "workdir": s.workdir.display().to_string(),
                 "config_on_startup": s.config_on_startup,
+                "config_on_startup_effective": effective_clean_on_startup,
                 "delivery_title": s.delivery_title,
                 "delivery_note": s.delivery_note,
                 "delivery_root_rel": s.delivery_root_rel,
@@ -1548,6 +1551,7 @@ async fn get_horde_detail(
     State(state): State<ApiState>,
     AxumPath(horde_id): AxumPath<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let global_clean_on_startup = global_horde_clean_on_startup(&state.full_config);
     let spec = state.horde_manager.find(&horde_id).ok_or_else(|| {
         (
             StatusCode::NOT_FOUND,
@@ -1565,6 +1569,7 @@ async fn get_horde_detail(
         "root_path": spec.root_path.display().to_string(),
         "workdir": spec.workdir.display().to_string(),
         "config_on_startup": spec.config_on_startup,
+        "config_on_startup_effective": global_clean_on_startup.unwrap_or(spec.config_on_startup),
         "delivery_title": spec.delivery_title,
         "delivery_note": spec.delivery_note,
         "delivery_root_rel": spec.delivery_root_rel,
