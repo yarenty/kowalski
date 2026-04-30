@@ -16,12 +16,11 @@ async fn postgres_age_cypher_returns_rows() {
 
     let pool = PgPool::connect(&url).await.expect("DATABASE_URL connect");
 
-    let age_ok: bool = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age')",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap_or(false);
+    let age_ok: bool =
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age')")
+            .fetch_one(&pool)
+            .await
+            .unwrap_or(false);
 
     if !age_ok {
         eprintln!("skip age_cypher: Apache AGE extension not installed");

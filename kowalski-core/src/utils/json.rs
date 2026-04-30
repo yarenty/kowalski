@@ -3,16 +3,15 @@ use llm_json::repair_json;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-static CODE_FENCE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?s)```(?:json)?\s*\n?(.*?)```").expect("CODE_FENCE regex")
-});
+static CODE_FENCE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?s)```(?:json)?\s*\n?(.*?)```").expect("CODE_FENCE regex"));
 
 /// Strips the first ``` or ```json … ``` fenced block if present; otherwise returns `s` unchanged.
 pub fn strip_markdown_code_fences(s: &str) -> String {
-    if let Some(caps) = CODE_FENCE.captures(s) {
-        if let Some(m) = caps.get(1) {
-            return m.as_str().trim().to_string();
-        }
+    if let Some(caps) = CODE_FENCE.captures(s)
+        && let Some(m) = caps.get(1)
+    {
+        return m.as_str().trim().to_string();
     }
     s.to_string()
 }
@@ -27,8 +26,7 @@ pub fn looks_like_tool_json_attempt(s: &str) -> bool {
     if trimmed.contains("```") {
         return true;
     }
-    trimmed.contains('{')
-        && (trimmed.contains("\"name\"") || trimmed.contains("'name'"))
+    trimmed.contains('{') && (trimmed.contains("\"name\"") || trimmed.contains("'name'"))
 }
 
 fn extract_tool_calls_inner(input: &str) -> Vec<ToolCall> {
@@ -63,10 +61,9 @@ fn extract_tool_calls_inner(input: &str) -> Vec<ToolCall> {
                             // Try to repair and parse as ToolCall
                             if let Ok(repaired) =
                                 repair_json(&raw_obj, &llm_json::RepairOptions::default())
+                                && let Ok(tool_call) = serde_json::from_str::<ToolCall>(&repaired)
                             {
-                                if let Ok(tool_call) = serde_json::from_str::<ToolCall>(&repaired) {
-                                    results.push(tool_call);
-                                }
+                                results.push(tool_call);
                             }
 
                             i = j; // Move past this object
@@ -80,10 +77,10 @@ fn extract_tool_calls_inner(input: &str) -> Vec<ToolCall> {
             // If we reached the end but have unclosed braces, try to repair the whole remaining chunk
             if j == chars.len() && brace_count > 0 {
                 let raw_obj: String = chars[start..j].iter().collect();
-                if let Ok(repaired) = repair_json(&raw_obj, &llm_json::RepairOptions::default()) {
-                    if let Ok(tool_call) = serde_json::from_str::<ToolCall>(&repaired) {
-                        results.push(tool_call);
-                    }
+                if let Ok(repaired) = repair_json(&raw_obj, &llm_json::RepairOptions::default())
+                    && let Ok(tool_call) = serde_json::from_str::<ToolCall>(&repaired)
+                {
+                    results.push(tool_call);
                 }
             }
         }

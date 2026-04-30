@@ -295,7 +295,12 @@ impl TemplateAgent {
         use_memory: bool,
     ) -> Result<String, KowalskiError> {
         self.base_mut()
-            .chat_with_tools_stream_final_with_options(conversation_id, user_input, token_tx, use_memory)
+            .chat_with_tools_stream_final_with_options(
+                conversation_id,
+                user_input,
+                token_tx,
+                use_memory,
+            )
             .await
     }
 

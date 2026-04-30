@@ -4,10 +4,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tokio::sync::Mutex;
 
+type SharedTool = Arc<Mutex<dyn Tool>>;
+type ToolMap = HashMap<String, SharedTool>;
+
 /// Manages a collection of tools and handles their execution
 #[derive(Clone)]
 pub struct ToolManager {
-    tools: Arc<RwLock<HashMap<String, Arc<Mutex<dyn Tool>>>>>,
+    tools: Arc<RwLock<ToolMap>>,
 }
 
 impl Default for ToolManager {
@@ -39,7 +42,7 @@ impl ToolManager {
     }
 
     /// Get a tool by name
-    pub fn get(&self, name: &str) -> Option<Arc<Mutex<dyn Tool>>> {
+    pub fn get(&self, name: &str) -> Option<SharedTool> {
         if let Ok(tools) = self.tools.read() {
             tools.get(name).cloned()
         } else {
@@ -60,7 +63,7 @@ impl ToolManager {
     /// Generate tool descriptions for LLM system prompt
     /// Note: This is now async because it needs to acquire locks on tools.
     pub async fn generate_tool_descriptions(&self) -> String {
-        let tools_snapshot: Vec<Arc<Mutex<dyn Tool>>> = if let Ok(tools) = self.tools.read() {
+        let tools_snapshot: Vec<SharedTool> = if let Ok(tools) = self.tools.read() {
             tools.values().cloned().collect()
         } else {
             return "Error accessing tools".to_string();
@@ -80,7 +83,7 @@ impl ToolManager {
 
     /// List all registered tools (name, description)
     pub async fn list_tools(&self) -> Vec<(String, String)> {
-        let tools_snapshot: Vec<Arc<Mutex<dyn Tool>>> = if let Ok(tools) = self.tools.read() {
+        let tools_snapshot: Vec<SharedTool> = if let Ok(tools) = self.tools.read() {
             tools.values().cloned().collect()
         } else {
             return Vec::new();
@@ -99,7 +102,7 @@ impl ToolManager {
 
     /// Generate a JSON schema for all registered tools (OpenAI-style function calling format)
     pub async fn generate_json_schema(&self) -> serde_json::Value {
-        let tools_snapshot: Vec<Arc<Mutex<dyn Tool>>> = if let Ok(tools) = self.tools.read() {
+        let tools_snapshot: Vec<SharedTool> = if let Ok(tools) = self.tools.read() {
             tools.values().cloned().collect()
         } else {
             return serde_json::json!([]);

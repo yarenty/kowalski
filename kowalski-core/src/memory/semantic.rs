@@ -58,33 +58,36 @@ impl MemoryProvider for SemanticStore {
     async fn add(&mut self, memory: MemoryUnit) -> Result<(), KowalskiError> {
         debug!("Adding memory unit to semantic store: {}", memory.id);
 
-        if let Some(embedding) = &memory.embedding {
-            if !embedding.is_empty() {
-                self.embedded_entries.push(MemoryUnit {
-                    id: memory.id.clone(),
-                    timestamp: memory.timestamp,
-                    content: memory.content.clone(),
-                    embedding: Some(embedding.clone()),
-                });
-                info!("Added memory unit {} to in-process vector index.", memory.id);
-            }
+        if let Some(embedding) = &memory.embedding
+            && !embedding.is_empty()
+        {
+            self.embedded_entries.push(MemoryUnit {
+                id: memory.id.clone(),
+                timestamp: memory.timestamp,
+                content: memory.content.clone(),
+                embedding: Some(embedding.clone()),
+            });
+            info!(
+                "Added memory unit {} to in-process vector index.",
+                memory.id
+            );
         }
 
-        if let Ok(relation) = serde_json::from_str::<HashMap<String, String>>(&memory.content) {
-            if let (Some(subject), Some(predicate), Some(object)) = (
+        if let Ok(relation) = serde_json::from_str::<HashMap<String, String>>(&memory.content)
+            && let (Some(subject), Some(predicate), Some(object)) = (
                 relation.get("subject"),
                 relation.get("predicate"),
                 relation.get("object"),
-            ) {
-                self.relations
-                    .entry(subject.clone())
-                    .or_default()
-                    .push((predicate.clone(), object.clone()));
-                info!(
-                    "Added relationship: {} -[{}]-> {}",
-                    subject, predicate, object
-                );
-            }
+            )
+        {
+            self.relations
+                .entry(subject.clone())
+                .or_default()
+                .push((predicate.clone(), object.clone()));
+            info!(
+                "Added relationship: {} -[{}]-> {}",
+                subject, predicate, object
+            );
         }
 
         Ok(())

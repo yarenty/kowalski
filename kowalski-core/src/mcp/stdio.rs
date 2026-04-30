@@ -5,10 +5,10 @@ use crate::error::KowalskiError;
 use crate::mcp::types::{CallToolResponse, InitializeResult, ToolListResult};
 use log::debug;
 use serde::de::DeserializeOwned;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::process::Stdio;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
 
@@ -49,9 +49,10 @@ impl McpStdioClient {
         let mut child = cmd.spawn().map_err(|e| {
             KowalskiError::Configuration(format!("stdio MCP spawn {}: {e}", server.command[0]))
         })?;
-        let stdin = child.stdin.take().ok_or_else(|| {
-            KowalskiError::Configuration("stdio MCP: stdin not available".into())
-        })?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| KowalskiError::Configuration("stdio MCP: stdin not available".into()))?;
         let stdout = child.stdout.take().ok_or_else(|| {
             KowalskiError::Configuration("stdio MCP: stdout not available".into())
         })?;
@@ -139,14 +140,15 @@ impl McpStdioClient {
                 self.inner.name, err
             )));
         }
-        let result = body
-            .get("result")
-            .cloned()
-            .ok_or_else(|| KowalskiError::ToolExecution("Missing result in stdio MCP reply".into()))?;
+        let result = body.get("result").cloned().ok_or_else(|| {
+            KowalskiError::ToolExecution("Missing result in stdio MCP reply".into())
+        })?;
         serde_json::from_value(result).map_err(KowalskiError::Json)
     }
 
-    pub async fn list_tools(&self) -> Result<Vec<crate::mcp::types::McpToolDescription>, KowalskiError> {
+    pub async fn list_tools(
+        &self,
+    ) -> Result<Vec<crate::mcp::types::McpToolDescription>, KowalskiError> {
         let result: ToolListResult = self.send_request("tools/list", None).await?;
         Ok(result.tools)
     }

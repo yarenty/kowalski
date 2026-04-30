@@ -9,6 +9,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+type SharedMemoryProvider =
+    std::sync::Arc<tokio::sync::Mutex<dyn crate::memory::MemoryProvider + Send + Sync>>;
+
 #[allow(dead_code)]
 pub struct AgentBuilder {
     base: BaseAgent,
@@ -34,9 +37,9 @@ impl AgentBuilder {
             create_llm_provider(&default_config).expect("Failed to create LLM provider");
 
         let (working_memory, episodic_memory, semantic_memory): (
-            std::sync::Arc<tokio::sync::Mutex<dyn crate::memory::MemoryProvider + Send + Sync>>,
-            std::sync::Arc<tokio::sync::Mutex<dyn crate::memory::MemoryProvider + Send + Sync>>,
-            std::sync::Arc<tokio::sync::Mutex<dyn crate::memory::MemoryProvider + Send + Sync>>,
+            SharedMemoryProvider,
+            SharedMemoryProvider,
+            SharedMemoryProvider,
         ) = create_memory_providers(&default_config)
             .await
             .expect("Failed to create memory providers");

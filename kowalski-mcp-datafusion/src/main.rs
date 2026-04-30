@@ -1,6 +1,6 @@
 use clap::Parser;
 use datafusion::prelude::*;
-use kowalski_mcp_datafusion::{AppState, ACCEPT_STREAMABLE, app_router};
+use kowalski_mcp_datafusion::{ACCEPT_STREAMABLE, AppState, app_router};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -25,19 +25,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let ctx = SessionContext::new();
-    let path = args
-        .csv
-        .to_str()
-        .ok_or("CSV path must be valid UTF-8")?;
+    let path = args.csv.to_str().ok_or("CSV path must be valid UTF-8")?;
     ctx.register_csv(&args.table, path, CsvReadOptions::new())
         .await?;
 
     let session_id = uuid::Uuid::new_v4().to_string();
-    let state = AppState::new(
-        Arc::new(ctx),
-        args.table.clone(),
-        session_id.clone(),
-    );
+    let state = AppState::new(Arc::new(ctx), args.table.clone(), session_id.clone());
 
     let app = app_router(state);
     let addr: SocketAddr = args.bind.parse()?;

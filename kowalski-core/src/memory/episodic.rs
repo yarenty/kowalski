@@ -2,17 +2,17 @@
 // Default: embedded SQLite (`episodic_path`). Optional: PostgreSQL `episodic_kv` when `memory.database_url` is `postgres://…` and the `postgres` feature is enabled.
 
 use crate::{
-    config::{memory_uses_postgres, MemoryConfig},
+    config::{MemoryConfig, memory_uses_postgres},
     error::KowalskiError,
     memory::{MemoryProvider, MemoryQuery, MemoryUnit},
 };
 use async_trait::async_trait;
 use log::{debug, error, info};
 use serde_json;
+use sqlx::Row;
 #[cfg(feature = "postgres")]
 use sqlx::postgres::PgPool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
-use sqlx::Row;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -33,12 +33,11 @@ fn episodic_db_file(episodic_path: &str) -> Result<PathBuf, KowalskiError> {
     } else {
         Path::new(p).join("episodic.sqlite")
     };
-    if let Some(parent) = file_path.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                KowalskiError::Memory(format!("create episodic directory: {e}"))
-            })?;
-        }
+    if let Some(parent) = file_path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| KowalskiError::Memory(format!("create episodic directory: {e}")))?;
     }
     Ok(file_path)
 }
@@ -79,9 +78,9 @@ impl EpisodicBuffer {
                     .as_ref()
                     .expect("memory_uses_postgres implies database_url is set");
                 info!("Opening episodic buffer on PostgreSQL (episodic_kv)");
-                let pool = PgPool::connect(url.as_str())
-                    .await
-                    .map_err(|e| KowalskiError::Memory(format!("episodic Postgres connect: {e}")))?;
+                let pool = PgPool::connect(url.as_str()).await.map_err(|e| {
+                    KowalskiError::Memory(format!("episodic Postgres connect: {e}"))
+                })?;
                 return Ok(Self {
                     sqlite: None,
                     postgres: Some(pool),
@@ -109,18 +108,18 @@ impl EpisodicBuffer {
             .map_err(|e| KowalskiError::Memory(format!("episodic schema: {e}")))?;
         #[cfg(feature = "postgres")]
         {
-            return Ok(Self {
+            Ok(Self {
                 sqlite: Some(pool),
                 postgres: None,
                 llm_provider,
-            });
+            })
         }
         #[cfg(not(feature = "postgres"))]
         {
-            return Ok(Self {
+            Ok(Self {
                 sqlite: pool,
                 llm_provider,
-            });
+            })
         }
     }
 

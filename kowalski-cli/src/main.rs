@@ -384,10 +384,7 @@ async fn run_mcp_ping(config_path: Option<&str>) -> Result<(), Box<dyn std::erro
         print!("  {} <{}> [{}] ... ", r.name, r.url, r.transport);
         io::stdout().flush()?;
         if r.ok {
-            println!(
-                "OK — {} tool(s)",
-                r.tool_count.unwrap_or(0)
-            );
+            println!("OK — {} tool(s)", r.tool_count.unwrap_or(0));
         } else {
             let err = r.error.as_deref().unwrap_or("");
             if err.starts_with("tools/list:") {
@@ -435,10 +432,8 @@ async fn run_mcp_tools(config_path: Option<&str>) -> Result<(), Box<dyn std::err
                 kowalski_core::config::McpTransport::Stdio => "stdio",
             }
         );
-        let tools_result = if matches!(
-            server.transport,
-            kowalski_core::config::McpTransport::Stdio
-        ) {
+        let tools_result = if matches!(server.transport, kowalski_core::config::McpTransport::Stdio)
+        {
             match kowalski_core::McpStdioClient::connect(server).await {
                 Ok(c) => c.list_tools().await,
                 Err(e) => Err(e),
@@ -478,10 +473,7 @@ async fn run_mcp_tools(config_path: Option<&str>) -> Result<(), Box<dyn std::err
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("info"),
-    )
-    .init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let cli = Cli::parse();
     let manager = AgentManager::new();
 
@@ -594,7 +586,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         Some(Commands::Doctor { ollama_url }) => {
             kowalski_cli::ops::run_doctor(ollama_url).await?;
-        },
+        }
         Some(Commands::Run { config }) => {
             kowalski_cli::run_ops::run_orchestrator(config.as_deref()).await?;
         }
@@ -608,7 +600,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let items = kowalski_cli::extension_ops::list_extensions()?;
                 if items.is_empty() {
                     println!("No extensions found.");
-                    println!("Install `kowalski-ext-<name>` in PATH or add `.kowalski/extensions/<name>/run`.");
+                    println!(
+                        "Install `kowalski-ext-<name>` in PATH or add `.kowalski/extensions/<name>/run`."
+                    );
                 } else {
                     println!("Available extensions:");
                     for name in items {
@@ -729,8 +723,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             kowalski_core::db::run_memory_migrations_if_configured(&config).await?;
 
-            let mut weaver =
-                Consolidator::new(&config.memory, llm_provider, ollama_model).await?;
+            let mut weaver = Consolidator::new(&config.memory, llm_provider, ollama_model).await?;
             weaver.run(delete).await?;
             println!("Memory consolidation complete.");
         }
@@ -886,11 +879,15 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
                 println!("  kowalski-cli config check [config.toml]");
                 println!("  kowalski-cli db migrate [--url] [-c config.toml]");
                 println!("  kowalski-cli doctor [--ollama-url URL]");
-                println!("  kowalski-cli federation ping-notify [-c config.toml]  — pg_notify smoke (needs --features postgres)");
+                println!(
+                    "  kowalski-cli federation ping-notify [-c config.toml]  — pg_notify smoke (needs --features postgres)"
+                );
                 println!("  kowalski-cli extension list");
                 println!("  kowalski-cli extension run <name> [-- <args...>]");
                 println!("  kowalski-cli agent-app <list|validate|run> [args]");
-                println!("  kowalski  — /api/federation/registry, /api/federation/stream (SSE), /api/federation/delegate; with --features postgres + memory.database_url, LISTEN kowalski_federation → broker");
+                println!(
+                    "  kowalski  — /api/federation/registry, /api/federation/stream (SSE), /api/federation/delegate; with --features postgres + memory.database_url, LISTEN kowalski_federation → broker"
+                );
             }
             "create" => {
                 let agent_type = parts.next();
@@ -966,23 +963,25 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
 #[allow(dead_code)]
 fn rule_based_tool_call(user_input: &str) -> Option<ToolCall> {
     let input = user_input.to_lowercase();
-    if input.contains("list") && input.contains("directory") {
-        if let Some(path) = input.split_whitespace().find(|w| w.starts_with('/')) {
-            return Some(ToolCall {
-                name: "fs_tool".to_string(),
-                parameters: json!({ "task": "list_dir", "path": path }),
-                reasoning: Some("Rule-based: user asked to list a directory".to_string()),
-            });
-        }
+    if input.contains("list")
+        && input.contains("directory")
+        && let Some(path) = input.split_whitespace().find(|w| w.starts_with('/'))
+    {
+        return Some(ToolCall {
+            name: "fs_tool".to_string(),
+            parameters: json!({ "task": "list_dir", "path": path }),
+            reasoning: Some("Rule-based: user asked to list a directory".to_string()),
+        });
     }
-    if input.contains("first 10 lines") && input.contains(".csv") {
-        if let Some(path) = input.split_whitespace().find(|w| w.ends_with(".csv")) {
-            return Some(ToolCall {
-                name: "fs_tool".to_string(),
-                parameters: json!({ "task": "get_file_first_lines", "path": path, "num_lines": 10 }),
-                reasoning: Some("Rule-based: user asked for first 10 lines of a CSV".to_string()),
-            });
-        }
+    if input.contains("first 10 lines")
+        && input.contains(".csv")
+        && let Some(path) = input.split_whitespace().find(|w| w.ends_with(".csv"))
+    {
+        return Some(ToolCall {
+            name: "fs_tool".to_string(),
+            parameters: json!({ "task": "get_file_first_lines", "path": path, "num_lines": 10 }),
+            reasoning: Some("Rule-based: user asked for first 10 lines of a CSV".to_string()),
+        });
     }
     // Add more rules as needed...
     None

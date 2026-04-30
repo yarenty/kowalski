@@ -149,11 +149,10 @@ impl LLMProvider for OllamaProvider {
                         Ok(v) => v,
                         Err(_) => continue,
                     };
-                    if let Some(c) = v["message"]["content"].as_str() {
-                        if !c.is_empty() {
+                    if let Some(c) = v["message"]["content"].as_str()
+                        && !c.is_empty() {
                             yield Ok(c.to_string());
                         }
-                    }
                 }
             }
         })

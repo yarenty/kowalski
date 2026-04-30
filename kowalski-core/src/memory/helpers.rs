@@ -1,13 +1,13 @@
 // Helper module for creating memory providers
 // This is a temporary helper to make migration easier
 
-use crate::config::{memory_uses_postgres, Config};
+use crate::config::{Config, memory_uses_postgres};
 use crate::error::KowalskiError;
 use crate::memory::MemoryProvider;
 use crate::memory::episodic::EpisodicBuffer;
+use crate::memory::semantic::SemanticStore;
 #[cfg(feature = "postgres")]
 use crate::memory::semantic_pg::PostgresSemanticStore;
-use crate::memory::semantic::SemanticStore;
 use crate::memory::working::WorkingMemory;
 #[cfg(feature = "postgres")]
 use sqlx::postgres::PgPool;

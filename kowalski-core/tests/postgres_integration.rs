@@ -15,9 +15,7 @@ async fn postgres_connects_and_selects() {
         return;
     };
 
-    let pool = PgPool::connect(&url)
-        .await
-        .expect("DATABASE_URL connect");
+    let pool = PgPool::connect(&url).await.expect("DATABASE_URL connect");
     let v: i32 = sqlx::query_scalar("SELECT 1")
         .fetch_one(&pool)
         .await

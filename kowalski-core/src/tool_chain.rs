@@ -48,19 +48,19 @@ impl ToolChain {
     /// Execute the tool chain with the given input
     pub async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
         // Check if we have a handler for this task type
-        if let Some(handler) = self.task_handlers.get(&input.task_type) {
-            if handler(&input.content) {
-                // Find the first tool that can handle this task
-                for tool in &mut self.tools {
-                    match tool.execute(input.clone()).await {
-                        Ok(output) => return Ok(output),
-                        Err(_) => continue,
-                    }
+        if let Some(handler) = self.task_handlers.get(&input.task_type)
+            && handler(&input.content)
+        {
+            // Find the first tool that can handle this task
+            for tool in &mut self.tools {
+                match tool.execute(input.clone()).await {
+                    Ok(output) => return Ok(output),
+                    Err(_) => continue,
                 }
-                return Err(KowalskiError::ToolExecution(
-                    "No tool could handle the task".to_string(),
-                ));
             }
+            return Err(KowalskiError::ToolExecution(
+                "No tool could handle the task".to_string(),
+            ));
         }
         Err(KowalskiError::ToolExecution(
             "No handler found for task type".to_string(),

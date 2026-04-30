@@ -87,9 +87,8 @@ const MAX_NOTIFY_BYTES: usize = 7500;
 #[async_trait]
 impl MessageBroker for PgBroker {
     async fn publish(&self, envelope: &AclEnvelope) -> Result<(), KowalskiError> {
-        let json = serde_json::to_string(envelope).map_err(|e| {
-            KowalskiError::Federation(format!("ACL JSON serialize: {e}"))
-        })?;
+        let json = serde_json::to_string(envelope)
+            .map_err(|e| KowalskiError::Federation(format!("ACL JSON serialize: {e}")))?;
         if json.len() > MAX_NOTIFY_BYTES {
             return Err(KowalskiError::Federation(format!(
                 "ACL JSON ({} bytes) exceeds safe NOTIFY limit (~{})",

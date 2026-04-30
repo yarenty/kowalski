@@ -134,11 +134,10 @@ impl LLMProvider for OpenAIProvider {
                 match item {
                     Ok(resp) => {
                         for choice in resp.choices {
-                            if let Some(ref c) = choice.delta.content {
-                                if !c.is_empty() {
+                            if let Some(ref c) = choice.delta.content
+                                && !c.is_empty() {
                                     yield Ok(c.clone());
                                 }
-                            }
                         }
                     }
                     Err(e) => {
@@ -153,7 +152,9 @@ impl LLMProvider for OpenAIProvider {
     }
 }
 
-fn messages_to_openai(messages: &[Message]) -> Result<Vec<ChatCompletionRequestMessage>, KowalskiError> {
+fn messages_to_openai(
+    messages: &[Message],
+) -> Result<Vec<ChatCompletionRequestMessage>, KowalskiError> {
     let mut openai_messages: Vec<ChatCompletionRequestMessage> = Vec::new();
 
     for msg in messages {

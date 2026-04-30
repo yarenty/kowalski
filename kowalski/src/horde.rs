@@ -5,16 +5,14 @@
 //! sub-agent's worker reports a [`crate::core::AclMessage::TaskFinished`], and emits
 //! lifecycle events (`RunStarted`, `TaskAssigned`, `AgentMessage`, `RunFinished`, `RunFailed`).
 
-use kowalski_core::federation::{
-    AclEnvelope, AclMessage, FederationOrchestrator, MpscBroker,
-};
 use kowalski_core::MessageBroker;
+use kowalski_core::federation::{AclEnvelope, AclMessage, FederationOrchestrator, MpscBroker};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 
@@ -154,7 +152,10 @@ fn parse_md_with_toml<T: for<'de> Deserialize<'de>>(
 pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> {
     let manifest_path = root.join("horde.md");
     let meta: HordeMeta = parse_md_with_toml(&manifest_path)?;
-    let prefix = meta.capability_prefix.clone().unwrap_or_else(|| meta.id.clone());
+    let prefix = meta
+        .capability_prefix
+        .clone()
+        .unwrap_or_else(|| meta.id.clone());
 
     let agents_dir = root.join("agents");
     if !agents_dir.is_dir() {
@@ -266,10 +267,6 @@ pub fn prepare_workdir_on_startup_with_policy(
     Ok(())
 }
 
-pub fn prepare_workdir_on_startup(spec: &HordeSpec) -> Result<(), Box<dyn std::error::Error>> {
-    prepare_workdir_on_startup_with_policy(spec, spec.config_on_startup)
-}
-
 /// Discover all horde directories under `roots` (each root must contain a `horde.md`).
 pub fn discover_hordes(roots: &[PathBuf]) -> Vec<HordeSpec> {
     let mut out = Vec::new();
@@ -280,10 +277,10 @@ pub fn discover_hordes(roots: &[PathBuf]) -> Vec<HordeSpec> {
         }
         let direct = r.join("horde.md");
         if direct.exists() {
-            if let Ok(spec) = load_horde(r) {
-                if seen.insert(spec.id.clone()) {
-                    out.push(spec);
-                }
+            if let Ok(spec) = load_horde(r)
+                && seen.insert(spec.id.clone())
+            {
+                out.push(spec);
             }
             continue;
         }
@@ -297,11 +294,7 @@ pub fn discover_hordes(roots: &[PathBuf]) -> Vec<HordeSpec> {
                                 out.push(spec);
                             }
                         }
-                        Err(err) => log::warn!(
-                            "horde load failed at {}: {}",
-                            p.display(),
-                            err
-                        ),
+                        Err(err) => log::warn!("horde load failed at {}: {}", p.display(), err),
                     }
                 }
             }
@@ -495,7 +488,13 @@ impl HordeManager {
         }
 
         if let Err(e) = self.delegate_step(&spec, &run_id, 0, None).await {
-            self.fail_run(&spec, &run_id, &format!("delegate first step failed: {}", e), Some(&spec.pipeline[0])).await;
+            self.fail_run(
+                &spec,
+                &run_id,
+                &format!("delegate first step failed: {}", e),
+                Some(&spec.pipeline[0]),
+            )
+            .await;
         }
         let runs = self.runs.lock().await;
         runs.runs
@@ -618,7 +617,11 @@ impl HordeManager {
                 return;
             }
             if let Some(step_record) = run.steps.iter_mut().find(|s| s.step == step) {
-                step_record.status = if success { "success".into() } else { "failed".into() };
+                step_record.status = if success {
+                    "success".into()
+                } else {
+                    "failed".into()
+                };
                 step_record.artifact = artifact.map(ToString::to_string);
                 step_record.summary = Some(summary.to_string());
                 step_record.finished_at = Some(now_ts());
@@ -640,7 +643,13 @@ impl HordeManager {
         }
 
         if !success {
-            self.fail_run(&spec, run_id, &format!("step {} failed: {}", step, summary), Some(step)).await;
+            self.fail_run(
+                &spec,
+                run_id,
+                &format!("step {} failed: {}", step, summary),
+                Some(step),
+            )
+            .await;
             return;
         }
 
@@ -650,7 +659,8 @@ impl HordeManager {
                 .delegate_step(&spec, run_id, next_index, prev.as_deref())
                 .await
             {
-                self.fail_run(&spec, run_id, &e, Some(&spec.pipeline[next_index])).await;
+                self.fail_run(&spec, run_id, &e, Some(&spec.pipeline[next_index]))
+                    .await;
             }
         } else {
             self.complete_run(&spec, run_id).await;
@@ -722,7 +732,8 @@ impl HordeManager {
     pub async fn record_event(&self, run_id: &str, event: &AclMessage) {
         let mut runs = self.runs.lock().await;
         if let Some(run) = runs.runs.get_mut(run_id) {
-            run.events.push(serde_json::to_value(event).unwrap_or(json!({})));
+            run.events
+                .push(serde_json::to_value(event).unwrap_or(json!({})));
         }
     }
 
@@ -800,13 +811,7 @@ async fn handle_envelope(manager: &HordeManager, env: AclEnvelope) {
             if let Some((_horde, run_id, step)) = HordeManager::parse_task_id(task_id) {
                 let artifact = parse_outcome_artifact(outcome);
                 manager
-                    .handle_task_finished(
-                        &run_id,
-                        &step,
-                        *success,
-                        artifact.as_deref(),
-                        outcome,
-                    )
+                    .handle_task_finished(&run_id, &step, *success, artifact.as_deref(), outcome)
                     .await;
             } else {
                 log::debug!(

@@ -2,7 +2,7 @@
 
 use crate::error::KowalskiError;
 use crate::federation::acl::{
-    check_delegate_depth, AclEnvelope, AclMessage, DEFAULT_MAX_DELEGATION_DEPTH,
+    AclEnvelope, AclMessage, DEFAULT_MAX_DELEGATION_DEPTH, check_delegate_depth,
 };
 use crate::federation::broker::MessageBroker;
 use crate::federation::registry::AgentRegistry;

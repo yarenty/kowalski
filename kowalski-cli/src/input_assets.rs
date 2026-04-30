@@ -14,7 +14,7 @@ pub enum InputAsset {
 fn trim_token(raw: &str) -> String {
     raw.trim()
         .trim_matches(|c: char| c == '"' || c == '\'' || c == '(' || c == ')')
-        .trim_end_matches(|c: char| c == ',' || c == ';' || c == ':' || c == '.')
+        .trim_end_matches([',', ';', ':', '.'])
         .to_string()
 }
 
@@ -66,7 +66,10 @@ fn slugify(input: &str) -> String {
     out.trim_matches('-').to_string()
 }
 
-pub fn ingest_assets_markdown(root: &Path, source_input: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+pub fn ingest_assets_markdown(
+    root: &Path,
+    source_input: &str,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let assets = parse_input_assets(source_input);
     let stamp = Utc::now().format("%Y%m%d-%H%M%S");
     let out = root
@@ -75,14 +78,20 @@ pub fn ingest_assets_markdown(root: &Path, source_input: &str) -> Result<PathBuf
     let now = Utc::now().to_rfc3339();
     let mut doc = String::new();
     doc.push_str("# Raw Inputs\n\n");
-    doc.push_str(&format!("- Inputs: {}\n- Ingested At: {}\n\n", assets.len(), now));
+    doc.push_str(&format!(
+        "- Inputs: {}\n- Ingested At: {}\n\n",
+        assets.len(),
+        now
+    ));
 
     for (idx, asset) in assets.iter().enumerate() {
         match asset {
             InputAsset::Url(url) => {
                 let section = match reqwest_blocking::get(url) {
                     Ok(resp) => {
-                        let text = resp.text().unwrap_or_else(|_| "(unable to decode body)".to_string());
+                        let text = resp
+                            .text()
+                            .unwrap_or_else(|_| "(unable to decode body)".to_string());
                         format!(
                             "## Input {} (url): {}\n\n{}\n\n",
                             idx + 1,
@@ -90,7 +99,12 @@ pub fn ingest_assets_markdown(root: &Path, source_input: &str) -> Result<PathBuf
                             text.chars().take(24000).collect::<String>()
                         )
                     }
-                    Err(e) => format!("## Input {} (url): {}\n\nFetch error: {}\n\n", idx + 1, url, e),
+                    Err(e) => format!(
+                        "## Input {} (url): {}\n\nFetch error: {}\n\n",
+                        idx + 1,
+                        url,
+                        e
+                    ),
                 };
                 doc.push_str(&section);
             }

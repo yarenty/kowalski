@@ -23,7 +23,11 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(ctx: Arc<SessionContext>, table: impl Into<String>, session_id: impl Into<String>) -> Self {
+    pub fn new(
+        ctx: Arc<SessionContext>,
+        table: impl Into<String>,
+        session_id: impl Into<String>,
+    ) -> Self {
         Self {
             ctx,
             table: table.into(),
@@ -33,9 +37,7 @@ impl AppState {
 }
 
 pub fn app_router(state: AppState) -> Router {
-    Router::new()
-        .route("/", post(mcp_post))
-        .with_state(state)
+    Router::new().route("/", post(mcp_post)).with_state(state)
 }
 
 /// Streamable HTTP: respond with SSE when the client advertises `text/event-stream`.
@@ -211,7 +213,10 @@ fn schema_to_json(table: &str, schema: &Schema) -> Value {
 async fn run_tool_call(state: &AppState, body: &Value) -> Result<Value, String> {
     let params = body.get("params").cloned().unwrap_or_else(|| json!({}));
     let name = params["name"].as_str().unwrap_or("");
-    let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
+    let args = params
+        .get("arguments")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
 
     match name {
         "query_sql" => {

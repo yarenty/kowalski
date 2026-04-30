@@ -4,9 +4,7 @@
 use kowalski_core::federation::MessageBroker;
 
 /// Send a test [`AclEnvelope`] with [`AclMessage::Ping`] via Postgres `NOTIFY` (channel `kowalski_federation`).
-pub async fn run_ping_notify(
-    config_path: Option<&str>,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run_ping_notify(config_path: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "postgres")]
     {
         let path = crate::ops::mcp_config_path(config_path);
@@ -30,7 +28,7 @@ pub async fn run_ping_notify(
         );
         pg.publish(&env).await?;
         println!("OK — pg_notify on channel kowalski_federation (Ping ACL)");
-        return Ok(());
+        Ok(())
     }
     #[cfg(not(feature = "postgres"))]
     {

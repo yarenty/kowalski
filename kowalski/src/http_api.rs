@@ -15,19 +15,19 @@ use futures::Stream;
 use futures::StreamExt;
 use kowalski_core::agent::Agent;
 use kowalski_core::config::Config;
+#[cfg(feature = "postgres")]
+use kowalski_core::federation::MessageBroker;
 use kowalski_core::federation::{
     AclEnvelope, AclMessage, AgentRecord, AgentRegistry, FederationOrchestrator, MpscBroker,
 };
-#[cfg(feature = "postgres")]
-use kowalski_core::federation::MessageBroker;
 use kowalski_core::template::agent::TemplateAgent;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::convert::Infallible;
+use std::fs::OpenOptions;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::fs::OpenOptions;
 use std::sync::Arc;
 use tokio::process::Child;
 use tokio::sync::Mutex;
@@ -85,12 +85,11 @@ pub async fn serve(
     let federation_broker = Arc::new(MpscBroker::new());
     let federation_registry = Arc::new(AgentRegistry::new());
     #[cfg(feature = "postgres")]
-    if let Some(ref url) = full_config.memory.database_url {
-        if kowalski_core::config::memory_uses_postgres(&full_config.memory) {
-            if let Err(e) = kowalski_core::load_registry_into(&federation_registry, url).await {
-                log::warn!("federation registry DB load: {}", e);
-            }
-        }
+    if let Some(ref url) = full_config.memory.database_url
+        && kowalski_core::config::memory_uses_postgres(&full_config.memory)
+        && let Err(e) = kowalski_core::load_registry_into(&federation_registry, url).await
+    {
+        log::warn!("federation registry DB load: {}", e);
     }
     let template_agent = AgentRecord {
         id: "template".into(),
@@ -100,15 +99,14 @@ pub async fn serve(
         .register(template_agent.clone())
         .map_err(|e| format!("federation registry: {e}"))?;
     #[cfg(feature = "postgres")]
-    if let Some(ref url) = full_config.memory.database_url {
-        if kowalski_core::config::memory_uses_postgres(&full_config.memory) {
-            if let Err(e) = kowalski_core::upsert_registry_record(url, &template_agent).await {
-                log::warn!("federation registry upsert: {}", e);
-            }
-            if let Err(e) = kowalski_core::upsert_agent_state_for_record(url, &template_agent).await
-            {
-                log::warn!("agent_state upsert: {}", e);
-            }
+    if let Some(ref url) = full_config.memory.database_url
+        && kowalski_core::config::memory_uses_postgres(&full_config.memory)
+    {
+        if let Err(e) = kowalski_core::upsert_registry_record(url, &template_agent).await {
+            log::warn!("federation registry upsert: {}", e);
+        }
+        if let Err(e) = kowalski_core::upsert_agent_state_for_record(url, &template_agent).await {
+            log::warn!("agent_state upsert: {}", e);
         }
     }
     let mut federation =
@@ -120,26 +118,26 @@ pub async fn serve(
     #[cfg(feature = "postgres")]
     let federation_pg_notify = {
         let mut pg_out: Option<Arc<kowalski_core::PgBroker>> = None;
-        if kowalski_core::config::memory_uses_postgres(&full_config.memory) {
-            if let Some(ref url) = full_config.memory.database_url {
-                match kowalski_core::bridge_postgres_notify_to_mpsc(
-                    url,
-                    "kowalski_federation",
-                    federation_broker.clone(),
-                )
-                .await
-                {
-                    Ok(pool) => {
-                        log::info!(
-                            "Federation: Postgres LISTEN kowalski_federation → in-process broker (SSE)"
-                        );
-                        pg_out = Some(Arc::new(kowalski_core::PgBroker::new(
-                            (*pool).clone(),
-                            "kowalski_federation",
-                        )));
-                    }
-                    Err(e) => log::warn!("Federation Postgres bridge: {}", e),
+        if kowalski_core::config::memory_uses_postgres(&full_config.memory)
+            && let Some(ref url) = full_config.memory.database_url
+        {
+            match kowalski_core::bridge_postgres_notify_to_mpsc(
+                url,
+                "kowalski_federation",
+                federation_broker.clone(),
+            )
+            .await
+            {
+                Ok(pool) => {
+                    log::info!(
+                        "Federation: Postgres LISTEN kowalski_federation → in-process broker (SSE)"
+                    );
+                    pg_out = Some(Arc::new(kowalski_core::PgBroker::new(
+                        (*pool).clone(),
+                        "kowalski_federation",
+                    )));
                 }
+                Err(e) => log::warn!("Federation Postgres bridge: {}", e),
             }
         }
         pg_out
@@ -161,18 +159,14 @@ pub async fn serve(
         horde_specs.len(),
         horde_specs.iter().map(|s| &s.id).collect::<Vec<_>>()
     );
-    let horde_manager = crate::horde::HordeManager::new(
-        horde_specs,
-        federation_broker.clone(),
-        federation.clone(),
-    );
+    let horde_manager =
+        crate::horde::HordeManager::new(horde_specs, federation_broker.clone(), federation.clone());
     let global_clean_on_startup = global_horde_clean_on_startup(&full_config);
     for spec in horde_manager.specs.iter() {
         let effective_clean_on_startup = global_clean_on_startup.unwrap_or(spec.config_on_startup);
-        if let Err(e) = crate::horde::prepare_workdir_on_startup_with_policy(
-            spec,
-            effective_clean_on_startup,
-        ) {
+        if let Err(e) =
+            crate::horde::prepare_workdir_on_startup_with_policy(spec, effective_clean_on_startup)
+        {
             log::warn!(
                 "horde startup workdir prepare failed horde={} workdir={} err={}",
                 spec.id,
@@ -223,19 +217,37 @@ pub async fn serve(
         .route("/api/federation/ws", get(get_federation_ws))
         .route("/api/federation/registry", get(get_federation_registry))
         .route("/api/federation/workers", get(get_federation_workers))
-        .route("/api/federation/workers/start", post(post_federation_worker_start))
-        .route("/api/federation/workers/stop", post(post_federation_worker_stop))
+        .route(
+            "/api/federation/workers/start",
+            post(post_federation_worker_start),
+        )
+        .route(
+            "/api/federation/workers/stop",
+            post(post_federation_worker_stop),
+        )
         .route("/api/hordes", get(get_hordes))
         .route("/api/hordes/{horde_id}", get(get_horde_detail))
         .route("/api/hordes/{horde_id}/workers", get(get_horde_workers))
-        .route("/api/hordes/{horde_id}/workers/start", post(post_horde_worker_start))
-        .route("/api/hordes/{horde_id}/workers/stop", post(post_horde_worker_stop))
+        .route(
+            "/api/hordes/{horde_id}/workers/start",
+            post(post_horde_worker_start),
+        )
+        .route(
+            "/api/hordes/{horde_id}/workers/stop",
+            post(post_horde_worker_stop),
+        )
         .route("/api/hordes/{horde_id}/run", post(post_horde_run))
         .route("/api/hordes/{horde_id}/followup", post(post_horde_followup))
         .route("/api/hordes/{horde_id}/runs", get(get_horde_runs))
-        .route("/api/hordes/{horde_id}/runs/{run_id}", get(get_horde_run_detail))
+        .route(
+            "/api/hordes/{horde_id}/runs/{run_id}",
+            get(get_horde_run_detail),
+        )
         .route("/api/federation/register", post(post_federation_register))
-        .route("/api/federation/deregister", post(post_federation_deregister))
+        .route(
+            "/api/federation/deregister",
+            post(post_federation_deregister),
+        )
         .route(
             "/api/federation/cleanup-stale",
             post(post_federation_cleanup_stale),
@@ -356,10 +368,12 @@ async fn get_memory_status(
             &state.full_config.ollama.host,
             state.full_config.ollama.port,
         ));
-    let episodic =
-        kowalski_core::memory::episodic::EpisodicBuffer::open(&state.full_config.memory, llm_provider)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let episodic = kowalski_core::memory::episodic::EpisodicBuffer::open(
+        &state.full_config.memory,
+        llm_provider,
+    )
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let memories = episodic
         .retrieve_all()
         .await
@@ -374,7 +388,10 @@ async fn get_memory_status(
     });
     let embed_model = "nomic-embed-text".to_string();
     let probe = reqwest::Client::new()
-        .post(format!("{}/api/embeddings", ollama_url.trim_end_matches('/')))
+        .post(format!(
+            "{}/api/embeddings",
+            ollama_url.trim_end_matches('/')
+        ))
         .json(&json!({
             "model": embed_model,
             "prompt": "healthcheck",
@@ -385,7 +402,10 @@ async fn get_memory_status(
     let (embeddings_ok, embed_error) = match probe {
         Ok(resp) if resp.status().is_success() => (true, None),
         Ok(resp) => {
-            let text = resp.text().await.unwrap_or_else(|_| "unknown error".to_string());
+            let text = resp
+                .text()
+                .await
+                .unwrap_or_else(|_| "unknown error".to_string());
             (false, Some(format!("embedding probe failed: {}", text)))
         }
         Err(e) => (false, Some(format!("embedding probe failed: {}", e))),
@@ -498,7 +518,10 @@ async fn post_chat_sync(
     Json(body): Json<ChatSyncBody>,
 ) -> Result<Json<ChatSyncResponse>, (StatusCode, String)> {
     if body.messages.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "messages must not be empty".to_string()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "messages must not be empty".to_string(),
+        ));
     }
     let mut guard = state.chat.lock().await;
     let conv_id = if let Some(ref cid) = body.conversation_id {
@@ -536,7 +559,10 @@ async fn post_chat(
             guard.conv_id = cid.clone();
             cid.clone()
         } else {
-            return Err((StatusCode::NOT_FOUND, format!("conversation not found: {}", cid)));
+            return Err((
+                StatusCode::NOT_FOUND,
+                format!("conversation not found: {}", cid),
+            ));
         }
     } else {
         guard.conv_id.clone()
@@ -624,17 +650,14 @@ async fn post_chat_stream(
                         .send(Ok(Event::default().data(payload.to_string())))
                         .await;
                     let _ = tx
-                        .send(Ok(Event::default().data(r#"{"type":"done"}"#.to_string())))
+                        .send(Ok(Event::default().data(r#"{"type":"done"}"#)))
                         .await;
                     return;
                 }
             } else {
                 g.conv_id.clone()
             };
-            let dbg = g
-                .agent
-                .preview_memory_debug(&cid, &msg, use_memory)
-                .await;
+            let dbg = g.agent.preview_memory_debug(&cid, &msg, use_memory).await;
             (cid, dbg)
         };
         log::info!(
@@ -680,7 +703,9 @@ async fn post_chat_stream(
                 let mut guard = api.chat.lock().await;
                 guard
                     .agent
-                    .chat_with_tools_stream_final_with_options(&conv_id, &msg, &token_tx, use_memory)
+                    .chat_with_tools_stream_final_with_options(
+                        &conv_id, &msg, &token_tx, use_memory,
+                    )
                     .await
             };
             drop(token_tx);
@@ -700,7 +725,7 @@ async fn post_chat_stream(
                 }
             }
             let _ = tx
-                .send(Ok(Event::default().data(r#"{"type":"done"}"#.to_string())))
+                .send(Ok(Event::default().data(r#"{"type":"done"}"#)))
                 .await;
             return;
         }
@@ -720,7 +745,7 @@ async fn post_chat_stream(
                     .send(Ok(Event::default().data(payload.to_string())))
                     .await;
                 let _ = tx
-                    .send(Ok(Event::default().data(r#"{"type":"done"}"#.to_string())))
+                    .send(Ok(Event::default().data(r#"{"type":"done"}"#)))
                     .await;
                 return;
             }
@@ -748,7 +773,7 @@ async fn post_chat_stream(
                         .send(Ok(Event::default().data(payload.to_string())))
                         .await;
                     let _ = tx
-                        .send(Ok(Event::default().data(r#"{"type":"done"}"#.to_string())))
+                        .send(Ok(Event::default().data(r#"{"type":"done"}"#)))
                         .await;
                     return;
                 }
@@ -763,7 +788,7 @@ async fn post_chat_stream(
             .send(Ok(Event::default().data(summary.to_string())))
             .await;
         let _ = tx
-            .send(Ok(Event::default().data(r#"{"type":"done"}"#.to_string())))
+            .send(Ok(Event::default().data(r#"{"type":"done"}"#)))
             .await;
     });
     Sse::new(ReceiverStream::new(rx))
@@ -777,28 +802,27 @@ struct FederationStreamQuery {
 async fn get_federation_registry(State(state): State<ApiState>) -> Json<serde_json::Value> {
     let agents = state.federation.registry.list();
     #[cfg(feature = "postgres")]
-    if let Some(ref url) = state.full_config.memory.database_url {
-        if kowalski_core::config::memory_uses_postgres(&state.full_config.memory) {
-            if let Ok(states) = kowalski_core::load_agent_states(url).await {
-                let merged: Vec<serde_json::Value> = agents
-                    .iter()
-                    .map(|a| {
-                        let mut row = json!({
-                            "id": &a.id,
-                            "capabilities": &a.capabilities,
-                        });
-                        if let (Some(obj), Some(s)) = (row.as_object_mut(), states.get(&a.id)) {
-                            obj.insert(
-                                "state".into(),
-                                serde_json::to_value(s).unwrap_or_else(|_| json!({})),
-                            );
-                        }
-                        row
-                    })
-                    .collect();
-                return Json(json!({ "agents": merged }));
-            }
-        }
+    if let Some(ref url) = state.full_config.memory.database_url
+        && kowalski_core::config::memory_uses_postgres(&state.full_config.memory)
+        && let Ok(states) = kowalski_core::load_agent_states(url).await
+    {
+        let merged: Vec<serde_json::Value> = agents
+            .iter()
+            .map(|a| {
+                let mut row = json!({
+                    "id": &a.id,
+                    "capabilities": &a.capabilities,
+                });
+                if let (Some(obj), Some(s)) = (row.as_object_mut(), states.get(&a.id)) {
+                    obj.insert(
+                        "state".into(),
+                        serde_json::to_value(s).unwrap_or_else(|_| json!({})),
+                    );
+                }
+                row
+            })
+            .collect();
+        return Json(json!({ "agents": merged }));
     }
     Json(json!({ "agents": agents }))
 }
@@ -825,10 +849,11 @@ struct WorkerControlBody {
 }
 
 fn repo_root_from_state(state: &ApiState) -> PathBuf {
-    if let Ok(cwd) = std::env::current_dir() {
-        if cwd.join("Cargo.toml").exists() && cwd.join("kowalski-cli").exists() {
-            return cwd;
-        }
+    if let Ok(cwd) = std::env::current_dir()
+        && cwd.join("Cargo.toml").exists()
+        && cwd.join("kowalski-cli").exists()
+    {
+        return cwd;
     }
     let mut p = state.config_path.clone();
     while let Some(parent) = p.parent() {
@@ -879,7 +904,10 @@ fn worker_profiles(state: &ApiState) -> Vec<WorkerProfile> {
     out
 }
 
-fn worker_log_stdio(log_dir: &str, profile_id: &str) -> Option<(std::process::Stdio, std::process::Stdio)> {
+fn worker_log_stdio(
+    log_dir: &str,
+    profile_id: &str,
+) -> Option<(std::process::Stdio, std::process::Stdio)> {
     let dir = PathBuf::from(log_dir);
     if std::fs::create_dir_all(&dir).is_err() {
         return None;
@@ -908,7 +936,11 @@ async fn get_federation_workers(State(state): State<ApiState>) -> Json<serde_jso
         Ok(Some(status)) => {
             last_exit.insert(
                 profile_id.clone(),
-                format!("exited: code={:?} success={}", status.code(), status.success()),
+                format!(
+                    "exited: code={:?} success={}",
+                    status.code(),
+                    status.success()
+                ),
             );
             false
         }
@@ -969,7 +1001,12 @@ async fn post_federation_worker_start(
     let profile = worker_profiles(&state)
         .into_iter()
         .find(|p| p.id == body.profile_id)
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("unknown worker profile: {}", body.profile_id)))?;
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("unknown worker profile: {}", body.profile_id),
+            )
+        })?;
 
     let mut managed = state.managed_workers.lock().await;
     let mut last_exit = state.managed_worker_last_exit.lock().await;
@@ -990,7 +1027,12 @@ async fn post_federation_worker_start(
     }
 
     // If registry still contains a stale agent id for this profile, remove it first.
-    if state.federation.registry.deregister(&profile.agent_id).is_ok() {
+    if state
+        .federation
+        .registry
+        .deregister(&profile.agent_id)
+        .is_ok()
+    {
         log::info!(
             "federation worker start: removed stale registry agent_id={}",
             profile.agent_id
@@ -1005,9 +1047,12 @@ async fn post_federation_worker_start(
         cmd.stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null());
     }
-    let child = cmd
-        .spawn()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("spawn failed: {}", e)))?;
+    let child = cmd.spawn().map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("spawn failed: {}", e),
+        )
+    })?;
     log::info!(
         "federation worker start profile={} agent_id={} pid={:?}",
         profile.id,
@@ -1036,17 +1081,27 @@ async fn post_federation_worker_stop(
     let profile = worker_profiles(&state)
         .into_iter()
         .find(|p| p.id == body.profile_id)
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("unknown worker profile: {}", body.profile_id)))?;
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("unknown worker profile: {}", body.profile_id),
+            )
+        })?;
     let mut managed = state.managed_workers.lock().await;
     let mut last_exit = state.managed_worker_last_exit.lock().await;
-    let mut child = managed
-        .remove(&body.profile_id)
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("worker not running: {}", body.profile_id)))?;
+    let mut child = managed.remove(&body.profile_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("worker not running: {}", body.profile_id),
+        )
+    })?;
     let pid = child.id();
-    child
-        .kill()
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("stop failed: {}", e)))?;
+    child.kill().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("stop failed: {}", e),
+        )
+    })?;
     last_exit.insert(profile.id.clone(), "killed by management".to_string());
     let _ = state.federation.registry.deregister(&profile.agent_id);
     log::info!(
@@ -1078,13 +1133,13 @@ async fn post_federation_heartbeat(
     }
     #[cfg(feature = "postgres")]
     {
-        if let Some(ref url) = state.full_config.memory.database_url {
-            if kowalski_core::config::memory_uses_postgres(&state.full_config.memory) {
-                return kowalski_core::touch_agent_heartbeat(url, id)
-                    .await
-                    .map(|_| Json(json!({ "ok": true, "agent_id": id })))
-                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
-            }
+        if let Some(ref url) = state.full_config.memory.database_url
+            && kowalski_core::config::memory_uses_postgres(&state.full_config.memory)
+        {
+            return kowalski_core::touch_agent_heartbeat(url, id)
+                .await
+                .map(|_| Json(json!({ "ok": true, "agent_id": id })))
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
         }
     }
     // Heartbeat persistence is optional. When Postgres is unavailable, keep worker runtime healthy
@@ -1138,13 +1193,13 @@ async fn federation_ws_task(mut socket: WebSocket, state: ApiState, topic: Strin
 async fn get_graph_status(State(state): State<ApiState>) -> Json<serde_json::Value> {
     #[cfg(feature = "postgres")]
     {
-        if let Some(ref url) = state.full_config.memory.database_url {
-            if kowalski_core::config::memory_uses_postgres(&state.full_config.memory) {
-                return match kowalski_core::postgres_graph_status(url).await {
-                    Ok(v) => Json(v),
-                    Err(e) => Json(json!({ "error": e.to_string() })),
-                };
-            }
+        if let Some(ref url) = state.full_config.memory.database_url
+            && kowalski_core::config::memory_uses_postgres(&state.full_config.memory)
+        {
+            return match kowalski_core::postgres_graph_status(url).await {
+                Ok(v) => Json(v),
+                Err(e) => Json(json!({ "error": e.to_string() })),
+            };
         }
     }
     Json(json!({
@@ -1168,21 +1223,21 @@ async fn post_graph_cypher(
     State(state): State<ApiState>,
     Json(body): Json<GraphCypherBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    if let Some(ref url) = state.full_config.memory.database_url {
-        if kowalski_core::config::memory_uses_postgres(&state.full_config.memory) {
-            return kowalski_core::postgres_age_cypher(url, body.graph.trim(), body.query.trim())
-                .await
-                .map(Json)
-                .map_err(|e| {
-                    let msg = e.to_string();
-                    let code = if msg.contains("AGE extension") {
-                        StatusCode::SERVICE_UNAVAILABLE
-                    } else {
-                        StatusCode::BAD_REQUEST
-                    };
-                    (code, msg)
-                });
-        }
+    if let Some(ref url) = state.full_config.memory.database_url
+        && kowalski_core::config::memory_uses_postgres(&state.full_config.memory)
+    {
+        return kowalski_core::postgres_age_cypher(url, body.graph.trim(), body.query.trim())
+            .await
+            .map(Json)
+            .map_err(|e| {
+                let msg = e.to_string();
+                let code = if msg.contains("AGE extension") {
+                    StatusCode::SERVICE_UNAVAILABLE
+                } else {
+                    StatusCode::BAD_REQUEST
+                };
+                (code, msg)
+            });
     }
     Err((
         StatusCode::SERVICE_UNAVAILABLE,
@@ -1198,9 +1253,9 @@ async fn get_federation_stream(
     let topic = q.topic.unwrap_or_else(|| "federation".to_string());
     let rx = state.federation_broker.subscribe(&topic, 64);
     let stream = ReceiverStream::new(rx).map(|env| {
-        Ok::<Event, Infallible>(Event::default().data(
-            serde_json::to_string(&env).unwrap_or_else(|_| "{}".to_string()),
-        ))
+        Ok::<Event, Infallible>(
+            Event::default().data(serde_json::to_string(&env).unwrap_or_else(|_| "{}".to_string())),
+        )
     });
     Sse::new(stream)
 }
@@ -1223,25 +1278,26 @@ async fn post_federation_delegate(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     #[cfg(feature = "postgres")]
-    if let (Some(ref url), Some(o)) = (state.full_config.memory.database_url.as_ref(), outcome.as_ref())
+    if let (Some(url), Some(o)) = (
+        state.full_config.memory.database_url.as_ref(),
+        outcome.as_ref(),
+    ) && kowalski_core::config::memory_uses_postgres(&state.full_config.memory)
     {
-        if kowalski_core::config::memory_uses_postgres(&state.full_config.memory) {
-            let task_label = format!(
-                "{}: {}",
-                body.task_id,
-                body.instruction.chars().take(240).collect::<String>()
-            );
-            if let Err(e) = kowalski_core::set_agent_current_task(url, &o.agent_id, &task_label).await {
-                log::warn!("federation current_task: {}", e);
-            }
+        let task_label = format!(
+            "{}: {}",
+            body.task_id,
+            body.instruction.chars().take(240).collect::<String>()
+        );
+        if let Err(e) = kowalski_core::set_agent_current_task(url, &o.agent_id, &task_label).await {
+            log::warn!("federation current_task: {}", e);
         }
     }
 
     #[cfg(feature = "postgres")]
-    if let (Some(pg), Some(o)) = (&state.federation_pg_notify, outcome.as_ref()) {
-        if let Err(e) = pg.publish(&o.envelope).await {
-            log::warn!("federation pg_notify fan-out: {}", e);
-        }
+    if let (Some(pg), Some(o)) = (&state.federation_pg_notify, outcome.as_ref())
+        && let Err(e) = pg.publish(&o.envelope).await
+    {
+        log::warn!("federation pg_notify fan-out: {}", e);
     }
 
     Ok(Json(json!({
@@ -1274,10 +1330,10 @@ async fn post_federation_publish(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     #[cfg(feature = "postgres")]
-    if let Some(pg) = &state.federation_pg_notify {
-        if let Err(e) = pg.publish(&env).await {
-            log::warn!("federation pg_notify fan-out (publish): {}", e);
-        }
+    if let Some(pg) = &state.federation_pg_notify
+        && let Err(e) = pg.publish(&env).await
+    {
+        log::warn!("federation pg_notify fan-out (publish): {}", e);
     }
 
     Ok(Json(json!({
@@ -1312,14 +1368,14 @@ async fn post_federation_register(
         .register(record.clone())
         .map_err(|e| (StatusCode::CONFLICT, e.to_string()))?;
     #[cfg(feature = "postgres")]
-    if let Some(ref url) = state.full_config.memory.database_url {
-        if kowalski_core::config::memory_uses_postgres(&state.full_config.memory) {
-            if let Err(e) = kowalski_core::upsert_registry_record(url, &record).await {
-                log::warn!("federation registry upsert: {}", e);
-            }
-            if let Err(e) = kowalski_core::upsert_agent_state_for_record(url, &record).await {
-                log::warn!("agent_state upsert: {}", e);
-            }
+    if let Some(ref url) = state.full_config.memory.database_url
+        && kowalski_core::config::memory_uses_postgres(&state.full_config.memory)
+    {
+        if let Err(e) = kowalski_core::upsert_registry_record(url, &record).await {
+            log::warn!("federation registry upsert: {}", e);
+        }
+        if let Err(e) = kowalski_core::upsert_agent_state_for_record(url, &record).await {
+            log::warn!("agent_state upsert: {}", e);
         }
     }
     Ok(Json(json!({ "ok": true, "id": record.id })))
@@ -1350,12 +1406,11 @@ async fn post_federation_deregister(
         .deregister(id)
         .map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))?;
     #[cfg(feature = "postgres")]
-    if let Some(ref url) = state.full_config.memory.database_url {
-        if kowalski_core::config::memory_uses_postgres(&state.full_config.memory) {
-            if let Err(e) = kowalski_core::delete_federation_agent(url, id).await {
-                log::warn!("federation deregister DB: {}", e);
-            }
-        }
+    if let Some(ref url) = state.full_config.memory.database_url
+        && kowalski_core::config::memory_uses_postgres(&state.full_config.memory)
+        && let Err(e) = kowalski_core::delete_federation_agent(url, id).await
+    {
+        log::warn!("federation deregister DB: {}", e);
     }
     Ok(Json(json!({ "ok": true, "agent_id": id })))
 }
@@ -1367,7 +1422,7 @@ struct FederationCleanupBody {
     _stale_after_secs: u64,
 }
 
-fn state_config_dir(config_path: &PathBuf) -> Option<PathBuf> {
+fn state_config_dir(config_path: &std::path::Path) -> Option<PathBuf> {
     config_path.parent().map(|p| p.to_path_buf())
 }
 
@@ -1420,10 +1475,12 @@ async fn get_horde_detail(
     State(state): State<ApiState>,
     AxumPath(horde_id): AxumPath<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let spec = state
-        .horde_manager
-        .find(&horde_id)
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("unknown horde id: {}", horde_id)))?;
+    let spec = state.horde_manager.find(&horde_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("unknown horde id: {}", horde_id),
+        )
+    })?;
     Ok(Json(json!({
         "id": spec.id,
         "display_name": spec.display_name,
@@ -1448,17 +1505,23 @@ async fn get_horde_workers(
     State(state): State<ApiState>,
     AxumPath(horde_id): AxumPath<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let _spec = state
-        .horde_manager
-        .find(&horde_id)
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("unknown horde id: {}", horde_id)))?;
+    let _spec = state.horde_manager.find(&horde_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("unknown horde id: {}", horde_id),
+        )
+    })?;
     let mut managed = state.managed_workers.lock().await;
     let mut last_exit = state.managed_worker_last_exit.lock().await;
     managed.retain(|profile_id, child| match child.try_wait() {
         Ok(Some(status)) => {
             last_exit.insert(
                 profile_id.clone(),
-                format!("exited: code={:?} success={}", status.code(), status.success()),
+                format!(
+                    "exited: code={:?} success={}",
+                    status.code(),
+                    status.success()
+                ),
             );
             log::info!(
                 "horde worker exited profile={} status_code={:?} success={}",
@@ -1489,7 +1552,9 @@ async fn get_horde_workers(
             .iter()
             .any(|a| a.id == p.agent_id);
         let has_exit = last_exit.get(&p.id).is_some();
-        if pid.is_none() && is_registered && has_exit
+        if pid.is_none()
+            && is_registered
+            && has_exit
             && state.federation.registry.deregister(&p.agent_id).is_ok()
         {
             log::info!(
@@ -1525,7 +1590,12 @@ async fn post_horde_worker_start(
     let _spec = state
         .horde_manager
         .find(&horde_id)
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("unknown horde id: {}", horde_id)))?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("unknown horde id: {}", horde_id),
+            )
+        })?
         .clone();
     let profiles: Vec<WorkerProfile> = worker_profiles(&state)
         .into_iter()
@@ -1535,7 +1605,10 @@ async fn post_horde_worker_start(
     if profiles.is_empty() {
         return Err((
             StatusCode::NOT_FOUND,
-            format!("no sub-agent workers matched (horde={}, step={:?})", horde_id, body.step),
+            format!(
+                "no sub-agent workers matched (horde={}, step={:?})",
+                horde_id, body.step
+            ),
         ));
     }
 
@@ -1559,7 +1632,12 @@ async fn post_horde_worker_start(
                     }
                 }
             }
-            if state.federation.registry.deregister(&profile.agent_id).is_ok() {
+            if state
+                .federation
+                .registry
+                .deregister(&profile.agent_id)
+                .is_ok()
+            {
                 log::info!(
                     "horde worker start: removed stale registry entry for agent_id={}",
                     profile.agent_id
@@ -1611,7 +1689,12 @@ async fn post_horde_worker_stop(
     let _spec = state
         .horde_manager
         .find(&horde_id)
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("unknown horde id: {}", horde_id)))?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("unknown horde id: {}", horde_id),
+            )
+        })?
         .clone();
     let profiles: Vec<WorkerProfile> = worker_profiles(&state)
         .into_iter()
@@ -1711,13 +1794,23 @@ async fn post_horde_followup(
     let spec = state
         .horde_manager
         .find(&horde_id)
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("unknown horde id: {}", horde_id)))?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("unknown horde id: {}", horde_id),
+            )
+        })?
         .clone();
     let run = state
         .horde_manager
         .snapshot(&body.run_id)
         .await
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("run {} not found", body.run_id)))?;
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("run {} not found", body.run_id),
+            )
+        })?;
     if run.horde_id != horde_id {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -1745,7 +1838,10 @@ async fn post_horde_followup(
             && let Ok(raw) = std::fs::read_to_string(a)
         {
             let excerpt: String = raw.chars().take(6000).collect();
-            context.push_str(&format!("\n## {} artifact excerpt ({})\n{}\n", s.step, a, excerpt));
+            context.push_str(&format!(
+                "\n## {} artifact excerpt ({})\n{}\n",
+                s.step, a, excerpt
+            ));
             included += 1;
             if included >= 3 {
                 break;
@@ -1843,13 +1939,13 @@ async fn post_federation_cleanup_stale(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     #[cfg(feature = "postgres")]
     {
-        if let Some(ref url) = _state.full_config.memory.database_url {
-            if kowalski_core::config::memory_uses_postgres(&_state.full_config.memory) {
-                let n = kowalski_core::mark_stale_agents_inactive(url, _body._stale_after_secs)
-                    .await
-                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-                return Ok(Json(json!({ "ok": true, "rows_updated": n })));
-            }
+        if let Some(ref url) = _state.full_config.memory.database_url
+            && kowalski_core::config::memory_uses_postgres(&_state.full_config.memory)
+        {
+            let n = kowalski_core::mark_stale_agents_inactive(url, _body._stale_after_secs)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            return Ok(Json(json!({ "ok": true, "rows_updated": n })));
         }
     }
     Err((

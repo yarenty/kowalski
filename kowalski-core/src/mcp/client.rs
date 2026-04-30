@@ -8,8 +8,8 @@ use serde::de::DeserializeOwned;
 use serde_json::json;
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 const MCP_PROTOCOL_VERSION: &str = "2025-03-26";
 const ACCEPT_STREAMABLE: &str = "application/json, text/event-stream";
@@ -116,24 +116,22 @@ impl McpClient {
 
     fn apply_streamable_headers(&self, mut req: RequestBuilder) -> RequestBuilder {
         req = req.header(ACCEPT, ACCEPT_STREAMABLE);
-        if let Ok(guard) = self.session_id.lock() {
-            if let Some(ref sid) = *guard {
-                if let Ok(v) = HeaderValue::from_str(sid) {
-                    req = req.header(HEADER_MCP_SESSION_ID, v);
-                }
-            }
+        if let Ok(guard) = self.session_id.lock()
+            && let Some(ref sid) = *guard
+            && let Ok(v) = HeaderValue::from_str(sid)
+        {
+            req = req.header(HEADER_MCP_SESSION_ID, v);
         }
         req
     }
 
     fn capture_session_from_response(&self, response: &Response) {
-        if let Some(h) = response.headers().get(HEADER_MCP_SESSION_ID) {
-            if let Ok(s) = h.to_str() {
-                if let Ok(mut guard) = self.session_id.lock() {
-                    *guard = Some(s.to_string());
-                    debug!("MCP '{}' session id updated from response", self.name);
-                }
-            }
+        if let Some(h) = response.headers().get(HEADER_MCP_SESSION_ID)
+            && let Ok(s) = h.to_str()
+            && let Ok(mut guard) = self.session_id.lock()
+        {
+            *guard = Some(s.to_string());
+            debug!("MCP '{}' session id updated from response", self.name);
         }
     }
 
@@ -185,11 +183,7 @@ impl McpClient {
         );
 
         let response = self
-            .apply_streamable_headers(
-                self.http
-                    .post(self.base_url.clone())
-                    .json(&payload),
-            )
+            .apply_streamable_headers(self.http.post(self.base_url.clone()).json(&payload))
             .send()
             .await
             .map_err(KowalskiError::Request)?;
@@ -246,11 +240,7 @@ impl McpClient {
         debug!("MCP {} -> {} payload: {}", self.name, method, payload);
 
         let response = self
-            .apply_streamable_headers(
-                self.http
-                    .post(self.base_url.clone())
-                    .json(&payload),
-            )
+            .apply_streamable_headers(self.http.post(self.base_url.clone()).json(&payload))
             .send()
             .await
             .map_err(KowalskiError::Request)?;
@@ -325,7 +315,10 @@ fn jsonrpc_id_matches(msg: &serde_json::Value, expected_id: u64) -> bool {
 }
 
 /// Extract the JSON-RPC object for `expected_id` from an SSE body (`data: ...` lines).
-fn parse_sse_jsonrpc_response(sse_body: &str, expected_id: u64) -> Result<serde_json::Value, KowalskiError> {
+fn parse_sse_jsonrpc_response(
+    sse_body: &str,
+    expected_id: u64,
+) -> Result<serde_json::Value, KowalskiError> {
     for line in sse_body.lines() {
         let line = line.trim();
         let rest = line
@@ -338,10 +331,10 @@ fn parse_sse_jsonrpc_response(sse_body: &str, expected_id: u64) -> Result<serde_
         if candidate.is_empty() || candidate == "[DONE]" {
             continue;
         }
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(candidate) {
-            if jsonrpc_id_matches(&v, expected_id) {
-                return Ok(v);
-            }
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(candidate)
+            && jsonrpc_id_matches(&v, expected_id)
+        {
+            return Ok(v);
         }
     }
     Err(KowalskiError::ToolExecution(format!(

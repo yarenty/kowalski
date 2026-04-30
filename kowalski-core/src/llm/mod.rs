@@ -4,7 +4,7 @@ pub mod provider;
 
 pub use ollama::OllamaProvider;
 pub use openai::OpenAIProvider;
-pub use provider::{chat_stream_single_chunk, LLMProvider, TokenStream};
+pub use provider::{LLMProvider, TokenStream, chat_stream_single_chunk};
 
 use crate::config::Config;
 use crate::error::KowalskiError;
@@ -14,15 +14,15 @@ use std::sync::Arc;
 pub fn create_llm_provider(config: &Config) -> Result<Arc<dyn LLMProvider>, KowalskiError> {
     match config.llm.provider.as_str() {
         "openai" => {
-            let api_key = config
-                .llm
-                .openai_api_key
-                .clone()
-                .unwrap_or_default();
+            let api_key = config.llm.openai_api_key.clone().unwrap_or_default();
             let base = config.llm.openai_api_base.as_deref();
             Ok(Arc::new(OpenAIProvider::new(&api_key, base)))
         }
-        "ollama" | _ => Ok(Arc::new(OllamaProvider::new(
+        "ollama" => Ok(Arc::new(OllamaProvider::new(
+            &config.ollama.host,
+            config.ollama.port,
+        ))),
+        _ => Ok(Arc::new(OllamaProvider::new(
             &config.ollama.host,
             config.ollama.port,
         ))),
