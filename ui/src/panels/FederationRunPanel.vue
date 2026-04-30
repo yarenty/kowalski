@@ -11,6 +11,17 @@ const props = defineProps<{ activeThreadId: string | null }>();
 const emit = defineEmits<{
   (e: "thread-upsert", item: { id: string; title: string; updatedAt: number }): void;
   (e: "new-thread-from-suggestion", payload: { prompt: string; hordeId: string }): void;
+  (e: "thread-create-from-run", payload: {
+    title: string;
+    snapshot: {
+      selectedHordeId: string;
+      runId: string | null;
+      runMessages: Array<{ role: "orchestrator" | "worker" | "system" | "user"; speaker: string; text: string }>;
+      runResult: string | null;
+      followupMsgs: Array<{ role: "user" | "assistant" | "orchestrator"; speaker: string; text: string }>;
+      followupInput: string;
+    };
+  }): void;
 }>();
 
 const fedTopic = ref("federation");
@@ -29,6 +40,7 @@ const followupInput = ref("");
 const followupBusy = ref(false);
 const followupMsgs = ref<Array<{ role: "user" | "assistant" | "orchestrator"; speaker: string; text: string }>>([]);
 const pathAction = ref<string | null>(null);
+const runPromotedToHistory = ref(false);
 
 const selectedHorde = computed(() => hordes.value.find((h) => h.id === selectedHordeId.value) ?? null);
 const selectedHordeWorkers = computed(() => workerProfiles.value.filter((w) => w.horde_id === selectedHordeId.value));
@@ -61,6 +73,10 @@ const obsidianRoot = computed(() =>
 );
 const finalShortSummary = computed(() => selectedHorde.value?.delivery_summary_note || "Run completed.");
 const hasCompletedRun = computed(() => runCompleted.value);
+const isProcessing = computed(() => runBusy.value || followupBusy.value);
+const processingLabel = computed(() =>
+  followupBusy.value ? "Processing follow-up..." : `Horde is processing... ${progressText.value}`,
+);
 
 watch(
   () => selectedHordeId.value,
@@ -138,6 +154,13 @@ function processFederationEvent(data: string) {
     progressText.value = "finished";
     feed("system", "run finished", "System");
     runBusy.value = false;
+    if (!props.activeThreadId && !runPromotedToHistory.value) {
+      runPromotedToHistory.value = true;
+      emit("thread-create-from-run", {
+        title: titleFromCurrentRun(),
+        snapshot: buildSnapshot(),
+      });
+    }
     clearRunWatchdog();
     void loadRunHistory();
   } else if (kind === "run_failed") {
@@ -221,9 +244,8 @@ function threadStateKey(id: string) {
   return `kowalski.ui.horde.thread.${id}`;
 }
 
-function saveActiveThreadState() {
-  if (!props.activeThreadId) return;
-  const snapshot = {
+function buildSnapshot() {
+  return {
     selectedHordeId: selectedHordeId.value,
     runId: runId.value,
     runMessages: runMessages.value,
@@ -231,7 +253,33 @@ function saveActiveThreadState() {
     followupMsgs: followupMsgs.value,
     followupInput: followupInput.value,
   };
-  localStorage.setItem(threadStateKey(props.activeThreadId), JSON.stringify(snapshot));
+}
+
+function titleFromCurrentRun(): string {
+  const firstRunPrompt = runMessages.value.find((m) => m.role === "user")?.text;
+  const lastUser = [...followupMsgs.value].reverse().find((m) => m.role === "user")?.text;
+  return (
+    lastUser?.slice(0, 42) ||
+    firstRunPrompt?.slice(0, 42) ||
+    runMessages.value.find((m) => m.speaker === "Agent: Boss" && m.text.startsWith("source:"))?.text.replace("source: ", "") ||
+    "Horde interaction"
+  );
+}
+
+function resetDraftState() {
+  runId.value = null;
+  runMessages.value = [];
+  runResult.value = null;
+  runErr.value = null;
+  followupMsgs.value = [];
+  followupInput.value = "";
+  progressText.value = "idle";
+  runPromotedToHistory.value = false;
+}
+
+function saveActiveThreadState() {
+  if (!props.activeThreadId) return;
+  localStorage.setItem(threadStateKey(props.activeThreadId), JSON.stringify(buildSnapshot()));
 }
 
 function loadActiveThreadState(id: string) {
@@ -327,7 +375,11 @@ async function loadRunHistory() {
 watch(
   () => props.activeThreadId,
   (id) => {
-    if (!id) return;
+    if (!id) {
+      resetDraftState();
+      return;
+    }
+    runPromotedToHistory.value = false;
     loadActiveThreadState(id);
   },
   { immediate: true },
@@ -367,6 +419,7 @@ async function runKnowledgeCompiler() {
   followupMsgs.value = [];
   runBusy.value = true;
   progressText.value = "starting";
+  runPromotedToHistory.value = false;
   runId.value = null;
   runMessages.value = [];
   clearRunWatchdog();
@@ -481,8 +534,15 @@ onUnmounted(() => {
       </p>
     </div>
     <p v-if="pathAction" class="muted">{{ pathAction }}</p>
-    <p v-if="runBusy" class="muted thinking">Thinking... {{ progressText }}</p>
-    <p v-if="followupBusy" class="muted thinking">Thinking... follow-up in progress</p>
+    <div v-if="isProcessing" class="processing-inline" aria-live="polite" aria-busy="true">
+      <div class="orbital-loader orbital-loader-inline" aria-hidden="true">
+        <span class="ring ring-a"></span>
+        <span class="ring ring-b"></span>
+        <span class="ring ring-c"></span>
+        <span class="core"></span>
+      </div>
+      <p class="muted thinking processing-inline-text">{{ processingLabel }}</p>
+    </div>
     <p v-if="runId" class="muted">Run ID: {{ runId }}</p>
 
     <div class="chat-feed">
@@ -580,6 +640,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.panel { position: relative; }
 .panel h2 { margin-top: 0; font-size: 1.1rem; }
 .panel-top { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
 .muted { color: #6a7285; font-size: 0.9rem; }
@@ -612,6 +673,81 @@ onUnmounted(() => {
 .msg-system { border-color: #555f74; }
 .json { background: #1a1d26; border: 1px solid #2a2e38; border-radius: 6px; padding: 0.75rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.45; color: #c8cfdd; }
 .thinking { color: #9cc2ff; }
+.processing-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.15rem 0;
+}
+.processing-inline-text {
+  margin: 0;
+}
+.orbital-loader {
+  position: relative;
+  width: 64px;
+  height: 64px;
+}
+.orbital-loader-inline {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+}
+.ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 2px solid transparent;
+}
+.ring-a {
+  border-top-color: #8fb4ff;
+  animation: spin-cw 1.3s linear infinite;
+}
+.ring-b {
+  inset: 7px;
+  border-right-color: #7fd5b4;
+  animation: spin-ccw 1s linear infinite;
+}
+.ring-c {
+  inset: 14px;
+  border-bottom-color: #c79cff;
+  animation: spin-cw 0.8s linear infinite;
+}
+.core {
+  position: absolute;
+  inset: 24px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 35%, #dbe7ff, #5f88da);
+  box-shadow: 0 0 14px rgba(143, 180, 255, 0.65);
+}
+.orbital-loader-inline .ring {
+  border-width: 1.5px;
+}
+.orbital-loader-inline .ring-b {
+  inset: 4px;
+}
+.orbital-loader-inline .ring-c {
+  inset: 8px;
+}
+.orbital-loader-inline .core {
+  inset: 10px;
+  box-shadow: 0 0 8px rgba(143, 180, 255, 0.55);
+}
+@keyframes spin-cw {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes spin-ccw {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ring-a,
+  .ring-b,
+  .ring-c {
+    animation-duration: 0s;
+    animation-iteration-count: 1;
+  }
+}
 button { background: #2a3142; border: 1px solid #3d4658; color: #c8cfdd; padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; margin-right: 0.5rem; }
 button.primary { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
 .icon-btn { width: 34px; height: 34px; padding: 0; font-size: 1rem; line-height: 1; margin-right: 0; }
