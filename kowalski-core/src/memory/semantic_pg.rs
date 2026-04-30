@@ -6,8 +6,8 @@ use crate::memory::{MemoryProvider, MemoryQuery, MemoryUnit};
 use async_trait::async_trait;
 use log::{debug, info, warn};
 use pgvector::Vector;
-use sqlx::postgres::PgPool;
 use sqlx::Row;
+use sqlx::postgres::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -33,11 +33,7 @@ impl PostgresSemanticStore {
         }
     }
 
-    fn expect_embedding_vec(
-        &self,
-        embedding: &[f32],
-        context: &str,
-    ) -> Result<(), KowalskiError> {
+    fn expect_embedding_vec(&self, embedding: &[f32], context: &str) -> Result<(), KowalskiError> {
         if embedding.len() != self.embedding_dims {
             return Err(KowalskiError::Memory(format!(
                 "{context}: embedding length {} does not match memory.embedding_vector_dimensions ({})",
@@ -68,19 +64,23 @@ impl PostgresSemanticStore {
         Ok(())
     }
 
-    async fn try_parse_and_store_relations(&self, memory: &MemoryUnit) -> Result<(), KowalskiError> {
-        if let Ok(relation) = serde_json::from_str::<HashMap<String, String>>(&memory.content) {
-            if let (Some(subject), Some(predicate), Some(object)) = (
+    async fn try_parse_and_store_relations(
+        &self,
+        memory: &MemoryUnit,
+    ) -> Result<(), KowalskiError> {
+        if let Ok(relation) = serde_json::from_str::<HashMap<String, String>>(&memory.content)
+            && let (Some(subject), Some(predicate), Some(object)) = (
                 relation.get("subject"),
                 relation.get("predicate"),
                 relation.get("object"),
-            ) {
-                self.insert_relation_triple(subject, predicate, object).await?;
-                info!(
-                    "Added relationship: {} -[{}]-> {}",
-                    subject, predicate, object
-                );
-            }
+            )
+        {
+            self.insert_relation_triple(subject, predicate, object)
+                .await?;
+            info!(
+                "Added relationship: {} -[{}]-> {}",
+                subject, predicate, object
+            );
         }
         Ok(())
     }
@@ -89,28 +89,31 @@ impl PostgresSemanticStore {
 #[async_trait]
 impl MemoryProvider for PostgresSemanticStore {
     async fn add(&mut self, memory: MemoryUnit) -> Result<(), KowalskiError> {
-        debug!("Adding memory unit to PostgreSQL semantic store: {}", memory.id);
+        debug!(
+            "Adding memory unit to PostgreSQL semantic store: {}",
+            memory.id
+        );
 
-        if let Some(ref emb) = memory.embedding {
-            if !emb.is_empty() {
-                self.expect_embedding_vec(emb, "semantic add")?;
-                let v = Vector::from(emb.to_vec());
-                sqlx::query(
-                    r#"INSERT INTO semantic_memory (id, content_text, embedding)
+        if let Some(ref emb) = memory.embedding
+            && !emb.is_empty()
+        {
+            self.expect_embedding_vec(emb, "semantic add")?;
+            let v = Vector::from(emb.to_vec());
+            sqlx::query(
+                r#"INSERT INTO semantic_memory (id, content_text, embedding)
                        VALUES ($1, $2, $3)
                        ON CONFLICT (id) DO UPDATE SET
                          content_text = EXCLUDED.content_text,
                          embedding = EXCLUDED.embedding,
                          created_at = NOW()"#,
-                )
-                .bind(&memory.id)
-                .bind(&memory.content)
-                .bind(v)
-                .execute(&self.pool)
-                .await
-                .map_err(|e| KowalskiError::Memory(format!("semantic_memory insert: {e}")))?;
-                info!("Stored semantic row {} (vector)", memory.id);
-            }
+            )
+            .bind(&memory.id)
+            .bind(&memory.content)
+            .bind(v)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| KowalskiError::Memory(format!("semantic_memory insert: {e}")))?;
+            info!("Stored semantic row {} (vector)", memory.id);
         }
 
         self.try_parse_and_store_relations(&memory).await?;
@@ -147,18 +150,18 @@ impl MemoryProvider for PostgresSemanticStore {
 
                 let mut out = Vec::with_capacity(rows.len());
                 for row in rows {
-                    let id: String = row.try_get("id").map_err(|e| {
-                        KowalskiError::Memory(format!("semantic row decode: {e}"))
-                    })?;
-                    let content_text: String = row.try_get("content_text").map_err(|e| {
-                        KowalskiError::Memory(format!("semantic row decode: {e}"))
-                    })?;
-                    let ts: i64 = row.try_get("ts").map_err(|e| {
-                        KowalskiError::Memory(format!("semantic row decode: {e}"))
-                    })?;
-                    let dist: f32 = row.try_get("dist").map_err(|e| {
-                        KowalskiError::Memory(format!("semantic row decode: {e}"))
-                    })?;
+                    let id: String = row
+                        .try_get("id")
+                        .map_err(|e| KowalskiError::Memory(format!("semantic row decode: {e}")))?;
+                    let content_text: String = row
+                        .try_get("content_text")
+                        .map_err(|e| KowalskiError::Memory(format!("semantic row decode: {e}")))?;
+                    let ts: i64 = row
+                        .try_get("ts")
+                        .map_err(|e| KowalskiError::Memory(format!("semantic row decode: {e}")))?;
+                    let dist: f32 = row
+                        .try_get("dist")
+                        .map_err(|e| KowalskiError::Memory(format!("semantic row decode: {e}")))?;
                     let score = (1.0_f32 - dist).clamp(-1.0, 1.0);
                     out.push(MemoryUnit {
                         id,
@@ -179,7 +182,10 @@ impl MemoryProvider for PostgresSemanticStore {
                 );
             }
             Err(e) => {
-                warn!("Semantic retrieve: embed failed ({}); falling back to text search", e);
+                warn!(
+                    "Semantic retrieve: embed failed ({}); falling back to text search",
+                    e
+                );
             }
         }
 
@@ -202,12 +208,12 @@ impl MemoryProvider for PostgresSemanticStore {
             let id: String = row
                 .try_get("id")
                 .map_err(|e| KowalskiError::Memory(format!("semantic row decode: {e}")))?;
-            let content_text: String = row.try_get("content_text").map_err(|e| {
-                KowalskiError::Memory(format!("semantic row decode: {e}"))
-            })?;
-            let ts: i64 = row.try_get("ts").map_err(|e| {
-                KowalskiError::Memory(format!("semantic row decode: {e}"))
-            })?;
+            let content_text: String = row
+                .try_get("content_text")
+                .map_err(|e| KowalskiError::Memory(format!("semantic row decode: {e}")))?;
+            let ts: i64 = row
+                .try_get("ts")
+                .map_err(|e| KowalskiError::Memory(format!("semantic row decode: {e}")))?;
             out.push(MemoryUnit {
                 id,
                 content: content_text,
@@ -240,18 +246,18 @@ impl MemoryProvider for PostgresSemanticStore {
                 .map_err(|e| KowalskiError::Memory(format!("semantic vector search: {e}")))?;
 
                 for row in rows {
-                    let id: String = row.try_get("id").map_err(|e| {
-                        KowalskiError::Memory(format!("semantic row decode: {e}"))
-                    })?;
-                    let content_text: String = row.try_get("content_text").map_err(|e| {
-                        KowalskiError::Memory(format!("semantic row decode: {e}"))
-                    })?;
-                    let ts: i64 = row.try_get("ts").map_err(|e| {
-                        KowalskiError::Memory(format!("semantic row decode: {e}"))
-                    })?;
-                    let dist: f32 = row.try_get("dist").map_err(|e| {
-                        KowalskiError::Memory(format!("semantic row decode: {e}"))
-                    })?;
+                    let id: String = row
+                        .try_get("id")
+                        .map_err(|e| KowalskiError::Memory(format!("semantic row decode: {e}")))?;
+                    let content_text: String = row
+                        .try_get("content_text")
+                        .map_err(|e| KowalskiError::Memory(format!("semantic row decode: {e}")))?;
+                    let ts: i64 = row
+                        .try_get("ts")
+                        .map_err(|e| KowalskiError::Memory(format!("semantic row decode: {e}")))?;
+                    let dist: f32 = row
+                        .try_get("dist")
+                        .map_err(|e| KowalskiError::Memory(format!("semantic row decode: {e}")))?;
                     let score = (1.0_f32 - dist).clamp(-1.0, 1.0);
                     out.push(MemoryUnit {
                         id,
@@ -269,18 +275,17 @@ impl MemoryProvider for PostgresSemanticStore {
             }
         }
 
-        let rows = sqlx::query(
-            r#"SELECT predicate, object FROM semantic_relation WHERE subject = $1"#,
-        )
-        .bind(&query.text_query)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| KowalskiError::Memory(format!("semantic relation search: {e}")))?;
+        let rows =
+            sqlx::query(r#"SELECT predicate, object FROM semantic_relation WHERE subject = $1"#)
+                .bind(&query.text_query)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| KowalskiError::Memory(format!("semantic relation search: {e}")))?;
 
         for row in rows {
-            let predicate: String = row.try_get("predicate").map_err(|e| {
-                KowalskiError::Memory(format!("semantic row decode: {e}"))
-            })?;
+            let predicate: String = row
+                .try_get("predicate")
+                .map_err(|e| KowalskiError::Memory(format!("semantic row decode: {e}")))?;
             let object: String = row
                 .try_get("object")
                 .map_err(|e| KowalskiError::Memory(format!("semantic row decode: {e}")))?;

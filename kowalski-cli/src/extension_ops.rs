@@ -21,7 +21,7 @@ fn has_execute_bit(meta: &fs::Metadata) -> bool {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        return meta.permissions().mode() & 0o111 != 0;
+        meta.permissions().mode() & 0o111 != 0
     }
     #[cfg(not(unix))]
     {
@@ -97,7 +97,9 @@ pub fn list_extensions() -> Result<Vec<String>, Box<dyn std::error::Error>> {
         for entry in fs::read_dir(local_root)? {
             let entry = entry?;
             let path = entry.path();
-            if path.is_dir() && let Some(name) = path.file_name().and_then(|x| x.to_str()) {
+            if path.is_dir()
+                && let Some(name) = path.file_name().and_then(|x| x.to_str())
+            {
                 out.insert(name.to_string());
             }
         }

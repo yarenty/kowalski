@@ -1,5 +1,6 @@
 //! Markdown-defined app agent orchestration (`main-agent.md` + `agents/*.md`).
 
+use crate::input_assets::{ingest_assets_markdown, parse_input_assets};
 use chrono::Utc;
 use reqwest::blocking as reqwest_blocking;
 use serde::Deserialize;
@@ -37,6 +38,8 @@ struct AgentDoc<T> {
     meta: T,
     path: PathBuf,
 }
+
+type AgentSpecMap = BTreeMap<String, AgentDoc<SubAgentMeta>>;
 
 fn parse_markdown_with_toml_frontmatter<T: for<'de> Deserialize<'de>>(
     path: &Path,
@@ -99,8 +102,7 @@ fn slugify(input: &str) -> String {
 
 fn load_spec(
     root: &Path,
-) -> Result<(AgentDoc<MainAgentMeta>, BTreeMap<String, AgentDoc<SubAgentMeta>>), Box<dyn std::error::Error>>
-{
+) -> Result<(AgentDoc<MainAgentMeta>, AgentSpecMap), Box<dyn std::error::Error>> {
     let main = parse_markdown_with_toml_frontmatter::<MainAgentMeta>(&main_agent_path(root))?;
     let mut map = BTreeMap::new();
     for entry in fs::read_dir(agents_dir(root))? {
@@ -147,7 +149,9 @@ pub fn validate(path: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
             errs.push(format!("pipeline references undeclared agent `{name}`"));
         }
         if !defs.contains(name) {
-            errs.push(format!("pipeline references missing agent definition `{name}`"));
+            errs.push(format!(
+                "pipeline references missing agent definition `{name}`"
+            ));
         }
     }
     for (name, agent) in &agents {
@@ -408,33 +412,6 @@ fn normalize_and_repair_wiki(root: &Path) -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
-fn ingest_source(root: &Path, source: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    ensure_dirs(root)?;
-    let stamp = Utc::now().format("%Y%m%d-%H%M%S");
-    let out = root.join("raw/sources").join(format!("{stamp}-{}.md", slugify(source)));
-    let now = Utc::now().to_rfc3339();
-    let content = if source.starts_with("http://") || source.starts_with("https://") {
-        match reqwest_blocking::get(source) {
-            Ok(resp) => {
-                let text = resp.text().unwrap_or_else(|_| "(unable to decode body)".to_string());
-                format!(
-                    "# Raw Source\n\n- Input: {source}\n- Ingested At: {now}\n\n## Content\n{}\n",
-                    text.chars().take(24000).collect::<String>()
-                )
-            }
-            Err(e) => format!(
-                "# Raw Source\n\n- Input: {source}\n- Ingested At: {now}\n\n## Fetch Error\n{e}\n"
-            ),
-        }
-    } else {
-        format!(
-            "# Raw Source\n\n- Input: {source}\n- Ingested At: {now}\n\n## Notes\nText input captured. Prefer full URL for web ingest.\n"
-        )
-    };
-    fs::write(&out, content)?;
-    Ok(out)
-}
-
 fn run_with_progress<F>(
     path: Option<&str>,
     source: &str,
@@ -455,36 +432,65 @@ where
         .or(main.meta.default_question.clone())
         .unwrap_or_else(|| "What changed?".to_string());
 
-    let mut latest_source = ingest_source(&root, source)?;
+    let mut latest_source = ingest_assets_markdown(&root, source)?;
     let run_stamp = Utc::now().format("%Y%m%d-%H%M%S");
-    let log_file = root.join("scratch").join(format!("orchestration-{run_stamp}.md"));
+    let log_file = root
+        .join("scratch")
+        .join(format!("orchestration-{run_stamp}.md"));
     let mut log = String::new();
     let mut task_outputs: Vec<(String, PathBuf)> = Vec::new();
     let mut artifacts = RunArtifacts::default();
     let total_steps = main.meta.pipeline.len();
     log.push_str("# Agent App Run\n\n");
-    log.push_str(&format!("- Main agent: {}\n- Source: {}\n- Question: {}\n\n", main.meta.name, source, q));
+    log.push_str(&format!(
+        "- Main agent: {}\n- Source: {}\n- Question: {}\n\n",
+        main.meta.name, source, q
+    ));
     println!("Starting agent app run: {}", main.meta.name);
     println!("Task count: {}", total_steps);
 
     for (idx, step) in main.meta.pipeline.iter().enumerate() {
-        let agent = agents.get(step).ok_or_else(|| format!("missing step agent: {step}"))?;
-        println!("[{}/{}] {} ({})", idx + 1, total_steps, step, agent.meta.kind);
+        let agent = agents
+            .get(step)
+            .ok_or_else(|| format!("missing step agent: {step}"))?;
+        println!(
+            "[{}/{}] {} ({})",
+            idx + 1,
+            total_steps,
+            step,
+            agent.meta.kind
+        );
         log.push_str(&format!("## Step: {} ({})\n\n", step, agent.meta.kind));
         match agent.meta.kind.as_str() {
             "ingest" => {
-                latest_source = ingest_source(&root, source)?;
+                latest_source = ingest_assets_markdown(&root, source)?;
                 log.push_str(&format!("- output: {}\n\n", latest_source.display()));
                 task_outputs.push((step.clone(), latest_source.clone()));
                 on_step(step, agent.meta.kind.as_str(), latest_source.as_path());
                 println!("  -> {}", latest_source.display());
             }
             "compile" => {
-                let prompt_path = root.join(agent.meta.prompt_file.as_deref().unwrap_or("prompts/compiler.md"));
+                let prompt_path = root.join(
+                    agent
+                        .meta
+                        .prompt_file
+                        .as_deref()
+                        .unwrap_or("prompts/compiler.md"),
+                );
                 let prompt = read_or_empty(&prompt_path);
-                let summary_out = root.join(agent.meta.output.as_deref().unwrap_or("wiki/summaries/latest.md"));
+                let summary_out = root.join(
+                    agent
+                        .meta
+                        .output
+                        .as_deref()
+                        .unwrap_or("wiki/summaries/latest.md"),
+                );
                 let src = read_or_empty(&latest_source);
-                let msg = format!("{prompt}\n\nSource file: {}\n\n{}\n", latest_source.display(), src);
+                let msg = format!(
+                    "{prompt}\n\nSource file: {}\n\n{}\n",
+                    latest_source.display(),
+                    src
+                );
                 let reply = chat_no_tools(api, &msg)?;
                 let reply = normalize_markdown_sections(
                     &reply,
@@ -501,9 +507,21 @@ where
                 println!("  -> {}", summary_out.display());
             }
             "ask" => {
-                let prompt_path = root.join(agent.meta.prompt_file.as_deref().unwrap_or("prompts/query.md"));
+                let prompt_path = root.join(
+                    agent
+                        .meta
+                        .prompt_file
+                        .as_deref()
+                        .unwrap_or("prompts/query.md"),
+                );
                 let prompt = read_or_empty(&prompt_path);
-                let out = root.join(agent.meta.output.as_deref().unwrap_or("derived/reports/latest.md"));
+                let out = root.join(
+                    agent
+                        .meta
+                        .output
+                        .as_deref()
+                        .unwrap_or("derived/reports/latest.md"),
+                );
                 let idx = read_or_empty(&root.join("wiki/index.md"));
                 let msg = format!("{prompt}\n\nQuestion: {q}\n\nWiki index:\n{idx}\n");
                 let reply = chat_no_tools(api, &msg)?;
@@ -521,16 +539,33 @@ where
                 println!("  -> {}", out.display());
             }
             "lint" => {
-                let prompt_path = root.join(agent.meta.prompt_file.as_deref().unwrap_or("prompts/lint.md"));
+                let prompt_path = root.join(
+                    agent
+                        .meta
+                        .prompt_file
+                        .as_deref()
+                        .unwrap_or("prompts/lint.md"),
+                );
                 let prompt = read_or_empty(&prompt_path);
-                let out = root.join(agent.meta.output.as_deref().unwrap_or("derived/lint/latest.md"));
+                let out = root.join(
+                    agent
+                        .meta
+                        .output
+                        .as_deref()
+                        .unwrap_or("derived/lint/latest.md"),
+                );
                 let idx = read_or_empty(&root.join("wiki/index.md"));
                 let msg = format!("{prompt}\n\nWiki index:\n{idx}\n");
                 let reply = chat_no_tools(api, &msg)?;
                 let reply = normalize_markdown_sections(
                     &reply,
                     "Knowledge Lint Report",
-                    &["Snapshot", "Issues", "Suggested Fixes", "Candidate New Articles"],
+                    &[
+                        "Snapshot",
+                        "Issues",
+                        "Suggested Fixes",
+                        "Candidate New Articles",
+                    ],
                     "- Fallback lint output due to empty or malformed model output.",
                 );
                 fs::write(&out, &reply)?;
@@ -591,7 +626,14 @@ fn post_json(
         .post(format!("{}{}", api.trim_end_matches('/'), route))
         .json(&payload)
         .send()
-        .map_err(|e| friendly_http_error(api, route, &format!("{}{}", api.trim_end_matches('/'), route), &e))?;
+        .map_err(|e| {
+            friendly_http_error(
+                api,
+                route,
+                &format!("{}{}", api.trim_end_matches('/'), route),
+                &e,
+            )
+        })?;
     let status = resp.status();
     let v: serde_json::Value = resp.json().unwrap_or_else(|_| serde_json::json!({}));
     if !status.is_success() {
@@ -621,7 +663,10 @@ fn friendly_http_error(api: &str, route: &str, url: &str, err: &reqwest::Error) 
     }
     msg.push_str("\nHow to fix:");
     msg.push_str("\n- Start server: cargo run -p kowalski --bin kowalski");
-    msg.push_str(&format!("\n- Verify health: curl {}/api/health", api.trim_end_matches('/')));
+    msg.push_str(&format!(
+        "\n- Verify health: curl {}/api/health",
+        api.trim_end_matches('/')
+    ));
     msg.push_str(&format!(
         "\n- If using custom API, set KOWALSKI_API and retry (current: {}).",
         api
@@ -636,11 +681,14 @@ fn friendly_http_status_error(
     status_code: u16,
     body: Option<serde_json::Value>,
 ) -> String {
-    let mut msg = format!("request failed for {} ({}): HTTP {}", route, url, status_code);
-    if let Some(v) = body {
-        if v != serde_json::json!({}) {
-            msg.push_str(&format!("\nResponse body: {}", v));
-        }
+    let mut msg = format!(
+        "request failed for {} ({}): HTTP {}",
+        route, url, status_code
+    );
+    if let Some(v) = body
+        && v != serde_json::json!({})
+    {
+        msg.push_str(&format!("\nResponse body: {}", v));
     }
     msg.push_str("\nPossible root causes:");
     if status_code == 404 {
@@ -655,7 +703,10 @@ fn friendly_http_status_error(
     }
     msg.push_str("\nHow to fix:");
     msg.push_str("\n- Ensure server is running: cargo run -p kowalski --bin kowalski");
-    msg.push_str(&format!("\n- Verify health: curl {}/api/health", api.trim_end_matches('/')));
+    msg.push_str(&format!(
+        "\n- Verify health: curl {}/api/health",
+        api.trim_end_matches('/')
+    ));
     msg.push_str(&format!(
         "\n- Confirm API URL and route availability (current API: {}, route: {}).",
         api, route
@@ -760,7 +811,10 @@ pub fn federate_worker(
             Ok(v) => v,
             Err(_) => continue,
         };
-        let payload = env.get("payload").cloned().unwrap_or_else(|| serde_json::json!({}));
+        let payload = env
+            .get("payload")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
         if payload.get("kind").and_then(|x| x.as_str()) != Some("task_delegate") {
             continue;
         }
@@ -789,14 +843,7 @@ pub fn federate_worker(
                 &instruction,
             );
         } else {
-            handle_legacy_run_delegate(
-                api,
-                topic,
-                agent_id,
-                &root,
-                &task_id,
-                &instruction,
-            );
+            handle_legacy_run_delegate(api, topic, agent_id, &root, &task_id, &instruction);
         }
         let _ = post_json(
             api,
@@ -809,9 +856,21 @@ pub fn federate_worker(
 
 fn parse_horde_instruction(instruction: &str) -> Option<HordeInstruction> {
     let v: serde_json::Value = serde_json::from_str(instruction).ok()?;
-    let horde = v.get("horde").and_then(|x| x.as_str()).unwrap_or("").to_string();
-    let run_id = v.get("run_id").and_then(|x| x.as_str()).unwrap_or("").to_string();
-    let step = v.get("step").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    let horde = v
+        .get("horde")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
+    let run_id = v
+        .get("run_id")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
+    let step = v
+        .get("step")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
     let kind = v
         .get("kind")
         .and_then(|x| x.as_str())
@@ -841,6 +900,10 @@ fn parse_horde_instruction(instruction: &str) -> Option<HordeInstruction> {
             .get("horde_root")
             .and_then(|x| x.as_str())
             .map(ToString::to_string),
+        workdir: v
+            .get("workdir")
+            .and_then(|x| x.as_str())
+            .map(ToString::to_string),
     })
 }
 
@@ -854,6 +917,7 @@ struct HordeInstruction {
     question: Option<String>,
     previous_artifact: Option<String>,
     horde_root: Option<String>,
+    workdir: Option<String>,
 }
 
 fn publish_acl(api: &str, topic: &str, sender: &str, payload: serde_json::Value) {
@@ -867,7 +931,13 @@ fn publish_acl(api: &str, topic: &str, sender: &str, payload: serde_json::Value)
     }
 }
 
-fn publish_task_started(api: &str, topic: &str, sender: &str, instr: &HordeInstruction, text: &str) {
+fn publish_task_started(
+    api: &str,
+    topic: &str,
+    sender: &str,
+    instr: &HordeInstruction,
+    text: &str,
+) {
     publish_acl(
         api,
         topic,
@@ -883,7 +953,13 @@ fn publish_task_started(api: &str, topic: &str, sender: &str, instr: &HordeInstr
     );
 }
 
-fn publish_agent_message(api: &str, topic: &str, sender: &str, instr: &HordeInstruction, text: &str) {
+fn publish_agent_message(
+    api: &str,
+    topic: &str,
+    sender: &str,
+    instr: &HordeInstruction,
+    text: &str,
+) {
     publish_acl(
         api,
         topic,
@@ -925,7 +1001,14 @@ fn publish_task_finished(
     );
 }
 
-fn publish_task_result(api: &str, topic: &str, sender: &str, task_id: &str, outcome: &str, success: bool) {
+fn publish_task_result(
+    api: &str,
+    topic: &str,
+    sender: &str,
+    task_id: &str,
+    outcome: &str,
+    success: bool,
+) {
     publish_acl(
         api,
         topic,
@@ -969,12 +1052,17 @@ fn handle_role_delegate(
         return;
     }
 
-    let root = instr
+    let workspace_root = instr
         .horde_root
         .clone()
         .map(PathBuf::from)
         .filter(|p| p.exists())
         .unwrap_or_else(|| fallback_root.to_path_buf());
+    let workdir = instr
+        .workdir
+        .clone()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| workspace_root.clone());
 
     publish_task_started(
         api,
@@ -985,10 +1073,10 @@ fn handle_role_delegate(
     );
 
     let result = match role_kind {
-        "ingest" => execute_ingest(api, topic, agent_id, &instr, &root),
-        "compile" => execute_compile(api, topic, agent_id, &instr, &root),
-        "ask" => execute_ask(api, topic, agent_id, &instr, &root),
-        "lint" => execute_lint(api, topic, agent_id, &instr, &root),
+        "ingest" => execute_ingest(api, topic, agent_id, &instr, &workspace_root, &workdir),
+        "compile" => execute_compile(api, topic, agent_id, &instr, &workspace_root, &workdir),
+        "ask" => execute_ask(api, topic, agent_id, &instr, &workspace_root, &workdir),
+        "lint" => execute_lint(api, topic, agent_id, &instr, &workspace_root, &workdir),
         other => Err(format!("unsupported role kind `{}`", other).into()),
     };
 
@@ -1025,7 +1113,8 @@ fn execute_ingest(
     topic: &str,
     agent_id: &str,
     instr: &HordeInstruction,
-    root: &Path,
+    _workspace_root: &Path,
+    workdir: &Path,
 ) -> Result<(String, String), Box<dyn std::error::Error>> {
     let _ = api;
     let _ = topic;
@@ -1034,11 +1123,16 @@ fn execute_ingest(
         .source
         .as_deref()
         .ok_or("ingest: missing `source` in horde instruction")?;
-    ensure_dirs(root)?;
-    let path = ingest_source(root, source)?;
+    ensure_dirs(workdir)?;
+    let source_list = parse_input_assets(source);
+    let path = ingest_assets_markdown(workdir, source)?;
     Ok((
         path.display().to_string(),
-        format!("Captured raw source ({} bytes path).", path.display().to_string().len()),
+        format!(
+            "Captured {} source(s) into raw collection: {}",
+            source_list.len(),
+            path.display()
+        ),
     ))
 }
 
@@ -1047,17 +1141,18 @@ fn execute_compile(
     topic: &str,
     agent_id: &str,
     instr: &HordeInstruction,
-    root: &Path,
+    workspace_root: &Path,
+    workdir: &Path,
 ) -> Result<(String, String), Box<dyn std::error::Error>> {
-    ensure_dirs(root)?;
-    let prompt_path = root.join("prompts/compiler.md");
+    ensure_dirs(workdir)?;
+    let prompt_path = workspace_root.join("prompts/compiler.md");
     let prompt = read_or_empty(&prompt_path);
-    let summary_out = root.join("wiki/summaries/latest.md");
+    let summary_out = workdir.join("wiki/summaries/latest.md");
     let source_path = instr
         .previous_artifact
         .as_deref()
         .map(PathBuf::from)
-        .or_else(|| latest_md_in(&root.join("raw/sources")))
+        .or_else(|| latest_md_in(&workdir.join("raw/sources")))
         .ok_or("compile: no input artifact available (run ingest first)")?;
     let src = read_or_empty(&source_path);
     publish_agent_message(
@@ -1080,7 +1175,7 @@ fn execute_compile(
         "Fallback summary due to empty or malformed model output.",
     );
     fs::write(&summary_out, &reply)?;
-    normalize_and_repair_wiki(root)?;
+    normalize_and_repair_wiki(workdir)?;
     Ok((
         summary_out.display().to_string(),
         format!("Compiled wiki summary at {}", summary_out.display()),
@@ -1092,13 +1187,14 @@ fn execute_ask(
     topic: &str,
     agent_id: &str,
     instr: &HordeInstruction,
-    root: &Path,
+    workspace_root: &Path,
+    workdir: &Path,
 ) -> Result<(String, String), Box<dyn std::error::Error>> {
-    ensure_dirs(root)?;
-    let prompt_path = root.join("prompts/query.md");
+    ensure_dirs(workdir)?;
+    let prompt_path = workspace_root.join("prompts/query.md");
     let prompt = read_or_empty(&prompt_path);
-    let out = root.join("derived/reports/latest.md");
-    let idx = read_or_empty(&root.join("wiki/index.md"));
+    let out = workdir.join("derived/reports/latest.md");
+    let idx = read_or_empty(&workdir.join("wiki/index.md"));
     let q = instr
         .question
         .clone()
@@ -1130,20 +1226,26 @@ fn execute_lint(
     topic: &str,
     agent_id: &str,
     instr: &HordeInstruction,
-    root: &Path,
+    workspace_root: &Path,
+    workdir: &Path,
 ) -> Result<(String, String), Box<dyn std::error::Error>> {
-    ensure_dirs(root)?;
-    let prompt_path = root.join("prompts/lint.md");
+    ensure_dirs(workdir)?;
+    let prompt_path = workspace_root.join("prompts/lint.md");
     let prompt = read_or_empty(&prompt_path);
-    let out = root.join("derived/lint/latest.md");
-    let idx = read_or_empty(&root.join("wiki/index.md"));
+    let out = workdir.join("derived/lint/latest.md");
+    let idx = read_or_empty(&workdir.join("wiki/index.md"));
     publish_agent_message(api, topic, agent_id, instr, "Linting wiki index");
     let msg = format!("{prompt}\n\nWiki index:\n{idx}\n");
     let reply = chat_no_tools(api, &msg)?;
     let reply = normalize_markdown_sections(
         &reply,
         "Knowledge Lint Report",
-        &["Snapshot", "Issues", "Suggested Fixes", "Candidate New Articles"],
+        &[
+            "Snapshot",
+            "Issues",
+            "Suggested Fixes",
+            "Candidate New Articles",
+        ],
         "- Fallback lint output due to empty or malformed model output.",
     );
     fs::write(&out, &reply)?;

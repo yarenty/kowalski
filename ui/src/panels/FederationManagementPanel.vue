@@ -9,6 +9,7 @@ const workerAction = ref<string | null>(null);
 const workerBusy = ref<string | null>(null);
 const fedRegistry = ref<FederationRegistryResponse | null>(null);
 const fedRegistryErr = ref<string | null>(null);
+const pathAction = ref<string | null>(null);
 
 const federationAgents = computed(() => fedRegistry.value?.agents ?? []);
 const hordeCards = computed(() =>
@@ -55,6 +56,24 @@ async function loadWorkers() {
 async function refreshAll() {
   await loadHordes();
   await Promise.all([loadWorkers(), loadRegistry()]);
+}
+
+async function openOutputFolder(path?: string) {
+  if (!path) return;
+  pathAction.value = null;
+  try {
+    await api.openPath(path);
+    await navigator.clipboard.writeText(path);
+    pathAction.value = `Opened and copied path: ${path}`;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    try {
+      await navigator.clipboard.writeText(path);
+      pathAction.value = `Open failed (${msg}). Copied path: ${path}`;
+    } catch {
+      pathAction.value = `Open failed (${msg}). Path: ${path}`;
+    }
+  }
 }
 
 function isWorkerReady(w: FederationWorkerProfile): boolean {
@@ -143,6 +162,16 @@ onMounted(() => void refreshAll());
         </header>
         <p class="muted">{{ card.horde.description }}</p>
         <p class="muted">Sub-agents: {{ card.horde.pipeline.join(" → ") }}</p>
+        <p class="muted workdir-row">
+          Workdir: <code>{{ card.horde.workdir || card.horde.root_path }}</code>
+          <button type="button" class="inline-btn" @click="openOutputFolder(card.horde.workdir || card.horde.root_path)">
+            Open output folder
+          </button>
+        </p>
+        <p class="muted">
+          Clean on startup:
+          <strong>{{ (card.horde.config_on_startup_effective ?? card.horde.config_on_startup) ? "true" : "false" }}</strong>
+        </p>
         <p>
           <button
             type="button"
@@ -180,6 +209,7 @@ onMounted(() => void refreshAll());
     </div>
     <p v-else class="muted">No horde cards found.</p>
     <p v-if="workerAction" class="muted">{{ workerAction }}</p>
+    <p v-if="pathAction" class="muted">{{ pathAction }}</p>
     <p v-if="workerErr" class="err">{{ workerErr }}</p>
 
     <h3>Registry (Active Agents)</h3>
@@ -207,7 +237,9 @@ onMounted(() => void refreshAll());
 .status-badge { border-radius: 999px; font-size: 0.72rem; padding: 0.12rem 0.45rem; border: 1px solid #2f7c47; color: #8de3a8; background: #153323; }
 .status-off { border-color: #555f74; color: #b0b7c7; background: #2a3142; }
 .muted { color: #6a7285; font-size: 0.9rem; }
+.workdir-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .err { color: #e88; font-size: 0.9rem; }
 button { background: #2a3142; border: 1px solid #3d4658; color: #c8cfdd; padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; margin-right: 0.5rem; }
 button.primary { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
+.inline-btn { padding: 0.2rem 0.5rem; font-size: 0.78rem; margin-right: 0; }
 </style>

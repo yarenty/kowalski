@@ -54,10 +54,23 @@ function timeAgo(ts: number): string {
       <p class="tagline">Operator UI</p>
       <nav class="nav">
         <button :class="{ active: activeTab === 'chat' }" @click="emit('select-tab', 'chat')">Chat</button>
-        <button :class="{ active: activeTab === 'mcp' }" @click="emit('select-tab', 'mcp')">MCP</button>
-        <button :class="{ active: activeTab === 'federation-management' }" @click="emit('select-tab', 'federation-management')">Federation Mgmt</button>
-        <button :class="{ active: activeTab === 'federation-run' }" @click="emit('select-tab', 'federation-run')">Horde Run</button>
-        <button :class="{ active: activeTab === 'graph' }" @click="emit('select-tab', 'graph')">Graph</button>
+        <button :class="{ active: activeTab === 'federation-run' }" @click="emit('select-tab', 'federation-run')">Horde</button>
+        <button
+          class="is-disabled"
+          :class="{ active: activeTab === 'mcp' }"
+          title="Temporarily disabled"
+          disabled
+        >
+          MCP
+        </button>
+        <button
+          class="is-disabled"
+          :class="{ active: activeTab === 'graph' }"
+          title="Temporarily disabled"
+          disabled
+        >
+          Graph
+        </button>
       </nav>
 
       <section v-if="activeTab === 'chat'" class="chat-list">
@@ -111,6 +124,7 @@ function timeAgo(ts: number): string {
         <p class="admin-title">Administrator</p>
         <div class="admin-nav">
           <button :class="{ active: activeTab === 'home' }" @click="emit('select-tab', 'home')">Dashboard</button>
+          <button :class="{ active: activeTab === 'federation-management' }" @click="emit('select-tab', 'federation-management')">Federation</button>
           <button :class="{ active: activeTab === 'about' }" @click="emit('select-tab', 'about')">About</button>
         </div>
       </section>
@@ -132,6 +146,11 @@ h1 { margin: 0; font-size: 1.05rem; }
   background: #2a3142; border: 1px solid #3d4658; color: #c8cfdd; padding: 0.35rem 0.55rem; border-radius: 6px; cursor: pointer; text-align: left;
 }
 .nav button.active, .conv-btn.active { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
+.nav button.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-style: dashed;
+}
 .chat-list {
   margin-top: 0.8rem;
   border-top: 1px solid #2a2e38;

@@ -1,8 +1,14 @@
 # Kowalski CLI
 
-**Crate version 1.0.0** · See [`ROADMAP.md`](./ROADMAP.md) and root [`README.md`](../README.md).
+**Crate version 1.1.0** · See [`ROADMAP.md`](./ROADMAP.md) and root [`README.md`](../README.md).
 
 Command-line interface for Kowalski operators and extension workflows.
+
+## Horde changes in 1.1.0 (since 1.0.0)
+
+- Added the first horde-focused app operators for markdown-defined orchestration (`agent-app` + extension workflow).
+- Added delegate/worker federation commands for Knowledge Compiler task execution and proof-run validation.
+- Improved run UX with serialized sub-agent traces and artifact path reporting.
 
 ## Scope
 

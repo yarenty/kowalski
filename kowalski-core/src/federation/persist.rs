@@ -19,23 +19,27 @@ pub struct AgentStateSnapshot {
 }
 
 #[cfg(feature = "postgres")]
-pub async fn load_registry_into(registry: &AgentRegistry, database_url: &str) -> Result<(), KowalskiError> {
-    use sqlx::postgres::PgPool;
+pub async fn load_registry_into(
+    registry: &AgentRegistry,
+    database_url: &str,
+) -> Result<(), KowalskiError> {
     use sqlx::Row;
+    use sqlx::postgres::PgPool;
     let pool = PgPool::connect(database_url)
         .await
         .map_err(|e| KowalskiError::Federation(format!("registry load connect: {e}")))?;
-    let rows = sqlx::query("SELECT agent_id, capabilities FROM federation_registry ORDER BY agent_id")
-        .fetch_all(&pool)
-        .await
-        .map_err(|e| KowalskiError::Federation(format!("registry load query: {e}")))?;
+    let rows =
+        sqlx::query("SELECT agent_id, capabilities FROM federation_registry ORDER BY agent_id")
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| KowalskiError::Federation(format!("registry load query: {e}")))?;
     for row in rows {
-        let id: String = row.try_get("agent_id").map_err(|e| {
-            KowalskiError::Federation(format!("registry load row: {e}"))
-        })?;
-        let caps_val: serde_json::Value = row.try_get("capabilities").map_err(|e| {
-            KowalskiError::Federation(format!("registry load row: {e}"))
-        })?;
+        let id: String = row
+            .try_get("agent_id")
+            .map_err(|e| KowalskiError::Federation(format!("registry load row: {e}")))?;
+        let caps_val: serde_json::Value = row
+            .try_get("capabilities")
+            .map_err(|e| KowalskiError::Federation(format!("registry load row: {e}")))?;
         let capabilities: Vec<String> = serde_json::from_value(caps_val).unwrap_or_default();
         registry.register(AgentRecord { id, capabilities })?;
     }
@@ -121,8 +125,8 @@ pub async fn upsert_agent_state_for_record(
 pub async fn load_agent_states(
     database_url: &str,
 ) -> Result<std::collections::HashMap<String, AgentStateSnapshot>, KowalskiError> {
-    use sqlx::postgres::PgPool;
     use sqlx::Row;
+    use sqlx::postgres::PgPool;
     use std::collections::HashMap;
 
     let pool = PgPool::connect(database_url)
@@ -137,21 +141,21 @@ pub async fn load_agent_states(
 
     let mut out = HashMap::new();
     for row in rows {
-        let agent_id: String = row.try_get("agent_id").map_err(|e| {
-            KowalskiError::Federation(format!("agent_state row: {e}"))
-        })?;
-        let current_task: Option<String> = row.try_get("current_task").map_err(|e| {
-            KowalskiError::Federation(format!("agent_state row: {e}"))
-        })?;
+        let agent_id: String = row
+            .try_get("agent_id")
+            .map_err(|e| KowalskiError::Federation(format!("agent_state row: {e}")))?;
+        let current_task: Option<String> = row
+            .try_get("current_task")
+            .map_err(|e| KowalskiError::Federation(format!("agent_state row: {e}")))?;
         let active: bool = row
             .try_get("active")
             .map_err(|e| KowalskiError::Federation(format!("agent_state row: {e}")))?;
-        let updated_at: chrono::DateTime<chrono::Utc> = row.try_get("updated_at").map_err(|e| {
-            KowalskiError::Federation(format!("agent_state row: {e}"))
-        })?;
-        let caps_val: serde_json::Value = row.try_get("capabilities").map_err(|e| {
-            KowalskiError::Federation(format!("agent_state row: {e}"))
-        })?;
+        let updated_at: chrono::DateTime<chrono::Utc> = row
+            .try_get("updated_at")
+            .map_err(|e| KowalskiError::Federation(format!("agent_state row: {e}")))?;
+        let caps_val: serde_json::Value = row
+            .try_get("capabilities")
+            .map_err(|e| KowalskiError::Federation(format!("agent_state row: {e}")))?;
         let capabilities: Vec<String> = serde_json::from_value(caps_val).unwrap_or_default();
         out.insert(
             agent_id.clone(),
@@ -169,7 +173,10 @@ pub async fn load_agent_states(
 
 /// Heartbeat: bump `updated_at` and set `active` (insert minimal row if missing).
 #[cfg(feature = "postgres")]
-pub async fn touch_agent_heartbeat(database_url: &str, agent_id: &str) -> Result<(), KowalskiError> {
+pub async fn touch_agent_heartbeat(
+    database_url: &str,
+    agent_id: &str,
+) -> Result<(), KowalskiError> {
     use sqlx::postgres::PgPool;
     let pool = PgPool::connect(database_url)
         .await
@@ -189,13 +196,19 @@ pub async fn touch_agent_heartbeat(database_url: &str, agent_id: &str) -> Result
 }
 
 #[cfg(not(feature = "postgres"))]
-pub async fn touch_agent_heartbeat(_database_url: &str, _agent_id: &str) -> Result<(), KowalskiError> {
+pub async fn touch_agent_heartbeat(
+    _database_url: &str,
+    _agent_id: &str,
+) -> Result<(), KowalskiError> {
     Ok(())
 }
 
 /// Remove a federated agent from `federation_registry` and `agent_state`.
 #[cfg(feature = "postgres")]
-pub async fn delete_federation_agent(database_url: &str, agent_id: &str) -> Result<(), KowalskiError> {
+pub async fn delete_federation_agent(
+    database_url: &str,
+    agent_id: &str,
+) -> Result<(), KowalskiError> {
     use sqlx::postgres::PgPool;
     let pool = PgPool::connect(database_url)
         .await
@@ -214,7 +227,10 @@ pub async fn delete_federation_agent(database_url: &str, agent_id: &str) -> Resu
 }
 
 #[cfg(not(feature = "postgres"))]
-pub async fn delete_federation_agent(_database_url: &str, _agent_id: &str) -> Result<(), KowalskiError> {
+pub async fn delete_federation_agent(
+    _database_url: &str,
+    _agent_id: &str,
+) -> Result<(), KowalskiError> {
     Ok(())
 }
 

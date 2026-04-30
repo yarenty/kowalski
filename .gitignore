@@ -24,3 +24,4 @@ Cargo.lock
 /examples/knowledge-compiler/wiki
 /examples/knowledge-compiler/scratch
 /examples/knowledge-compiler/raw
+/examples/knowledge-compiler/output

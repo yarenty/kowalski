@@ -109,28 +109,31 @@ pub struct OllamaProbeJson {
 }
 
 /// List `[mcp.servers]` entries from TOML (headers omitted).
-pub fn list_mcp_servers_public(path: &Path) -> Result<Vec<McpServerPublic>, Box<dyn std::error::Error>> {
+pub fn list_mcp_servers_public(
+    path: &Path,
+) -> Result<Vec<McpServerPublic>, Box<dyn std::error::Error>> {
     use crate::config::load_mcp_config_from_file;
 
     let mcp = load_mcp_config_from_file(path)?;
-    Ok(
-        mcp.servers
-            .iter()
-            .map(|s| McpServerPublic {
-                name: s.name.clone(),
-                url: s.url.clone(),
-                transport: match s.transport {
-                    kowalski_core::config::McpTransport::Http => "http".to_string(),
-                    kowalski_core::config::McpTransport::Sse => "sse".to_string(),
-                    kowalski_core::config::McpTransport::Stdio => "stdio".to_string(),
-                },
-            })
-            .collect(),
-    )
+    Ok(mcp
+        .servers
+        .iter()
+        .map(|s| McpServerPublic {
+            name: s.name.clone(),
+            url: s.url.clone(),
+            transport: match s.transport {
+                kowalski_core::config::McpTransport::Http => "http".to_string(),
+                kowalski_core::config::McpTransport::Sse => "sse".to_string(),
+                kowalski_core::config::McpTransport::Stdio => "stdio".to_string(),
+            },
+        })
+        .collect())
 }
 
 /// Run initialize + tools/list for each configured MCP server.
-pub async fn mcp_ping_results(path: &Path) -> Result<Vec<McpPingResult>, Box<dyn std::error::Error>> {
+pub async fn mcp_ping_results(
+    path: &Path,
+) -> Result<Vec<McpPingResult>, Box<dyn std::error::Error>> {
     use crate::config::load_mcp_config_from_file;
 
     let mcp = load_mcp_config_from_file(path)?;
@@ -149,10 +152,7 @@ pub async fn mcp_ping_results(path: &Path) -> Result<Vec<McpPingResult>, Box<dyn
         let result: Result<
             Vec<kowalski_core::mcp::types::McpToolDescription>,
             kowalski_core::KowalskiError,
-        > = if matches!(
-            server.transport,
-            kowalski_core::config::McpTransport::Stdio
-        ) {
+        > = if matches!(server.transport, kowalski_core::config::McpTransport::Stdio) {
             match kowalski_core::McpStdioClient::connect(server).await {
                 Ok(c) => c.list_tools().await,
                 Err(e) => Err(e),
@@ -245,11 +245,11 @@ pub fn run_config_check(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     match toml::from_str::<Config>(&raw) {
         Ok(c) => {
             println!("OK — parses as Kowalski core `Config`");
-            println!("  ollama: {}:{} / model {}", c.ollama.host, c.ollama.port, c.ollama.model);
             println!(
-                "  memory: episodic_path = {}",
-                c.memory.episodic_path
+                "  ollama: {}:{} / model {}",
+                c.ollama.host, c.ollama.port, c.ollama.model
             );
+            println!("  memory: episodic_path = {}", c.memory.episodic_path);
             if let Some(ref u) = c.memory.database_url {
                 println!("  memory.database_url = {}", u);
             } else {
@@ -316,14 +316,20 @@ pub async fn run_doctor(ollama_base: Option<String>) -> Result<(), Box<dyn std::
     } else if j.ollama.detail.starts_with("HTTP ") {
         println!("Ollama: {} — {}", j.ollama.detail, j.ollama.url);
     } else {
-        println!("Ollama: unreachable ({}) — {}", j.ollama.url, j.ollama.detail);
+        println!(
+            "Ollama: unreachable ({}) — {}",
+            j.ollama.url, j.ollama.detail
+        );
     }
     println!(
         "Operator: MCP servers in config = {}, postgres memory URL = {}",
         j.operator.mcp_servers_configured, j.operator.postgres_memory_configured
     );
     if !j.operator.config_divergence.is_empty() {
-        println!("Config vs defaults: {}", j.operator.config_divergence.join(", "));
+        println!(
+            "Config vs defaults: {}",
+            j.operator.config_divergence.join(", ")
+        );
     }
     Ok(())
 }

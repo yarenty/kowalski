@@ -128,13 +128,13 @@ pub trait Agent: Send + Sync {
 
                 // Detect repeated tool calls
                 let tool_call_key = (tool_call.name.clone(), tool_call.parameters.clone());
-                if let Some(last) = &last_tool_call {
-                    if *last == tool_call_key {
-                        debug!(
-                            "Detected repeated tool call. Breaking loop to prevent infinite tool call loop."
-                        );
-                        break;
-                    }
+                if let Some(last) = &last_tool_call
+                    && *last == tool_call_key
+                {
+                    debug!(
+                        "Detected repeated tool call. Breaking loop to prevent infinite tool call loop."
+                    );
+                    break;
                 }
                 last_tool_call = Some(tool_call_key.clone());
 
@@ -380,6 +380,7 @@ impl BaseAgent {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         config: Config,
         name: &str,
@@ -429,8 +430,14 @@ impl BaseAgent {
         conversation_id: &str,
         content: &str,
         role: Option<Role>,
-    ) -> Result<(String, Vec<Message>, std::sync::Arc<dyn crate::llm::LLMProvider>), KowalskiError>
-    {
+    ) -> Result<
+        (
+            String,
+            Vec<Message>,
+            std::sync::Arc<dyn crate::llm::LLMProvider>,
+        ),
+        KowalskiError,
+    > {
         self.prepare_stream_turn_with_options(conversation_id, content, role, true)
             .await
     }
@@ -441,8 +448,14 @@ impl BaseAgent {
         content: &str,
         role: Option<Role>,
         use_memory: bool,
-    ) -> Result<(String, Vec<Message>, std::sync::Arc<dyn crate::llm::LLMProvider>), KowalskiError>
-    {
+    ) -> Result<
+        (
+            String,
+            Vec<Message>,
+            std::sync::Arc<dyn crate::llm::LLMProvider>,
+        ),
+        KowalskiError,
+    > {
         let memory_context = self.build_memory_context(content, use_memory).await;
 
         let conversation = self
@@ -481,11 +494,8 @@ impl BaseAgent {
         };
         if !effective_context.is_empty() {
             let memory_prompt = format!(
-                "Retrieved memory context (use only if relevant to the latest user request):{}",
-                format!(
-                    "\n--- Relevant Memories ---\n{}\n--- End Memories ---",
-                    effective_context
-                )
+                "Retrieved memory context (use only if relevant to the latest user request):\n--- Relevant Memories ---\n{}\n--- End Memories ---",
+                effective_context
             );
             let insert_at = messages.len().saturating_sub(1);
             messages.insert(
@@ -537,10 +547,10 @@ impl BaseAgent {
             if !tool_calls.is_empty() {
                 let tool_call = &tool_calls[0];
                 let tool_call_key = (tool_call.name.clone(), tool_call.parameters.clone());
-                if let Some(last) = &last_tool_call {
-                    if *last == tool_call_key {
-                        break;
-                    }
+                if let Some(last) = &last_tool_call
+                    && *last == tool_call_key
+                {
+                    break;
                 }
                 last_tool_call = Some(tool_call_key);
 
@@ -561,7 +571,8 @@ impl BaseAgent {
 
             if crate::utils::json::looks_like_tool_json_attempt(&buffer) && !tool_parse_hint_sent {
                 tool_parse_hint_sent = true;
-                self.add_message(conversation_id, "assistant", &buffer).await;
+                self.add_message(conversation_id, "assistant", &buffer)
+                    .await;
                 const HINT: &str = "Your previous reply appeared to include a tool call but it could not be parsed as JSON. Reply with a single JSON object only: {\"name\": \"<tool_name>\", \"parameters\": { ... } } matching the available tools. No markdown fences or extra text.";
                 current_input = HINT.to_string();
                 continue;
@@ -602,10 +613,7 @@ impl BaseAgent {
         // After a tool ran, the next LLM completion is streamed (final answer in the common case).
         let mut stream_next_llm_turn = false;
 
-        debug!(
-            "chat_with_tools_stream_final for input: '{}'",
-            user_input
-        );
+        debug!("chat_with_tools_stream_final for input: '{}'", user_input);
 
         while iteration_count < MAX_ITERATIONS {
             iteration_count += 1;
@@ -617,7 +625,12 @@ impl BaseAgent {
 
             let response_text = if use_stream {
                 let (model, messages, llm) = self
-                    .prepare_stream_turn_with_options(conversation_id, &current_input, None, use_memory)
+                    .prepare_stream_turn_with_options(
+                        conversation_id,
+                        &current_input,
+                        None,
+                        use_memory,
+                    )
                     .await?;
                 let mut full = String::new();
                 let mut stream = llm.chat_stream(&model, messages);
@@ -630,8 +643,13 @@ impl BaseAgent {
                 }
                 full
             } else {
-                self.chat_with_history_with_options(conversation_id, &current_input, None, use_memory)
-                    .await?
+                self.chat_with_history_with_options(
+                    conversation_id,
+                    &current_input,
+                    None,
+                    use_memory,
+                )
+                .await?
             };
 
             if repl_trace::repl_trace_enabled() {
@@ -649,11 +667,11 @@ impl BaseAgent {
             if !tool_calls.is_empty() {
                 let tool_call = &tool_calls[0];
                 let tool_call_key = (tool_call.name.clone(), tool_call.parameters.clone());
-                if let Some(last) = &last_tool_call {
-                    if *last == tool_call_key {
-                        debug!("Repeated tool call; breaking");
-                        break;
-                    }
+                if let Some(last) = &last_tool_call
+                    && *last == tool_call_key
+                {
+                    debug!("Repeated tool call; breaking");
+                    break;
                 }
                 last_tool_call = Some(tool_call_key.clone());
 
@@ -682,9 +700,7 @@ impl BaseAgent {
 
             if crate::utils::json::looks_like_tool_json_attempt(&buffer) && !tool_parse_hint_sent {
                 tool_parse_hint_sent = true;
-                warn!(
-                    "Tool call JSON parse failed; requesting self-correction (non-stream)"
-                );
+                warn!("Tool call JSON parse failed; requesting self-correction (non-stream)");
                 self.add_message(conversation_id, "assistant", &buffer)
                     .await;
                 const HINT: &str = "Your previous reply appeared to include a tool call but it could not be parsed as JSON. Reply with a single JSON object only: {\"name\": \"<tool_name>\", \"parameters\": { ... } } matching the available tools. No markdown fences or extra text.";
@@ -815,7 +831,6 @@ impl Agent for BaseAgent {
     fn as_any(&self) -> &dyn Any {
         self
     }
-
 }
 
 impl BaseAgent {
@@ -866,11 +881,8 @@ impl BaseAgent {
         };
         if !effective_context.is_empty() {
             let memory_prompt = format!(
-                "Retrieved memory context (use only if relevant to the latest user request):{}",
-                format!(
-                    "\n--- Relevant Memories ---\n{}\n--- End Memories ---",
-                    effective_context
-                )
+                "Retrieved memory context (use only if relevant to the latest user request):\n--- Relevant Memories ---\n{}\n--- End Memories ---",
+                effective_context
             );
             let insert_at = llm_messages.len().saturating_sub(1);
             llm_messages.insert(
@@ -933,7 +945,9 @@ impl BaseAgent {
 
     async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {
         // 2. STORAGE: Archive the message to the episodic buffer
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
         let timestamp = now.as_secs();
         let nanos = now.as_nanos();
 
@@ -982,7 +996,6 @@ impl BaseAgent {
         self.conversations.insert(id.clone(), conversation);
         Ok(id)
     }
-
 }
 
 #[async_trait]
@@ -995,23 +1008,25 @@ pub trait MessageHandler: Send + Sync {
 
 fn rule_based_tool_call(user_input: &str) -> Option<ToolCall> {
     let input = user_input.to_lowercase();
-    if input.contains("list") && input.contains("directory") {
-        if let Some(path) = input.split_whitespace().find(|w| w.starts_with('/')) {
-            return Some(ToolCall {
-                name: "fs_tool".to_string(),
-                parameters: json!({ "task": "list_dir", "path": path }),
-                reasoning: Some("Rule-based: user asked to list a directory".to_string()),
-            });
-        }
+    if input.contains("list")
+        && input.contains("directory")
+        && let Some(path) = input.split_whitespace().find(|w| w.starts_with('/'))
+    {
+        return Some(ToolCall {
+            name: "fs_tool".to_string(),
+            parameters: json!({ "task": "list_dir", "path": path }),
+            reasoning: Some("Rule-based: user asked to list a directory".to_string()),
+        });
     }
-    if input.contains("first 10 lines") && input.contains(".csv") {
-        if let Some(path) = input.split_whitespace().find(|w| w.ends_with(".csv")) {
-            return Some(ToolCall {
-                name: "fs_tool".to_string(),
-                parameters: json!({ "task": "get_file_first_lines", "path": path, "num_lines": 10 }),
-                reasoning: Some("Rule-based: user asked for first 10 lines of a CSV".to_string()),
-            });
-        }
+    if input.contains("first 10 lines")
+        && input.contains(".csv")
+        && let Some(path) = input.split_whitespace().find(|w| w.ends_with(".csv"))
+    {
+        return Some(ToolCall {
+            name: "fs_tool".to_string(),
+            parameters: json!({ "task": "get_file_first_lines", "path": path, "num_lines": 10 }),
+            reasoning: Some("Rule-based: user asked for first 10 lines of a CSV".to_string()),
+        });
     }
     // Add more rules as needed...
     None

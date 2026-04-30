@@ -139,14 +139,15 @@ impl Default for MemoryConfig {
 
 /// Returns true when [`MemoryConfig::database_url`] points at PostgreSQL (episodic + semantic SQL backends).
 pub fn memory_uses_postgres(memory: &MemoryConfig) -> bool {
-    memory.database_url.as_ref().is_some_and(|u| {
-        u.starts_with("postgres://") || u.starts_with("postgresql://")
-    })
+    memory
+        .database_url
+        .as_ref()
+        .is_some_and(|u| u.starts_with("postgres://") || u.starts_with("postgresql://"))
 }
 
 #[cfg(test)]
 mod postgres_flag_tests {
-    use super::{memory_uses_postgres, MemoryConfig};
+    use super::{MemoryConfig, memory_uses_postgres};
 
     #[test]
     fn memory_uses_postgres_detects_url() {
@@ -232,15 +233,11 @@ pub struct McpServerConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum McpTransport {
+    #[default]
     Sse,
     Http,
     /// Subprocess MCP (newline-delimited JSON-RPC on stdin/stdout).
     Stdio,
-}
-
-impl Default for McpTransport {
-    fn default() -> Self {
-        McpTransport::Sse
-    }
 }

@@ -111,9 +111,7 @@ impl McpHub {
             return Ok(None);
         }
 
-        Ok(Some(Arc::new(Self {
-            tools: bindings,
-        })))
+        Ok(Some(Arc::new(Self { tools: bindings })))
     }
 
     fn resolve_tool_name(
@@ -140,10 +138,7 @@ impl McpHub {
             KowalskiError::ToolExecution(format!("Unknown MCP tool {}", tool_name))
         })?;
 
-        let response = binding
-            .client
-            .call_tool(&binding.remote_name, args)
-            .await?;
+        let response = binding.client.call_tool(&binding.remote_name, args).await?;
         Ok(response.normalized_content())
     }
 

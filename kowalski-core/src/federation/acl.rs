@@ -36,7 +36,9 @@ impl AclEnvelope {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AclMessage {
     /// Health / diagnostics.
-    Ping { text: String },
+    Ping {
+        text: String,
+    },
     /// Orchestrator announces work matching capabilities (discovery).
     TaskOffer {
         task_id: String,

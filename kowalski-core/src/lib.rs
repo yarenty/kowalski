@@ -1,10 +1,10 @@
 pub mod agent;
 pub mod config;
+pub mod conversation;
 pub mod db;
+pub mod error;
 pub mod federation;
 pub mod graph;
-pub mod conversation;
-pub mod error;
 pub mod llm;
 pub mod logging;
 pub mod mcp;
@@ -16,23 +16,23 @@ pub mod tool_chain;
 pub mod tools;
 pub mod utils;
 
-pub use agent::{Agent, BaseAgent, MessageHandler};
 pub use agent::repl_trace::ReplTraceGuard;
+pub use agent::{Agent, BaseAgent, MessageHandler};
 pub use config::*;
 // pub use conversation::*; // Remove this to avoid ToolCall ambiguity
 pub use error::KowalskiError;
 pub use federation::{
-    check_delegate_depth, AclEnvelope, AclMessage, AgentRecord, AgentRegistry,
-    ABSOLUTE_MAX_DELEGATION_DEPTH, DelegationOutcome, DEFAULT_MAX_DELEGATION_DEPTH,
-    FederationOrchestrator, delete_federation_agent, load_registry_into, mark_stale_agents_inactive,
-    set_agent_current_task, touch_agent_heartbeat, upsert_agent_state_for_record,
-    upsert_registry_record, MessageBroker, MpscBroker,
+    ABSOLUTE_MAX_DELEGATION_DEPTH, AclEnvelope, AclMessage, AgentRecord, AgentRegistry,
+    DEFAULT_MAX_DELEGATION_DEPTH, DelegationOutcome, FederationOrchestrator, MessageBroker,
+    MpscBroker, check_delegate_depth, delete_federation_agent, load_registry_into,
+    mark_stale_agents_inactive, set_agent_current_task, touch_agent_heartbeat,
+    upsert_agent_state_for_record, upsert_registry_record,
 };
 #[cfg(feature = "postgres")]
-pub use federation::{load_agent_states, AgentStateSnapshot};
+pub use federation::{AgentStateSnapshot, load_agent_states};
 #[cfg(feature = "postgres")]
 pub use federation::{
-    bridge_postgres_notify_to_mpsc, bridge_postgres_notify_to_mpsc_pool, pg_pool_connect, PgBroker,
+    PgBroker, bridge_postgres_notify_to_mpsc, bridge_postgres_notify_to_mpsc_pool, pg_pool_connect,
 };
 pub use graph::{postgres_age_cypher, postgres_graph_status};
 pub use logging::*;

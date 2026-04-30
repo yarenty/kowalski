@@ -34,9 +34,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let cli = Cli::parse();
 
-    let addr: std::net::SocketAddr = cli.bind.parse().map_err(|e| {
-        format!("Invalid --bind {:?}: {}", cli.bind, e)
-    })?;
+    let addr: std::net::SocketAddr = cli
+        .bind
+        .parse()
+        .map_err(|e| format!("Invalid --bind {:?}: {}", cli.bind, e))?;
     let tls = match (cli.tls_cert, cli.tls_key) {
         (Some(c), Some(k)) => Some((c, k)),
         (None, None) => None,

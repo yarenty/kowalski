@@ -28,17 +28,19 @@ impl AgentRegistry {
     }
 
     pub fn register(&self, record: AgentRecord) -> Result<(), KowalskiError> {
-        let mut g = self.inner.write().map_err(|e| {
-            KowalskiError::Federation(format!("registry lock poisoned: {e}"))
-        })?;
+        let mut g = self
+            .inner
+            .write()
+            .map_err(|e| KowalskiError::Federation(format!("registry lock poisoned: {e}")))?;
         g.insert(record.id.clone(), record);
         Ok(())
     }
 
     pub fn deregister(&self, id: &str) -> Result<(), KowalskiError> {
-        let mut g = self.inner.write().map_err(|e| {
-            KowalskiError::Federation(format!("registry lock poisoned: {e}"))
-        })?;
+        let mut g = self
+            .inner
+            .write()
+            .map_err(|e| KowalskiError::Federation(format!("registry lock poisoned: {e}")))?;
         g.remove(id)
             .ok_or_else(|| KowalskiError::NotFound(format!("agent {id}")))?;
         Ok(())
@@ -60,11 +62,7 @@ impl AgentRegistry {
         let c = cap.to_lowercase();
         self.list()
             .into_iter()
-            .filter(|a| {
-                a.capabilities
-                    .iter()
-                    .any(|x| x.to_lowercase().contains(&c))
-            })
+            .filter(|a| a.capabilities.iter().any(|x| x.to_lowercase().contains(&c)))
             .collect()
     }
 

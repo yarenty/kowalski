@@ -21,6 +21,9 @@ api_key = ""  # DuckDuckGo doesn't require an API key
 [memory]
 episodic_path = "db/episodic_buffer"
 
+[horde]
+clean_on_startup = true
+
 # MCP servers (optional) — used by agents and: cargo run -p kowalski-cli -- mcp ping
 # DataFusion MCP (Docker): docker compose -f kowalski-mcp-datafusion/docker-compose.yml up — POST JSON-RPC to server root
 # [[mcp.servers]]

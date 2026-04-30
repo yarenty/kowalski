@@ -1,11 +1,18 @@
-# Kowalski Roadmap & Features (1.0.0+)
+# Kowalski Roadmap & Features (1.1.0+)
 
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"
 
-**Release:** **1.0.0** — see [`CHANGELOG.md`](CHANGELOG.md).  
+**Release:** **1.1.0** — see [`CHANGELOG.md`](CHANGELOG.md).  
 **Per-crate roadmaps:** [`kowalski-core/ROADMAP.md`](kowalski-core/ROADMAP.md), [`kowalski-cli/ROADMAP.md`](kowalski-cli/ROADMAP.md), [`kowalski-mcp-datafusion/ROADMAP.md`](kowalski-mcp-datafusion/ROADMAP.md), [`ui/ROADMAP.md`](ui/ROADMAP.md).
 
-## Modular architecture (1.0.0)
+## Horde changes in 1.1.0 (since 1.0.0)
+
+- First complete **Knowledge Compiler horde** app flow (ingest -> compile -> ask -> lint).
+- Markdown-defined agent topology and execution (`main-agent.md`, `agents/*.md`, `agent-app` commands).
+- Federation delegate/worker path with task progress publishing and artifact-bearing task results.
+- UI federation timeline updates for operator visibility during horde runs.
+
+## Modular architecture (1.1.0 baseline)
 
 **Design emphasis:** Prefer **simple, robust** components and **few required services**—see [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md) (note on **Qdrant** as early **PoC** for vector memory).
 

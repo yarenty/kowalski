@@ -39,7 +39,11 @@ impl MpscBroker {
     }
 
     /// Receive envelopes for `topic`. Buffer size per subscriber channel.
-    pub fn subscribe(&self, topic: &str, buffer: usize) -> tokio::sync::mpsc::Receiver<AclEnvelope> {
+    pub fn subscribe(
+        &self,
+        topic: &str,
+        buffer: usize,
+    ) -> tokio::sync::mpsc::Receiver<AclEnvelope> {
         let (tx, rx) = tokio::sync::mpsc::channel(buffer);
         self.inner
             .lock()
@@ -53,7 +57,10 @@ impl MpscBroker {
     /// Publish to all subscribers on `envelope.topic`. No subscribers → Ok (no-op).
     pub async fn publish_to_topic(&self, envelope: &AclEnvelope) -> Result<(), KowalskiError> {
         {
-            let mut recent = self.recent_envelope_ids.lock().expect("mpsc broker dedupe lock");
+            let mut recent = self
+                .recent_envelope_ids
+                .lock()
+                .expect("mpsc broker dedupe lock");
             if recent.contains(&envelope.id) {
                 return Ok(());
             }
@@ -156,9 +163,7 @@ mod tests {
             .publish_to_topic(&AclEnvelope::new(
                 "t2",
                 "x",
-                AclMessage::Ping {
-                    text: "hi".into(),
-                },
+                AclMessage::Ping { text: "hi".into() },
             ))
             .await
             .unwrap();

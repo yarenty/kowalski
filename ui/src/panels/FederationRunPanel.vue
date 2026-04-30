@@ -11,6 +11,17 @@ const props = defineProps<{ activeThreadId: string | null }>();
 const emit = defineEmits<{
   (e: "thread-upsert", item: { id: string; title: string; updatedAt: number }): void;
   (e: "new-thread-from-suggestion", payload: { prompt: string; hordeId: string }): void;
+  (e: "thread-create-from-run", payload: {
+    title: string;
+    snapshot: {
+      selectedHordeId: string;
+      runId: string | null;
+      runMessages: Array<{ role: "orchestrator" | "worker" | "system" | "user"; speaker: string; text: string }>;
+      runResult: string | null;
+      followupMsgs: Array<{ role: "user" | "assistant" | "orchestrator"; speaker: string; text: string }>;
+      followupInput: string;
+    };
+  }): void;
 }>();
 
 const fedTopic = ref("federation");
@@ -28,6 +39,8 @@ const runHistory = ref<HordeRunRecord[]>([]);
 const followupInput = ref("");
 const followupBusy = ref(false);
 const followupMsgs = ref<Array<{ role: "user" | "assistant" | "orchestrator"; speaker: string; text: string }>>([]);
+const pathAction = ref<string | null>(null);
+const runPromotedToHistory = ref(false);
 
 const selectedHorde = computed(() => hordes.value.find((h) => h.id === selectedHordeId.value) ?? null);
 const selectedHordeWorkers = computed(() => workerProfiles.value.filter((w) => w.horde_id === selectedHordeId.value));
@@ -54,12 +67,16 @@ const runCompleted = computed(
 );
 const progressText = ref("idle");
 const obsidianRoot = computed(() =>
-  selectedHorde.value?.root_path
-    ? `${selectedHorde.value.root_path}/${selectedHorde.value.delivery_root_rel || "wiki"}`
+  (selectedHorde.value?.workdir || selectedHorde.value?.root_path)
+    ? `${selectedHorde.value?.workdir || selectedHorde.value?.root_path}/${selectedHorde.value?.delivery_root_rel || "wiki"}`
     : "(unknown)",
 );
 const finalShortSummary = computed(() => selectedHorde.value?.delivery_summary_note || "Run completed.");
 const hasCompletedRun = computed(() => runCompleted.value);
+const isProcessing = computed(() => runBusy.value || followupBusy.value);
+const processingLabel = computed(() =>
+  followupBusy.value ? "Processing follow-up..." : `Horde is processing... ${progressText.value}`,
+);
 
 watch(
   () => selectedHordeId.value,
@@ -93,6 +110,12 @@ function feed(role: "orchestrator" | "worker" | "system" | "user", text: string,
 function extractUrl(input: string): string | null {
   const m = input.match(/https?:\/\/\S+/);
   return m ? m[0] : null;
+}
+
+function extractUrls(input: string): string[] {
+  const matches = input.match(/https?:\/\/\S+/g) ?? [];
+  const cleaned = matches.map((u) => u.trim().replace(/[),.;]+$/, ""));
+  return [...new Set(cleaned)];
 }
 
 function processFederationEvent(data: string) {
@@ -131,6 +154,13 @@ function processFederationEvent(data: string) {
     progressText.value = "finished";
     feed("system", "run finished", "System");
     runBusy.value = false;
+    if (!props.activeThreadId && !runPromotedToHistory.value) {
+      runPromotedToHistory.value = true;
+      emit("thread-create-from-run", {
+        title: titleFromCurrentRun(),
+        snapshot: buildSnapshot(),
+      });
+    }
     clearRunWatchdog();
     void loadRunHistory();
   } else if (kind === "run_failed") {
@@ -169,6 +199,24 @@ async function refreshAll() {
   await Promise.all([loadProfiles(), loadRunHistory()]);
 }
 
+async function openOutputFolder(path?: string) {
+  if (!path) return;
+  pathAction.value = null;
+  try {
+    await api.openPath(path);
+    await navigator.clipboard.writeText(path);
+    pathAction.value = `Opened and copied path: ${path}`;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    try {
+      await navigator.clipboard.writeText(path);
+      pathAction.value = `Open failed (${msg}). Copied path: ${path}`;
+    } catch {
+      pathAction.value = `Open failed (${msg}). Path: ${path}`;
+    }
+  }
+}
+
 function isWorkerReady(w: FederationWorkerProfile): boolean {
   return Boolean(w.managed_running && w.registered_exact && !w.stale_registration);
 }
@@ -201,9 +249,8 @@ function threadStateKey(id: string) {
   return `kowalski.ui.horde.thread.${id}`;
 }
 
-function saveActiveThreadState() {
-  if (!props.activeThreadId) return;
-  const snapshot = {
+function buildSnapshot() {
+  return {
     selectedHordeId: selectedHordeId.value,
     runId: runId.value,
     runMessages: runMessages.value,
@@ -211,7 +258,33 @@ function saveActiveThreadState() {
     followupMsgs: followupMsgs.value,
     followupInput: followupInput.value,
   };
-  localStorage.setItem(threadStateKey(props.activeThreadId), JSON.stringify(snapshot));
+}
+
+function titleFromCurrentRun(): string {
+  const firstRunPrompt = runMessages.value.find((m) => m.role === "user")?.text;
+  const lastUser = [...followupMsgs.value].reverse().find((m) => m.role === "user")?.text;
+  return (
+    lastUser?.slice(0, 42) ||
+    firstRunPrompt?.slice(0, 42) ||
+    runMessages.value.find((m) => m.speaker === "Agent: Boss" && m.text.startsWith("source:"))?.text.replace("source: ", "") ||
+    "Horde interaction"
+  );
+}
+
+function resetDraftState() {
+  runId.value = null;
+  runMessages.value = [];
+  runResult.value = null;
+  runErr.value = null;
+  followupMsgs.value = [];
+  followupInput.value = "";
+  progressText.value = "idle";
+  runPromotedToHistory.value = false;
+}
+
+function saveActiveThreadState() {
+  if (!props.activeThreadId) return;
+  localStorage.setItem(threadStateKey(props.activeThreadId), JSON.stringify(buildSnapshot()));
 }
 
 function loadActiveThreadState(id: string) {
@@ -249,9 +322,11 @@ function loadActiveThreadState(id: string) {
 
 function upsertThreadMeta() {
   if (!props.activeThreadId) return;
+  const firstRunPrompt = runMessages.value.find((m) => m.role === "user")?.text;
   const lastUser = [...followupMsgs.value].reverse().find((m) => m.role === "user")?.text;
   const title =
     lastUser?.slice(0, 42) ||
+    firstRunPrompt?.slice(0, 42) ||
     runMessages.value.find((m) => m.speaker === "Agent: Boss" && m.text.startsWith("source:"))?.text.replace("source: ", "") ||
     "New horde interaction";
   emit("thread-upsert", {
@@ -305,7 +380,11 @@ async function loadRunHistory() {
 watch(
   () => props.activeThreadId,
   (id) => {
-    if (!id) return;
+    if (!id) {
+      resetDraftState();
+      return;
+    }
+    runPromotedToHistory.value = false;
     loadActiveThreadState(id);
   },
   { immediate: true },
@@ -321,11 +400,11 @@ watch(
 async function runKnowledgeCompiler() {
   await Promise.all([loadHordes(), loadProfiles()]);
   const prompt = followupInput.value.trim();
-  const source = extractUrl(prompt);
-  if (!source) {
-    runErr.value = "Prompt must include URL, e.g. https://yarenty.com.";
+  if (!prompt) {
+    runErr.value = "Prompt is required.";
     return;
   }
+  const sources = extractUrls(prompt);
   runErr.value = null;
   if (!selectedHordeWorkers.value.length) {
     runErr.value = "No workers loaded for selected horde.";
@@ -345,18 +424,21 @@ async function runKnowledgeCompiler() {
   followupMsgs.value = [];
   runBusy.value = true;
   progressText.value = "starting";
+  runPromotedToHistory.value = false;
   runId.value = null;
   runMessages.value = [];
-  upsertThreadMeta();
   clearRunWatchdog();
   connectStream();
   feed("user", prompt, "You");
+  upsertThreadMeta();
   feed("orchestrator", "creating run", "Agent: Boss");
-  feed("orchestrator", `source: ${source}`, "Agent: Boss");
+  if (sources.length) {
+    feed("orchestrator", `source(s): ${sources.join(", ")}`, "Agent: Boss");
+  }
   try {
     const out = await api.hordeRun(selectedHordeId.value, {
       prompt,
-      source,
+      source: prompt,
     });
     followupInput.value = "";
     runId.value = out.run.run_id;
@@ -448,9 +530,27 @@ onUnmounted(() => {
     </p>
     <div v-if="selectedHorde" class="horde-box">
       <p class="muted">{{ selectedHorde.description }}</p>
+      <p class="muted workdir-row">
+        Workdir: <code>{{ selectedHorde.workdir || selectedHorde.root_path }}</code>
+        <button type="button" class="inline-btn" @click="openOutputFolder(selectedHorde.workdir || selectedHorde.root_path)">
+          Open output folder
+        </button>
+      </p>
+      <p class="muted">
+        Clean on startup:
+        <strong>{{ (selectedHorde.config_on_startup_effective ?? selectedHorde.config_on_startup) ? "true" : "false" }}</strong>
+      </p>
     </div>
-    <p v-if="runBusy" class="muted thinking">Thinking... {{ progressText }}</p>
-    <p v-if="followupBusy" class="muted thinking">Thinking... follow-up in progress</p>
+    <p v-if="pathAction" class="muted">{{ pathAction }}</p>
+    <div v-if="isProcessing" class="processing-inline" aria-live="polite" aria-busy="true">
+      <div class="orbital-loader orbital-loader-inline" aria-hidden="true">
+        <span class="ring ring-a"></span>
+        <span class="ring ring-b"></span>
+        <span class="ring ring-c"></span>
+        <span class="core"></span>
+      </div>
+      <p class="muted thinking processing-inline-text">{{ processingLabel }}</p>
+    </div>
     <p v-if="runId" class="muted">Run ID: {{ runId }}</p>
 
     <div class="chat-feed">
@@ -548,9 +648,16 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.panel { position: relative; }
 .panel h2 { margin-top: 0; font-size: 1.1rem; }
 .panel-top { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
 .muted { color: #6a7285; font-size: 0.9rem; }
+.workdir-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
 .err { color: #e88; font-size: 0.9rem; }
 .lbl { display: block; font-size: 0.8rem; color: #8b92a5; margin-bottom: 0.25rem; }
 .inp { width: 100%; max-width: 48rem; box-sizing: border-box; background: #1a1d26; border: 1px solid #3d4658; color: #e8e8ec; border-radius: 6px; padding: 0.4rem 0.55rem; font: inherit; }
@@ -580,7 +687,87 @@ onUnmounted(() => {
 .msg-system { border-color: #555f74; }
 .json { background: #1a1d26; border: 1px solid #2a2e38; border-radius: 6px; padding: 0.75rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.45; color: #c8cfdd; }
 .thinking { color: #9cc2ff; }
+.processing-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.15rem 0;
+}
+.processing-inline-text {
+  margin: 0;
+}
+.orbital-loader {
+  position: relative;
+  width: 64px;
+  height: 64px;
+}
+.orbital-loader-inline {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+}
+.ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 2px solid transparent;
+}
+.ring-a {
+  border-top-color: #8fb4ff;
+  animation: spin-cw 1.3s linear infinite;
+}
+.ring-b {
+  inset: 7px;
+  border-right-color: #7fd5b4;
+  animation: spin-ccw 1s linear infinite;
+}
+.ring-c {
+  inset: 14px;
+  border-bottom-color: #c79cff;
+  animation: spin-cw 0.8s linear infinite;
+}
+.core {
+  position: absolute;
+  inset: 24px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 35%, #dbe7ff, #5f88da);
+  box-shadow: 0 0 14px rgba(143, 180, 255, 0.65);
+}
+.orbital-loader-inline .ring {
+  border-width: 1.5px;
+}
+.orbital-loader-inline .ring-b {
+  inset: 4px;
+}
+.orbital-loader-inline .ring-c {
+  inset: 8px;
+}
+.orbital-loader-inline .core {
+  inset: 10px;
+  box-shadow: 0 0 8px rgba(143, 180, 255, 0.55);
+}
+@keyframes spin-cw {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes spin-ccw {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ring-a,
+  .ring-b,
+  .ring-c {
+    animation-duration: 0s;
+    animation-iteration-count: 1;
+  }
+}
 button { background: #2a3142; border: 1px solid #3d4658; color: #c8cfdd; padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; margin-right: 0.5rem; }
 button.primary { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
 .icon-btn { width: 34px; height: 34px; padding: 0; font-size: 1rem; line-height: 1; margin-right: 0; }
+.inline-btn {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.78rem;
+  margin-right: 0;
+}
 </style>

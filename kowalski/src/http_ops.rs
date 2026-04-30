@@ -107,25 +107,28 @@ pub struct OllamaProbeJson {
     pub detail: String,
 }
 
-pub fn list_mcp_servers_public(path: &Path) -> Result<Vec<McpServerPublic>, Box<dyn std::error::Error>> {
+pub fn list_mcp_servers_public(
+    path: &Path,
+) -> Result<Vec<McpServerPublic>, Box<dyn std::error::Error>> {
     let mcp = load_mcp_config_from_file(path)?;
-    Ok(
-        mcp.servers
-            .iter()
-            .map(|s| McpServerPublic {
-                name: s.name.clone(),
-                url: s.url.clone(),
-                transport: match s.transport {
-                    McpTransport::Http => "http".to_string(),
-                    McpTransport::Sse => "sse".to_string(),
-                    McpTransport::Stdio => "stdio".to_string(),
-                },
-            })
-            .collect(),
-    )
+    Ok(mcp
+        .servers
+        .iter()
+        .map(|s| McpServerPublic {
+            name: s.name.clone(),
+            url: s.url.clone(),
+            transport: match s.transport {
+                McpTransport::Http => "http".to_string(),
+                McpTransport::Sse => "sse".to_string(),
+                McpTransport::Stdio => "stdio".to_string(),
+            },
+        })
+        .collect())
 }
 
-pub async fn mcp_ping_results(path: &Path) -> Result<Vec<McpPingResult>, Box<dyn std::error::Error>> {
+pub async fn mcp_ping_results(
+    path: &Path,
+) -> Result<Vec<McpPingResult>, Box<dyn std::error::Error>> {
     let mcp = load_mcp_config_from_file(path)?;
     let mut out = Vec::with_capacity(mcp.servers.len());
     for server in &mcp.servers {

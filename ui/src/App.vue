@@ -86,12 +86,6 @@ function restoreHordeInteractions() {
 
 restoreConversations();
 restoreHordeInteractions();
-if (!hordeInteractions.value.length) {
-  const id = `horde-${Date.now()}`;
-  hordeInteractions.value = [{ id, title: "New horde interaction", updatedAt: Date.now() }];
-  activeHordeInteractionId.value = id;
-  persistHordeInteractions();
-}
 
 function newHordeInteraction() {
   const id = `horde-${Date.now()}`;
@@ -129,6 +123,29 @@ function newHordeInteractionFromSuggestion(payload: { prompt: string; hordeId: s
   persistHordeInteractions();
 }
 
+function createHordeInteractionFromRun(payload: {
+  title: string;
+  snapshot: {
+    selectedHordeId: string;
+    runId: string | null;
+    runMessages: Array<{ role: "orchestrator" | "worker" | "system" | "user"; speaker: string; text: string }>;
+    runResult: string | null;
+    followupMsgs: Array<{ role: "user" | "assistant" | "orchestrator"; speaker: string; text: string }>;
+    followupInput: string;
+  };
+}) {
+  const id = `horde-${Date.now()}`;
+  const item: HordeInteraction = {
+    id,
+    title: payload.title || "Horde interaction",
+    updatedAt: Date.now(),
+  };
+  localStorage.setItem(threadStateKey(id), JSON.stringify(payload.snapshot));
+  hordeInteractions.value = [item, ...hordeInteractions.value];
+  activeHordeInteractionId.value = id;
+  persistHordeInteractions();
+}
+
 function selectHordeInteraction(id: string) {
   activeHordeInteractionId.value = id;
 }
@@ -143,7 +160,8 @@ function deleteHordeInteraction(id: string) {
   hordeInteractions.value = hordeInteractions.value.filter((h) => h.id !== id);
   localStorage.removeItem(threadStateKey(id));
   if (!hordeInteractions.value.length) {
-    newHordeInteraction();
+    activeHordeInteractionId.value = null;
+    persistHordeInteractions();
     return;
   }
   if (activeHordeInteractionId.value === id) {
@@ -336,6 +354,13 @@ function selectConversation(id: string) {
   activeConversationId.value = id;
 }
 
+function selectTab(nextTab: "home" | "mcp" | "chat" | "federation-management" | "federation-run" | "graph" | "about") {
+  tab.value = nextTab;
+  if (nextTab === "federation-run") {
+    activeHordeInteractionId.value = null;
+  }
+}
+
 onMounted(async () => {
   try {
     const h = await api.health();
@@ -357,7 +382,7 @@ onMounted(async () => {
       :active-horde-interaction-id="activeHordeInteractionId"
       :app-version="appVersion"
       @toggle-collapse="sidebarCollapsed = !sidebarCollapsed"
-      @select-tab="tab = $event"
+      @select-tab="selectTab"
       @select-conversation="selectConversation"
       @new-conversation="newConversation"
       @select-horde-interaction="selectHordeInteraction"
@@ -389,6 +414,7 @@ onMounted(async () => {
         :active-thread-id="activeHordeInteractionId"
         @thread-upsert="upsertHordeInteraction"
         @new-thread-from-suggestion="newHordeInteractionFromSuggestion"
+        @thread-create-from-run="createHordeInteractionFromRun"
       />
       <GraphPanel v-else-if="tab === 'graph'" />
       <AboutPanel v-else-if="tab === 'about'" />

@@ -167,6 +167,9 @@ export type HordeCatalogItem = {
   default_question: string;
   topic: string;
   root_path: string;
+  workdir?: string;
+  config_on_startup?: boolean;
+  config_on_startup_effective?: boolean;
   delivery_title?: string;
   delivery_note?: string;
   delivery_root_rel?: string;
@@ -204,6 +207,11 @@ export type HordeRunRecord = {
   events: Array<Record<string, unknown>>;
 };
 
+export type OpenPathResponse = {
+  ok: boolean;
+  path: string;
+};
+
 export const api = {
   health: () => json<Health>("/api/health"),
   agents: () => json<AgentsResponse>("/api/agents"),
@@ -213,6 +221,11 @@ export const api = {
   mcpPing: () =>
     json<McpPingResult[]>("/api/mcp/ping", { method: "POST", body: "{}" }),
   memoryStatus: () => json<MemoryStatus>("/api/memory/status"),
+  openPath: (path: string) =>
+    json<OpenPathResponse>("/api/system/open-path", {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    }),
   chat: (
     message: string,
     options?: { useMemory?: boolean; conversationId?: string | null },

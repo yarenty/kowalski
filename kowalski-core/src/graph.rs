@@ -11,9 +11,7 @@ fn validate_age_graph_name(name: &str) -> Result<(), KowalskiError> {
             "invalid AGE graph name (length)".into(),
         ));
     }
-    let ok = name
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '_');
+    let ok = name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
     if !ok {
         return Err(KowalskiError::Configuration(
             "invalid AGE graph name (use letters, digits, underscore only)".into(),
@@ -30,16 +28,18 @@ pub async fn postgres_graph_status(database_url: &str) -> Result<serde_json::Val
     let pool = PgPool::connect(database_url)
         .await
         .map_err(|e| KowalskiError::Configuration(format!("graph status connect: {e}")))?;
-    let vector: bool =
-        sqlx::query_scalar::<_, bool>("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector')")
-            .fetch_one(&pool)
-            .await
-            .map_err(|e| KowalskiError::Configuration(format!("graph status: {e}")))?;
-    let age: bool =
-        sqlx::query_scalar::<_, bool>("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age')")
-            .fetch_one(&pool)
-            .await
-            .map_err(|e| KowalskiError::Configuration(format!("graph status: {e}")))?;
+    let vector: bool = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector')",
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| KowalskiError::Configuration(format!("graph status: {e}")))?;
+    let age: bool = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age')",
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| KowalskiError::Configuration(format!("graph status: {e}")))?;
     Ok(json!({
         "postgres": true,
         "vector_extension": vector,
@@ -48,7 +48,9 @@ pub async fn postgres_graph_status(database_url: &str) -> Result<serde_json::Val
 }
 
 #[cfg(not(feature = "postgres"))]
-pub async fn postgres_graph_status(_database_url: &str) -> Result<serde_json::Value, KowalskiError> {
+pub async fn postgres_graph_status(
+    _database_url: &str,
+) -> Result<serde_json::Value, KowalskiError> {
     Err(KowalskiError::Configuration(
         "postgres feature not enabled".into(),
     ))

@@ -1,6 +1,11 @@
 # kowalski-mcp-datafusion
 
-**Version 1.0.0** — standalone **MCP** server (Streamable HTTP: JSON + SSE) exposing **DataFusion** tools over a registered **CSV** (or similar) table.
+**Version 1.1.0** — standalone **MCP** server (Streamable HTTP: JSON + SSE) exposing **DataFusion** tools over a registered **CSV** (or similar) table.
+
+## Horde changes in 1.1.0 (since 1.0.0)
+
+- Workspace-level horde app workflows were added in 1.1.0; this crate remains the DataFusion MCP server component used in those broader flows.
+- Documentation now aligns with the 1.1.0 release line across all workspace READMEs.
 
 ## Features
 

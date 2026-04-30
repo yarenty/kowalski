@@ -1,8 +1,13 @@
 # Kowalski UI (Vue 3 + Vite)
 
-**Version 1.0.0** · Operator-facing web shell for Kowalski, calling **`kowalski`** under `/api/*`.
+**Version 1.1.0** · Operator-facing web shell for Kowalski, calling **`kowalski`** under `/api/*`.
 
 Features: health, MCP ping, **Chat** (`POST /api/chat`, SSE **`POST /api/chat/stream`** with optional **Tool-aware stream** / `tools_stream`), federation, graph extension status. See [`ROADMAP.md`](./ROADMAP.md).
+
+## Horde changes in 1.1.0 (since 1.0.0)
+
+- Federation panel now supports clearer horde run observability with task progress events.
+- Knowledge Compiler delegate/worker runs surface serialized step progress and final artifact delivery context in the UI flow.
 
 ## Setup
 
