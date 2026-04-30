@@ -816,6 +816,10 @@ fn parse_horde_instruction(instruction: &str) -> Option<HordeInstruction> {
             .get("horde_root")
             .and_then(|x| x.as_str())
             .map(ToString::to_string),
+        workdir: v
+            .get("workdir")
+            .and_then(|x| x.as_str())
+            .map(ToString::to_string),
     })
 }
 
@@ -829,6 +833,7 @@ struct HordeInstruction {
     question: Option<String>,
     previous_artifact: Option<String>,
     horde_root: Option<String>,
+    workdir: Option<String>,
 }
 
 fn publish_acl(api: &str, topic: &str, sender: &str, payload: serde_json::Value) {
@@ -944,12 +949,17 @@ fn handle_role_delegate(
         return;
     }
 
-    let root = instr
+    let workspace_root = instr
         .horde_root
         .clone()
         .map(PathBuf::from)
         .filter(|p| p.exists())
         .unwrap_or_else(|| fallback_root.to_path_buf());
+    let workdir = instr
+        .workdir
+        .clone()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| workspace_root.clone());
 
     publish_task_started(
         api,
@@ -960,10 +970,10 @@ fn handle_role_delegate(
     );
 
     let result = match role_kind {
-        "ingest" => execute_ingest(api, topic, agent_id, &instr, &root),
-        "compile" => execute_compile(api, topic, agent_id, &instr, &root),
-        "ask" => execute_ask(api, topic, agent_id, &instr, &root),
-        "lint" => execute_lint(api, topic, agent_id, &instr, &root),
+        "ingest" => execute_ingest(api, topic, agent_id, &instr, &workspace_root, &workdir),
+        "compile" => execute_compile(api, topic, agent_id, &instr, &workspace_root, &workdir),
+        "ask" => execute_ask(api, topic, agent_id, &instr, &workspace_root, &workdir),
+        "lint" => execute_lint(api, topic, agent_id, &instr, &workspace_root, &workdir),
         other => Err(format!("unsupported role kind `{}`", other).into()),
     };
 
@@ -1000,7 +1010,8 @@ fn execute_ingest(
     topic: &str,
     agent_id: &str,
     instr: &HordeInstruction,
-    root: &Path,
+    _workspace_root: &Path,
+    workdir: &Path,
 ) -> Result<(String, String), Box<dyn std::error::Error>> {
     let _ = api;
     let _ = topic;
@@ -1009,9 +1020,9 @@ fn execute_ingest(
         .source
         .as_deref()
         .ok_or("ingest: missing `source` in horde instruction")?;
-    ensure_dirs(root)?;
+    ensure_dirs(workdir)?;
     let source_list = parse_input_assets(source);
-    let path = ingest_assets_markdown(root, source)?;
+    let path = ingest_assets_markdown(workdir, source)?;
     Ok((
         path.display().to_string(),
         format!(
@@ -1027,17 +1038,18 @@ fn execute_compile(
     topic: &str,
     agent_id: &str,
     instr: &HordeInstruction,
-    root: &Path,
+    workspace_root: &Path,
+    workdir: &Path,
 ) -> Result<(String, String), Box<dyn std::error::Error>> {
-    ensure_dirs(root)?;
-    let prompt_path = root.join("prompts/compiler.md");
+    ensure_dirs(workdir)?;
+    let prompt_path = workspace_root.join("prompts/compiler.md");
     let prompt = read_or_empty(&prompt_path);
-    let summary_out = root.join("wiki/summaries/latest.md");
+    let summary_out = workdir.join("wiki/summaries/latest.md");
     let source_path = instr
         .previous_artifact
         .as_deref()
         .map(PathBuf::from)
-        .or_else(|| latest_md_in(&root.join("raw/sources")))
+        .or_else(|| latest_md_in(&workdir.join("raw/sources")))
         .ok_or("compile: no input artifact available (run ingest first)")?;
     let src = read_or_empty(&source_path);
     publish_agent_message(
@@ -1060,7 +1072,7 @@ fn execute_compile(
         "Fallback summary due to empty or malformed model output.",
     );
     fs::write(&summary_out, &reply)?;
-    normalize_and_repair_wiki(root)?;
+    normalize_and_repair_wiki(workdir)?;
     Ok((
         summary_out.display().to_string(),
         format!("Compiled wiki summary at {}", summary_out.display()),
@@ -1072,13 +1084,14 @@ fn execute_ask(
     topic: &str,
     agent_id: &str,
     instr: &HordeInstruction,
-    root: &Path,
+    workspace_root: &Path,
+    workdir: &Path,
 ) -> Result<(String, String), Box<dyn std::error::Error>> {
-    ensure_dirs(root)?;
-    let prompt_path = root.join("prompts/query.md");
+    ensure_dirs(workdir)?;
+    let prompt_path = workspace_root.join("prompts/query.md");
     let prompt = read_or_empty(&prompt_path);
-    let out = root.join("derived/reports/latest.md");
-    let idx = read_or_empty(&root.join("wiki/index.md"));
+    let out = workdir.join("derived/reports/latest.md");
+    let idx = read_or_empty(&workdir.join("wiki/index.md"));
     let q = instr
         .question
         .clone()
@@ -1110,13 +1123,14 @@ fn execute_lint(
     topic: &str,
     agent_id: &str,
     instr: &HordeInstruction,
-    root: &Path,
+    workspace_root: &Path,
+    workdir: &Path,
 ) -> Result<(String, String), Box<dyn std::error::Error>> {
-    ensure_dirs(root)?;
-    let prompt_path = root.join("prompts/lint.md");
+    ensure_dirs(workdir)?;
+    let prompt_path = workspace_root.join("prompts/lint.md");
     let prompt = read_or_empty(&prompt_path);
-    let out = root.join("derived/lint/latest.md");
-    let idx = read_or_empty(&root.join("wiki/index.md"));
+    let out = workdir.join("derived/lint/latest.md");
+    let idx = read_or_empty(&workdir.join("wiki/index.md"));
     publish_agent_message(api, topic, agent_id, instr, "Linting wiki index");
     let msg = format!("{prompt}\n\nWiki index:\n{idx}\n");
     let reply = chat_no_tools(api, &msg)?;

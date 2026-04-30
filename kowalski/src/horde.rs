@@ -52,6 +52,11 @@ pub struct HordeMeta {
     #[serde(default)]
     pub artifacts_root: Option<String>,
     #[serde(default)]
+    pub workdir: Option<String>,
+    #[serde(default)]
+    #[serde(alias = "clean_on_startup")]
+    pub config_on_startup: Option<bool>,
+    #[serde(default)]
     pub delivery_title: Option<String>,
     #[serde(default)]
     pub delivery_note: Option<String>,
@@ -103,6 +108,8 @@ pub struct HordeSpec {
     pub default_question: String,
     pub topic: String,
     pub artifacts_root: PathBuf,
+    pub workdir: PathBuf,
+    pub config_on_startup: bool,
     pub delivery_title: String,
     pub delivery_note: String,
     pub delivery_root_rel: String,
@@ -213,6 +220,13 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
             .unwrap_or_else(|| "What changed?".to_string()),
         topic: meta.default_topic.unwrap_or_else(|| DEFAULT_TOPIC.to_string()),
         artifacts_root: root.join(meta.artifacts_root.unwrap_or_else(|| ".".to_string())),
+        workdir: if let Some(w) = meta.workdir {
+            let p = PathBuf::from(w.clone());
+            if p.is_absolute() { p } else { root.join(w) }
+        } else {
+            root.join("workdir")
+        },
+        config_on_startup: meta.config_on_startup.unwrap_or(false),
         delivery_title: meta
             .delivery_title
             .unwrap_or_else(|| "Final delivery".to_string()),
@@ -233,6 +247,27 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
         root_path: root.to_path_buf(),
         sub_agents,
     })
+}
+
+pub fn prepare_workdir_on_startup_with_policy(
+    spec: &HordeSpec,
+    clean_on_startup: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    std::fs::create_dir_all(&spec.workdir)?;
+    if !clean_on_startup {
+        return Ok(());
+    }
+    for rel in ["raw", "wiki", "derived", "scratch"] {
+        let p = spec.workdir.join(rel);
+        if p.exists() {
+            std::fs::remove_dir_all(&p)?;
+        }
+    }
+    Ok(())
+}
+
+pub fn prepare_workdir_on_startup(spec: &HordeSpec) -> Result<(), Box<dyn std::error::Error>> {
+    prepare_workdir_on_startup_with_policy(spec, spec.config_on_startup)
 }
 
 /// Discover all horde directories under `roots` (each root must contain a `horde.md`).
@@ -386,6 +421,7 @@ impl HordeManager {
             "question": run.question,
             "previous_artifact": previous_artifact,
             "horde_root": spec.root_path.display().to_string(),
+            "workdir": spec.workdir.display().to_string(),
         });
         payload.to_string()
     }

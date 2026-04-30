@@ -54,8 +54,8 @@ const runCompleted = computed(
 );
 const progressText = ref("idle");
 const obsidianRoot = computed(() =>
-  selectedHorde.value?.root_path
-    ? `${selectedHorde.value.root_path}/${selectedHorde.value.delivery_root_rel || "wiki"}`
+  (selectedHorde.value?.workdir || selectedHorde.value?.root_path)
+    ? `${selectedHorde.value?.workdir || selectedHorde.value?.root_path}/${selectedHorde.value?.delivery_root_rel || "wiki"}`
     : "(unknown)",
 );
 const finalShortSummary = computed(() => selectedHorde.value?.delivery_summary_note || "Run completed.");

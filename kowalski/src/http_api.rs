@@ -166,6 +166,29 @@ pub async fn serve(
         federation_broker.clone(),
         federation.clone(),
     );
+    let global_clean_on_startup = global_horde_clean_on_startup(&full_config);
+    for spec in horde_manager.specs.iter() {
+        let effective_clean_on_startup = global_clean_on_startup.unwrap_or(spec.config_on_startup);
+        if let Err(e) = crate::horde::prepare_workdir_on_startup_with_policy(
+            spec,
+            effective_clean_on_startup,
+        ) {
+            log::warn!(
+                "horde startup workdir prepare failed horde={} workdir={} err={}",
+                spec.id,
+                spec.workdir.display(),
+                e
+            );
+        } else {
+            log::info!(
+                "horde startup workdir prepared horde={} workdir={} clean_on_startup={} (global_override={:?})",
+                spec.id,
+                spec.workdir.display(),
+                effective_clean_on_startup,
+                global_clean_on_startup
+            );
+        }
+    }
     crate::horde::spawn_orchestrator_loop(horde_manager.clone());
 
     let state = ApiState {
@@ -254,6 +277,14 @@ fn federation_postgres_notify_bridge(state: &ApiState) -> bool {
         let _ = state;
         false
     }
+}
+
+fn global_horde_clean_on_startup(cfg: &Config) -> Option<bool> {
+    cfg.additional
+        .get("horde")
+        .and_then(|v| v.as_object())
+        .and_then(|obj| obj.get("clean_on_startup"))
+        .and_then(|v| v.as_bool())
 }
 
 async fn get_health(State(state): State<ApiState>) -> Json<serde_json::Value> {
@@ -785,6 +816,7 @@ struct WorkerProfile {
     command: String,
     args: Vec<String>,
     cwd: String,
+    log_dir: String,
 }
 
 #[derive(Deserialize)]
@@ -840,14 +872,15 @@ fn worker_profiles(state: &ApiState) -> Vec<WorkerProfile> {
                     sub.default_agent_id.clone(),
                 ],
                 cwd: root.display().to_string(),
+                log_dir: spec.workdir.join("scratch/workers").display().to_string(),
             });
         }
     }
     out
 }
 
-fn worker_log_stdio(cwd: &str, profile_id: &str) -> Option<(std::process::Stdio, std::process::Stdio)> {
-    let dir = PathBuf::from(cwd).join("examples/knowledge-compiler/scratch/workers");
+fn worker_log_stdio(log_dir: &str, profile_id: &str) -> Option<(std::process::Stdio, std::process::Stdio)> {
+    let dir = PathBuf::from(log_dir);
     if std::fs::create_dir_all(&dir).is_err() {
         return None;
     }
@@ -919,6 +952,7 @@ fn worker_row(
         "command": p.command,
         "args": p.args,
         "cwd": p.cwd,
+        "log_dir": p.log_dir,
         "managed_running": pid.is_some(),
         "pid": pid,
         "last_exit": last_exit.get(&p.id).cloned(),
@@ -965,7 +999,7 @@ async fn post_federation_worker_start(
 
     let mut cmd = tokio::process::Command::new(&profile.command);
     cmd.args(profile.args.iter()).current_dir(&profile.cwd);
-    if let Some((out, err)) = worker_log_stdio(&profile.cwd, &profile.id) {
+    if let Some((out, err)) = worker_log_stdio(&profile.log_dir, &profile.id) {
         cmd.stdout(out).stderr(err);
     } else {
         cmd.stdout(std::process::Stdio::null())
@@ -1368,6 +1402,8 @@ async fn get_hordes(State(state): State<ApiState>) -> Json<serde_json::Value> {
                 "default_question": s.default_question,
                 "topic": s.topic,
                 "root_path": s.root_path.display().to_string(),
+                "workdir": s.workdir.display().to_string(),
+                "config_on_startup": s.config_on_startup,
                 "delivery_title": s.delivery_title,
                 "delivery_note": s.delivery_note,
                 "delivery_root_rel": s.delivery_root_rel,
@@ -1397,6 +1433,8 @@ async fn get_horde_detail(
         "default_question": spec.default_question,
         "topic": spec.topic,
         "root_path": spec.root_path.display().to_string(),
+        "workdir": spec.workdir.display().to_string(),
+        "config_on_startup": spec.config_on_startup,
         "delivery_title": spec.delivery_title,
         "delivery_note": spec.delivery_note,
         "delivery_root_rel": spec.delivery_root_rel,
@@ -1529,7 +1567,7 @@ async fn post_horde_worker_start(
             }
             let mut cmd = tokio::process::Command::new(&profile.command);
             cmd.args(profile.args.iter()).current_dir(&profile.cwd);
-            if let Some((out, err)) = worker_log_stdio(&profile.cwd, &profile.id) {
+            if let Some((out, err)) = worker_log_stdio(&profile.log_dir, &profile.id) {
                 cmd.stdout(out).stderr(err);
             } else {
                 cmd.stdout(std::process::Stdio::null())
@@ -1738,7 +1776,7 @@ async fn post_horde_followup(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Persist follow-up output as a concrete artifact so this interaction is actionable.
-    let follow_dir = spec.root_path.join("derived/reports/followups");
+    let follow_dir = spec.workdir.join("derived/reports/followups");
     if let Err(e) = std::fs::create_dir_all(&follow_dir) {
         log::warn!("follow-up artifact mkdir failed: {}", e);
     }

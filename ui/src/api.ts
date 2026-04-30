@@ -167,6 +167,8 @@ export type HordeCatalogItem = {
   default_question: string;
   topic: string;
   root_path: string;
+  workdir?: string;
+  config_on_startup?: boolean;
   delivery_title?: string;
   delivery_note?: string;
   delivery_root_rel?: string;
