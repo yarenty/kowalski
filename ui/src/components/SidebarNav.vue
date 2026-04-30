@@ -55,7 +55,6 @@ function timeAgo(ts: number): string {
       <nav class="nav">
         <button :class="{ active: activeTab === 'chat' }" @click="emit('select-tab', 'chat')">Chat</button>
         <button :class="{ active: activeTab === 'mcp' }" @click="emit('select-tab', 'mcp')">MCP</button>
-        <button :class="{ active: activeTab === 'federation-management' }" @click="emit('select-tab', 'federation-management')">Federation Mgmt</button>
         <button :class="{ active: activeTab === 'federation-run' }" @click="emit('select-tab', 'federation-run')">Horde Run</button>
         <button :class="{ active: activeTab === 'graph' }" @click="emit('select-tab', 'graph')">Graph</button>
       </nav>
@@ -111,6 +110,7 @@ function timeAgo(ts: number): string {
         <p class="admin-title">Administrator</p>
         <div class="admin-nav">
           <button :class="{ active: activeTab === 'home' }" @click="emit('select-tab', 'home')">Dashboard</button>
+          <button :class="{ active: activeTab === 'federation-management' }" @click="emit('select-tab', 'federation-management')">Federation</button>
           <button :class="{ active: activeTab === 'about' }" @click="emit('select-tab', 'about')">About</button>
         </div>
       </section>

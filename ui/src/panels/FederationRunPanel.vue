@@ -255,9 +255,11 @@ function loadActiveThreadState(id: string) {
 
 function upsertThreadMeta() {
   if (!props.activeThreadId) return;
+  const firstRunPrompt = runMessages.value.find((m) => m.role === "user")?.text;
   const lastUser = [...followupMsgs.value].reverse().find((m) => m.role === "user")?.text;
   const title =
     lastUser?.slice(0, 42) ||
+    firstRunPrompt?.slice(0, 42) ||
     runMessages.value.find((m) => m.speaker === "Agent: Boss" && m.text.startsWith("source:"))?.text.replace("source: ", "") ||
     "New horde interaction";
   emit("thread-upsert", {
@@ -353,10 +355,10 @@ async function runKnowledgeCompiler() {
   progressText.value = "starting";
   runId.value = null;
   runMessages.value = [];
-  upsertThreadMeta();
   clearRunWatchdog();
   connectStream();
   feed("user", prompt, "You");
+  upsertThreadMeta();
   feed("orchestrator", "creating run", "Agent: Boss");
   if (sources.length) {
     feed("orchestrator", `source(s): ${sources.join(", ")}`, "Agent: Boss");
