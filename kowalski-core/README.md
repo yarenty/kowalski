@@ -1,8 +1,15 @@
 # Kowalski Core
 
-**Crate version 1.0.0** · Part of the [`kowalski` workspace](https://github.com/yarenty/kowalski).
+**Crate version 1.1.0** · Part of the [`kowalski` workspace](https://github.com/yarenty/kowalski).
 
 The core library for the Kowalski AI agent framework, providing foundational abstractions, types, and utilities for building modular, extensible, and robust AI agents.
+
+---
+
+## Horde changes in 1.1.0 (since 1.0.0)
+
+- Core app flow now powers horde-style markdown orchestration for the Knowledge Compiler example.
+- Federation-oriented task execution surfaces sub-agent step traces and artifact-focused completion contracts.
 
 ---
 

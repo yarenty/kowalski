@@ -2,6 +2,15 @@
 
 A comprehensive Rust-based agent framework for interacting with Ollama models and building AI-powered applications.
 
+## Version
+
+**Crate version 1.1.0**
+
+## Horde changes in 1.1.0 (since 1.0.0)
+
+- Workspace evolves from the 1.0.0 baseline with a horde-oriented Knowledge Compiler app flow.
+- Federation delegate/worker and task-progress pathways are now first-class in app orchestration workflows.
+
 ## Overview
 
 Kowalski is a modular framework that provides everything you need to build sophisticated AI agents. The framework is organized into specialized crates that can be used independently or together.
@@ -26,10 +35,10 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-kowalski = "1.0.0"
+kowalski = "1.1.0"
 
 # Optional: CLI + Postgres client stack
-kowalski = { version = "1.0.0", features = ["full"] }
+kowalski = { version = "1.1.0", features = ["full"] }
 ```
 
 ## Quick Start

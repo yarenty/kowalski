@@ -1,6 +1,15 @@
 # Knowledge Compiler Example
 
+**Example version 1.1.0**
+
 This example shows how to run a local-first, markdown-native "knowledge compiler" workflow on top of Kowalski conventions.
+
+## Horde changes in 1.1.0 (since 1.0.0)
+
+- Added markdown-defined horde orchestration using `main-agent.md` and `agents/*.md`.
+- Added federation delegate/worker run path with task result artifacts and proof-run workflow.
+- Added natural-language extension entrypoint and serialized sub-agent trace output.
+- Added UI-facing progress publication for live run observability.
 
 ## What this demonstrates
 

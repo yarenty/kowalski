@@ -10,6 +10,23 @@ All notable changes to this project will be documented in this file, or at least
 
 - (nothing yet)
 
+## [1.1.0] - 2026-04-30
+
+> Horde-first release line: Knowledge Compiler app workflow, markdown-defined multi-agent orchestration, federation worker/delegate loop, and operator visibility upgrades.
+
+### Added
+
+- **Knowledge Compiler horde workflow** as the first federation-oriented app path (`examples/knowledge-compiler`), including reproducible ingest -> compile -> ask -> lint runs and proof-run instructions.
+- **Markdown-defined agent orchestration** (`main-agent.md` + `agents/*.md`) with CLI operators to list, validate, and run app-defined sub-agent pipelines.
+- **Federation app execution loop** for delegated horde work: task delegation, worker execution, progress publishing, and structured task results with artifact paths.
+- **Operator-facing observability** for federation runs in the Vue UI, including step-by-step task progress events and final artifact delivery visibility.
+
+### Changed
+
+- **Documentation line moved to 1.1.0** across workspace and crate READMEs/roadmaps, with explicit summary of what changed between `1.0.0` and `1.1.0` for the horde workflow.
+- **Knowledge Compiler runtime UX** now supports natural-language extension entry, serialized sub-agent execution trace output, and clearer end-of-run artifact reporting.
+
+
 ## [1.0.0] - 2026-04-12
 
 > First **1.x** line: consolidated crates, operator CLI + Vue UI, MCP (HTTP/SSE + DataFusion server), optional Postgres/pgvector/AGE, federation hooks.
@@ -34,6 +51,7 @@ All notable changes to this project will be documented in this file, or at least
 - Documented **memory stack rationale**: **Qdrant** was used in an **initial proof of concept** for semantic memory; the **ongoing goal** is a **simple, robust, dependency-light** default with **minimal moving parts**. Canonical write-up: [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md). Linked from root and component `AGENTS.md`, READMEs, memory articles, and rebuild notes.
 - Refreshed **README.md**, **AGENTS.md**, **ROADMAP.md** (root and key sub-crates).
 
+[1.1.0]: https://github.com/yarenty/kowalski/releases/tag/1.1.0
 [1.0.0]: https://github.com/yarenty/kowalski/releases/tag/1.0.0
 
 ## [0.5.2] - 2024-07-06
