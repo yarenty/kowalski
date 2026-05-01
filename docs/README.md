@@ -33,3 +33,12 @@ Use this folder for **design articles**, **architecture notes**, and **long-form
 ## Images & assets
 
 Illustrations and exports live under [`img/`](./img/). Prefer referencing diagrams from markdown in this tree rather than duplicating a second HTML site.
+
+## Link checking (CI & local)
+
+GitHub Actions runs **[Lychee](https://github.com/lycheeverse/lychee)** on all `**/*.md` files (`offline` mode: validates repo-relative paths and existing files; skips external URLs). Config: [`.lychee.toml`](../.lychee.toml).
+
+```bash
+cargo install lychee   # once
+just docs-links        # or: ./scripts/docs-linkcheck.sh
+```

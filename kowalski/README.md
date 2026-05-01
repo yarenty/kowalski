@@ -100,8 +100,8 @@ let research = agent.research_topic("Rust async programming").await?;
 
 - [API Documentation](https://docs.rs/kowalski)
 - [Examples](https://github.com/yarenty/kowalski/tree/main/examples)
-- [Contributing](https://github.com/yarenty/kowalski/blob/main/CONTRIBUTING.md)
+- [Contributing](../CONTRIBUTING.md)
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details. 
+MIT License - see [LICENSE](../LICENSE) file for details. 

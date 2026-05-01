@@ -8,7 +8,8 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Changed
 
-- (nothing yet)
+- CI: added **`docs`** job (Lychee markdown link check, offline). Local: **`just docs-links`** / `./scripts/docs-linkcheck.sh`.
+- Added **`.lychee.toml`**, **`justfile`**, **`scripts/docs-linkcheck.sh`**, root **`LICENSE`** (MIT), and **`CONTRIBUTING.md`**.
 
 ## [1.1.0] - 2026-04-30
 

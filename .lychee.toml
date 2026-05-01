@@ -1,0 +1,28 @@
+# Lychee link checker — https://lychee.cli.rs/reference/configuration/
+#
+# CI: `.github/workflows/ci.yml` (`docs` job) runs with `--offline` (no network;
+# still validates relative paths and existing files).
+#
+# Local: `just docs-links` or `./scripts/docs-linkcheck.sh`
+# Requires: `cargo install lychee-cli` (provides the `lychee` binary)
+
+exclude_path = [
+  "target",
+  "ui/node_modules",
+  "ui/dist",
+  ".git",
+  # Archived articles / HTML; relative assets not maintained
+  "docs/purgatory",
+  # Legacy in-file links to removed multi-crate layout (see root AGENTS.md for current tree)
+  "AGENTS.md",
+  "kowalski/AGENTS.md",
+  "kowalski-cli/AGENTS.md",
+  "kowalski-core/AGENTS.md",
+  "kowalski-mcp-datafusion/AGENTS.md",
+  "ui/AGENTS.md",
+]
+
+# README references this PNG; repo has `architecture_v01.excalidraw` — export or refresh when updating the diagram
+exclude = [
+  "architecture_v01\\.png",
+]

@@ -22,12 +22,12 @@ For structured **subject → predicate → object** edges, the code briefly used
 
 ## Episodic tier: `episodic_kv` (SQLite file or PostgreSQL)
 
-**Tier 2 (episodic buffer)** stores each [`MemoryUnit`](../../kowalski-core/src/memory/mod.rs) as JSON in table **`episodic_kv`** (`id`, `payload`), using **`sqlx`**. Default is **embedded SQLite** (no separate server). If **`memory.database_url`** is **`postgres://…`**, the same table and JSON shape are used in **PostgreSQL** (see `migrations/postgres/002_episodic_kv.sql`). **No C++ RocksDB** build.
+**Tier 2 (episodic buffer)** stores each [`MemoryUnit`](../kowalski-core/src/memory/mod.rs) as JSON in table **`episodic_kv`** (`id`, `payload`), using **`sqlx`**. Default is **embedded SQLite** (no separate server). If **`memory.database_url`** is **`postgres://…`**, the same table and JSON shape are used in **PostgreSQL** (see `migrations/postgres/002_episodic_kv.sql`). **No C++ RocksDB** build.
 
 | Aspect | Notes |
 |--------|--------|
 | **Path (default)** | Without a Postgres URL: `memory.episodic_path` — if it ends with `.sqlite` / `.db`, that file is used; otherwise a directory is created and **`episodic.sqlite`** is opened inside it. |
-| **Postgres** | With **`memory.database_url`** = `postgres://…` **and** the **`postgres`** Cargo feature on `kowalski-core`, Tier 2 reads/writes **`episodic_kv`** (run migrations via [`db::run_memory_migrations_if_configured`](../../kowalski-core/src/db/mod.rs)). Build: `cargo build -p kowalski-core --features postgres`. |
+| **Postgres** | With **`memory.database_url`** = `postgres://…` **and** the **`postgres`** Cargo feature on `kowalski-core`, Tier 2 reads/writes **`episodic_kv`** (run migrations via [`db::run_memory_migrations_if_configured`](../kowalski-core/src/db/mod.rs)). Build: `cargo build -p kowalski-core --features postgres`. |
 | **Build** | Native SQLite via `libsqlite3-sys`; Postgres uses the existing **`sqlx`** Postgres driver. |
 | **Historical note** | Episodic storage previously used **RocksDB**; it was replaced to **reduce native dependency surface** and align Tier 2 with **SQL** already in the stack. |
 
