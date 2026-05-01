@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file, or at least
 
 - CI: added **`docs`** job (Lychee markdown link check, offline). Local: **`just docs-links`** / `./scripts/docs-linkcheck.sh`.
 - Added **`.lychee.toml`**, **`justfile`**, **`scripts/docs-linkcheck.sh`**, root **`LICENSE`** (MIT), and **`CONTRIBUTING.md`**.
+- Added docs governance: **`docs/GOVERNANCE.md`** plus governance references in docs index.
+- Added architecture snapshots: **`docs/architecture_v02.md`**, **`docs/architecture_v03_future.md`**, and Excalidraw sources under `docs/img/`.
+- Consolidated legacy AGENTS content into **`docs/purgatory/legacy_v1.1.0.md`** and replaced inline legacy blocks with pointers.
 
 ## [1.1.0] - 2026-04-30
 

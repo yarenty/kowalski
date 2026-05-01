@@ -348,49 +348,11 @@ See [`ROADMAP.md`](ROADMAP.md) here and root [`../ROADMAP.md`](../ROADMAP.md).
 
 ## Legacy Component Context
 
-# kowalski-cli: Command-Line Interface
+Legacy notes for pre-1.1.0 crate topology and CLI assumptions were moved to:
 
-## 1. Purpose
+- [`../docs/purgatory/legacy_v1.1.0.md`](../docs/purgatory/legacy_v1.1.0.md)
 
-The `kowalski-cli` crate provides the primary user interface for interacting with the Kowalski framework. It acts as an orchestrator, allowing users to select an agent (Code, Web, Data, Academic, or a Custom configured one) and directly interact with it via a text-based, read-eval-print loop (REPL). It effectively aggregates all other crates to demonstrate the framework's capabilities.
-
-## 2. Structure
-
-The structure of `kowalski-cli` focuses on the application entry point and main loop:
-
-*   **`main.rs`**: The primary executable. It handles initial setup (logging, parsing command-line arguments if any), displays a welcome banner, prompts the user to select an agent, and then enters the main interaction loop.
-*   **The Loop**: The core logic inside `main.rs` reads user input from stdin, passes it to the selected `Agent` (via `agent.process_message()`), captures the response, prints it to stdout, and repeats.
-*   **Custom Agent Path**: It includes logic to dynamically instantiate a `Custom` agent using the `TemplateAgent` structure, though the current implementation is mostly scaffolding.
-
-## 3. Strengths
-
-*   **Immediate Utility:** Provides an immediate, runnable demonstration of the entire Kowalski ecosystem. A new user can clone the repo, run `cargo run -p kowalski-cli`, and start interacting with various agents immediately.
-*   **Simple Orchestration:** The REPL loop in `main.rs` is straightforward and easy to mentally parse. It cleanly separates user input handling from the agent's internal processing logic.
-*   **Demonstrates Agent Selection:** The menu system at startup clearly illustrates how different specialized agents can be selected and instantiated based on user intent.
-*   **Foundation for More:** It serves as a solid foundation upon which more sophisticated CLI features (configuration files, scripting mode, richer UI) can be built.
-
-## 4. Weaknesses
-
-*   **Tight Coupling (Currently):** The `main.rs` file directly imports and instantiates concrete agent types (`CodeAgent`, `WebAgent`, etc.). This creates tight coupling. If a new agent type is added, `main.rs` must be modified and recompiled.
-*   **Limited Advanced Features:** The cli lacks advanced features expected of robust developer tools:
-    *   No persistent configuration (e.g., loading API keys or default Ollama models from a `.kowalski.toml` config file).
-    *   No scripting or headless mode (ability to pass a prompt directly via command-line arguments and exit without entering the REPL).
-    *   No handling of rich output (everything is text; displaying images, tables, or formatted code blocks from the LLM could be improved).
-*   **Basic Customization:** The "Custom" agent option in the menu is currently a stub that instantiates a generic `TemplateAgent` without allowing the user to configure its tools or system prompt at runtime.
-
-## 5. Potential Improvements & Integration into Rebuild
-
-To elevate `kowalski-cli` in the new Kowalski architecture:
-
-*   **Dynamic Agent Loading (Crucial Refactoring Step):** Implement a configuration-driven agent registry. Instead of hardcoding `CodeAgent::new()`, the CLI should read a configuration file (e.g., YAML or TOML) that defines available agents, their system prompts, and the set of tools they possess. This allows users to create new "specialized" agents purely through configuration, without touching Rust code.
-*   **Robust Configuration Management:** Implement a proper configuration system (using a crate like `config` or `figment`) to manage API keys, Ollama server URLs, model preferences, and default agent behaviors. This includes reading from environment variables and config files.
-*   **Enhanced Interactivity:**
-    *   Integrate a richer readline library (like `rustyline`) to support command history (up/down arrows), auto-completion (for commands or file paths), and better line editing within the REPL.
-    *   Implement "slash commands" within the REPL (e.g., `/help`, `/clear_history`, `/switch_agent web`, `/set model llama3`) to allow users to control the CLI environment dynamically.
-*   **Scripting Mode:** Support headless execution. Allow users to run the CLI like: `kowalski -a code "Analyze the file main.rs for vulnerabilities"`. This makes Kowalski embeddable in CI/CD pipelines or bash scripts.
-*   **Rich Output Rendering:** Use libraries like `termimad` or `crossterm` to render Markdown properly in the terminal (syntax highlighting for code blocks, bold text, etc.), significantly improving the user experience.
-
-By implementing these improvements, the CLI transforms from a simple tech demo into a powerful, professional-grade development tool that fully exposes the flexibility of the underlying framework.
+Keep this file focused on the active CLI surface (`run`, `mcp`, `extension`, `agent-app`, config/db/doctor ops).
 
 ---
 

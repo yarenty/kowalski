@@ -11,5 +11,6 @@ Files here are **kept for history** (blog-style articles, old static site snapsh
 | `use_cases.md` | Enterprise pitch referencing **`kowalski-tools` / per-agent crates** topology; superseded by consolidated workspace docs. |
 | `index.html`, `roadmap.html`, `modules.html`, `architecture.html` | Legacy static HTML site; duplicated root README/ROADMAP and used broken/missing image paths. Prefer repo markdown + [`../README.md`](../README.md). |
 | `architeture.mermaid` | Old diagram (separate Web/Academic/Code/Data agent boxes). Filename typo; current architecture is in root README and [`OVERVIEW_1_1.md`](../OVERVIEW_1_1.md). |
+| `legacy_v1.1.0.md` | Consolidated historical AGENTS context moved out of active component guides. |
 
 To revive a document: copy it out of `purgatory/`, update naming and facts, then link it from [`../README.md`](../README.md).

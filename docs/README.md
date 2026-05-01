@@ -24,6 +24,13 @@ Use this folder for **design articles**, **architecture notes**, and **long-form
 | [`article_tooling.md`](./article_tooling.md) | Principles for designing tools for **`TemplateAgent`** and the tool chain. |
 | [`key_technology.md`](./key_technology.md) | Perspectives (technology, business, research) — updated for the **1.1.x** workspace layout. |
 
+## Architecture snapshots
+
+| Doc | Purpose |
+|-----|---------|
+| [`architecture_v02.md`](./architecture_v02.md) | Current delivered architecture (1.1.x baseline). |
+| [`architecture_v03_future.md`](./architecture_v03_future.md) | Future-state architecture with planned improvements. |
+
 ## Archive
 
 | Location | Purpose |
@@ -40,5 +47,12 @@ GitHub Actions runs **[Lychee](https://github.com/lycheeverse/lychee)** on all `
 
 ```bash
 cargo install lychee   # once
+cargo install just     # optional helper runner
 just docs-links        # or: ./scripts/docs-linkcheck.sh
 ```
+
+## Governance
+
+Documentation ownership, update policy, and mandatory closure rules:
+
+- [`GOVERNANCE.md`](./GOVERNANCE.md)
