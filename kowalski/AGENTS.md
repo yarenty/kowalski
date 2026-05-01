@@ -39,9 +39,9 @@
 ### SOLID Principles Integration
 Our codebase follows SOLID principles to ensure maintainable, scalable software.
 
-**Quick Reference**: See [`tools/solid_principles_quick_reference.md`](tools/solid_principles_quick_reference.md) for essential patterns and checklists.
+**Quick Reference**: See [`tools/solid_principles_quick_reference.md`](../tools/solid_principles_quick_reference.md) for essential patterns and checklists.
 
-**Detailed Guide**: See [`tools/solid_principles_guide.md`](tools/solid_principles_guide.md) for comprehensive examples and implementation strategies.
+**Detailed Guide**: See [`tools/solid_principles_guide.md`](../tools/solid_principles_guide.md) for comprehensive examples and implementation strategies.
 
 #### Core SOLID Guidelines for AI Development
 - **Single Responsibility (SRP)**: Before adding functionality, ask "Does this belong here?"
@@ -121,31 +121,30 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 5. Repository Structure
 
 ### Directory Layout
+See root **[`../README.md`](../README.md)** for the full tree. At a glance:
+
 ```
-kowalski/
-├── kowalski-core/           # Core agent abstractions, conversation, roles, config, toolchain
-├── kowalski-tools/          # Pluggable tools (code, data, web, document, etc.)
-├── kowalski-agent-template/ # Agent builder, base agent, and templates
-├── kowalski-federation/     # Multi-agent orchestration (WIP)
-├── kowalski-cli/            # Command-line interface
-├── kowalski-academic-agent/ # Academic research agent
-├── kowalski-code-agent/     # Code analysis agent
-├── kowalski-data-agent/     # Data analysis agent
-└── kowalski-web-agent/      # Web research agent
+kowalski/                         # repository root (you are in crate kowalski/)
+├── kowalski-core/                # TemplateAgent, tools, memory, MCP, federation
+├── kowalski-cli/                 # REPL, operators, extension, agent-app
+├── kowalski/                     # This crate: facade `lib` + `kowalski` HTTP binary
+├── kowalski-mcp-datafusion/      # Optional standalone MCP (DataFusion)
+├── ui/                           # Vue operator UI
+├── examples/                     # e.g. knowledge-compiler
+├── migrations/, docs/, tools/, resources/
 ```
+
+There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-federation` crates in this workspace; tools and federation live in **`kowalski-core`**.
 
 ### Component-Specific Documentation
-**⚠️ CRITICAL**: Each major component contains its own `AGENTS.md` file with detailed information:
+**⚠️ CRITICAL**: Read the `AGENTS.md` for the crate you touch:
 
-- [kowalski-core/AGENTS.md](kowalski-core/AGENTS.md)
-- [kowalski-tools/AGENTS.md](kowalski-tools/AGENTS.md)
-- [kowalski-agent-template/AGENTS.md](kowalski-agent-template/AGENTS.md)
-- [kowalski-federation/AGENTS.md](kowalski-federation/AGENTS.md)
-- [kowalski-cli/AGENTS.md](kowalski-cli/AGENTS.md)
-- [kowalski-academic-agent/AGENTS.md](kowalski-academic-agent/AGENTS.md)
-- [kowalski-code-agent/AGENTS.md](kowalski-code-agent/AGENTS.md)
-- [kowalski-data-agent/AGENTS.md](kowalski-data-agent/AGENTS.md)
-- [kowalski-web-agent/AGENTS.md](kowalski-web-agent/AGENTS.md)
+- [Root AGENTS.md](../AGENTS.md)
+- [kowalski-core/AGENTS.md](../kowalski-core/AGENTS.md)
+- [kowalski-cli/AGENTS.md](../kowalski-cli/AGENTS.md)
+- [kowalski/AGENTS.md](./AGENTS.md) (this crate)
+- [kowalski-mcp-datafusion/AGENTS.md](../kowalski-mcp-datafusion/AGENTS.md)
+- [ui/AGENTS.md](../ui/AGENTS.md)
 
 **Rule**: Before making changes to any component, **always read its specific AGENTS.md first** to understand:
 - Component architecture and responsibilities
@@ -155,9 +154,9 @@ kowalski/
 - Technology-specific considerations
 
 ### Service Architecture
-- **Agent Workers**: Independent processing units
-- **Federation Hub**: Orchestrates communication and tasks (WIP)
-- **Tool Proxies**: Interfaces to external services and utilities
+- **`TemplateAgent`** and tools live in **`kowalski-core`**; this crate re-exports **`core`** and optionally **`cli`**.
+- **HTTP server** (`kowalski` binary): **`/api/*`** for UI and automation.
+- **MCP**: client/hub in core; optional **`kowalski-mcp-datafusion`** server for heavy SQL.
 
 ---
 
@@ -239,7 +238,7 @@ Component-specific files contain crucial information about:
 - Integration patterns with other services
 
 ### Rule 1: Create Plan First
-Never start a complex task without creating a `task.md` file. Use the template in `tools/task_template.md`.
+Never start a complex task without creating a `task.md` file. Use the template in [`tools/task_template.md`](../tools/task_template.md).
 
 **When to create a task plan:**
 - Multi-step tasks (3+ steps)
@@ -283,6 +282,9 @@ if action_failed:
     next_action != same_action
 ```
 Track what you tried. Mutate the approach. Learn from failures.
+
+### Rule 7: Refactoring is not done until documentation is updated
+Any refactor or behavior change must ship with **updated `AGENTS.md` / `README.md` / `CHANGELOG.md` / `docs/`** as appropriate—same PR or stacked immediately after. **Documentation is mandatory closure work.**
 
 ### The 3-Strike Error Protocol
 
@@ -355,7 +357,7 @@ See [`../ROADMAP.md`](../ROADMAP.md).
 
 ## 1. Purpose
 
-The `kowalski` crate acts as a facade, re-exporting the functionality of other crates within the Kowalski workspace (e.g., `kowalski-core`, `kowalski-tools`, specialized agents, etc.). Its primary purpose is to provide a single, unified, and easy-to-use API for developers who want to integrate the Kowalski framework into their applications. By using feature flags, it allows users to compile only the necessary components, promoting a lean and customizable dependency.
+The `kowalski` crate acts as a facade, re-exporting **`kowalski-core`** (as **`core`**) and optionally **`kowalski-cli`** with the **`cli`** feature. There are no separate specialized-agent crates in the workspace; use **`TemplateAgent`**, config, and tools instead.
 
 ## 2. Structure
 
@@ -396,7 +398,7 @@ By focusing on these improvements, the `kowalski` facade can effectively serve a
 ## 10. Common AI Tasks
 
 ### Code Review Checklist
-- [ ] Follows SOLID principles (use [quick reference](tools/solid_principles_quick_reference.md))
+- [ ] Follows SOLID principles (use [quick reference](../tools/solid_principles_quick_reference.md))
 - [ ] Maintains existing architectural patterns
 - [ ] Includes appropriate tests
 - [ ] Updates relevant documentation

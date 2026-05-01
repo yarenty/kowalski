@@ -3,20 +3,22 @@
 //! This crate provides a comprehensive framework for building AI agents with various capabilities.
 //! It acts as a facade, re-exporting functionality from the other crates in the `kowalski` workspace.
 //!
-//! ## Core Components
-//! - **Core**: Basic agent infrastructure and types (`kowalski-core`)
-//! - **Tools**: Various tools for web scraping, data processing, and more (`kowalski-tools`)
+//! ## Core components
+//! - **`kowalski_core`**: Re-exported as `kowalski::core` — `TemplateAgent`, tools, memory, MCP, federation types.
+//! - **Tools** live inside `kowalski-core` (not a separate `kowalski-tools` crate).
 //!
-//! ## Optional Features
-//! - **`cli`**: Command-line interface (`kowalski-cli`)
+//! ## Optional features
+//! - **`cli`**: `kowalski-cli` as `kowalski::cli`
+//! - **`postgres`**: Postgres / pgvector paths in `kowalski-core`
+//! - **`full`**: `cli` + `postgres`
 //!
 //! ## Usage
 //!
-//! Add `kowalski` to your `Cargo.toml` and enable the features you need:
+//! Add `kowalski` to your `Cargo.toml` and enable the features you need (see the workspace `Cargo.toml` for the current version).
 //!
 //! ```toml
 //! [dependencies]
-//! kowalski = { version = "0.5.2" }
+//! kowalski = { version = "1.1.0" }
 //! ```
 //!
 //! ```rust,no_run

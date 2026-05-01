@@ -17,6 +17,10 @@ This crate is a **standalone MCP HTTP server** (not the main `kowalski` agent). 
 - Keep **DataFusion** and heavy deps **only** in this crate’s `Cargo.toml` (not the workspace root).
 - Prefer small, testable pure functions for SQL/schema helpers; keep Axum handlers thin.
 
+## Documentation closure (mandatory)
+
+After any refactor or behavior change in this crate, update **[`README.md`](./README.md)**, **[`ROADMAP.md`](./ROADMAP.md)**, root **[`CHANGELOG.md`](../CHANGELOG.md)** when user-visible, and **[`../docs/`](../docs/README.md)** if MCP/DataFusion architecture changes. **Shipping code without updating docs is incomplete work.**
+
 ## Related docs
 
 - [`README.md`](./README.md)  

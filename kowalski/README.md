@@ -1,107 +1,58 @@
-# Kowalski
+# Kowalski (facade crate)
 
-A comprehensive Rust-based agent framework for interacting with Ollama models and building AI-powered applications.
+Rust workspace crate that re-exports **[`kowalski-core`](../kowalski-core/README.md)** and optional **[`kowalski-cli`](../kowalski-cli/README.md)** so dependents can use one package name. Business logic lives in **`kowalski-core`** (`TemplateAgent`, tools, memory, MCP, federation).
 
 ## Version
 
-**Crate version 1.1.0**
+**Crate version 1.1.0** (see workspace [`Cargo.toml`](../Cargo.toml)).
 
-## Horde changes in 1.1.0 (since 1.0.0)
+## Features
 
-- Workspace evolves from the 1.0.0 baseline with a horde-oriented Knowledge Compiler app flow.
-- Federation delegate/worker and task-progress pathways are now first-class in app orchestration workflows.
+| Feature | Effect |
+|---------|--------|
+| *(default)* | `kowalski-core` only, re-exported as `kowalski::core` plus convenience `pub use` entries ([`src/lib.rs`](src/lib.rs)). |
+| `cli` | Pulls in **`kowalski-cli`** as `kowalski::cli`. |
+| `postgres` | Enables **`kowalski-core/postgres`** (SQL memory, pgvector helpers). |
+| `full` | `cli` + `postgres`. |
 
-## Overview
+There are **no** separate `kowalski-academic-agent`, `kowalski-tools`, or `kowalski-web-agent` crates in this repository—compose behavior with **`TemplateAgent`**, configuration, and tools.
 
-Kowalski is a modular framework that provides everything you need to build sophisticated AI agents. The framework is organized into specialized crates that can be used independently or together.
+## Binary: HTTP API
 
-## Architecture
+This crate builds the **`kowalski`** executable (**`/api/*`** for the Vue UI and integrations). See the root **[README.md](../README.md)** for run instructions (`cargo run -p kowalski`).
 
-### Core Components
-- **`kowalski-core`**: Basic agent infrastructure, types, and utilities
-- **`kowalski-agent-template`**: Templates and builders for creating custom agents
-- **`kowalski-tools`**: Collection of tools for web scraping, data processing, and more
-- **`kowalski-federation`**: Multi-agent coordination and communication
-
-### Specialized Agents
-- **`kowalski-academic-agent`**: Research and academic paper analysis
-- **`kowalski-code-agent`**: Code analysis, refactoring, and generation
-- **`kowalski-data-agent`**: Data analysis and processing (optional feature)
-- **`kowalski-web-agent`**: Web research and information gathering
-
-## Installation
-
-Add to your `Cargo.toml`:
+## Usage (`Cargo.toml`)
 
 ```toml
 [dependencies]
 kowalski = "1.1.0"
 
-# Optional: CLI + Postgres client stack
+# Optional: CLI + Postgres-capable core
 kowalski = { version = "1.1.0", features = ["full"] }
 ```
 
-## Quick Start
+## Example (Rust API)
 
 ```rust
-use kowalski::{Agent, AgentBuilder, Result};
+use kowalski::{Config, TemplateAgent};
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    // Create a basic agent
-    let agent = AgentBuilder::new()
-        .with_model("llama2")
-        .with_system_prompt("You are a helpful AI assistant.")
-        .build()?;
-
-    // Send a message
-    let response = agent.send_message("Hello, how are you?").await?;
-    println!("Response: {}", response.content);
-
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = Config::default();
+    let model = config.ollama.model.clone();
+    let mut agent = TemplateAgent::new(config).await?;
+    let conv = agent.start_conversation(&model);
+    let reply = agent.chat_with_history(&conv, "Hello", None).await?;
+    println!("{reply}");
     Ok(())
 }
 ```
 
-## Using Specialized Agents
-
-### Academic Research
-```rust
-use kowalski::academic_agent::AcademicAgent;
-
-let agent = AcademicAgent::new("llama2")?;
-let analysis = agent.analyze_paper("path/to/paper.pdf").await?;
-```
-
-### Code Analysis
-```rust
-use kowalski::code_agent::CodeAgent;
-
-let agent = CodeAgent::new("codellama")?;
-let refactored = agent.refactor_code("src/main.rs").await?;
-```
-
-### Web Research
-```rust
-use kowalski::web_agent::WebAgent;
-
-let agent = WebAgent::new("llama2")?;
-let research = agent.research_topic("Rust async programming").await?;
-```
-
-## Features
-
-- **Modular Design**: Use only the components you need
-- **Async/Await**: Built on Tokio for high-performance async operations
-- **Tool Integration**: Rich ecosystem of tools for various tasks
-- **Multi-Agent Coordination**: Build complex systems with multiple agents
-- **Extensible**: Easy to add custom tools and agents
-
 ## Documentation
 
-- [API Documentation](https://docs.rs/kowalski)
-- [Examples](https://github.com/yarenty/kowalski/tree/main/examples)
-- [Contributing](../CONTRIBUTING.md)
+- [docs.rs/kowalski](https://docs.rs/kowalski)
+- [Workspace README](../README.md) · [AGENTS.md](./AGENTS.md) · [CONTRIBUTING.md](../CONTRIBUTING.md)
 
 ## License
 
-MIT License - see [LICENSE](../LICENSE) file for details. 
+MIT — see [LICENSE](../LICENSE).

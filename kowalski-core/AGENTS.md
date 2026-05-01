@@ -39,9 +39,9 @@
 ### SOLID Principles Integration
 Our codebase follows SOLID principles to ensure maintainable, scalable software.
 
-**Quick Reference**: See [`tools/solid_principles_quick_reference.md`](tools/solid_principles_quick_reference.md) for essential patterns and checklists.
+**Quick Reference**: See [`tools/solid_principles_quick_reference.md`](../tools/solid_principles_quick_reference.md) for essential patterns and checklists.
 
-**Detailed Guide**: See [`tools/solid_principles_guide.md`](tools/solid_principles_guide.md) for comprehensive examples and implementation strategies.
+**Detailed Guide**: See [`tools/solid_principles_guide.md`](../tools/solid_principles_guide.md) for comprehensive examples and implementation strategies.
 
 #### Core SOLID Guidelines for AI Development
 - **Single Responsibility (SRP)**: Before adding functionality, ask "Does this belong here?"
@@ -123,30 +123,25 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 
 ### Directory Layout
 ```
-kowalski/
-├── kowalski-core/           # Core agent abstractions, conversation, roles, config, toolchain
-├── kowalski-tools/          # Pluggable tools (code, data, web, document, etc.)
-├── kowalski-agent-template/ # Agent builder, base agent, and templates
-├── kowalski-federation/     # Multi-agent orchestration (WIP)
-├── kowalski-cli/            # Command-line interface
-├── kowalski-academic-agent/ # Academic research agent
-├── kowalski-code-agent/     # Code analysis agent
-├── kowalski-data-agent/     # Data analysis agent
-└── kowalski-web-agent/      # Web research agent
+kowalski/                         # repository root (you are in kowalski-core/)
+├── kowalski-core/                # This crate: TemplateAgent, tools, memory, MCP, federation
+├── kowalski-cli/                 # REPL, operators, extension, agent-app
+├── kowalski/                     # Facade + HTTP server binary
+├── kowalski-mcp-datafusion/      # Optional MCP server (DataFusion)
+├── ui/, examples/, migrations/, docs/, tools/, resources/
 ```
 
-### Component-Specific Documentation
-**⚠️ CRITICAL**: Each major component contains its own `AGENTS.md` file with detailed information:
+Tools and federation types live **in this crate** (`src/tools`, `src/federation`, …)—not in separate `kowalski-tools` / `kowalski-federation` packages.
 
-- [kowalski-core/AGENTS.md](kowalski-core/AGENTS.md)
-- [kowalski-tools/AGENTS.md](kowalski-tools/AGENTS.md)
-- [kowalski-agent-template/AGENTS.md](kowalski-agent-template/AGENTS.md)
-- [kowalski-federation/AGENTS.md](kowalski-federation/AGENTS.md)
-- [kowalski-cli/AGENTS.md](kowalski-cli/AGENTS.md)
-- [kowalski-academic-agent/AGENTS.md](kowalski-academic-agent/AGENTS.md)
-- [kowalski-code-agent/AGENTS.md](kowalski-code-agent/AGENTS.md)
-- [kowalski-data-agent/AGENTS.md](kowalski-data-agent/AGENTS.md)
-- [kowalski-web-agent/AGENTS.md](kowalski-web-agent/AGENTS.md)
+### Component-Specific Documentation
+**⚠️ CRITICAL**: Read the `AGENTS.md` for the component you change:
+
+- [Root AGENTS.md](../AGENTS.md)
+- [kowalski-core/AGENTS.md](./AGENTS.md) (this crate)
+- [kowalski-cli/AGENTS.md](../kowalski-cli/AGENTS.md)
+- [kowalski/AGENTS.md](../kowalski/AGENTS.md)
+- [kowalski-mcp-datafusion/AGENTS.md](../kowalski-mcp-datafusion/AGENTS.md)
+- [ui/AGENTS.md](../ui/AGENTS.md)
 
 **Rule**: Before making changes to any component, **always read its specific AGENTS.md first** to understand:
 - Component architecture and responsibilities
@@ -156,9 +151,8 @@ kowalski/
 - Technology-specific considerations
 
 ### Service Architecture
-- **Agent Workers**: Independent processing units
-- **Federation Hub**: Orchestrates communication and tasks (WIP)
-- **Tool Proxies**: Interfaces to external services and utilities
+- **`TemplateAgent`**, tools, memory, MCP client/hub, and federation primitives are implemented **here**.
+- **HTTP** and CLI binaries live in other crates; this library is the core dependency.
 
 ---
 
@@ -240,7 +234,7 @@ Component-specific files contain crucial information about:
 - Integration patterns with other services
 
 ### Rule 1: Create Plan First
-Never start a complex task without creating a `task.md` file. Use the template in `tools/task_template.md`.
+Never start a complex task without creating a `task.md` file. Use the template in [`tools/task_template.md`](../tools/task_template.md).
 
 **When to create a task plan:**
 - Multi-step tasks (3+ steps)
@@ -284,6 +278,9 @@ if action_failed:
     next_action != same_action
 ```
 Track what you tried. Mutate the approach. Learn from failures.
+
+### Rule 7: Refactoring is not done until documentation is updated
+Any refactor or API change must include **updated docs** in the same delivery: **`AGENTS.md`**, **`README.md`**, **`CHANGELOG.md`**, and **`docs/`** when behavior or architecture changes. **Documentation updates are mandatory task closure.**
 
 ### The 3-Strike Error Protocol
 
@@ -392,11 +389,11 @@ The `kowalski-core/src` directory is well-organized into logical modules:
     *   This is a critical architectural flaw for a multi-agent framework.
 *   **Tool Management Inconsistencies:**
     *   The `tool_chain.rs` crate defines a `ToolChain` that is functionally a simple tool registry, not a chain, leading to misleading naming and limited capabilities.
-    *   The `ToolManager` in `kowalski-tools` (which is a better design) is not integrated or used by `BaseAgent`, indicating a lack of centralized tool management.
+    *   Tool registration remains split between early **`ToolChain`** patterns and richer helpers in **`src/tools/`**—consolidation over time is still desirable.
     *   Hardcoded tool-chaining logic exists directly within `agent/mod.rs` (`chat_with_tools`), which is inflexible and duplicates concerns.
 *   **LLM Provider Coupling:** The `ModelManager` is tightly coupled to Ollama, lacking a generic `ModelProvider` trait or similar abstraction to easily integrate other LLM services (e.g., OpenAI, Anthropic).
 *   **JSON Parsing Fragility:** The logic for extracting JSON tool calls from raw LLM responses is somewhat brittle (simple `{` and `}` matching), which could lead to parsing failures with complex or malformed LLM outputs.
-*   **Redundant Type Definitions:** Duplication of `ToolParameter` and `ParameterType` definitions exists between `kowalski-core` and `kowalski-tools`, which should be resolved to avoid confusion and maintain a single source of truth.
+*   **Redundant type definitions:** Historical duplication of tool parameter types should stay consolidated in **`kowalski-core`** (there is no separate `kowalski-tools` crate anymore).
 
 ## 5. Potential Improvements & Integration into Rebuild
 
@@ -404,7 +401,7 @@ To align with a "total rebuild" aiming for "100x better than OpenClaw" while mai
 
 *   **Dependency Injection for Memory:** Refactor memory providers to use dependency injection (e.g., passing `Arc<dyn MemoryProvider>` or `Box<dyn MemoryProvider>`) to eliminate singletons, enable independent agent instances, and facilitate testing. This is the highest priority.
 *   **Unified and Flexible Tool Management:**
-    *   Develop a single, robust `ToolManager` (similar to the one in `kowalski-tools`) within `kowalski-core` that handles tool registration, discovery, validation, and execution.
+    *   Develop a single, robust `ToolManager` within `kowalski-core` that handles tool registration, discovery, validation, and execution.
     *   Introduce a flexible tool-chaining or "tool-orchestration" mechanism (e.g., using a directed acyclic graph or rule-based system) that is configurable and not hardcoded.
     *   Implement dynamic tool definition generation (e.g., OpenAPI-style JSON schema) that can be passed to LLMs, removing the need for manual prompt updates.
 *   **LLM Provider Abstraction:** Introduce a `LLMProvider` trait (or similar) to abstract different LLM APIs, allowing for easy integration of OpenAI, Anthropic, Gemini, etc., alongside Ollama.
@@ -419,7 +416,7 @@ These changes will make `kowalski-core` more robust, flexible, and scalable, lay
 ## 10. Common AI Tasks
 
 ### Code Review Checklist
-- [ ] Follows SOLID principles (use [quick reference](tools/solid_principles_quick_reference.md))
+- [ ] Follows SOLID principles (use [quick reference](../tools/solid_principles_quick_reference.md))
 - [ ] Maintains existing architectural patterns
 - [ ] Includes appropriate tests
 - [ ] Updates relevant documentation

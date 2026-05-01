@@ -13,13 +13,6 @@ exclude_path = [
   ".git",
   # Archived articles / HTML; relative assets not maintained
   "docs/purgatory",
-  # Legacy in-file links to removed multi-crate layout (see root AGENTS.md for current tree)
-  "AGENTS.md",
-  "kowalski/AGENTS.md",
-  "kowalski-cli/AGENTS.md",
-  "kowalski-core/AGENTS.md",
-  "kowalski-mcp-datafusion/AGENTS.md",
-  "ui/AGENTS.md",
 ]
 
 # README references this PNG; repo has `architecture_v01.excalidraw` — export or refresh when updating the diagram

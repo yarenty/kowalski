@@ -122,24 +122,31 @@ Early work used **Qdrant** as a **proof of concept** for semantic (vector) memor
 
 ### Directory Layout
 ```
-kowalski/
-├── kowalski-core/           # Agents, LLM, memory, MCP, federation (in-crate)
-├── kowalski-cli/            # REPL, operators
-├── kowalski/                # `serve` HTTP API
-├── kowalski-mcp-datafusion/ # Optional MCP server (DataFusion SQL)
-├── ui/                      # Vue 3 operator UI (Vite)
+kowalski/                         # repository root
+├── kowalski-core/                # TemplateAgent, tools, memory, MCP client, federation types
+├── kowalski-cli/                 # REPL, operators, extension run, agent-app
+├── kowalski/                     # Facade crate + HTTP server binary (`kowalski` → `/api/*`)
+├── kowalski-mcp-datafusion/      # Optional standalone MCP server (DataFusion over files)
+├── ui/                           # Vue 3 operator UI (Vite)
+├── examples/                     # App patterns (e.g. knowledge-compiler horde)
 ├── migrations/
-│   ├── postgres/            # SQL migrations (Tier 2/3 + federation tables)
-│   └── legacy_prompts/      # Salvaged prompts from legacy specialized agents
-├── docs/                    # Architecture articles and design notes
-└── resources/               # Configs, tokenizer, etc.
+│   ├── postgres/                 # SQL migrations (memory + federation)
+│   └── legacy_prompts/           # Salvaged prompts from removed specialized-agent crates
+├── docs/                         # Design articles (see docs/README.md)
+├── tools/                        # Repo tooling docs (SOLID guides, task templates) — not a Rust crate
+└── resources/                    # Configs, tokenizer, etc.
 ```
 
+Personas and specialized behaviors are composed via **config + `TemplateAgent` + tools + prompts**, not separate `kowalski-*-agent` crates.
+
 ### Component-Specific Documentation
-**⚠️ CRITICAL**: Each major component contains its own `AGENTS.md` file with detailed information:
+**⚠️ CRITICAL**: Each active crate / UI package has its own `AGENTS.md`:
 
 - [kowalski-core/AGENTS.md](kowalski-core/AGENTS.md)
 - [kowalski-cli/AGENTS.md](kowalski-cli/AGENTS.md)
+- [kowalski/AGENTS.md](kowalski/AGENTS.md) (facade + HTTP server crate)
+- [kowalski-mcp-datafusion/AGENTS.md](kowalski-mcp-datafusion/AGENTS.md)
+- [ui/AGENTS.md](ui/AGENTS.md)
 
 **Rule**: Before making changes to any component, **always read its specific AGENTS.md first** to understand:
 - Component architecture and responsibilities
@@ -149,8 +156,9 @@ kowalski/
 - Technology-specific considerations
 
 ### Service Architecture
-- **Agent Workers**: Independent processing units utilizing the `TemplateAgent` structure
-- **Tool Proxies**: Interfaces to external services and utilities (via upcoming MCP integration)
+- **Agent workers**: `TemplateAgent` + configured tools (built-in and MCP-backed).
+- **HTTP API**: `kowalski` binary exposes `/api/*` for the Vue UI and integrations.
+- **Optional MCP**: in-process client/hub in `kowalski-core`; optional **`kowalski-mcp-datafusion`** standalone server for SQL/DataFusion.
 
 ---
 
@@ -176,7 +184,7 @@ kowalski/
 2. **Design**: Plan implementation following SOLID principles
 3. **Implementation**: Write code in small, testable increments
 4. **Testing**: Unit tests, integration tests, and manual validation
-5. **Documentation**: Update relevant docs and component guides
+5. **Documentation**: Update relevant docs and component guides (**Rule 7**: refactoring/features are **not done** until docs match—`AGENTS.md`, `README.md`, `CHANGELOG.md`, `docs/` as needed)
 6. **Review**: Code review and architectural compliance check
 
 ### Build and Deployment
@@ -232,7 +240,7 @@ Component-specific files contain crucial information about:
 - Integration patterns with other services
 
 ### Rule 1: Create Plan First
-Never start a complex task without creating a `task.md` file. Use the template in `tools/task_template.md`.
+Never start a complex task without creating a `task.md` file. Use the template in [`tools/task_template.md`](tools/task_template.md).
 
 **When to create a task plan:**
 - Multi-step tasks (3+ steps)
@@ -276,6 +284,9 @@ if action_failed:
     next_action != same_action
 ```
 Track what you tried. Mutate the approach. Learn from failures.
+
+### Rule 7: Refactoring is not done until documentation is updated
+A refactor, API move, CLI flag change, or behavior change is **incomplete** until docs match reality in the **same** change (or an immediately stacked PR): update the affected **`AGENTS.md`** and **`README.md`**, root or crate **`CHANGELOG.md`** when the change is user-visible, and **`docs/`** when architecture or operator workflows shift. **Skipping documentation is skipping part of the task.**
 
 ### The 3-Strike Error Protocol
 
