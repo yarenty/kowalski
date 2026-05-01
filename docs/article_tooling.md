@@ -4,7 +4,7 @@ We are in the Cambrian explosion of AI agents. Every day, new frameworks and mod
 
 Giving a brilliant AI a poorly designed tool is like handing a master watchmaker a rusty, oversized wrench. The potential is there, but the instrument is wrong for the job, leading to frustration, errors, and ultimately, failure. To build truly robust and reliable agents, we must treat tool design as a first-class citizen.
 
-This guide outlines the key principles for crafting exceptional tools, using the `kowalski-data-agent`—a high-performance agent built in Rust—as our guiding example.
+This guide outlines the key principles for crafting exceptional tools for **`TemplateAgent`** in **`kowalski-core`**, using **CSV / data analysis tools** as the running example (the old standalone “data agent” crate layout is gone—capabilities are **tools + prompts + config** now).
 
 ---
 
@@ -17,7 +17,7 @@ An LLM is the ultimate literal user. It cannot infer your intent or guess what a
 *   **Be Explicit:** Use descriptive parameter names (`file_path: String`, `query: String`) instead of cryptic abbreviations (`p: String`, `q: String`).
 *   **Document Everything:** The description passed to the agent must be comprehensive. Explain what the tool does, what each parameter is for, the expected format, and what it returns. The LLM uses this information to decide if and how to use your tool.
 
-**Example (`kowalski-data-agent`):**
+**Example (data-oriented tool behind `TemplateAgent`):**
 
 **Bad:** `fn analyze(p: String)`
 
@@ -43,20 +43,18 @@ When a tool fails, it's an opportunity for the agent to self-correct—but only 
 
 The LLM's context window is its most precious resource. A tool that dumps a gigabyte of raw data into it is committing a cardinal sin. The primary job of many tools is not just to fetch data, but to **summarize and condense it**.
 
-This is the core function of the `kowalski-data-agent`. It doesn't return the CSV content; it returns a compact, statistical summary. This gives the agent the essence of the data without overwhelming its context.
+This is the core function of a **well-designed data tool**: it does not dump the raw CSV into the model; it returns a compact, statistical summary unless the agent explicitly needs more.
 
-**The Future: In-Tool Querying with DataFusion**
+**Optional: SQL-oriented paths with DataFusion**
 
-The next evolution for the `kowalski-data-agent` is the integration of query engines like [Apache DataFusion](https://arrow.apache.org/datafusion/). This takes summarization to the next level.
+For heavier tabular work, operators can attach the optional **`kowalski-mcp-datafusion`** MCP server so the agent issues **SQL** against registered files; see that crate’s README. The pattern is the same: **small structured results** back into **`TemplateAgent`**, not whole files into the prompt.
 
-Instead of a generic summary, the agent can pass a SQL query directly to the tool. The tool executes the query on the dataset *in-memory* and returns only the precise result. The full dataset never touches the LLM's context window.
+**Example flow (illustrative):**
+1.  **Agent:** needs the average salary for Engineering.
+2.  **Tool call:** run an aggregate over the dataset (via your CSV tool or MCP SQL tool).
+3.  **Tool response:** `{"status": "success", "data": [{"avg_salary": 85000.0}]}`
 
-**Example Flow:**
-1.  **Agent's Thought:** "I need to find the average salary for the Engineering department."
-2.  **Agent's Action:** Calls `data_agent.query(sql="SELECT AVG(salary) FROM employees WHERE department = 'Engineering'")`.
-3.  **Tool's Response:** `{"status": "success", "data": [{"AVG(salary)": 85000.0}]}`
-
-This is the pinnacle of context efficiency.
+That keeps context usage bounded.
 
 ### 5. The Art of Verbalization
 

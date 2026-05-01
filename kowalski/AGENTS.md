@@ -55,7 +55,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: kowalski  
-**Release**: **1.0.0** — thin facade over **`kowalski-core`** with optional **`kowalski-cli`** (`cli` / `full` features).  
+**Release**: **1.1.0** — thin facade over **`kowalski-core`** with optional **`kowalski-cli`** (`cli` / `full` features).  
 **Purpose**: Optional unified dependency entry for apps that want the workspace crates from one package name.  
 **Core Value Proposition**: Modular, extensible, and distributed architecture supporting standalone and federated deployments with privacy-preserving capabilities.  
 **Primary Mechanism**: Multi-agent orchestration and pluggable tools interfacing with local (Ollama) and remote LLMs.  
@@ -336,7 +336,7 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-**1.0.0**: Re-exports / bundles **`kowalski-core`**; optional **`cli`** feature pulls in **`kowalski-cli`**. Prefer depending on **`kowalski-core`** / **`kowalski-cli`** directly for most new code.
+**1.1.0**: Re-exports / bundles **`kowalski-core`**; optional **`cli`** feature pulls in **`kowalski-cli`**. Prefer depending on **`kowalski-core`** / **`kowalski-cli`** directly for most new code.
 
 ### Roadmap
 See [`../ROADMAP.md`](../ROADMAP.md).

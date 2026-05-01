@@ -1,16 +1,24 @@
 # kowalski-core roadmap
 
-Crate version **1.0.0** (see `Cargo.toml`). For the whole workspace, see **[`../ROADMAP.md`](../ROADMAP.md)**.
+Crate version **1.1.0** (see `Cargo.toml`). For the whole workspace, see **[`../ROADMAP.md`](../ROADMAP.md)**.
 
 ## Near term
+
 - [ ] Broader integration tests (mock LLM / contract tests for tool JSON edge cases).
 - [ ] Optional: additional `LLMProvider` backends as thin adapters only when needed.
 
 ## Medium term
+
 - [ ] Memory: conversation search / indexing (if kept in-tree; align with [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../docs/DESIGN_MEMORY_AND_DEPENDENCIES.md)).
 - [ ] Federation: further operator tuning (TTL jobs, auth on register/deregister) as needed.
 
+## Done (1.1.0)
+
+- [x] Primitives used by **Knowledge Compiler** / horde apps: **`TemplateAgent`**, tool execution loop, **`POST /api/chat`** **`use_tools`** guardrails for deterministic app calls.
+- [x] Federation types and HTTP-facing flows consumed by **`agent-app`** delegate/worker paths (with **`kowalski`** as the HTTP surface).
+
 ## Done (1.0.0 baseline)
+
 - [x] `BaseAgent` / `TemplateAgent`, `chat_with_tools`, streaming helpers.
 - [x] MCP client (Streamable HTTP / SSE), hub + tool proxies.
 - [x] Optional Postgres + pgvector path; graph status + AGE Cypher helpers behind `postgres` feature.

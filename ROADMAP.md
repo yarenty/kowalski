@@ -12,14 +12,21 @@
 - Federation delegate/worker path with task progress publishing and artifact-bearing task results.
 - UI federation timeline updates for operator visibility during horde runs.
 
+## Horde & app extensions (1.1.0)
+
+- [x] **Knowledge Compiler** example (`examples/knowledge-compiler`) — ingest → compile → ask → lint, Obsidian-style **`wiki/`** outputs.
+- [x] Markdown agent definitions (`main-agent.md`, `agents/*.md`) + CLI validation before run.
+- [x] **`kowalski-cli`**: `extension` dispatch + **`agent-app`** (list / validate / run / delegate / worker / proof).
+- [x] Federation **task progress** + **task results** for delegate/worker apps (artifact paths in outcomes).
+
 ## Modular architecture (1.1.0 baseline)
 
 **Design emphasis:** Prefer **simple, robust** components and **few required services**—see [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md) (note on **Qdrant** as early **PoC** for vector memory).
 
 Workspace layout:
 - **kowalski-core**: `TemplateAgent`, LLM providers, memory, MCP client/hub, federation types; optional **Postgres** + **pgvector** + **Apache AGE** helpers.
-- **kowalski-cli**: REPL and operator commands.
-- **kowalski**: **`serve`** HTTP API for the Vue UI.
+- **kowalski-cli**: REPL and operator commands (`run`, `config`, `db`, `doctor`, `mcp`, **`extension`**, **`agent-app`**).
+- **kowalski**: HTTP API server binary (`kowalski`, default `127.0.0.1:3456`) — **`/api/*`** for the Vue UI and integrations.
 - **kowalski-mcp-datafusion**: standalone **MCP** Streamable HTTP server (DataFusion over CSV/Parquet).
 - **ui**: Vue 3 + Vite operator UI (Chat / MCP / federation / graph status).
 - **Legacy prompts**: `migrations/legacy_prompts/` (staged).
@@ -80,6 +87,7 @@ Workspace layout:
 - [x] Vue operator UI (`ui/`) + **`kowalski`** HTTP API
 - [x] REST-style JSON API under `/api/*` (chat, stream, MCP, federation, graph)
 - [x] WebSocket `/api/federation/ws` (and SSE stream) where enabled
+- [x] Federation UI: horde-style run flow + **task progress** timeline for app delegates (1.1.0)
 - [ ] Export conversations (PDF, HTML, Markdown) (planned)
 - [ ] Slack/Discord/Teams integration (planned)
 - [x] CI: GitHub Actions (Postgres pgvector + dedicated **Apache AGE** job)

@@ -26,6 +26,12 @@ All notable changes to this project will be documented in this file, or at least
 - **Documentation line moved to 1.1.0** across workspace and crate READMEs/roadmaps, with explicit summary of what changed between `1.0.0` and `1.1.0` for the horde workflow.
 - **Knowledge Compiler runtime UX** now supports natural-language extension entry, serialized sub-agent execution trace output, and clearer end-of-run artifact reporting.
 
+### Documentation
+
+- Added **`docs/README.md`** (index), **`docs/OVERVIEW_1_1.md`** (1.1.x narrative), and **`docs/purgatory/`** for superseded articles and legacy static HTML.
+- Updated **`docs/article_memory.md`**, **`docs/memory_architecture.md`**, **`docs/article_tooling.md`**, and **`docs/key_technology.md`** for **`TemplateAgent`** / **`kowalski-core`** naming and current memory stack wording.
+- Corrected **per-crate `ROADMAP.md`** files (version **1.1.0**; CLI vs **`kowalski`** HTTP responsibilities).
+
 
 ## [1.0.0] - 2026-04-12
 

@@ -35,7 +35,7 @@ graph TD
     subgraph Memory Tiers
         T1[Tier 1: Working Memory <br> In-Memory Struct, e.g., Vec<Message>]
         T2[Tier 2: Episodic Buffer <br> Embedded SQLite file]
-        T3[Tier 3: Long-Term Semantic Store <br> Vector DB + Graph DB]
+        T3[Tier 3: Semantic Store <br> In-process vectors + relation map; optional Postgres/pgvector]
     end
 
     B <--> T1;
@@ -83,8 +83,8 @@ This is the most critical process. It runs periodically (e.g., every few hours) 
     *   **Fact Extraction:** Identify and extract key entities, facts, and relationships, structuring them as triplets (e.g., `(subject, predicate, object)` -> `('Kowalski', 'is_built_on', 'Rust')`).
 3.  **Embed & Store:**
     *   The summary and each extracted fact are converted into vector embeddings.
-    *   These embeddings, along with the original text, are stored in the **Vector Database (Tier 3)**.
-    *   The structured triplets are stored in the **Graph Database (Tier 3)**.
+    *   These embeddings, along with the original text, are stored in the **semantic / vector tier** (default **in-process**; **Postgres + pgvector** when configured—see [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](DESIGN_MEMORY_AND_DEPENDENCIES.md)).
+    *   The structured triplets are stored in the **relation map** (in-process `HashMap` / optional richer backends—same doc).
 4.  **Mark as Processed:** The conversation in Tier 2 is marked as "consolidated" so it isn't processed again.
 
 ### Process 2: The Recall Engine (Retrieval)
@@ -92,8 +92,8 @@ When the agent needs to access its long-term memory to inform a response, it use
 
 1.  **Query Formulation:** The agent's core logic formulates a query based on the current conversation (e.g., "User is asking about deploying Kowalski on AWS").
 2.  **Hybrid Search:** The Recall Engine performs a parallel search:
-    *   **Semantic Search:** It converts the query into an embedding and searches the Vector DB for the top-K most similar memories.
-    *   **Graph Search:** It extracts key entities from the query ("Kowalski", "AWS") and queries the Graph DB for direct relationships.
+    *   **Semantic Search:** It converts the query into an embedding and searches the **semantic store** for the top-K most similar memories.
+    *   **Structured lookup:** It extracts key entities from the query ("Kowalski", "AWS") and walks stored **subject → predicate → object** edges (no mandatory external graph DB).
 3.  **Relevance Ranking (Re-ranking):** The raw results from both searches are fed into an LLM with a prompt like: `"Given the current query '...', which of the following retrieved memories are most relevant?"` This crucial step filters out noise and provides the agent with a small, highly-relevant set of memories.
 4.  **Context Injection:** These top, re-ranked memories are injected into the agent's Working Memory (Tier 1) to provide the necessary context for generating its final response.
 
@@ -101,11 +101,11 @@ When the agent needs to access its long-term memory to inform a response, it use
 
 ## 4. Implementation in Kowalski
 
-`kowalski-memory` crate.
+Memory lives in **`kowalski-core`** under the `memory/` module (not a separate `kowalski-memory` crate).
 
-*   `Memory` and `Recall` traits.
-*   Tier 2 uses **SQLite** (`sqlx` + `episodic_kv`) for the embedded episodic store.
-*   Vector retrieval defaults to **in-process** paths; external services are **optional** (see [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](DESIGN_MEMORY_AND_DEPENDENCIES.md)).
-*   The Memory Weaver - an asynchronous `tokio` background task, ensuring it doesn't block the main agent loop.
+*   Traits such as **`MemoryProvider`** model retrieval and storage tiers.
+*   Tier 2 uses **SQLite** (`sqlx` + `episodic_kv`) for the embedded episodic store (optional **`postgres://`** for shared episodic rows).
+*   Semantic retrieval defaults to **in-process** similarity; **Postgres + pgvector** is optional behind the **`postgres`** feature—see [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](DESIGN_MEMORY_AND_DEPENDENCIES.md).
+*   Consolidation / weaving runs as asynchronous **`tokio`** work so it does not block the main agent loop.
 
-By designing memory as a multi-tiered, actively managed system, we move beyond simple chat history and create the foundation for a truly intelligent and continuously learning AI agent.
+By designing memory as a multi-tiered, actively managed system, we move beyond simple chat history and create the foundation for a continuously learning agent stack.

@@ -1,6 +1,6 @@
-# Beyond Chat History: Building Human-Like Memory for AI Agents with `kowalski-memory`
+# Beyond Chat History: Building Human-Like Memory for AI Agents in `kowalski-core`
 
-How do you give an AI agent a memory that’s more than just a chat log? This question led to the creation of `kowalski-memory`, a Rust-based, multi-tiered memory system for agentic AI. Let’s take a journey through the philosophy, technical architecture, and the real-world challenges of building a memory system that doesn’t just store data, but learns, forgets, and grows—much like we do.
+How do you give an AI agent a memory that’s more than just a chat log? In Kowalski **1.1.x**, that capability lives in **`kowalski-core`** (`memory/` modules): a Rust-native, multi-tiered memory stack for agentic AI. This article walks through the philosophy, architecture, and practical trade-offs—without pretending there is a separate `kowalski-memory` crate.
 
 > **Design update:** **Qdrant** was used in an **initial proof of concept** for semantic (vector) memory. The **main goal** going forward is a **simple, robust, dependency-light** implementation with **minimal moving parts** and **fewer failure points**. See the canonical note [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](DESIGN_MEMORY_AND_DEPENDENCIES.md).
 
@@ -10,7 +10,7 @@ How do you give an AI agent a memory that’s more than just a chat log? This qu
 
 Imagine talking to someone who forgets everything the moment you stop speaking. That’s how most AI agents operate today. They might remember the last message or two, or keep a raw log of your conversations, but they lack the ability to recall, summarize, and learn from experience. Real intelligence, whether human or artificial, is about more than just storage—it’s about the *management* of memory: what to keep, what to forget, and how to transform fleeting experience into lasting knowledge.
 
-Inspired by cognitive science, `kowalski-memory` is built around the idea of a multi-tiered memory architecture. Each tier is designed for a specific function, echoing the layers of human memory: working memory for the present, episodic memory for recent events, and semantic memory for distilled knowledge.
+Inspired by cognitive science, the **`kowalski-core`** memory stack is built around the idea of a multi-tiered memory architecture. Each tier is designed for a specific function, echoing the layers of human memory: working memory for the present, episodic memory for recent events, and semantic memory for distilled knowledge.
 - **Working Memory**: What the agent is thinking about right now  
 - **Episodic Memory**: A detailed log of recent events  
 - **Semantic Memory**: A structured, searchable library of distilled knowledge
@@ -39,7 +39,7 @@ graph TD
     subgraph Memory Tiers
         T1["Tier 1: Working Memory <br> In-Memory Struct"]
         T2["Tier 2: Episodic Buffer <br> SQLite"]
-        T3["Tier 3: Long-Term Semantic Store <br> Vectors + Graph (PoC used Qdrant)"]
+        T3["Tier 3: Semantic Store <br> Embeddings + relation map; optional Postgres/pgvector"]
     end
 
     B <--> T1;
@@ -58,7 +58,7 @@ graph TD
 
 ## The Memory Management Pipeline: Weaving and Recall
 
-Storing data is only half the battle. The real challenge is managing the flow of information between these tiers. In `kowalski-memory`, this is handled by two background processes: the Memory Weaver and the Recall Engine.
+Storing data is only half the battle. The real challenge is managing the flow of information between these tiers. In **`kowalski-core`**, consolidation and recall are handled by the Memory Weaver pattern and **`MemoryProvider`**-style retrieval.
 
 The Memory Weaver is like the subconscious mind, working quietly in the 
 background. Every so often, it scans the episodic buffer for new 
@@ -80,13 +80,13 @@ pub trait MemoryWeaver {
 
 The Memory Weaver (such as the `Consolidator`) is like the subconscious mind, working quietly in the background. Every so often, it scans the episodic buffer for new experiences. For each conversation, it calls on a large language model (LLM) to summarize what happened and extract key facts or relationships. These summaries and facts are then embedded as vectors and stored in the long-term semantic store.
 
-The Recall Engine, on the other hand, is the agent’s librarian. When the agent needs to answer a question, the Recall Engine formulates a query, searches the vector database for semantically similar memories, and optionally queries the graph database for direct relationships. The results are then re-ranked—again, often with the help of an LLM—to ensure only the most relevant memories are injected back into working memory.
+The Recall Engine, on the other hand, is the agent’s librarian. When the agent needs to answer a question, it formulates a query, runs **semantic similarity** over stored embeddings, and walks **relation triples** where helpful. Results can be re-ranked with an LLM so only the most relevant memories land in working memory.
 
 ---
 
 ## Technical Details: Under the Hood
 
-Everything in `kowalski-memory` is written in Rust, chosen for its speed, safety, and ability to handle concurrency with ease. **SQLite** backs episodic memory (`episodic_kv`), giving fast, embeddable storage without a separate daemon. For semantic memory, **vector search** was first explored with **Qdrant** as a **PoC**; the **default direction** is **in-process** similarity and **minimal external dependencies**—see [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](DESIGN_MEMORY_AND_DEPENDENCIES.md). Background tasks like consolidation run asynchronously with Tokio, ensuring the agent’s main loop is never blocked.
+Everything in this stack is written in Rust, chosen for its speed, safety, and ability to handle concurrency with ease. **SQLite** backs episodic memory (`episodic_kv`), giving fast, embeddable storage without a separate daemon. For semantic memory, **vector search** was first explored with **Qdrant** as a **PoC**; the **default direction** is **in-process** similarity and **minimal external dependencies**—see [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](DESIGN_MEMORY_AND_DEPENDENCIES.md). Background tasks like consolidation run asynchronously with Tokio, ensuring the agent’s main loop is never blocked.
 
 The architecture is built for extensibility. The core interfaces are defined as Rust traits—`MemoryProvider`, `MemoryWeaver`—so you can swap out storage backends, embedding models, retrieval strategies, or even the entire consolidation process as your needs evolve. For example, you might want to use a different vector database, or plug in a domain-specific LLM for summarization. Here’s how a basic memory trait might look:
 
@@ -112,7 +112,7 @@ Deciding what to keep, what to summarize, and what to forget is a subtle art. It
 
 ## The Payoff: Smarter, More Human Agents
 
-With `kowalski-memory`, agents can recall what happened last week, not just the last message. They can learn and generalize from experience, forget what’s no longer useful, and answer questions with context and depth. This is a step toward truly intelligent, continuously learning AI—one that feels less like a chatbot, and more like a thoughtful collaborator.
+With **`kowalski-core`** memory tiers, agents can recall what happened last week, not just the last message. They can learn and generalize from experience, forget what’s no longer useful, and answer questions with context and depth. This is a step toward truly intelligent, continuously learning AI—one that feels less like a chatbot, and more like a thoughtful collaborator.
 
 If you’re curious to dive deeper, check out the [memory architecture documentation](memory_architecture.md) or explore the code on GitHub. The journey to human-like memory in AI is just beginning, and there’s plenty of room for you to make your mark.
 

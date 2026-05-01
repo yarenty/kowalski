@@ -75,7 +75,7 @@ kowalski/
 
 ### **ui/**
 - Vue 3 + Vite operator shell: health, MCP ping, **Chat** (SSE including **tool-aware stream**), federation, graph extension status.
-- Dev: `cd ui && bun install && bun run dev` (proxies `/api` to the CLI server; see [`ui/README.md`](./ui/README.md)).
+- Dev: `cd ui && bun install && bun run dev` (proxies `/api` to **`kowalski`**; see [`ui/README.md`](./ui/README.md)).
 
 ---
 
@@ -200,10 +200,15 @@ Legacy prompt configurations are currently stored in `migrations/legacy_prompts/
 
 ## 📖 Documentation & Links
 
+- **[`docs/README.md`](./docs/README.md)** — index of design articles and `docs/` layout
+- **[`docs/OVERVIEW_1_1.md`](./docs/OVERVIEW_1_1.md)** — 1.1.x horde / Knowledge Compiler narrative
+- **[`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](./docs/DESIGN_MEMORY_AND_DEPENDENCIES.md)** — memory stack rationale (canonical)
+- **[`examples/knowledge-compiler/README.md`](./examples/knowledge-compiler/README.md)** — Knowledge Compiler horde example
 - [CHANGELOG.md](./CHANGELOG.md)
 - [ROADMAP.md](./ROADMAP.md)
 - **[TODO.md](./TODO.md)** — manual & end-to-end verification (operator checklist)
 - **[`ui/README.md`](./ui/README.md)** — Vue operator UI (dev, build, proxy to `kowalski`)
+- **Archived / historical docs:** [`docs/purgatory/README.md`](./docs/purgatory/README.md)
 - [Each module's README](./kowalski-core/README.md), etc.
 
 ---

@@ -13,10 +13,12 @@ This document outlines the key technological, business, and strategic pillars of
     *   **Rock-Solid Reliability:** The Rust compiler guarantees memory and thread safety, eliminating entire classes of bugs at compile time. This is non-negotiable for agents managing critical infrastructure.
     *   **Lean, Efficient Binaries:** The compiled nature of Rust allows for the creation of small, fast-starting, and low-resource binaries suitable for everything from edge devices to massive cloud servers.
 
-*   **Key Architecture: Radical Modularity.** Kowalski is not a monolithic library; it is a decoupled framework built on the Rust crate ecosystem.
-    *   A minimal `kowalski-core` provides stable abstractions.
-    *   The `kowalski-tools` are a pluggable toolchain; you only compile what you need.
-    *   Agents are independent crates, ensuring separation of concerns and promoting code reuse.
+*   **Key Architecture: Modular workspace (1.1.x).** Kowalski ships as a **consolidated Rust workspace**, not a forest of agent crates:
+    *   **`kowalski-core`** holds **`TemplateAgent`**, tools, memory tiers, MCP client, and federation types.
+    *   **`kowalski-cli`** provides operators (REPL, config, migrations, MCP checks, **extensions**, **`agent-app`**).
+    *   **`kowalski`** is the optional HTTP **`/api/*`** server for the Vue UI and programmatic access.
+    *   **`kowalski-mcp-datafusion`** is an optional standalone MCP server (DataFusion). Heavy analytics deps stay isolated there.
+    *   Personas and specialized behaviors are composed via **config + tools + prompts**, not separate `kowalski-*-agent` binaries.
 
 *   **Key Feature: LLM Agnosticism.** The framework is designed to treat Large Language Models as a swappable component. This prevents vendor lock-in and allows users to choose the best model for their specific needs based on cost, performance, privacy (e.g., local models via Ollama), or capability.
 
@@ -58,7 +60,7 @@ This document outlines the key technological, business, and strategic pillars of
 
 *This is about **who** will build with us and how the project will grow and sustain itself.*
 
-*   **A Foundation for a New Tooling Ecosystem.** We are not just building a product; we are fostering an ecosystem. By leveraging Rust's `crates.io` package manager, we enable the community to build and share their own `kowalski-tool-*` and `kowalski-agent-*` crates, creating a flywheel of decentralized innovation.
+*   **A Foundation for a New Tooling Ecosystem.** The framework exposes a **`Tool`** abstraction and MCP integration so new capabilities can be added without forking core. Community extensions can ship as separate crates **or** as repo-local **`extension run`** workflows (see **`examples/knowledge-compiler`**).
 
 *   **A Magnet for Top-Tier Engineering Talent.** Rust attracts engineers who are passionate about performance, correctness, and building durable systems. The Kowalski project serves as a beacon for this talent pool, creating a vibrant community of expert contributors.
 
