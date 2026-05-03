@@ -970,7 +970,7 @@ fn worker_profiles(state: &ApiState) -> Vec<WorkerProfile> {
                     sub.default_agent_id.clone(),
                 ],
                 cwd: root.display().to_string(),
-                log_dir: spec.workdir.join("scratch/workers").display().to_string(),
+                log_dir: spec.worker_log_dir.display().to_string(),
             });
         }
     }
@@ -1949,32 +1949,38 @@ async fn post_horde_followup(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // Persist follow-up output as a concrete artifact so this interaction is actionable.
-    let follow_dir = spec.workdir.join("debug/derived/reports/followups");
-    if let Err(e) = std::fs::create_dir_all(&follow_dir) {
+    // Persist follow-up output under workdir (`debug/followups/` — `horde::FOLLOWUP_ARTIFACT_REL`).
+    let follow_dir = &spec.followup_artifact_dir;
+    let (output_path, _saved_ok) = if let Err(e) = std::fs::create_dir_all(follow_dir) {
         log::warn!("follow-up artifact mkdir failed: {}", e);
-    }
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let out_path = follow_dir.join(format!("{}-{}.md", run.run_id, stamp));
-    let saved = format!(
-        "# Horde Follow-up Response\n\n- Horde: {}\n- Run: {}\n- Follow-up: {}\n\n## Response\n\n{}\n",
-        spec.display_name,
-        run.run_id,
-        body.message.trim(),
-        reply
-    );
-    if let Err(e) = std::fs::write(&out_path, saved) {
-        log::warn!("follow-up artifact write failed: {}", e);
-    }
+        (None, false)
+    } else {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let out_path = follow_dir.join(format!("{}-{}.md", run.run_id, stamp));
+        let saved = format!(
+            "# Horde Follow-up Response\n\n- Horde: {}\n- Run: {}\n- Follow-up: {}\n\n## Response\n\n{}\n",
+            spec.display_name,
+            run.run_id,
+            body.message.trim(),
+            reply
+        );
+        match std::fs::write(&out_path, saved) {
+            Ok(()) => (Some(out_path.display().to_string()), true),
+            Err(e) => {
+                log::warn!("follow-up artifact write failed: {}", e);
+                (None, false)
+            }
+        }
+    };
     Ok(Json(json!({
         "ok": true,
         "horde_id": horde_id,
         "run_id": run.run_id,
         "reply": reply,
-        "output_path": out_path.display().to_string(),
+        "output_path": output_path,
         "mode": "horde_followup_chat_continuation",
     })))
 }

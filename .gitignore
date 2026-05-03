@@ -24,7 +24,6 @@ Cargo.lock
 /examples/knowledge-compiler/output/
 
 # Legacy top-level (older CLI); not written anymore — safe to delete if present.
-/examples/knowledge-compiler/derived
 /examples/knowledge-compiler/wiki
 /examples/knowledge-compiler/scratch
 /examples/knowledge-compiler/raw

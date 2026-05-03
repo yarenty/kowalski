@@ -55,7 +55,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: Kowalski  
-**Release line**: **1.1.0** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).  
+**Release line**: **1.2.0** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).  
 **Purpose**: A Rust-native multi-agent framework: **`kowalski-core`** (agents, LLM, memory, MCP client), **`kowalski-cli`** (REPL + operators, extensions, **`agent-app`**), **`kowalski`** (HTTP **`/api/*`** server), optional **`kowalski-mcp-datafusion`**, Vue **`ui/`**, optional PostgreSQL (**pgvector**, **Apache AGE**).  
 **Core Value Proposition**: Modular, extensible deployment with MCP-first tools and federation-oriented APIs.  
 **Primary Mechanism**: `TemplateAgent` + pluggable tools (built-in + MCP), Ollama/OpenAI-compatible providers.  
@@ -360,7 +360,7 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-**1.1.0** continues the consolidated workspace: **`TemplateAgent`** in **`kowalski-core`**, **`kowalski-cli`** operators plus **`extension`** / **`agent-app`**, **`kowalski`** HTTP API, **`kowalski-mcp-datafusion`**, Vue UI — plus the **Knowledge Compiler** horde example and federation task-progress UX (see [`CHANGELOG.md`](CHANGELOG.md), [`docs/OVERVIEW_1_1.md`](docs/OVERVIEW_1_1.md)).
+**1.2.0** continues the consolidated workspace: **`TemplateAgent`** in **`kowalski-core`**, **`kowalski-cli`** operators plus **`extension`** / **`agent-app`**, **`kowalski`** HTTP API, **`kowalski-mcp-datafusion`**, Vue UI — plus the **Knowledge Compiler** horde example and federation task-progress UX (see [`CHANGELOG.md`](CHANGELOG.md), [`docs/OVERVIEW_1_1.md`](docs/OVERVIEW_1_1.md)).
 
 ### Roadmap
 See [`ROADMAP.md`](ROADMAP.md) (root and per-crate **`ROADMAP.md`** where present).

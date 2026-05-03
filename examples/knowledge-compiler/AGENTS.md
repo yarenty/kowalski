@@ -14,6 +14,8 @@ These apply to **this** Knowledge Compiler horde / `agent-app` example only. **O
 A **markdown-native knowledge pipeline**: **ingest** → **compile** → **ask** → **lint**.  
 **Single manifest:** **[`horde.md`](horde.md)** defines the horde **id**, **pipeline** order, **`workdir`**, delivery copy, federation topic, and (with the server) loads **`agents/*.md`** for each step. **`kowalski-cli agent-app`** reads the **same** `horde.md` + `agents/` for **`list`**, **`validate`**, **`run`**, and **`worker --role`**.
 
+The **`kowalski` HTTP server** resolves follow-up markdown and managed worker logs under **`workdir`** using fixed relative paths in **[`kowalski/src/horde.rs`](../../kowalski/src/horde.rs)** (`FOLLOWUP_ARTIFACT_REL`, `AGENTS_LOG_REL`). Change those constants if you need a different layout for all hordes.
+
 For **this** app, delivery is **files** under `workdir`. For quick repeated runs, use **`PASTE_ME.md`** at the workdir root (and the Horde UI **Copy to clipboard** on `run_finished` when wired). Other pipeline output lives under **`debug/`** for monitoring only.
 
 ## Surfaces
@@ -28,9 +30,11 @@ For **this** app, delivery is **files** under `workdir`. For quick repeated runs
 
 - **`PASTE_ME.md`** — for this horde, the main hand-off at the workdir root; copy into Obsidian (regenerated after `lint` in this pipeline).
 - **`debug/`** — in this example, all intermediate / monitoring output:
-  - `debug/raw/sources/` — ingest
+  - `debug/raw/` — ingest bundles (`*-inputs-*.md`)
   - `debug/wiki/` — concepts, summaries, `index.md` (extra top-level folders under `wiki/` still appear in **Bundled reference** in `index.md` if you add them manually)
-  - `debug/derived/reports|lint/` — ask, lint
+  - `debug/followups/` — follow-up chat after a run (HTTP server; see `FOLLOWUP_ARTIFACT_REL` in `kowalski/src/horde.rs`)
+  - `debug/reports/` — ask
+  - `debug/lint/` — lint report
   - `debug/scratch/` — orchestration logs
 
 ## GitHub URL capture (internal tool, MCP optional)

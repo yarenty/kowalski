@@ -219,8 +219,8 @@ fn write_paste_me_file(
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let dbg = work_debug(workdir);
     let summary = read_or_empty(&dbg.join("wiki/summaries/latest.md"));
-    let report = read_or_empty(&dbg.join("derived/reports/latest.md"));
-    let lint = read_or_empty(&dbg.join("derived/lint/latest.md"));
+    let report = read_or_empty(&dbg.join("reports/latest.md"));
+    let lint = read_or_empty(&dbg.join("lint/latest.md"));
     let sum_sec = extract_h2_section(&summary, "Summary");
     let concepts_sec = extract_h2_section(&summary, "Extracted Concepts");
     let resp_sec = extract_h2_section(&report, "Response");
@@ -382,12 +382,13 @@ fn ensure_dirs(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all(root)?;
     let b = work_debug(root);
     for rel in [
-        "raw/sources",
+        "raw",
         "raw/images",
         "wiki/concepts",
         "wiki/summaries",
-        "derived/reports",
-        "derived/lint",
+        "reports",
+        "slides",
+        "lint",
         "scratch",
     ] {
         fs::create_dir_all(b.join(rel))?;
@@ -798,7 +799,7 @@ where
                         .meta
                         .output
                         .as_deref()
-                        .unwrap_or("debug/derived/reports/latest.md"),
+                        .unwrap_or("debug/reports/latest.md"),
                 );
                 let idx = read_or_empty(&work_debug(&work).join("wiki/index.md"));
                 let msg = format!("{prompt}\n\nQuestion: {q}\n\nWiki index:\n{idx}\n");
@@ -830,7 +831,7 @@ where
                         .meta
                         .output
                         .as_deref()
-                        .unwrap_or("debug/derived/lint/latest.md"),
+                        .unwrap_or("debug/lint/latest.md"),
                 );
                 let idx = read_or_empty(&work_debug(&work).join("wiki/index.md"));
                 let msg = format!("{prompt}\n\nWiki index:\n{idx}\n");
@@ -870,8 +871,8 @@ where
     }
 
     let latest_summary = latest_md_in(&work_debug(&work).join("wiki").join("summaries"));
-    let latest_report = latest_md_in(&work_debug(&work).join("derived").join("reports"));
-    let latest_lint = latest_md_in(&work_debug(&work).join("derived").join("lint"));
+    let latest_report = latest_md_in(&work_debug(&work).join("reports"));
+    let latest_lint = latest_md_in(&work_debug(&work).join("lint"));
 
     println!("\nFinal output artifacts:");
     if let Some(p) = latest_summary {
@@ -1436,7 +1437,7 @@ fn execute_compile(
         .previous_artifact
         .as_deref()
         .map(PathBuf::from)
-        .or_else(|| latest_md_in(&work_debug(workdir).join("raw/sources")))
+        .or_else(|| latest_md_in(&work_debug(workdir).join("raw")))
         .ok_or("compile: no input artifact available (run ingest first)")?;
     let src = read_or_empty(&source_path);
     publish_agent_message(
@@ -1476,7 +1477,7 @@ fn execute_ask(
     ensure_dirs(workdir)?;
     let prompt_path = workspace_root.join("prompts/query.md");
     let prompt = read_or_empty(&prompt_path);
-    let out = work_debug(workdir).join("derived/reports/latest.md");
+    let out = work_debug(workdir).join("reports/latest.md");
     let idx = read_or_empty(&work_debug(workdir).join("wiki/index.md"));
     let q = instr
         .question
@@ -1515,7 +1516,7 @@ fn execute_lint(
     ensure_dirs(workdir)?;
     let prompt_path = workspace_root.join("prompts/lint.md");
     let prompt = read_or_empty(&prompt_path);
-    let out = work_debug(workdir).join("derived/lint/latest.md");
+    let out = work_debug(workdir).join("lint/latest.md");
     let idx = read_or_empty(&work_debug(workdir).join("wiki/index.md"));
     publish_agent_message(api, topic, agent_id, instr, "Linting wiki index");
     let msg = format!("{prompt}\n\nWiki index:\n{idx}\n");
@@ -1582,7 +1583,7 @@ fn handle_legacy_run_delegate(
                 Ok(done) => {
                     let report = done
                         .report
-                        .or_else(|| latest_md_in(&work_debug(&work).join("derived/reports")))
+                        .or_else(|| latest_md_in(&work_debug(&work).join("reports")))
                         .map(|p| p.display().to_string())
                         .unwrap_or_else(|| "(none)".to_string());
                     let lint_disp = done
@@ -1656,13 +1657,13 @@ pub fn proof_check(
     println!("\nVerify artifacts (under {}):", work.display());
     println!(
         "- latest report: {}",
-        latest_md_in(&work_debug(&work).join("derived/reports"))
+        latest_md_in(&work_debug(&work).join("reports"))
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| "(none yet)".to_string())
     );
     println!(
         "- lint report: {}",
-        work_debug(&work).join("derived/lint/latest.md").display()
+        work_debug(&work).join("lint/latest.md").display()
     );
     println!(
         "- latest run log: {}",

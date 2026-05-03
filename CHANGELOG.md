@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-05-03
+
+> Workspace and crates **`1.2.0`**: Knowledge Compiler layout simplification (`debug/raw`, `debug/reports`, `debug/lint`, `debug/followups`, `agents_log`), horde HTTP artifact conventions, GitHub-aware ingest, and operator docs/UI updates (full list below).
+
 ### Added
 
 - **Knowledge Compiler:** [`examples/knowledge-compiler/AGENTS.md`](examples/knowledge-compiler/AGENTS.md) operator guide (`GITHUB_TOKEN`, MCP vs CLI).
@@ -17,6 +21,10 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Changed
 
+- **Knowledge Compiler:** ingest bundles live under **`workdir/debug/raw/`** (was **`debug/raw/sources/`**); **`kowalski_core::source_bundle`**, `agent-app`, and example docs updated.
+- **Knowledge Compiler:** removed the **`debug/derived/**` tree — ask output is **`workdir/debug/reports/`**, Marp/slides prompts use **`debug/slides/`**; `agent-app`, **`agents/ask.md`**, prompts, and README updated. Horde startup cleanup no longer references top-level **`derived/`** or legacy **`derived/obsidian-paste.md`**.
+- **Knowledge Compiler:** lint report path is **`workdir/debug/lint/`** (was **`debug/derived/lint/`**); `agent-app`, **`agents/lint.md`**, and prompts updated accordingly.
+- **Horde HTTP:** follow-up markdown and managed worker log directories are fixed paths under **`workdir`** defined as **`FOLLOWUP_ARTIFACT_REL`** (`debug/followups/`) and **`AGENTS_LOG_REL`** (`agents_log/`) in [`kowalski/src/horde.rs`](kowalski/src/horde.rs) (not `horde.md` frontmatter).
 - **Knowledge Compiler / `agent-app`:** **`main-agent.md` removed** — CLI **`list` / `validate` / `run` / `worker`** now read **`horde.md`** + **`agents/*.md`** (same source as the server). Removed unused **`kc.research`** agent, prompts, and investigation template from the example.
 - **Knowledge Compiler / `.gitignore`:** local **`agent-app run`** uses **`examples/knowledge-compiler/output/{PASTE_ME.md,debug/}`** (same default workdir as **`horde.md`**). Ignore rules target **`output/`** only.
 - **Knowledge Compiler:** removed optional **external mdBook vault** wiring from `agent_app_ops` (no `external_vault_root` / corpus injection / `EXTERNAL_VAULT_MERGED.md` / `mdbook-summary-suggestion.md`).
@@ -73,6 +81,7 @@ All notable changes to this project will be documented in this file, or at least
 - Documented **memory stack rationale**: **Qdrant** was used in an **initial proof of concept** for semantic memory; the **ongoing goal** is a **simple, robust, dependency-light** default with **minimal moving parts**. Canonical write-up: [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md). Linked from root and component `AGENTS.md`, READMEs, memory articles, and rebuild notes.
 - Refreshed **README.md**, **AGENTS.md**, **ROADMAP.md** (root and key sub-crates).
 
+[1.2.0]: https://github.com/yarenty/kowalski/releases/tag/1.2.0
 [1.1.0]: https://github.com/yarenty/kowalski/releases/tag/1.1.0
 [1.0.0]: https://github.com/yarenty/kowalski/releases/tag/1.0.0
 

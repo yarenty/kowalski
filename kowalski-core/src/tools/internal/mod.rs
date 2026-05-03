@@ -1,6 +1,6 @@
 //! **Internal (built-in) tools** — small, in-process capabilities under explicit directories.
 //!
-//! **Raw source bundling** (URLs + files → one markdown artifact under `raw/sources/`) lives at
+//! **Raw source bundling** (URLs + files → one markdown artifact under `raw/`) lives at
 //! crate root [`source_bundle`](../../source_bundle.rs), not in `kowalski-cli`, so surface binaries
 //! stay thin.
 //!

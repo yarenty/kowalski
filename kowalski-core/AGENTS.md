@@ -55,7 +55,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: kowalski-core  
-**Release**: **1.1.0** (see crate `Cargo.toml`).  
+**Release**: **1.2.0** (see crate `Cargo.toml`).  
 **Purpose**: Core foundational abstractions, conversation logic, agent traits, LLM providers, memory tiers, MCP client/hub, federation types, optional Postgres (pgvector) and graph helpers (AGE Cypher).  
 **Core Value Proposition**: Modular, extensible, and distributed architecture supporting standalone and federated deployments with privacy-preserving capabilities.  
 **Primary Mechanism**: Multi-agent orchestration and pluggable tools interfacing with local (Ollama) and remote LLMs.  
@@ -179,7 +179,7 @@ Agents ultimately call **capabilities** that behave like tools. Those capabiliti
 
 **Operator UI:** behavior visible in the Vue **`ui/`** (chat, horde, federation) must stay coherent with **`/api/*`**; validate smoke paths after changes that affect agents, tools, or federation payloads. See root [`AGENTS.md`](../AGENTS.md) and [`ui/AGENTS.md`](../ui/AGENTS.md).
 
-**[`source_bundle`](./src/source_bundle.rs):** builds `raw/sources/*.md` from URL / file / text tokens (used by `kowalski-cli` worker ingest and any future server-side ingest). Uses **`tools::internal::github`** and **`tools::internal::web`** (HTML heuristic → Markdown). Not horde-specific.
+**[`source_bundle`](./src/source_bundle.rs):** builds `raw/*.md` bundles under the given root (typically `workdir/debug`, so **`debug/raw/`**) from URL / file / text tokens (used by `kowalski-cli` worker ingest and any future server-side ingest). Uses **`tools::internal::github`** and **`tools::internal::web`** (HTML heuristic → Markdown). Not horde-specific.
 
 ---
 
@@ -361,7 +361,7 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-**1.1.0**: `BaseAgent` / `TemplateAgent`, `chat_with_tools`, optional **`chat_with_tools_stream_final`** for SSE, MCP integration, memory (SQLite default; Postgres optional), federation primitives used by horde apps (e.g. Knowledge Compiler). See also [`../ROADMAP.md`](../ROADMAP.md) and [`ROADMAP.md`](ROADMAP.md) in this crate.
+**1.2.0**: `BaseAgent` / `TemplateAgent`, `chat_with_tools`, optional **`chat_with_tools_stream_final`** for SSE, MCP integration, memory (SQLite default; Postgres optional), federation primitives used by horde apps (e.g. Knowledge Compiler). See also [`../ROADMAP.md`](../ROADMAP.md) and [`ROADMAP.md`](ROADMAP.md) in this crate.
 
 ### Roadmap
 See [`ROADMAP.md`](ROADMAP.md) (this crate) and root [`../ROADMAP.md`](../ROADMAP.md).

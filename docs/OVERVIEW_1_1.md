@@ -1,11 +1,11 @@
 # Kowalski 1.1.x overview
 
-Release **1.1.0** centers on **horde-style app workflows**: multi-step, markdown-defined agent orchestration on top of the existing **`TemplateAgent`**, **HTTP API** (`kowalski` binary), **federation** primitives, and the **Vue** operator UI.
+Release **1.1.0** introduced **horde-style app workflows** (current workspace line: **1.2.0** — see root `CHANGELOG.md`): multi-step, markdown-defined agent orchestration on top of the existing **`TemplateAgent`**, **HTTP API** (`kowalski` binary), **federation** primitives, and the **Vue** operator UI.
 
 ## What shipped vs 1.0.0
 
 - **Knowledge Compiler** (`examples/knowledge-compiler`): local-first pipeline from web/source ingest to Obsidian-style **`wiki/`** artifacts, plus ask/lint passes.
-- **Markdown-defined agents**: `main-agent.md` and `agents/*.md` describe orchestration and specialists; the CLI validates definitions before running.
+- **Markdown-defined agents**: `horde.md` and `agents/*.md` describe orchestration and specialists; the CLI validates definitions before running.
 - **Extension model**: `kowalski-cli extension list` / `extension run <name>` dispatches to workspace extensions (e.g. Knowledge Compiler runner).
 - **`agent-app` operators**: list, validate, run, delegate, worker, proof — glue between markdown orchestration, **`POST /api/chat`**, and federation APIs.
 - **Federation UX**: delegate/worker flows publish **task progress** and **task results** so operators see steps and artifact paths (CLI traces + Vue federation panel).

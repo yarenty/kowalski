@@ -1,6 +1,6 @@
 # Knowledge Compiler example
 
-**Example aligned with workspace release line 1.1.0**
+**Example aligned with workspace release line 1.2.0**
 
 Operator-focused behavior, GitHub ingest, and federation roles are documented in **[`AGENTS.md`](AGENTS.md)**.
 
@@ -25,7 +25,7 @@ It integrates three surfaces:
 
 ## Where outputs go (important)
 
-**Horde UI**, **federation workers**, and **`agent-app run`** all use the same **`workdir`** from **`horde.md`** (default **`output/`** under this example). Operators care about **`PASTE_ME.md`** at the workdir root; **everything else** is under **`debug/`** (ingest, wiki, reports, scratch — for monitoring only).
+**Horde UI**, **federation workers**, and **`agent-app run`** all use the same **`workdir`** from **`horde.md`** (default **`output/`** under this example). Operators care about **`PASTE_ME.md`** at the workdir root. Pipeline intermediates live under **`debug/`** (ingest, wiki, reports, scratch — for monitoring only). The HTTP server may also create **`agents_log/`** at the workdir root for managed worker stdout/stderr when using **Start All** from the UI.
 
 ### Layout (Horde UI or `agent-app run`)
 
@@ -35,12 +35,13 @@ Typical layout after runs:
 examples/knowledge-compiler/output/        # horde.workdir (see horde.md; gitignored)
 ├── PASTE_ME.md                            # copy into Obsidian (delivery_root_rel default)
 ├── debug/
-│   ├── raw/sources/                       # ingest
+│   ├── raw/                               # ingest (timestamped `*-inputs-*.md`)
 │   ├── wiki/                              # compiled notes + index
-│   ├── derived/reports/                   # ask, follow-ups, …
-│   ├── derived/lint/
+│   ├── followups/                         # HTTP POST …/followup markdown (server)
+│   ├── reports/                           # ask
+│   ├── lint/                              # lint report
 │   └── scratch/                           # orchestration logs
-└── scratch/workers/                       # only when managed by serve (optional)
+└── agents_log/                            # managed federation worker stdout/stderr (HTTP server)
 ```
 
 **Configure `workdir`** in **`horde.md`**:
@@ -88,10 +89,10 @@ examples/knowledge-compiler/
 
 | Step | Capability | Role |
 |------|-------------|------|
-| ingest | `kc.ingest` | Normalize inputs → `debug/raw/sources/` |
+| ingest | `kc.ingest` | Normalize inputs → `debug/raw/` |
 | compile | `kc.compile` | Wiki + summaries under `debug/wiki/` |
-| ask | `kc.ask` | Answer → `debug/derived/reports/` |
-| lint | `kc.lint` | Report → `debug/derived/lint/` (+ writes `PASTE_ME.md`) |
+| ask | `kc.ask` | Answer → `debug/reports/` |
+| lint | `kc.lint` | Report → `debug/lint/` (+ writes `PASTE_ME.md`) |
 
 Default worker **`default_agent_id`** values in **`agents/*.md`**: `kc-ingest`, `kc-compile`, `kc-ask`, `kc-lint`.
 

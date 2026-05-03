@@ -1,7 +1,7 @@
 You are the Knowledge Compiler agent.
 
 Input:
-- One or more markdown source files under `raw/sources/`.
+- One or more markdown source files under `raw/` (ingest output under `debug/raw/`).
 - Existing pages under `wiki/concepts/` and `wiki/summaries/`.
 
 Tasks:

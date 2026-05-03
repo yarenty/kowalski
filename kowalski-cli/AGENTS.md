@@ -55,7 +55,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: kowalski-cli  
-**Release**: **1.1.0** (see crate `Cargo.toml`).  
+**Release**: **1.2.0** (see crate `Cargo.toml`).  
 **Purpose**: Command-line interface (REPL + operators). The HTTP server (`kowalski`) for the Vue operator UI exposes `/api/chat`, `/api/chat/stream` (with **`tools_stream`**), MCP, federation, graph status / Cypher (Postgres + AGE).  
 **Core Value Proposition**: Modular, extensible, and distributed architecture supporting standalone and federated deployments with privacy-preserving capabilities.  
 **Primary Mechanism**: Multi-agent orchestration and pluggable tools interfacing with local (Ollama) and remote LLMs.  
@@ -341,7 +341,7 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-**1.1.0**: `kowalski-cli` provides CLI operators (`run`, `config`, `db`, `doctor`, `mcp`, **`extension`**, **`agent-app`**, federation helpers). The **`kowalski`** binary provides the HTTP **`/api/*`** server. Build with **`--features postgres`** for SQL memory alignment with **`kowalski`** graph routes.
+**1.2.0**: `kowalski-cli` provides CLI operators (`run`, `config`, `db`, `doctor`, `mcp`, **`extension`**, **`agent-app`**, federation helpers). The **`kowalski`** binary provides the HTTP **`/api/*`** server. Build with **`--features postgres`** for SQL memory alignment with **`kowalski`** graph routes.
 
 **Agent-app ingest step:** calls **`kowalski_core::source_bundle`** (GitHub-aware fetch + **HTML→readable-Markdown** when the body looks like HTML). See [`kowalski-core/AGENTS.md`](../kowalski-core/AGENTS.md) for the three-way tool model. **`agent-app list|validate|run`** and **`worker --role`** read **`horde.md`** + **`agents/*.md`** under **`--path`** (same files as the server’s horde loader for markdown-defined apps).
 

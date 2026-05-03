@@ -116,7 +116,9 @@ fn fetch_url_for_bundle(url: &str) -> Result<(String, String, String), String> {
     Ok((body, note, url.to_string()))
 }
 
-/// Write `raw/sources/<stamp>-inputs-N.md` under `root` from mixed URL / file / text input.
+/// Write `raw/<stamp>-inputs-N.md` under `root` from mixed URL / file / text input.
+///
+/// `root` is typically `workdir/debug`; bundled markdown lands in `workdir/debug/raw/`.
 pub fn write_raw_sources_markdown(
     root: &Path,
     source_input: &str,
@@ -124,7 +126,7 @@ pub fn write_raw_sources_markdown(
     let assets = parse_source_tokens(source_input);
     let stamp = Utc::now().format("%Y%m%d-%H%M%S");
     let out = root
-        .join("raw/sources")
+        .join("raw")
         .join(format!("{stamp}-inputs-{}.md", assets.len()));
     let now = Utc::now().to_rfc3339();
     let mut doc = String::new();
@@ -228,6 +230,9 @@ pub fn write_raw_sources_markdown(
     doc.push('\n');
     doc.push_str("## Source Collection\n\n");
     doc.push_str(&sections);
+    if let Some(parent) = out.parent() {
+        fs::create_dir_all(parent)?;
+    }
     fs::write(&out, doc)?;
     Ok(out)
 }

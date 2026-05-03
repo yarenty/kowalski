@@ -21,10 +21,10 @@ A multi-agent horde for transforming web sources into a maintained Obsidian-styl
 
 ## Sub-agents
 
-- `ingest` (capability `kc.ingest`): fetches and normalizes inputs into `workdir/debug/raw/sources/`.
+- `ingest` (capability `kc.ingest`): fetches and normalizes inputs into `workdir/debug/raw/`.
 - `compile` (capability `kc.compile`): turns sources into a structured wiki summary and refreshes wiki concept stubs / index under `workdir/debug/wiki/`.
 - `ask` (capability `kc.ask`): answers the user question against `workdir/debug/wiki/` context.
-- `lint` (capability `kc.lint`): produces a quality report under `workdir/debug/derived/lint/` and writes **`workdir/PASTE_ME.md`** for copy-paste.
+- `lint` (capability `kc.lint`): produces a quality report under `workdir/debug/lint/` and writes **`workdir/PASTE_ME.md`** for copy-paste.
 
 ## Orchestration model
 

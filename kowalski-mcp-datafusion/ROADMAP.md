@@ -1,6 +1,6 @@
 # kowalski-mcp-datafusion roadmap
 
-Crate version **1.1.0**. Workspace: **[`../ROADMAP.md`](../ROADMAP.md)**.
+Crate version **1.2.0**. Workspace: **[`../ROADMAP.md`](../ROADMAP.md)**.
 
 ## Near term
 
@@ -13,7 +13,7 @@ Crate version **1.1.0**. Workspace: **[`../ROADMAP.md`](../ROADMAP.md)**.
 
 ## Done (1.1.0)
 
-- [x] Same MCP/DataFusion scope as 1.0.0; crate version aligned with workspace **1.1.0** release line (see root [`CHANGELOG.md`](../CHANGELOG.md)).
+- [x] Same MCP/DataFusion scope as 1.0.0; crate version aligned with workspace **1.2.0** release line (see root [`CHANGELOG.md`](../CHANGELOG.md)).
 
 ## Done (1.0.0 baseline)
 

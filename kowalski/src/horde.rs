@@ -17,6 +17,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 
 const DEFAULT_TOPIC: &str = "federation";
+/// Relative path under `workdir` for managed federation worker stdout/stderr logs (HTTP server convention).
+pub const AGENTS_LOG_REL: &str = "agents_log";
+/// Relative path under `workdir` for follow-up chat markdown from `POST .../followup` (HTTP server convention).
+pub const FOLLOWUP_ARTIFACT_REL: &str = "debug/followups";
 static RUN_SEQ: AtomicU64 = AtomicU64::new(1);
 
 fn now_ts() -> String {
@@ -115,6 +119,10 @@ pub struct HordeSpec {
     pub prompt_tip: String,
     pub root_path: PathBuf,
     pub sub_agents: Vec<SubAgentSpec>,
+    /// Resolved directory for follow-up chat artifacts ([`FOLLOWUP_ARTIFACT_REL`] under `workdir`).
+    pub followup_artifact_dir: PathBuf,
+    /// Resolved directory for managed worker process logs ([`AGENTS_LOG_REL`] under `workdir`).
+    pub worker_log_dir: PathBuf,
 }
 
 impl HordeSpec {
@@ -210,6 +218,20 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
         sub_agents.push(agent);
     }
 
+    let workdir = if let Some(w) = &meta.workdir {
+        let p = PathBuf::from(w.clone());
+        if p.is_absolute() {
+            p
+        } else {
+            root.join(w)
+        }
+    } else {
+        root.join("workdir")
+    };
+
+    let followup_artifact_dir = workdir.join(FOLLOWUP_ARTIFACT_REL);
+    let worker_log_dir = workdir.join(AGENTS_LOG_REL);
+
     Ok(HordeSpec {
         id: meta.id,
         display_name: meta.display_name,
@@ -221,12 +243,7 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
             .unwrap_or_else(|| "What changed?".to_string()),
         topic: meta.default_topic.unwrap_or_else(|| DEFAULT_TOPIC.to_string()),
         artifacts_root: root.join(meta.artifacts_root.unwrap_or_else(|| ".".to_string())),
-        workdir: if let Some(w) = meta.workdir {
-            let p = PathBuf::from(w.clone());
-            if p.is_absolute() { p } else { root.join(w) }
-        } else {
-            root.join("workdir")
-        },
+        workdir,
         config_on_startup: meta.config_on_startup.unwrap_or(false),
         delivery_title: meta
             .delivery_title
@@ -247,6 +264,8 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
         }),
         root_path: root.to_path_buf(),
         sub_agents,
+        followup_artifact_dir,
+        worker_log_dir,
     })
 }
 
@@ -258,7 +277,7 @@ pub fn prepare_workdir_on_startup_with_policy(
     if !clean_on_startup {
         return Ok(());
     }
-    for rel in ["debug", "raw", "wiki", "derived", "scratch"] {
+    for rel in ["debug", "raw", "wiki", "scratch", "agents_log"] {
         let p = spec.workdir.join(rel);
         if p.exists() {
             let _ = if p.is_dir() {
@@ -269,8 +288,6 @@ pub fn prepare_workdir_on_startup_with_policy(
         }
     }
     let _ = std::fs::remove_file(spec.workdir.join("PASTE_ME.md"));
-    // Legacy paste filename (pre PASTE_ME.md)
-    let _ = std::fs::remove_file(spec.workdir.join("derived/obsidian-paste.md"));
     Ok(())
 }
 
