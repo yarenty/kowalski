@@ -652,20 +652,29 @@ async fn post_chat(
         body.use_memory,
         conv_id
     );
+    // Honor `use_memory` on the plain path: `Agent::chat_with_history` hardcodes memory on for
+    // `TemplateAgent`; horde workers send `use_memory: false` (see `kowalski-cli` `chat_no_tools`).
     let reply = if body.use_tools {
         guard
             .agent
             .chat_with_tools_with_options(&conv_id, body.message.trim(), body.use_memory)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     } else {
-        // Plain generation path for deterministic app-level workflows.
         guard
             .agent
-            .chat_with_history(&conv_id, body.message.trim(), None)
+            .base_mut()
+            .chat_with_history_with_options(
+                &conv_id,
+                body.message.trim(),
+                None,
+                body.use_memory,
+            )
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    };
+    }
+    .map_err(|e| {
+        log::error!("POST /api/chat failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
     Ok(Json(ChatResponse {
         reply,
         mode: "agent",

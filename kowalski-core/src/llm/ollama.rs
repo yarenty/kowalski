@@ -17,6 +17,18 @@ impl OllamaProvider {
         let client = Client::new();
         Self { base_url, client }
     }
+
+    fn troubleshoot_connect(&self, endpoint: &str, err: &reqwest::Error) -> String {
+        format!(
+            "Cannot reach Ollama at {} (requested {}): {}.\n\
+             What to check:\n\
+             - Is the Ollama daemon running? (`ollama serve`, or start the Ollama app.)\n\
+             - Does Kowalski `config.toml` `[ollama]` host/port match where Ollama listens? (default http://127.0.0.1:11434)\n\
+             - From the same machine: `curl -s {}/api/tags` should return JSON, not \"connection refused\".\n\
+             - If you use a remote Ollama, confirm firewall/VPN and that `OLLAMA_HOST` on the Ollama side allows your client.",
+            self.base_url, endpoint, err, self.base_url
+        )
+    }
 }
 
 #[async_trait]
@@ -38,26 +50,43 @@ impl LLMProvider for OllamaProvider {
             .json(&request)
             .send()
             .await
-            .map_err(|e| KowalskiError::Server(format!("Failed to connect to Ollama: {}", e)))?;
+            .map_err(|e| KowalskiError::Server(self.troubleshoot_connect(&url, &e)))?;
 
         if !response.status().is_success() {
+            let status = response.status().as_u16();
             let error_text = response.text().await.unwrap_or_default();
             return Err(KowalskiError::Server(format!(
-                "Ollama error: {}",
-                error_text
+                "Ollama returned HTTP {} from {} for model `{}`. Body: {}.\n\
+                 What to check:\n\
+                 - Model pulled? `ollama pull {}`\n\
+                 - Ollama logs for stack traces (terminal where `ollama serve` runs).",
+                status, url, model, error_text.trim(), model
             )));
         }
 
         let response_json: serde_json::Value = response
             .json()
             .await
-            .map_err(|e| KowalskiError::Server(format!("Failed to parse JSON: {}", e)))?;
+            .map_err(|e| {
+                KowalskiError::Server(format!(
+                    "Ollama returned success HTTP but invalid JSON from {}: {}. Raw response may be truncated in logs.",
+                    url, e
+                ))
+            })?;
 
         let content = response_json["message"]["content"]
             .as_str()
-            .ok_or(KowalskiError::Server(
-                "No content in Ollama response".to_string(),
-            ))?
+            .ok_or_else(|| {
+                KowalskiError::Server(format!(
+                    "No `message.content` in Ollama JSON from {}. Keys present: {:?}. Full body (trimmed): {:.500}",
+                    url,
+                    response_json
+                        .as_object()
+                        .map(|o| o.keys().cloned().collect::<Vec<_>>())
+                        .unwrap_or_default(),
+                    response_json.to_string()
+                ))
+            })?
             .to_string();
 
         Ok(content)
@@ -74,12 +103,17 @@ impl LLMProvider for OllamaProvider {
             }))
             .send()
             .await
-            .map_err(|e| {
-                KowalskiError::Memory(format!("Failed to call Ollama embedding: {}", e))
-            })?;
+            .map_err(|e| KowalskiError::Memory(self.troubleshoot_connect(&url, &e)))?;
 
-        if !response.status().is_success() {
-            return Err(KowalskiError::Memory("Ollama embedding failed".to_string()));
+        let status = response.status();
+        if !status.is_success() {
+            let t = response.text().await.unwrap_or_default();
+            return Err(KowalskiError::Memory(format!(
+                "Ollama embedding HTTP {} from {}: {}",
+                status.as_u16(),
+                url,
+                t.trim()
+            )));
         }
 
         let json: serde_json::Value = response
@@ -105,6 +139,7 @@ impl LLMProvider for OllamaProvider {
 
     fn chat_stream(&self, model: &str, messages: Vec<Message>) -> TokenStream<'_> {
         let url = format!("{}/api/chat", self.base_url);
+        let base_url = self.base_url.clone();
         let request = ChatRequest {
             model: model.to_string(),
             messages,
@@ -118,13 +153,23 @@ impl LLMProvider for OllamaProvider {
             let response = match client.post(&url).json(&request).send().await {
                 Ok(r) => r,
                 Err(e) => {
-                    yield Err(KowalskiError::Server(format!("Ollama stream: {e}")));
+                    yield Err(KowalskiError::Server(format!(
+                        "Cannot reach Ollama at {} (stream {}): {}.\n\
+                         What to check: same as non-stream — run `ollama serve`, match `[ollama]` in config.toml, `curl -s {}/api/tags`.",
+                        base_url, url, e, base_url
+                    )));
                     return;
                 }
             };
-            if !response.status().is_success() {
+            let status = response.status();
+            if !status.is_success() {
                 let t = response.text().await.unwrap_or_default();
-                yield Err(KowalskiError::Server(format!("Ollama error: {t}")));
+                yield Err(KowalskiError::Server(format!(
+                    "Ollama stream returned HTTP {} from {}: {}",
+                    status.as_u16(),
+                    url,
+                    t.trim()
+                )));
                 return;
             }
             let mut buf: Vec<u8> = Vec::new();
@@ -133,7 +178,10 @@ impl LLMProvider for OllamaProvider {
                 let chunk = match chunk {
                     Ok(c) => c,
                     Err(e) => {
-                        yield Err(KowalskiError::Server(format!("Ollama stream read: {e}")));
+                        yield Err(KowalskiError::Server(format!(
+                            "Ollama stream read error from {}: {}",
+                            url, e
+                        )));
                         return;
                     }
                 };

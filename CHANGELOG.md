@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Fixed
+
+- **`agent-app worker`** (federation SSE): the blocking HTTP client used the default **30s** request timeout, so idle **`GET /api/federation/stream`** reads failed and stderr showed `federation stream decode warning (ignored): error decoding response body` (reqwest’s misleading label for that timeout). The stream client now disables that timeout for the long-lived connection.
+
+### Changed
+
+- **Knowledge Compiler `PASTE_ME.md`:** paste pack is a **topic-first** Obsidian note (short filing tip, **Concepts → Summary → Answer**, no Source block, no pipeline “fallback” filler in the body; placeholders summarized under **Meta**; filing keywords moved to a short footer). `write_paste_me_file` no longer takes a source URL for the paste body.
+- **LLM / operator UX:** Ollama and **OpenAI-compatible** providers now attach the same style of **“what to check”** hints (API base, model, key, network). [`kowalski-core/src/llm/provider.rs`](kowalski-core/src/llm/provider.rs) documents the convention for future **`LLMProvider`** implementations. **`agent-app`** `chat_no_tools` preserves the server error body on failed **`POST /api/chat`**; CLI **`friendly_http_status_error`** adds Ollama-specific hints for HTTP 5xx on `/api/chat`.
+
 ## [1.2.0] - 2026-05-03
 
 > Workspace and crates **`1.2.0`**: Knowledge Compiler layout simplification (`debug/raw`, `debug/reports`, `debug/lint`, `debug/followups`, `agents_log`), horde HTTP artifact conventions, GitHub-aware ingest, and operator docs/UI updates (full list below).

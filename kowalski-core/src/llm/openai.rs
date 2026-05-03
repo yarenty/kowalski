@@ -20,6 +20,8 @@ use futures::StreamExt;
 pub struct OpenAIProvider {
     client: Client<OpenAIConfig>,
     embedding_model: String,
+    /// Effective HTTP API root (for operator-facing errors).
+    api_base_display: String,
 }
 
 impl OpenAIProvider {
@@ -27,17 +29,47 @@ impl OpenAIProvider {
     /// `api_base` should be the full OpenAI API root (e.g. `https://api.openai.com/v1` or `http://localhost:1234/v1`).
     pub fn new(api_key: &str, api_base: Option<&str>) -> Self {
         let mut config = OpenAIConfig::new().with_api_key(api_key);
-        if let Some(base) = api_base {
+        let api_base_display = if let Some(base) = api_base {
             let trimmed = base.trim();
             if !trimmed.is_empty() {
                 config = config.with_api_base(trimmed);
+                trimmed.to_string()
+            } else {
+                "https://api.openai.com/v1".to_string()
             }
-        }
+        } else {
+            "https://api.openai.com/v1".to_string()
+        };
         let client = Client::with_config(config);
         Self {
             client,
             embedding_model: "text-embedding-3-small".to_string(),
+            api_base_display,
         }
+    }
+
+    fn troubleshoot_chat(&self, model: &str, err: impl std::fmt::Display) -> String {
+        format!(
+            "OpenAI-compatible chat failed (model `{}`, API base `{}`): {}.\n\
+             What to check:\n\
+             - `config.toml` `[llm]` `provider = \"openai\"` and `openai_api_base` if you use a non-default host (must usually end with `/v1` for OpenAI-compatible HTTP APIs).\n\
+             - **API key**: required for `api.openai.com`; many local servers accept an empty or placeholder key.\n\
+             - **Model id**: must match the provider (e.g. `gpt-4o-mini`) or your local server’s model list.\n\
+             - **Network**: VPN, firewall, corporate proxy, or TLS MITM breaking HTTPS.\n\
+             - **Provider logs**: inspect the OpenAI-compatible server console for 4xx/5xx details.",
+            model, self.api_base_display, err
+        )
+    }
+
+    fn troubleshoot_embed(&self, err: impl std::fmt::Display) -> String {
+        format!(
+            "OpenAI-compatible embeddings failed (model `{}`, API base `{}`): {}.\n\
+             What to check:\n\
+             - Same connectivity and API key rules as chat.\n\
+             - Embedding model id is valid for that provider (default here: `{}`).\n\
+             - Local gateways: some require an explicit embeddings route or a different model name.",
+            self.embedding_model, self.api_base_display, err, self.embedding_model
+        )
     }
 }
 
@@ -57,15 +89,26 @@ impl LLMProvider for OpenAIProvider {
             .chat()
             .create(request)
             .await
-            .map_err(|e| KowalskiError::Server(format!("OpenAI API error: {}", e)))?;
+            .map_err(|e| KowalskiError::Server(self.troubleshoot_chat(model, &e)))?;
 
+        let n_choices = response.choices.len();
         let content = response
             .choices
             .first()
             .and_then(|choice| choice.message.content.clone())
-            .ok_or(KowalskiError::Server(
-                "No content in OpenAI response".to_string(),
-            ))?;
+            .ok_or_else(|| {
+                let finish = response
+                    .choices
+                    .first()
+                    .and_then(|c| c.finish_reason.clone())
+                    .map(|r| format!(" first_choice_finish_reason={:?}", r))
+                    .unwrap_or_default();
+                KowalskiError::Server(format!(
+                    "No assistant text in OpenAI-compatible chat response (model `{}`, API base `{}`, {} choice(s){}).\n\
+                     What to check: moderation or safety filters, `max_tokens` / empty completion, wrong model id, or a local server returning an unexpected schema.",
+                    model, self.api_base_display, n_choices, finish
+                ))
+            })?;
 
         Ok(content)
     }
@@ -82,15 +125,20 @@ impl LLMProvider for OpenAIProvider {
             .embeddings()
             .create(request)
             .await
-            .map_err(|e| KowalskiError::Memory(format!("OpenAI embedding API error: {}", e)))?;
+            .map_err(|e| KowalskiError::Memory(self.troubleshoot_embed(&e)))?;
 
+        let n = response.data.len();
         let embedding = response
             .data
             .first()
             .map(|data| data.embedding.clone())
-            .ok_or(KowalskiError::Memory(
-                "No embedding in OpenAI response".to_string(),
-            ))?;
+            .ok_or_else(|| {
+                KowalskiError::Memory(format!(
+                    "No embedding row in OpenAI-compatible response (embedding model `{}`, API base `{}`, {} row(s)).\n\
+                     What to check: model supports embeddings on this provider, quota/rate limits, and response schema.",
+                    self.embedding_model, self.api_base_display, n
+                ))
+            })?;
 
         Ok(embedding)
     }
@@ -122,11 +170,17 @@ impl LLMProvider for OpenAIProvider {
             }
         };
         let client = self.client.clone();
+        let base = self.api_base_display.clone();
+        let model_s = model.to_string();
         Box::pin(async_stream::stream! {
             let mut stream = match client.chat().create_stream(request).await {
                 Ok(s) => s,
                 Err(e) => {
-                    yield Err(KowalskiError::Server(format!("OpenAI stream: {e}")));
+                    yield Err(KowalskiError::Server(format!(
+                        "OpenAI-compatible chat stream failed to start (model `{}`, API base `{}`): {}.\n\
+                         What to check: same as non-stream chat — API base, key, model id, and that the server supports streaming for this model.",
+                        model_s, base, e
+                    )));
                     return;
                 }
             };
@@ -142,7 +196,9 @@ impl LLMProvider for OpenAIProvider {
                     }
                     Err(e) => {
                         yield Err(KowalskiError::Server(format!(
-                            "OpenAI stream chunk: {e}"
+                            "OpenAI-compatible chat stream chunk error (model `{}`, API base `{}`): {}.\n\
+                             What to check: provider timeout, connection drop, or mid-stream API error; retry and inspect server logs.",
+                            model_s, base, e
                         )));
                         return;
                     }
