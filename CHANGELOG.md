@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Fixed
 
+- **`markdown_pipeline` normalization:** for non-empty LLM output, optional `normalize_sections` no longer appends extra `##` headings using substring checks — models that use emoji or alternate titles (e.g. `## 📝 TL;DR` instead of `## TL;DR`) were falsely treated as “missing” sections, which duplicated headings and injected `normalize_fallback` text (e.g. “Model output was empty…”) into otherwise valid handoff files. Synthesis from **truly** empty output is unchanged.
+- **HTML → markdown (internal web ingest):** `<a href="…">` is converted to **`[text](url)`** before tag stripping so hyperlinks survive the heuristic HTML pass (plain tag removal previously dropped URLs entirely).
 - **`agent-app worker`** (federation SSE): the blocking HTTP client used the default **30s** request timeout, so idle **`GET /api/federation/stream`** reads failed and stderr showed `federation stream decode warning (ignored): error decoding response body` (reqwest’s misleading label for that timeout). The stream client now disables that timeout for the long-lived connection.
 
 ### Changed

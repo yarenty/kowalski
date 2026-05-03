@@ -32,17 +32,58 @@ pub fn looks_like_html(s: &str) -> bool {
         || (t.contains('<') && t.contains('>') && t[..t.len().min(512)].contains("</"))
 }
 
+fn flatten_inline_tags(html: &str) -> String {
+    let re_tags = Regex::new(r"<[^>]+>").expect("valid regex");
+    let t = re_tags.replace_all(html, " ");
+    html_entities::decode_html_entities(t.trim())
+}
+
+fn decode_href_entities(url: &str) -> String {
+    html_entities::decode_html_entities(url.trim())
+}
+
 /// Strip scripts/styles and tags; collapse whitespace into Markdown-ish plain text blocks.
+/// Preserves hyperlink targets as `[text](url)` before generic tag stripping so URLs are not lost.
 /// This is **not** a full Readability clone — it makes HTML **usable** in LLM/source bundles.
 pub fn html_body_to_markdown(html: &str) -> String {
     let re_script = Regex::new(r"(?is)<script[^>]*>.*?</script>").expect("valid regex");
     let re_style = Regex::new(r"(?is)<style[^>]*>.*?</style>").expect("valid regex");
+    let re_anchor = Regex::new(
+        r#"(?is)<a\s[^>]*?\bhref\s*=\s*(?:"(?P<dq>[^"]*)"|'(?P<sq>[^']*)')[^>]*>(?P<inner>.*?)</a>"#,
+    )
+    .expect("valid regex");
     let re_tags = Regex::new(r"<[^>]+>").expect("valid regex");
     let re_ws = Regex::new(r"[ \t\r\f\v]+").expect("valid regex");
     let re_nl = Regex::new(r"\n{3,}").expect("valid regex");
 
     let s = re_script.replace_all(html, "");
     let s = re_style.replace_all(&s, "");
+    let s = re_anchor.replace_all(&s, |caps: &regex::Captures| {
+        let url = caps
+            .name("dq")
+            .or_else(|| caps.name("sq"))
+            .map(|m| decode_href_entities(m.as_str()))
+            .unwrap_or_default();
+        let inner = caps.name("inner").map(|m| m.as_str()).unwrap_or("");
+        let text = flatten_inline_tags(inner);
+        if url.is_empty() {
+            return text;
+        }
+        let low = url.to_ascii_lowercase();
+        if low.starts_with("javascript:") || low.starts_with("data:") {
+            return text;
+        }
+        if text.is_empty() {
+            return format!("<{url}>");
+        }
+        if url.contains(' ') && !url.starts_with('<') {
+            return format!("[{text}](<{url}>)");
+        }
+        if url.contains(')') {
+            return format!("[{text}](<{url}>)");
+        }
+        format!("[{text}]({url})")
+    });
     let s = re_tags.replace_all(&s, " ");
     let s: String = html_entities::decode_html_entities(s.as_ref());
     let s = re_ws.replace_all(&s, " ");
@@ -110,5 +151,12 @@ mod tests {
         assert!(!md.contains("<script"));
         assert!(md.contains("Title"));
         assert!(md.contains("world"));
+    }
+
+    #[test]
+    fn preserves_anchors_as_markdown_links() {
+        let html = r#"<html><body><p>See <a href="https://example.com/path?q=1&amp;r=2">Example</a> now.</p></body></html>"#;
+        let md = html_body_to_markdown(html);
+        assert!(md.contains("[Example](https://example.com/path?q=1&r=2)"));
     }
 }

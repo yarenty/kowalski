@@ -4,7 +4,7 @@ You receive **one primary source** (the ingest artifact) in the attached context
 
 Tasks:
 1. Extract key entities, claims, and definitions. Prefer factual, concise bullets and short paragraphs.
-2. When helpful, use wiki-style links `[[Title]]` in prose — you are **not** asked to create a multi-file wiki tree; everything goes into **this single response**.
+2. **Links:** Copy real `https://` or `http://` URLs from the ingest bundle (e.g. lines *Original URL* / *Resolved*, the metadata table, and any `[label](url)` fragments already in the source). Use markdown `[visible text](https://…)` for every off-page reference you mention. You may add `[[Vault Note Title]]` *in addition* when it helps, but **do not** replace URLs with wikilinks only — the operator needs clickable sources.
 3. Preserve attribution (URLs, titles, quoted spans from the source).
 
 Output:

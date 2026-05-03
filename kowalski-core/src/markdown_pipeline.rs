@@ -206,19 +206,55 @@ fn normalize_markdown_sections(
     }
 
     let mut body = trimmed.to_string();
-    if !body.starts_with("# ") {
-        body = format!("# {}\n\n{}", title, body);
-    }
-    for s in required_sections {
-        let marker = format!("## {}", s);
-        if !body.contains(&marker) {
-            body.push_str(&format!("\n\n{}\n", marker));
-            if fallback_for.contains(s) {
-                body.push_str(fallback_body);
-                body.push('\n');
-            }
-        }
+    // If there is no top-level H1 (`# `…), prefix the manifest title. Do **not** append
+    // synthetic `##` sections here: models often use emoji or alternate headings (e.g.
+    // `## 📝 TL;DR` instead of `## TL;DR`), and exact `contains("## TL;DR")` checks falsely
+    // inject duplicate sections plus `normalize_fallback` text into otherwise valid output.
+    let start = body.trim_start();
+    if !start.starts_with("# ") {
+        body = format!("# {}\n\n{}", title, start);
     }
     body.push('\n');
     body
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lint_like_agent() -> StageAgentMeta {
+        StageAgentMeta {
+            name: "lint".into(),
+            kind: "lint".into(),
+            prompt_file: None,
+            output: None,
+            context_paths: vec![],
+            normalize_doc_title: Some("Vault paste pack".into()),
+            normalize_sections: vec!["TL;DR".into(), "Suggested notes".into()],
+            normalize_fallback: Some("SHOULD_NOT_APPEAR".into()),
+            normalize_fallback_sections: vec!["TL;DR".into()],
+        }
+    }
+
+    #[test]
+    fn maybe_normalize_non_empty_does_not_inject_fallback_for_emoji_headings() {
+        let agent = lint_like_agent();
+        let raw = "## 📝 TL;DR\n\nReal content.\n\n## 🔗 Links\n\nMore.\n";
+        let out = maybe_normalize_markdown(&agent, raw);
+        assert!(
+            !out.contains("SHOULD_NOT_APPEAR"),
+            "unexpected fallback injection: {}",
+            out
+        );
+        assert!(out.contains("Real content."));
+        assert!(out.contains("Vault paste pack"));
+    }
+
+    #[test]
+    fn maybe_normalize_empty_still_synthesizes_with_fallback() {
+        let agent = lint_like_agent();
+        let out = maybe_normalize_markdown(&agent, "  ");
+        assert!(out.contains("SHOULD_NOT_APPEAR"));
+        assert!(out.contains("# Vault paste pack"));
+    }
 }

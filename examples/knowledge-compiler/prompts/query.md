@@ -6,7 +6,7 @@ Input:
 
 Tasks:
 1. Answer the question directly; mark uncertainty where the digest is silent or ambiguous.
-2. Ground claims in the digest; cite headings or short quotes, not invented paths.
+2. Ground claims in the digest; cite headings or short quotes, not invented paths. When the digest or source metadata lists URLs, repeat them as markdown `[label](https://…)` in **Sources Used** (and inline where useful).
 3. Prefer a compact report the next stage can merge into a paste pack.
 
 Output:
