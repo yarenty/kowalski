@@ -15,6 +15,15 @@ struct MainAgentMeta {
     available_agents: Vec<String>,
     pipeline: Vec<String>,
     default_question: Option<String>,
+    /// Optional checkout of an mdBook vault (e.g. clone of dev_tips) to load `doc/**/*.md` into compile context.
+    #[serde(default)]
+    external_vault_root: Option<String>,
+    /// Directory under `external_vault_root` containing markdown (default `doc`).
+    #[serde(default)]
+    mdbook_doc_rel: Option<String>,
+    /// Max characters of existing corpus to inject (default 120_000).
+    #[serde(default)]
+    corpus_budget_chars: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -116,6 +125,145 @@ fn load_spec(
     Ok((main, map))
 }
 
+fn load_main_agent_doc(
+    root: &Path,
+) -> Result<AgentDoc<MainAgentMeta>, Box<dyn std::error::Error>> {
+    parse_markdown_with_toml_frontmatter::<MainAgentMeta>(&main_agent_path(root))
+}
+
+fn resolve_workspace_path(workspace_root: &Path, p: &str) -> PathBuf {
+    let pb = PathBuf::from(p);
+    if pb.is_absolute() {
+        pb
+    } else {
+        workspace_root.join(pb)
+    }
+}
+
+/// Load markdown from `external_vault_root` / `mdbook_doc_rel` up to a character budget.
+fn collect_mdbook_corpus(workspace_root: &Path, meta: &MainAgentMeta) -> String {
+    let Some(root) = meta.external_vault_root.as_deref() else {
+        return String::new();
+    };
+    let vault = resolve_workspace_path(workspace_root, root);
+    if !vault.is_dir() {
+        return format!(
+            "_(configured `external_vault_root` is not a directory: {})_\n",
+            vault.display()
+        );
+    }
+    let doc_rel = meta.mdbook_doc_rel.as_deref().unwrap_or("doc");
+    let doc_dir = vault.join(doc_rel);
+    if !doc_dir.is_dir() {
+        return format!(
+            "_(mdbook doc path missing: {})_\n",
+            doc_dir.display()
+        );
+    }
+    let budget = meta.corpus_budget_chars.unwrap_or(120_000);
+    collect_md_files_budget(&doc_dir, budget)
+}
+
+fn collect_md_files_budget(doc_dir: &Path, budget: usize) -> String {
+    let mut files = Vec::new();
+    if let Err(e) = collect_md_recursive(doc_dir, &mut files) {
+        return format!("_(corpus walk error: {e})_\n");
+    }
+    files.sort();
+    let mut out =
+        String::from("Excerpts from existing vault markdown (newest processing should cross-link).\n\n");
+    let mut used = 0usize;
+    for p in files {
+        if used >= budget {
+            out.push_str("\n---\n_(corpus truncated at character budget)_\n");
+            break;
+        }
+        let chunk = read_or_empty(&p);
+        let rel = match p.strip_prefix(doc_dir) {
+            Ok(r) => r.display().to_string(),
+            Err(_) => p.display().to_string(),
+        };
+        let header = format!("### `{rel}`\n\n");
+        let overhead = header.len() + 32;
+        if used + overhead >= budget {
+            out.push_str("\n---\n_(corpus truncated at character budget)_\n");
+            break;
+        }
+        let allowed = budget - used - overhead;
+        let piece: String = chunk.chars().take(allowed).collect();
+        out.push_str(&header);
+        out.push_str(&piece);
+        if piece.len() < chunk.len() {
+            out.push_str("\n\n_(file truncated)_\n");
+        }
+        out.push_str("\n\n");
+        used += header.len() + piece.len();
+    }
+    out
+}
+
+fn collect_md_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    for e in fs::read_dir(dir)? {
+        let p = e?.path();
+        if p.is_dir() {
+            collect_md_recursive(&p, out)?;
+        } else if p.extension().and_then(|x| x.to_str()) == Some("md") {
+            out.push(p);
+        }
+    }
+    Ok(())
+}
+
+fn append_corpus_block(corpus: &str, prompt: &str, source_display: &str, raw_source: &str) -> String {
+    if corpus.trim().is_empty() {
+        format!(
+            "{prompt}\n\nSource file: {source_display}\n\n{raw_source}\n",
+        )
+    } else {
+        format!(
+            "{prompt}\n\n## Existing vault corpus (optional)\n\n{corpus}\n\n---\n\nSource file: {source_display}\n\n{raw_source}\n",
+        )
+    }
+}
+
+fn write_mdbook_summary_suggestion(
+    workspace_root: &Path,
+    workdir: &Path,
+    meta: &MainAgentMeta,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Some(vault_s) = meta.external_vault_root.as_deref() else {
+        return Ok(());
+    };
+    let vault = resolve_workspace_path(workspace_root, vault_s);
+    let summary_exists = vault.join("SUMMARY.md").exists();
+    let latest = read_or_empty(&workdir.join("wiki/summaries/latest.md"));
+    let links = extract_wikilinks(&latest);
+    if links.is_empty() && !summary_exists {
+        return Ok(());
+    }
+    let mut doc = String::from("# Suggested mdBook `SUMMARY.md` entries\n\n");
+    doc.push_str("Review paths — adjust `doc/...` to match your vault. Merge manually into ");
+    doc.push_str(&format!("`{}`.\n\n", vault.join("SUMMARY.md").display()));
+    if !summary_exists {
+        doc.push_str("_(No `SUMMARY.md` found next to the vault root — create mdBook layout if needed.)_\n\n");
+    }
+    for link in links {
+        let slug = slugify(&link);
+        if slug.is_empty() {
+            continue;
+        }
+        doc.push_str(&format!(
+            "- [ ] `- [{title}](doc/{slug}.md)`\n",
+            title = link,
+            slug = slug
+        ));
+    }
+    let derived = workdir.join("derived");
+    fs::create_dir_all(&derived)?;
+    fs::write(derived.join("mdbook-summary-suggestion.md"), doc)?;
+    Ok(())
+}
+
 pub fn list_agents(path: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     let root = app_root(path);
     let (main, agents) = load_spec(&root)?;
@@ -214,6 +362,7 @@ fn ensure_dirs(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
         "wiki/concepts",
         "wiki/summaries",
         "derived/reports",
+        "derived/research",
         "derived/lint",
         "scratch",
     ] {
@@ -354,6 +503,30 @@ fn ensure_concept_source_backlink(
     Ok(())
 }
 
+fn ensure_concept_related_backlink(
+    concept_path: &Path,
+    concept_title: &str,
+    from_concept_stem: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut body = read_or_empty(concept_path);
+    let back = format!("[[{}]]", from_concept_stem);
+    if body.contains(&back) {
+        return Ok(());
+    }
+    if body.trim().is_empty() {
+        body = format!(
+            "# {}\n\n## Summary\nStub concept generated from wikilinks.\n\n## Related Concepts\n- {}\n",
+            concept_title, back
+        );
+    } else if body.contains("## Related Concepts") {
+        body.push_str(&format!("\n- {}\n", back));
+    } else {
+        body.push_str(&format!("\n\n## Related Concepts\n- {}\n", back));
+    }
+    fs::write(concept_path, body)?;
+    Ok(())
+}
+
 fn normalize_and_repair_wiki(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let concept_dir = root.join("wiki/concepts");
     let summary_dir = root.join("wiki/summaries");
@@ -405,6 +578,28 @@ fn normalize_and_repair_wiki(root: &Path) -> Result<(), Box<dyn std::error::Erro
             }
             let concept_path = concept_dir.join(format!("{slug}.md"));
             ensure_concept_source_backlink(&concept_path, &link, summary_stem)?;
+        }
+    }
+
+    // 3) Concept-to-concept wikilinks: stubs + reciprocal Related Concepts backlinks.
+    for e in fs::read_dir(&concept_dir)? {
+        let p = e?.path();
+        if p.extension().and_then(|x| x.to_str()) != Some("md") {
+            continue;
+        }
+        let from_stem = p.file_stem().and_then(|x| x.to_str()).unwrap_or("concept");
+        if from_stem == "index" {
+            continue;
+        }
+        let text = read_or_empty(&p);
+        let links = extract_wikilinks(&text);
+        for link in links {
+            let slug = slugify(&link);
+            if slug.is_empty() || slug == "index" || slug == from_stem {
+                continue;
+            }
+            let target_path = concept_dir.join(format!("{slug}.md"));
+            ensure_concept_related_backlink(&target_path, &link, from_stem)?;
         }
     }
 
@@ -485,11 +680,13 @@ where
                         .as_deref()
                         .unwrap_or("wiki/summaries/latest.md"),
                 );
+                let corpus = collect_mdbook_corpus(&root, &main.meta);
                 let src = read_or_empty(&latest_source);
-                let msg = format!(
-                    "{prompt}\n\nSource file: {}\n\n{}\n",
-                    latest_source.display(),
-                    src
+                let msg = append_corpus_block(
+                    &corpus,
+                    &prompt,
+                    &latest_source.display().to_string(),
+                    &src,
                 );
                 let reply = chat_no_tools(api, &msg)?;
                 let reply = normalize_markdown_sections(
@@ -500,6 +697,7 @@ where
                 );
                 fs::write(&summary_out, &reply)?;
                 normalize_and_repair_wiki(&root)?;
+                let _ = write_mdbook_summary_suggestion(&root, &root, &main.meta);
                 log.push_str(&format!("- output: {}\n\n", summary_out.display()));
                 task_outputs.push((step.clone(), summary_out.clone()));
                 artifacts.summary = Some(summary_out.clone());
@@ -572,6 +770,56 @@ where
                 log.push_str(&format!("- output: {}\n\n", out.display()));
                 task_outputs.push((step.clone(), out.clone()));
                 artifacts.lint = Some(out.clone());
+                on_step(step, agent.meta.kind.as_str(), out.as_path());
+                println!("  -> {}", out.display());
+            }
+            "research" => {
+                let prompt_path = root.join(
+                    agent
+                        .meta
+                        .prompt_file
+                        .as_deref()
+                        .unwrap_or("prompts/research_seed.md"),
+                );
+                let prompt = read_or_empty(&prompt_path);
+                let tmpl_path = root.join("templates/investigation_packet.md");
+                let tmpl = read_or_empty(&tmpl_path);
+                let out = root.join(
+                    agent
+                        .meta
+                        .output
+                        .as_deref()
+                        .unwrap_or("derived/research/latest.md"),
+                );
+                let corpus = collect_mdbook_corpus(&root, &main.meta);
+                let seed_src = read_or_empty(&latest_source);
+                let msg = if corpus.is_empty() {
+                    format!(
+                        "{prompt}\n\n## Output shape\n\n{tmpl}\n\n---\n\n## Raw inputs\n\n{seed_src}\n"
+                    )
+                } else {
+                    format!(
+                        "{prompt}\n\n## Output shape\n\n{tmpl}\n\n---\n\n## Existing vault corpus (optional)\n\n{corpus}\n\n---\n\n## Raw inputs\n\n{seed_src}\n"
+                    )
+                };
+                let reply = chat_no_tools(api, &msg)?;
+                let reply = normalize_markdown_sections(
+                    &reply,
+                    "Investigation Packet",
+                    &[
+                        "Topic",
+                        "Summary",
+                        "Official Links",
+                        "Install Or Usage Notes",
+                        "Risks And Caveats",
+                        "Follow Up Questions",
+                        "Suggested Wiki Links",
+                    ],
+                    "Fallback research packet due to empty or malformed model output.",
+                );
+                fs::write(&out, &reply)?;
+                log.push_str(&format!("- output: {}\n\n", out.display()));
+                task_outputs.push((step.clone(), out.clone()));
                 on_step(step, agent.meta.kind.as_str(), out.as_path());
                 println!("  -> {}", out.display());
             }
@@ -1077,6 +1325,7 @@ fn handle_role_delegate(
         "compile" => execute_compile(api, topic, agent_id, &instr, &workspace_root, &workdir),
         "ask" => execute_ask(api, topic, agent_id, &instr, &workspace_root, &workdir),
         "lint" => execute_lint(api, topic, agent_id, &instr, &workspace_root, &workdir),
+        "research" => execute_research(api, topic, agent_id, &instr, &workspace_root, &workdir),
         other => Err(format!("unsupported role kind `{}`", other).into()),
     };
 
@@ -1162,10 +1411,16 @@ fn execute_compile(
         instr,
         &format!("Reading raw source: {}", source_path.display()),
     );
-    let msg = format!(
-        "{prompt}\n\nSource file: {}\n\n{}\n",
-        source_path.display(),
-        src
+    let main_doc = load_main_agent_doc(workspace_root).ok();
+    let corpus = main_doc
+        .as_ref()
+        .map(|d| collect_mdbook_corpus(workspace_root, &d.meta))
+        .unwrap_or_default();
+    let msg = append_corpus_block(
+        &corpus,
+        &prompt,
+        &source_path.display().to_string(),
+        &src,
     );
     let reply = chat_no_tools(api, &msg)?;
     let reply = normalize_markdown_sections(
@@ -1176,9 +1431,76 @@ fn execute_compile(
     );
     fs::write(&summary_out, &reply)?;
     normalize_and_repair_wiki(workdir)?;
+    if let Some(ref doc) = main_doc {
+        let _ = write_mdbook_summary_suggestion(workspace_root, workdir, &doc.meta);
+    }
     Ok((
         summary_out.display().to_string(),
         format!("Compiled wiki summary at {}", summary_out.display()),
+    ))
+}
+
+fn execute_research(
+    api: &str,
+    topic: &str,
+    agent_id: &str,
+    instr: &HordeInstruction,
+    workspace_root: &Path,
+    workdir: &Path,
+) -> Result<(String, String), Box<dyn std::error::Error>> {
+    ensure_dirs(workdir)?;
+    let prompt_path = workspace_root.join("prompts/research_seed.md");
+    let prompt = read_or_empty(&prompt_path);
+    let tmpl_path = workspace_root.join("templates/investigation_packet.md");
+    let tmpl = read_or_empty(&tmpl_path);
+    let source_path = instr
+        .previous_artifact
+        .as_deref()
+        .map(PathBuf::from)
+        .or_else(|| latest_md_in(&workdir.join("raw/sources")))
+        .ok_or("research: no raw source (run ingest first)")?;
+    let seed_src = read_or_empty(&source_path);
+    publish_agent_message(
+        api,
+        topic,
+        agent_id,
+        instr,
+        &format!("Building investigation packet from {}", source_path.display()),
+    );
+    let main_doc = load_main_agent_doc(workspace_root).ok();
+    let corpus = main_doc
+        .as_ref()
+        .map(|d| collect_mdbook_corpus(workspace_root, &d.meta))
+        .unwrap_or_default();
+    let msg = if corpus.is_empty() {
+        format!(
+            "{prompt}\n\n## Output shape\n\n{tmpl}\n\n---\n\n## Raw inputs\n\n{seed_src}\n"
+        )
+    } else {
+        format!(
+            "{prompt}\n\n## Output shape\n\n{tmpl}\n\n---\n\n## Existing vault corpus (optional)\n\n{corpus}\n\n---\n\n## Raw inputs\n\n{seed_src}\n"
+        )
+    };
+    let reply = chat_no_tools(api, &msg)?;
+    let reply = normalize_markdown_sections(
+        &reply,
+        "Investigation Packet",
+        &[
+            "Topic",
+            "Summary",
+            "Official Links",
+            "Install Or Usage Notes",
+            "Risks And Caveats",
+            "Follow Up Questions",
+            "Suggested Wiki Links",
+        ],
+        "Fallback research packet due to empty or malformed model output.",
+    );
+    let out = workdir.join("derived/research/latest.md");
+    fs::write(&out, &reply)?;
+    Ok((
+        out.display().to_string(),
+        format!("Investigation packet at {}", out.display()),
     ))
 }
 

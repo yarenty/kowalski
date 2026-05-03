@@ -83,12 +83,26 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 - **Message Passing Pattern**: For agent-to-agent communication
 - **Plugin Pattern**: For dynamic tool integration
 
+### Tool sources (where capabilities live)
+
+All “do something with the outside world” behavior should align with **one model**, documented in [`kowalski-core/AGENTS.md`](kowalski-core/AGENTS.md) (**Tool execution model**):
+
+1. **In-repo MCP servers** you ship and register (e.g. [`kowalski-mcp-datafusion`](kowalski-mcp-datafusion/)).
+2. **External MCP** reached via gateways or catalogs (e.g. [Docker MCP Toolkit](https://docs.docker.com/ai/mcp-catalog-and-toolkit/toolkit/) — profiles, OAuth, catalog).
+3. **`kowalski-core` internal tools** — small in-process modules under [`kowalski-core/src/tools/internal/`](kowalski-core/src/tools/internal/) (GitHub-aware fetch, web, filesystem) with **config toggles** (planned) to disable or replace with MCP without rewriting apps.
+
+**Rule:** Do not treat CLI or HTTP crates as the home for reusable fetch/FS/GitHub rules; extend **`tools/internal`** or **MCP**, not random `src/` helpers in surface binaries.
+
 ### Cross-Cutting Concerns
 - **Logging**: Standard Rust tracing/logging
 - **Error Handling**: Centralized error types (`KowalskiError`)
 - **Security**: Secure multi-party computation (MPC) and role-based access
 - **Performance**: Async-first using Tokio
 - **Monitoring**: Built-in activity tracking and LLM observability
+
+### Operator UI (first-class acceptance surface)
+
+The Vue **`ui/`** is the default way operators run Chat, **Horde** (e.g. Knowledge Compiler), and **Federation** management. Work that changes HTTP **`/api/*`** contracts, horde discovery, federation events, or worker ergonomics is **incomplete** until **`ui/`** still builds and the affected tab is manually smoke-tested (see [`ui/AGENTS.md`](ui/AGENTS.md)). Prefer fixing stale in-UI help text (CLI commands, capabilities) in the same change as backend doc updates.
 
 ### Memory stack and dependencies (design)
 
@@ -128,7 +142,7 @@ kowalski/                         # repository root
 ├── kowalski/                     # Facade crate + HTTP server binary (`kowalski` → `/api/*`)
 ├── kowalski-mcp-datafusion/      # Optional standalone MCP server (DataFusion over files)
 ├── ui/                           # Vue 3 operator UI (Vite)
-├── examples/                     # App patterns (e.g. knowledge-compiler horde)
+├── examples/                     # App patterns (knowledge-compiler: see examples/knowledge-compiler/AGENTS.md)
 ├── migrations/
 │   ├── postgres/                 # SQL migrations (memory + federation)
 │   └── legacy_prompts/           # Salvaged prompts from removed specialized-agent crates

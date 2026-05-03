@@ -131,7 +131,7 @@ kowalski/                         # repository root (you are in kowalski-core/)
 ├── ui/, examples/, migrations/, docs/, tools/, resources/
 ```
 
-Tools and federation types live **in this crate** (`src/tools`, `src/federation`, …)—not in separate `kowalski-tools` / `kowalski-federation` packages.
+Tools and federation types live **in this crate** (`src/tools`, `src/tools/internal/`, `src/federation`, …)—not in separate `kowalski-tools` / `kowalski-federation` packages.
 
 ### Component-Specific Documentation
 **⚠️ CRITICAL**: Read the `AGENTS.md` for the component you change:
@@ -153,6 +153,31 @@ Tools and federation types live **in this crate** (`src/tools`, `src/federation`
 ### Service Architecture
 - **`TemplateAgent`**, tools, memory, MCP client/hub, and federation primitives are implemented **here**.
 - **HTTP** and CLI binaries live in other crates; this library is the core dependency.
+
+### Tool execution model (three sources, one abstraction)
+
+Agents ultimately call **capabilities** that behave like tools. Those capabilities come from **exactly one of three places** (or a deliberate combination), configured per deployment:
+
+| Source | What it is | Examples |
+|--------|------------|----------|
+| **1. In-repo MCP servers** | Separate processes/crates you ship (stdio or HTTP/SSE), registered in config | [`kowalski-mcp-datafusion`](../kowalski-mcp-datafusion/) |
+| **2. External MCP (gateway / catalog)** | Third-party or vendor MCP servers the client reaches through a gateway | [Docker MCP Toolkit](https://docs.docker.com/ai/mcp-catalog-and-toolkit/toolkit/) profiles (GitHub, Puppeteer, …), OAuth handled by the gateway |
+| **3. Internal tools** | Small, **in-process** helpers under [`src/tools/internal/`](./src/tools/internal/) — fast defaults, strict scope | [`internal/github`](./src/tools/internal/github.rs) (README API + raw fetch), [`internal/web`](./src/tools/internal/web.rs) (plain HTTP path, to grow), [`internal/file_system`](./src/tools/internal/file_system.rs) (bounded FS, planned) |
+
+**Principles (no shortcuts):**
+
+- **Internal tools are not “the platform core”** in a business sense — they are **escape hatches**: dependency-light defaults when no MCP is configured, CI-friendly smoke paths, and deterministic helpers.
+- **MCP is the extension plane** for anything that needs OAuth, catalog discovery, headless browsers, vendor APIs, or isolation. The **`McpHub` / `McpClient`** stack ([`src/mcp/`](./src/mcp/)) is the integration point for sources **1** and **2**; do not re-implement those concerns inside `tools/internal/` without a strong reason.
+- **Configuration** (future work, explicit in config schema): per **logical capability** (e.g. `fetch_github`, `read_url`, `list_dir`), choose `provider = internal | mcp` and optional `mcp_server` / tool name so operators can **turn internal tools off** or **shadow** them with an MCP tool without changing orchestration code.
+- **Naming layout** under `src/tools/`:
+  - [`tools/mod.rs`](./src/tools/mod.rs) — `Tool` trait, `ToolInput` / `ToolOutput`, shared types.
+  - [`tools/manager.rs`](./src/tools/manager.rs) — registration and dispatch for `Tool` implementations.
+  - **`tools/internal/`** — only built-in, in-process families; **one concern per directory** (`github`, `web`, `file_system`, …). No dumping unrelated helpers here.
+  - **`src/mcp/`** — MCP **client** protocol, hub, stdio/HTTP transports; **not** a duplicate “tools” tree.
+
+**Call-site rule:** HTTP server (`kowalski`), CLI (`kowalski-cli`), and examples must **not** grow ad-hoc fetch/FS logic; call **`tools::internal::…`** helpers or go through **`ToolManager`** + MCP once wired.
+
+**Operator UI:** behavior visible in the Vue **`ui/`** (chat, horde, federation) must stay coherent with **`/api/*`**; validate smoke paths after changes that affect agents, tools, or federation payloads. See root [`AGENTS.md`](../AGENTS.md) and [`ui/AGENTS.md`](../ui/AGENTS.md).
 
 ---
 

@@ -6,6 +6,16 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Added
+
+- **Knowledge Compiler:** [`examples/knowledge-compiler/AGENTS.md`](examples/knowledge-compiler/AGENTS.md) operator guide (mdBook merge, `GITHUB_TOKEN`, MCP vs CLI).
+- **GitHub-aware URL fetch** as an **internal tool** in `kowalski-core`: [`tools/internal/github.rs`](kowalski-core/src/tools/internal/github.rs) (README API + `raw.githubusercontent.com`, optional `GITHUB_TOKEN`, plain-HTTP fallback); `kowalski-cli` ingest calls this module. See **Tool sources** in [`kowalski-core/AGENTS.md`](kowalski-core/AGENTS.md).
+- **Optional mdBook vault merge:** `main-agent.md` keys `external_vault_root`, `mdbook_doc_rel`, `corpus_budget_chars` inject existing `doc/**/*.md` into compile; `derived/mdbook-summary-suggestion.md` lists suggested `SUMMARY.md` lines.
+- **Concept wikilink repair** extends to concept→concept links with reciprocal **Related Concepts** backlinks.
+- **Optional `research` agent** (`kc.research`): investigation packet prompts / templates; federation worker `--role research`.
+- **Operator UI:** root + `ui/` + `kowalski-core` **AGENTS** now state UI-first smoke acceptance (Horde / Federation / Chat); Federation panel help text updated for `agent-app` + Horde tab (removed stale `extension run`).
+- **`ui/README.md`:** **Operator smoke checklist (~2 minutes)** (Home, Chat, Federation **Start All**, Horde **Run Horde**, optional registry refresh).
+
 ### Changed
 
 - CI: added **`docs`** job (Lychee markdown link check, offline). Local: **`just docs-links`** / `./scripts/docs-linkcheck.sh`.

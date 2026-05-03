@@ -335,6 +335,8 @@ If you can answer these questions, your context management is solid:
 ### Current Status
 **1.1.0**: `kowalski-cli` provides CLI operators (`run`, `config`, `db`, `doctor`, `mcp`, **`extension`**, **`agent-app`**, federation helpers). The **`kowalski`** binary provides the HTTP **`/api/*`** server. Build with **`--features postgres`** for SQL memory alignment with **`kowalski`** graph routes.
 
+**Knowledge Compiler URL capture:** `agent-app` ingest calls **`kowalski_core::tools::internal::github`** (GitHub README API / raw files, optional `GITHUB_TOKEN`, plain-HTTP fallback). That module is an **internal tool family**, not “the CLI product”; see [`kowalski-core/AGENTS.md`](../kowalski-core/AGENTS.md) for the three-way tool model (MCP vs internal). **`agent-app worker --role research`** maps to **`kc.research`** when using the optional research agent in [`examples/knowledge-compiler`](../examples/knowledge-compiler/).
+
 ### Roadmap
 See [`ROADMAP.md`](ROADMAP.md) here and root [`../ROADMAP.md`](../ROADMAP.md).
 

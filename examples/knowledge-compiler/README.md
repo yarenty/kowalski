@@ -2,6 +2,8 @@
 
 **Example aligned with workspace release line 1.1.0**
 
+Operator-focused behavior, mdBook merge options, GitHub ingest, and federation roles are documented in **[`AGENTS.md`](AGENTS.md)**.
+
 This example is a markdown-native **knowledge compiler**: ingest heterogeneous inputs → compile an Obsidian-style wiki → answer a focused question → lint/consistency report.  
 It integrates three surfaces:
 
@@ -75,22 +77,26 @@ Static definition only (no bundled shell `scripts/` or `config/*.yaml`; those we
 
 ```text
 examples/knowledge-compiler/
+├── AGENTS.md                # Operator guide (vault merge, GITHUB_TOKEN, MCP vs CLI)
 ├── horde.md                 # Horde id, pipeline, workdir, delivery metadata, federation topic
-├── main-agent.md            # agent-app pipeline + declared sub-agent names
+├── main-agent.md            # agent-app pipeline + optional external_vault_root / corpus budget
 ├── agents/
 │   ├── ingest.md
 │   ├── compile.md
 │   ├── ask.md
-│   └── lint.md
+│   ├── lint.md
+│   └── research.md          # optional kc.research (not in default pipeline)
 ├── prompts/
 │   ├── compiler.md
 │   ├── query.md
 │   ├── lint.md
-│   └── output.md
+│   ├── output.md
+│   └── research_seed.md
 ├── templates/
 │   ├── concept.md
 │   ├── source_summary.md
-│   └── index.md
+│   ├── index.md
+│   └── investigation_packet.md
 ├── README.md
 └── output/                  # horde workdir (created at runtime when using horde path; ignored)
 ```
@@ -103,8 +109,9 @@ examples/knowledge-compiler/
 | compile | `kc.compile` | Wiki + summaries under `wiki/` |
 | ask | `kc.ask` | Answer → `derived/reports/` |
 | lint | `kc.lint` | Report → `derived/lint/` |
+| research | `kc.research` | Optional: investigation packet → `derived/research/` |
 
-Default worker **`default_agent_id`** values in **`agents/*.md`**: `kc-ingest`, `kc-compile`, `kc-ask`, `kc-lint`.
+Default worker **`default_agent_id`** values in **`agents/*.md`**: `kc-ingest`, `kc-compile`, `kc-ask`, `kc-lint` (`kc-research` if you add the research step).
 
 ---
 
