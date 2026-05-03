@@ -9,7 +9,7 @@ All notable changes to this project will be documented in this file, or at least
 ### Added
 
 - **Knowledge Compiler:** [`examples/knowledge-compiler/AGENTS.md`](examples/knowledge-compiler/AGENTS.md) operator guide (mdBook merge, `GITHUB_TOKEN`, MCP vs CLI).
-- **GitHub-aware URL fetch** as an **internal tool** in `kowalski-core`: [`tools/internal/github.rs`](kowalski-core/src/tools/internal/github.rs) (README API + `raw.githubusercontent.com`, optional `GITHUB_TOKEN`, plain-HTTP fallback); `kowalski-cli` ingest calls this module. See **Tool sources** in [`kowalski-core/AGENTS.md`](kowalski-core/AGENTS.md).
+- **GitHub-aware URL fetch** as an **internal tool** in `kowalski-core`: [`tools/internal/github.rs`](kowalski-core/src/tools/internal/github.rs) (README API + `raw.githubusercontent.com`, optional `GITHUB_TOKEN`, plain-HTTP fallback). **HTML → readable Markdown** heuristics in [`tools/internal/web.rs`](kowalski-core/src/tools/internal/web.rs); ingest bundling moved to [`source_bundle.rs`](kowalski-core/src/source_bundle.rs) so **`kowalski-cli` stays an executor**. **`KOWALSKI_AGENT_APP_ROOT`** overrides the dev-only default app path. See **Tool sources** / **Strict boundaries** in AGENTS files.
 - **Optional mdBook vault merge:** `main-agent.md` keys `external_vault_root`, `mdbook_doc_rel`, `corpus_budget_chars` inject existing `doc/**/*.md` into compile; `derived/mdbook-summary-suggestion.md` lists suggested `SUMMARY.md` lines.
 - **Concept wikilink repair** extends to concept→concept links with reciprocal **Related Concepts** backlinks.
 - **Optional `research` agent** (`kc.research`): investigation packet prompts / templates; federation worker `--role research`.

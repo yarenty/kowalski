@@ -150,7 +150,7 @@ Run serve from repo root **or** set **`KOWALSKI_HORDES_DIR`** to this example’
 
 ## CLI — **`kowalski-cli agent-app`** (native)
 
-Default app root: **`examples/knowledge-compiler`** (override with **`--path <dir>`** on list/validate/run/worker/proof).
+Default app root: env **`KOWALSKI_AGENT_APP_ROOT`**, else **`examples/knowledge-compiler`** (override with **`--path <dir>`** on list/validate/run/worker/proof).
 
 ```bash
 # Help

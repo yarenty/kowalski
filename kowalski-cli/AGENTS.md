@@ -153,6 +153,12 @@ There are **no** standalone `kowalski-academic-agent` / `kowalski-web-agent` cra
 - This crate ships **`kowalski-cli`** operators; **`kowalski`** binary (HTTP) is the **`kowalski`** crate.
 - **`extension`** / **`agent-app`** orchestrate app workflows (e.g. Knowledge Compiler) against **`kowalski`** `/api/*`.
 
+### Strict boundaries: CLI and UI are executors only
+
+- **`kowalski-cli`** and **`ui/`** must **not** own reusable domain logic (URL fetch rules, HTML shaping, horde-specific parsers). They **parse argv / render UX** and call **`kowalski`** HTTP APIs or **`kowalski-core`** libraries used by the worker runtime.
+- **No baked-in horde types**: `agent-app` resolves the app only from **`--path`** or env **`KOWALSKI_AGENT_APP_ROOT`**; the dev default `examples/knowledge-compiler` is a **convenience**, not a type system.
+- **Source capture** for federation ingest lives in **`kowalski_core::source_bundle`** (uses **`tools::internal::{github, web}`**). The CLI only calls it from `agent_app_ops` when executing a worker step — same code the server could call later without duplicating behavior.
+
 ---
 
 ## 6. Development Workflows
@@ -335,7 +341,7 @@ If you can answer these questions, your context management is solid:
 ### Current Status
 **1.1.0**: `kowalski-cli` provides CLI operators (`run`, `config`, `db`, `doctor`, `mcp`, **`extension`**, **`agent-app`**, federation helpers). The **`kowalski`** binary provides the HTTP **`/api/*`** server. Build with **`--features postgres`** for SQL memory alignment with **`kowalski`** graph routes.
 
-**Knowledge Compiler URL capture:** `agent-app` ingest calls **`kowalski_core::tools::internal::github`** (GitHub README API / raw files, optional `GITHUB_TOKEN`, plain-HTTP fallback). That module is an **internal tool family**, not “the CLI product”; see [`kowalski-core/AGENTS.md`](../kowalski-core/AGENTS.md) for the three-way tool model (MCP vs internal). **`agent-app worker --role research`** maps to **`kc.research`** when using the optional research agent in [`examples/knowledge-compiler`](../examples/knowledge-compiler/).
+**Agent-app ingest step:** calls **`kowalski_core::source_bundle`** (GitHub-aware fetch + **HTML→readable-Markdown** when the body looks like HTML). See [`kowalski-core/AGENTS.md`](../kowalski-core/AGENTS.md) for the three-way tool model. **`agent-app worker --role …`** uses the `kind` from whatever app `--path` points at (including optional **`kc.research`** in the Knowledge Compiler example).
 
 ### Roadmap
 See [`ROADMAP.md`](ROADMAP.md) here and root [`../ROADMAP.md`](../ROADMAP.md).

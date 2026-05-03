@@ -93,6 +93,8 @@ All “do something with the outside world” behavior should align with **one m
 
 **Rule:** Do not treat CLI or HTTP crates as the home for reusable fetch/FS/GitHub rules; extend **`tools/internal`** or **MCP**, not random `src/` helpers in surface binaries.
 
+**CLI / UI executors only:** `kowalski-cli` and `ui/` ship **interaction** (argv, HTTP client, Vue). Shared capture and tool behavior live in **`kowalski-core`** (e.g. [`source_bundle`](kowalski-core/src/source_bundle.rs), [`tools/internal`](kowalski-core/src/tools/internal/)). See [`kowalski-cli/AGENTS.md`](kowalski-cli/AGENTS.md) (**Strict boundaries**).
+
 ### Cross-Cutting Concerns
 - **Logging**: Standard Rust tracing/logging
 - **Error Handling**: Centralized error types (`KowalskiError`)

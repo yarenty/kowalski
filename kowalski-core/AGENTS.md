@@ -179,6 +179,8 @@ Agents ultimately call **capabilities** that behave like tools. Those capabiliti
 
 **Operator UI:** behavior visible in the Vue **`ui/`** (chat, horde, federation) must stay coherent with **`/api/*`**; validate smoke paths after changes that affect agents, tools, or federation payloads. See root [`AGENTS.md`](../AGENTS.md) and [`ui/AGENTS.md`](../ui/AGENTS.md).
 
+**[`source_bundle`](./src/source_bundle.rs):** builds `raw/sources/*.md` from URL / file / text tokens (used by `kowalski-cli` worker ingest and any future server-side ingest). Uses **`tools::internal::github`** and **`tools::internal::web`** (HTML heuristic → Markdown). Not horde-specific.
+
 ---
 
 ## 6. Development Workflows

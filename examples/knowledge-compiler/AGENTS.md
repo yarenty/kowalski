@@ -42,7 +42,7 @@ git clone https://github.com/yarenty/dev_tips.git
 
 ## GitHub URL capture (internal tool, MCP optional)
 
-Horde **ingest** uses **`kowalski_core::tools::internal::github`** (same code path whether you run CLI or future HTTP ingest). It resolves common GitHub URLs to useful text:
+Horde **ingest** uses **`kowalski_core::source_bundle`** (GitHub-aware fetch + HTML→Markdown when the response looks like HTML). It resolves common GitHub URLs to useful text:
 
 - `https://github.com/owner/repo` → [README API](https://docs.github.com/en/rest/repos/repos#get-a-repository-readme) (`Accept: application/vnd.github.raw+json`).
 - `https://github.com/owner/repo/blob/ref/path/to/file.md` → `raw.githubusercontent.com` raw file.

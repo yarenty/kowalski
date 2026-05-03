@@ -6,6 +6,7 @@ pub mod error;
 pub mod federation;
 pub mod graph;
 pub mod llm;
+pub mod source_bundle;
 pub mod logging;
 pub mod mcp;
 pub mod memory;

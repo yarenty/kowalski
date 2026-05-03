@@ -1,6 +1,6 @@
 //! Markdown-defined app agent orchestration (`main-agent.md` + `agents/*.md`).
 
-use crate::input_assets::{ingest_assets_markdown, parse_input_assets};
+use kowalski_core::source_bundle::{ingest_assets_markdown, parse_input_assets};
 use chrono::Utc;
 use reqwest::blocking as reqwest_blocking;
 use serde::Deserialize;
@@ -82,6 +82,7 @@ fn parse_markdown_with_toml_frontmatter<T: for<'de> Deserialize<'de>>(
 
 fn app_root(path: Option<&str>) -> PathBuf {
     path.map(PathBuf::from)
+        .or_else(|| std::env::var("KOWALSKI_AGENT_APP_ROOT").ok().map(PathBuf::from))
         .unwrap_or_else(|| PathBuf::from("examples/knowledge-compiler"))
 }
 

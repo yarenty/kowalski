@@ -1,5 +1,9 @@
 //! **Internal (built-in) tools** — small, in-process capabilities under explicit directories.
 //!
+//! **Raw source bundling** (URLs + files → one markdown artifact under `raw/sources/`) lives at
+//! crate root [`source_bundle`](../../source_bundle.rs), not in `kowalski-cli`, so surface binaries
+//! stay thin.
+//!
 //! Design goals:
 //! - Same **logical** surface as MCP-backed tools (fetch URL, read file, …) so callers can swap
 //!   **internal** ↔ **MCP** via configuration without rewriting orchestration.
