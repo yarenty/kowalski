@@ -236,7 +236,7 @@ enum AgentAppCommands {
         /// Federation topic (default: federation)
         #[clap(long)]
         topic: Option<String>,
-        /// Restrict the worker to a single sub-agent role: ingest, compile, ask, or lint.
+        /// Restrict the worker to a single sub-agent role: ingest, compile, ask, lint, or research.
         /// When omitted the worker handles legacy `kc.run` whole-pipeline delegations.
         #[clap(long)]
         role: Option<String>,

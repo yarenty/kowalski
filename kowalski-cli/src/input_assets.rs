@@ -1,5 +1,5 @@
+use kowalski_core::tools::internal::{fetch_url_for_ingest, GithubFetchKind};
 use chrono::Utc;
-use reqwest::blocking as reqwest_blocking;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -96,23 +96,27 @@ pub fn ingest_assets_markdown(
     for (idx, asset) in assets.iter().enumerate() {
         match asset {
             InputAsset::Url(url) => {
-                let section = match reqwest_blocking::get(url) {
-                    Ok(resp) => {
-                        let text = resp
-                            .text()
-                            .unwrap_or_else(|_| "(unable to decode body)".to_string());
-                        let clipped = text.chars().take(24000).collect::<String>();
+                let section = match fetch_url_for_ingest(url) {
+                    Ok(fetched) => {
+                        let via = match fetched.kind {
+                            GithubFetchKind::ReadmeApi => "github readme api",
+                            GithubFetchKind::RawUserContent => "github raw",
+                            GithubFetchKind::PlainHttp => "http get",
+                        };
+                        let clipped = fetched.text.chars().take(24000).collect::<String>();
                         doc.push_str(&format!(
-                            "| {} | url | {} | ok | {} | fetched |\n",
+                            "| {} | url | {} | ok | {} | {} |\n",
                             idx + 1,
                             md_cell(url),
-                            clipped.chars().count()
+                            clipped.chars().count(),
+                            md_cell(via),
                         ));
                         format!(
-                            "<!-- source:{}:url:begin -->\n## Source {}: URL\n\n- URL: `{}`\n\n{}\n\n<!-- source:{}:url:end -->\n\n",
+                            "<!-- source:{}:url:begin -->\n## Source {}: URL\n\n- Original URL: `{}`\n- Resolved fetch: `{}` ({via})\n\n{}\n\n<!-- source:{}:url:end -->\n\n",
                             idx + 1,
                             idx + 1,
                             url,
+                            fetched.resolved_url,
                             clipped,
                             idx + 1
                         )
