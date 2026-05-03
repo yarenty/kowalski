@@ -17,18 +17,29 @@ Use a single top-level title as the first line:
 
 `# <short descriptive title>` — derive from the topic of this run (from attachments), not from “Handoff” or “Paste pack.”
 
+**Right under that title** (before the first `##`), insert the **canonical URL(s)** for this run so Obsidian readers see the origin immediately:
+
+- Blank line after the `#` line.
+- Then **one** line (or a short bullet list if there were multiple distinct ingest URLs in the metadata), using only URLs that appear in the attachments — typically *Original URL* / *Resolved* / the Sources Metadata table in the compile digest. Example shapes (pick one style and stay minimal):
+  - `- **Source:** [yarenty.com](https://yarenty.com/)`
+  - or `- **Sources:**` then sub-bullets with `[label](https://…)` per URL.
+- Another blank line, then the first `##` section below.
+
+Do **not** put pipeline file paths here; only real `https://` / `http://` links.
+
 Then use `##` sections in this **order** when the material supports them (omit a section only if there is literally nothing to say):
 
 1. **`## TL;DR`** — 3–6 bullets: what was ingested, what matters, one-line answer thrust.
 2. **`## Suggested vault notes`** — bullet list of `[[Note title]]` ideas the operator could split into separate notes (titles only from entities/themes in the attachments).
 3. **`## Answer recap`** — tight summary of the ask-stage answer, aligned with the compile digest (no new facts).
 4. **`## Consistency and gaps`** — contradictions, missing citations, or “digest vs answer” mismatches **only** if you see them in the attachments; otherwise one sentence: “No material inconsistencies spotted.”
-5. **`## Sources and follow-ups`** — bullet list: markdown links and/or bare URLs **copied** from the attachments; 2–5 concrete follow-up questions grounded in the content.
+5. **`## Sources and follow-ups`** — bullet list: **only** real world URLs (`https://` / `http://`) and names taken from the attachment **bodies** (the digest text and the ask report). Do **not** link to pipeline paths such as `debug/…`, `stage-compile.md`, `stage-ask-report.md`, `PASTE_ME.md`, or any other local/workdir file — those are not sources for the operator and break after copy-paste. If you need to refer to the digest or report, describe them in words (e.g. “per the compiled digest”) without markdown links to files. Then add 2–5 follow-up questions grounded in the content.
 6. **`## Keywords`** — **required, always last.** A single line or bullet list of **5–12** search terms / tags for Obsidian search and graph context: names, technologies, topics, and product names **that appear in the attachments**. No generic tags (“documentation”, “tutorial”) unless the run is clearly about them. You may optionally add one line of YAML-style tags below for operators who merge into frontmatter later, e.g. `tags: [foo, bar]` — only use terms justified by the attachments.
 
 ## Links and Obsidian habits
 
 - Prefer `[visible label](https://…)` for every URL you mention; keep labels short.
+- **Never** use markdown links whose URL is a **relative repo path** or under **`debug/`** (e.g. `[label](debug/stage-compile.md)`). The reader is in Obsidian, not this project tree.
 - After pasting into Obsidian, the operator may add YAML `tags:` at the very top of the note; your **`## Keywords`** section is the canonical place they copy from to fill that.
 
 ## Output rules
