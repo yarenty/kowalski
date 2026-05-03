@@ -8,6 +8,7 @@ pub mod graph;
 pub mod llm;
 pub mod source_bundle;
 pub mod logging;
+pub mod markdown_pipeline;
 pub mod mcp;
 pub mod memory;
 pub mod model;
@@ -37,6 +38,10 @@ pub use federation::{
 };
 pub use graph::{postgres_age_cypher, postgres_graph_status};
 pub use logging::*;
+pub use markdown_pipeline::{
+    maybe_normalize_markdown, parse_app_manifest, parse_stage_agent, render_context_attachments,
+    resolve_manifest_path, AppManifestMeta, StageAgentMeta,
+};
 pub use mcp::{
     CallToolResponse, McpClient, McpConnection, McpHub, McpStdioClient, McpToolBinding,
     McpToolDescription, McpToolProxy,

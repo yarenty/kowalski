@@ -249,16 +249,15 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
             .delivery_title
             .unwrap_or_else(|| "Final delivery".to_string()),
         delivery_note: meta.delivery_note.unwrap_or_else(|| {
-            "When the run completes, copy from the **Obsidian paste** box or open `workdir/PASTE_ME.md`. Intermediate steps live under `workdir/debug/` for monitoring only."
+            "When the run completes, use the markdown hand-off in the run payload (if present) or the file named by `delivery_root_rel` under the workdir. Intermediate artifacts are usually under `workdir/debug/`."
                 .to_string()
         }),
         delivery_root_rel: meta
             .delivery_root_rel
             .unwrap_or_else(|| "PASTE_ME.md".to_string()),
-        delivery_summary_note: meta.delivery_summary_note.unwrap_or_else(|| {
-            "This horde extracts source knowledge, compiles it into wiki notes, answers the user question, and produces a lint report."
-                .to_string()
-        }),
+        delivery_summary_note: meta
+            .delivery_summary_note
+            .unwrap_or_else(|| String::new()),
         prompt_tip: meta.prompt_tip.unwrap_or_else(|| {
             "Provide a prompt that includes source URL and desired output style.".to_string()
         }),
@@ -705,7 +704,7 @@ impl HordeManager {
                 .collect()
         };
         let paste_path = spec.workdir.join("PASTE_ME.md");
-        let paste_for_obsidian = std::fs::read_to_string(&paste_path).ok().map(|s| {
+        let handoff_markdown = std::fs::read_to_string(&paste_path).ok().map(|s| {
             const MAX: usize = 48_000;
             if s.len() <= MAX {
                 s
@@ -724,12 +723,12 @@ impl HordeManager {
                 horde: spec.id.clone(),
                 artifacts: artifacts.clone(),
                 text: Some(format!(
-                    "{} run completed; {} artifact(s). Copy-paste markdown is in `paste_for_obsidian` and on disk at `{}`.",
+                    "{} run completed; {} artifact(s). Markdown hand-off: `handoff_markdown` in this event; file `{}`.",
                     spec.display_name,
                     artifacts.len(),
                     paste_path.display()
                 )),
-                paste_for_obsidian,
+                handoff_markdown,
             },
         );
         {

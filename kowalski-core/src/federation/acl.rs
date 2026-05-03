@@ -125,9 +125,9 @@ pub enum AclMessage {
         artifacts: Vec<(String, String)>,
         #[serde(default)]
         text: Option<String>,
-        /// Markdown for operators to copy into a note (e.g. Obsidian). Capped on the server when read from disk.
-        #[serde(default)]
-        paste_for_obsidian: Option<String>,
+        /// Markdown hand-off for operators (copy into docs, tickets, etc.). Capped on the server when read from disk.
+        #[serde(default, alias = "paste_for_obsidian")]
+        handoff_markdown: Option<String>,
     },
     /// Horde run lifecycle: orchestrator declares the run failed.
     RunFailed {
@@ -234,5 +234,31 @@ mod tests {
             max_delegation_depth: Some(ABSOLUTE_MAX_DELEGATION_DEPTH + 1),
         };
         assert!(check_delegate_depth(&msg).is_err());
+    }
+
+    #[test]
+    fn run_finished_serializes_handoff_markdown() {
+        let msg = AclMessage::RunFinished {
+            run_id: "r1".into(),
+            horde: "h1".into(),
+            artifacts: vec![],
+            text: None,
+            handoff_markdown: Some("body".into()),
+        };
+        let j = serde_json::to_string(&msg).unwrap();
+        assert!(j.contains("handoff_markdown"));
+        assert!(!j.contains("paste_for_obsidian"));
+    }
+
+    #[test]
+    fn run_finished_deserializes_legacy_paste_field() {
+        let old = r#"{"kind":"run_finished","run_id":"r1","horde":"h1","artifacts":[],"paste_for_obsidian":"legacy"}"#;
+        let msg: AclMessage = serde_json::from_str(old).unwrap();
+        match msg {
+            AclMessage::RunFinished {
+                handoff_markdown, ..
+            } => assert_eq!(handoff_markdown.as_deref(), Some("legacy")),
+            _ => panic!("expected RunFinished"),
+        }
     }
 }

@@ -33,7 +33,7 @@ const knowledgeCompilerAgents = computed(() =>
   ),
 );
 
-const runPrompt = ref("can you check https://yarenty.com and get summary into obsidian?");
+const runPrompt = ref("Summarize https://yarenty.com — key claims and open questions.");
 const runBusy = ref(false);
 const runTaskId = ref<string | null>(null);
 const runTimeline = ref<string[]>([]);
@@ -356,7 +356,7 @@ onUnmounted(() => {
         v-model="runPrompt"
         class="inp"
         type="text"
-        placeholder="can you check https://yarenty.com and get summary into obsidian?"
+        placeholder="Summarize https://example.com/article — key claims and open questions."
       />
     </p>
     <p>

@@ -12,7 +12,8 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Changed
 
-- **Knowledge Compiler `PASTE_ME.md`:** paste pack is a **topic-first** Obsidian note (short filing tip, **Concepts → Summary → Answer**, no Source block, no pipeline “fallback” filler in the body; placeholders summarized under **Meta**; filing keywords moved to a short footer). `write_paste_me_file` no longer takes a source URL for the paste body.
+- **Horde / ACL:** `run_finished.paste_for_obsidian` is renamed to **`handoff_markdown`** (serde still accepts the old JSON key when deserializing). Generic server defaults no longer assume Obsidian or the Knowledge Compiler narrative; per-app copy belongs in each **`horde.md`**.
+- **`agent-app` markdown stages:** local and federation **`compile` / `ask` / …** workers share **`kowalski_core::markdown_pipeline`** (`context_paths`, `@artifact@`, `@step:name@`, per-stage **`output`**, optional **`normalize_*`**). Rust no longer runs wiki repair, index rebuild, or **`write_paste_me_file`** — final deliverable shape is whatever the last stage’s prompt writes (the KC example ends with **`PASTE_ME.md`** as `agents/lint.md` `output`). **`horde.md`** **`delivery_*`** fields remain for server/UI copy; the sample manifest dropped unused **`handoff_*`** keys.
 - **LLM / operator UX:** Ollama and **OpenAI-compatible** providers now attach the same style of **“what to check”** hints (API base, model, key, network). [`kowalski-core/src/llm/provider.rs`](kowalski-core/src/llm/provider.rs) documents the convention for future **`LLMProvider`** implementations. **`agent-app`** `chat_no_tools` preserves the server error body on failed **`POST /api/chat`**; CLI **`friendly_http_status_error`** adds Ollama-specific hints for HTTP 5xx on `/api/chat`.
 
 ## [1.2.0] - 2026-05-03

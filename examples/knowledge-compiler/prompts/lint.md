@@ -1,18 +1,13 @@
-You are the Knowledge Lint agent.
+You are the **final handoff** stage for this example app.
 
-Input:
-- Full markdown corpus in `wiki/`.
+Attached context files (paths shown in section headers) are:
+- the **compile** digest (structured extraction from the source)
+- the **ask** report (answer to the operator question)
 
 Tasks:
-1. Find duplicate concepts and naming collisions.
-2. Detect unlinked concept pages.
-3. Detect links pointing to missing pages.
-4. Flag **one-way** relationships where reciprocity would help (A links to B but B does not mention A under Related / See also); ignore when intentional.
-5. Flag contradictory claims (same entity, conflicting facts).
-6. Suggest 3-10 high-value next pages to create.
+1. Produce **one** markdown file suitable to paste into a note tool (e.g. Obsidian): short TL;DR, suggested note titles / links, recap of the answer, a light consistency pass (contradictions, missing citations), and follow-up questions.
+2. Do **not** assume extra files exist beyond what is attached.
+3. Keep wikilinks and headings compatible with common vault conventions; the operator may rename titles to fit their hierarchy.
 
 Output:
-- Write a report to `debug/lint/latest.md` with sections:
-  - Issues
-  - Suggested Fixes
-  - Candidate New Articles
+- A single markdown body; the runner will persist it to the stage `output` path declared in `agents/lint.md`.

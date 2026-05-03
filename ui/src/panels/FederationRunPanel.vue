@@ -69,7 +69,7 @@ const progressText = ref("idle");
 const copyPasteErr = ref<string | null>(null);
 async function copyPasteToClipboard() {
   copyPasteErr.value = null;
-  const t = pasteForObsidian.value;
+  const t = handoffMarkdown.value;
   if (!t) {
     copyPasteErr.value = "Nothing to copy.";
     return;
@@ -81,11 +81,16 @@ async function copyPasteToClipboard() {
   }
 }
 const finalShortSummary = computed(() => selectedHorde.value?.delivery_summary_note || "Run completed.");
-const pasteForObsidian = computed(() => {
+const handoffMarkdown = computed(() => {
   if (!runResult.value) return "";
   try {
-    const p = JSON.parse(runResult.value) as { paste_for_obsidian?: string };
-    return typeof p.paste_for_obsidian === "string" ? p.paste_for_obsidian : "";
+    const p = JSON.parse(runResult.value) as {
+      handoff_markdown?: string;
+      paste_for_obsidian?: string;
+    };
+    if (typeof p.handoff_markdown === "string") return p.handoff_markdown;
+    if (typeof p.paste_for_obsidian === "string") return p.paste_for_obsidian;
+    return "";
   } catch {
     return "";
   }
@@ -365,7 +370,7 @@ function suggestedPromptFromConversation(): string {
     activeRunFromHistory.value?.question?.trim() ||
     "summarize key findings and practical improvements";
   const base = source ? `Analyze ${source}.` : "Analyze the provided source URL.";
-  return `${base} Focus on: ${latestUserFocus}. Produce Obsidian-ready summary and clear action points.`;
+  return `${base} Focus on: ${latestUserFocus}. Produce a structured summary and clear action points.`;
 }
 
 function redefineAndStartAgain() {
@@ -587,18 +592,18 @@ onUnmounted(() => {
         <p class="muted"><strong>Summary:</strong> {{ finalShortSummary }}</p>
         <p class="muted"><strong>{{ selectedHorde?.delivery_title || "Final delivery" }}</strong></p>
         <p class="muted">{{ selectedHorde?.delivery_note || "" }}</p>
-        <template v-if="pasteForObsidian">
-          <h4 style="margin: 0.75rem 0 0.35rem">Obsidian paste</h4>
+        <template v-if="handoffMarkdown">
+          <h4 style="margin: 0.75rem 0 0.35rem">Markdown hand-off</h4>
           <p class="muted">
-            Copy this block into a <strong>new note</strong>. The top includes a short tip on where to file it in your
-            vault (example tree only — adjust to your layout).
+            Copy this block into your documentation or tracker. Wording at the top comes from this horde’s
+            <code>horde.md</code> when configured.
           </p>
           <textarea
             readonly
-            class="inp paste-for-obsidian"
+            class="inp paste-handoff-markdown"
             rows="22"
             spellcheck="false"
-            :value="pasteForObsidian"
+            :value="handoffMarkdown"
           />
           <p>
             <button type="button" class="primary" @click="copyPasteToClipboard">Copy to clipboard</button>
@@ -606,8 +611,9 @@ onUnmounted(() => {
           <p v-if="copyPasteErr" class="err">{{ copyPasteErr }}</p>
         </template>
         <p v-else class="muted">
-          No paste payload in this run (e.g. pipeline ended before <code>lint</code>, or run failed). Intermediates live
-          under <code>workdir/debug/</code>; copy surface is <code>PASTE_ME.md</code> at <code>workdir</code> root when present.
+          No markdown hand-off in this run (e.g. pipeline ended before <code>lint</code>, or run failed). Intermediates
+          live under <code>workdir/debug/</code>; the same content may exist as <code>PASTE_ME.md</code> at the workdir
+          root when the pipeline wrote it.
         </p>
         <div v-if="finalArtifacts.length" class="artifact-list">
           <article v-for="a in finalArtifacts" :key="`${a[0]}-${a[1]}`" class="artifact-item">
@@ -697,7 +703,7 @@ onUnmounted(() => {
 .err { color: #e88; font-size: 0.9rem; }
 .lbl { display: block; font-size: 0.8rem; color: #8b92a5; margin-bottom: 0.25rem; }
 .inp { width: 100%; max-width: 48rem; box-sizing: border-box; background: #1a1d26; border: 1px solid #3d4658; color: #e8e8ec; border-radius: 6px; padding: 0.4rem 0.55rem; font: inherit; }
-.paste-for-obsidian {
+.paste-handoff-markdown {
   max-width: 100%;
   width: 100%;
   min-height: 14rem;

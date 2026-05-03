@@ -28,7 +28,7 @@ For **this** app, delivery is **files** under `workdir`. For quick repeated runs
 
 ## Workdir layout (this example)
 
-- **`PASTE_ME.md`** — for this horde, the main hand-off at the workdir root; copy into Obsidian (regenerated after `lint` in this pipeline).
+- **`PASTE_ME.md`** — topic-oriented hand-off at the workdir root (concepts-first, minimal meta; regenerated after `lint`). Optional framing comes from **`horde.md`** (`handoff_*`); the UI reads `run_finished.handoff_markdown` when present.
 - **`debug/`** — in this example, all intermediate / monitoring output:
   - `debug/raw/` — ingest bundles (`*-inputs-*.md`)
   - `debug/wiki/` — concepts, summaries, `index.md` (extra top-level folders under `wiki/` still appear in **Bundled reference** in `index.md` if you add them manually)
