@@ -255,6 +255,10 @@ Component-specific files contain crucial information about:
 - Common issues and troubleshooting steps
 - Integration patterns with other services
 
+### Cursor IDE: persistent instructions
+- **This repository:** Always-applied **project rules** live in **[`.cursor/rules/`](.cursor/rules/)** (planning, `task_plan.md` / `progress.md` / `findings.md`, and core-vs-CLI boundaries). They complement this `AGENTS.md` so you do not repeat the same reminders every conversation.
+- **All repositories on your machine:** Paste the block from **[`tools/cursor_user_rules_all_repos.md`](tools/cursor_user_rules_all_repos.md)** into **Cursor Settings → Rules → User Rules** once. User Rules apply to **Agent (Chat)** globally (per [Cursor Rules docs](https://cursor.com/docs/context/rules)).
+
 ### Rule 1: Create Plan First
 Never start a complex task without creating a `task.md` file. Use the template in [`tools/task_template.md`](tools/task_template.md).
 
