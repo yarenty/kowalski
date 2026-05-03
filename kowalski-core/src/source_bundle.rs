@@ -3,8 +3,9 @@
 //! Used by federation / agent-app **worker** runtimes. This module has **no** dependency on any
 //! specific horde manifest — only paths you pass in (`root` / `workdir` for output layout).
 
-use crate::tools::internal::github::{fetch_url_for_ingest, GithubFetchKind};
-use crate::tools::internal::web::{html_body_to_markdown, looks_like_html};
+use crate::tools::internal::file_system::{self, DEFAULT_MAX_READ_BYTES};
+use crate::tools::internal::github::{fetch_url_for_ingest, GithubFetchKind, resolve_github_fetch};
+use crate::tools::internal::web::{fetch_url_as_markdown, html_body_to_markdown, looks_like_html};
 use chrono::Utc;
 use std::collections::HashSet;
 use std::fs;
@@ -85,6 +86,36 @@ fn normalize_fetched_url_body(text: &str) -> String {
     }
 }
 
+/// **GitHub.com URLs** → [`fetch_url_for_ingest`](crate::tools::internal::github::fetch_url_for_ingest) (README API / raw / token).
+/// **All other HTTP(S) URLs** → [`fetch_url_as_markdown`](crate::tools::internal::web::fetch_url_as_markdown) (GET + HTML→MD when needed).
+/// If GitHub-specific fetch fails, falls back once to the web path.
+fn fetch_url_for_bundle(url: &str) -> Result<(String, String, String), String> {
+    let github_shape = resolve_github_fetch(url).is_some();
+    if github_shape {
+        if let Ok(fetched) = fetch_url_for_ingest(url) {
+            let via = match fetched.kind {
+                GithubFetchKind::ReadmeApi => "github readme api",
+                GithubFetchKind::RawUserContent => "github raw",
+                GithubFetchKind::PlainHttp => "github plain http",
+            };
+            let body = normalize_fetched_url_body(&fetched.text);
+            let note = if looks_like_html(&fetched.text) {
+                format!("{via}; html→md")
+            } else {
+                via.to_string()
+            };
+            return Ok((body, note, fetched.resolved_url));
+        }
+    }
+    let body = fetch_url_as_markdown(url).map_err(|e| e.to_string())?;
+    let note = if github_shape {
+        "web fetch (GitHub ingest failed or non-API body)".to_string()
+    } else {
+        "web fetch (non-GitHub URL)".to_string()
+    };
+    Ok((body, note, url.to_string()))
+}
+
 /// Write `raw/sources/<stamp>-inputs-N.md` under `root` from mixed URL / file / text input.
 pub fn write_raw_sources_markdown(
     root: &Path,
@@ -112,19 +143,8 @@ pub fn write_raw_sources_markdown(
     for (idx, asset) in assets.iter().enumerate() {
         match asset {
             SourceToken::Url(url) => {
-                let section = match fetch_url_for_ingest(url) {
-                    Ok(fetched) => {
-                        let via = match fetched.kind {
-                            GithubFetchKind::ReadmeApi => "github readme api",
-                            GithubFetchKind::RawUserContent => "github raw",
-                            GithubFetchKind::PlainHttp => "http get",
-                        };
-                        let body = normalize_fetched_url_body(&fetched.text);
-                        let note = if looks_like_html(&fetched.text) {
-                            format!("{via}; html→md")
-                        } else {
-                            via.to_string()
-                        };
+                let section = match fetch_url_for_bundle(url) {
+                    Ok((body, note, resolved)) => {
                         let clipped = body.chars().take(24000).collect::<String>();
                         doc.push_str(&format!(
                             "| {} | url | {} | ok | {} | {} |\n",
@@ -134,11 +154,12 @@ pub fn write_raw_sources_markdown(
                             md_cell(&note),
                         ));
                         format!(
-                            "<!-- source:{}:url:begin -->\n## Source {}: URL\n\n- Original URL: `{}`\n- Resolved fetch: `{}` ({via})\n\n{}\n\n<!-- source:{}:url:end -->\n\n",
+                            "<!-- source:{}:url:begin -->\n## Source {}: URL\n\n- Original URL: `{}`\n- Resolved / peer: `{}`\n- Mode: {}\n\n{}\n\n<!-- source:{}:url:end -->\n\n",
                             idx + 1,
                             idx + 1,
                             url,
-                            fetched.resolved_url,
+                            resolved,
+                            note,
                             clipped,
                             idx + 1
                         )
@@ -164,8 +185,11 @@ pub fn write_raw_sources_markdown(
                 sections.push_str(&section);
             }
             SourceToken::FilePath(path) => {
-                let content = fs::read_to_string(path)
-                    .unwrap_or_else(|_| "(unable to read file content as text)".to_string());
+                let content = match file_system::read_file_bounded(Path::new(path), DEFAULT_MAX_READ_BYTES)
+                {
+                    Ok(s) => s,
+                    Err(e) => format!("(unable to read file: {e})"),
+                };
                 let clipped = content.chars().take(24000).collect::<String>();
                 doc.push_str(&format!(
                     "| {} | file | {} | ok | {} | local file |\n",

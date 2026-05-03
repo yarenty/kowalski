@@ -18,4 +18,10 @@ pub mod file_system;
 pub mod github;
 pub mod web;
 
-pub use github::{fetch_url_for_ingest, FetchedUrlBody, GithubFetchKind};
+pub use file_system::{
+    append_file, copy_file, file_len, is_dir, is_file, list_dir_entries, list_dir_names, mkdir_all,
+    path_exists, read_file_bounded, read_file_prefix, remove_file, rename, try_canonicalize,
+    write_file, DEFAULT_MAX_READ_BYTES, FileSystemInternalModule,
+};
+pub use github::{fetch_url_for_ingest, FetchedUrlBody, GithubFetchKind, resolve_github_fetch};
+pub use web::{fetch_url_as_markdown, html_body_to_markdown, looks_like_html};
