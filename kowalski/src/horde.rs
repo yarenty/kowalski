@@ -232,12 +232,12 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
             .delivery_title
             .unwrap_or_else(|| "Final delivery".to_string()),
         delivery_note: meta.delivery_note.unwrap_or_else(|| {
-            "Review generated artifacts and import the horde output folder into your target knowledge system."
+            "When the run completes, copy from the **Obsidian paste** box or open `workdir/PASTE_ME.md`. Intermediate steps live under `workdir/debug/` for monitoring only."
                 .to_string()
         }),
         delivery_root_rel: meta
             .delivery_root_rel
-            .unwrap_or_else(|| "wiki".to_string()),
+            .unwrap_or_else(|| "PASTE_ME.md".to_string()),
         delivery_summary_note: meta.delivery_summary_note.unwrap_or_else(|| {
             "This horde extracts source knowledge, compiles it into wiki notes, answers the user question, and produces a lint report."
                 .to_string()
@@ -258,12 +258,19 @@ pub fn prepare_workdir_on_startup_with_policy(
     if !clean_on_startup {
         return Ok(());
     }
-    for rel in ["raw", "wiki", "derived", "scratch"] {
+    for rel in ["debug", "raw", "wiki", "derived", "scratch"] {
         let p = spec.workdir.join(rel);
         if p.exists() {
-            std::fs::remove_dir_all(&p)?;
+            let _ = if p.is_dir() {
+                std::fs::remove_dir_all(&p)
+            } else {
+                std::fs::remove_file(&p)
+            };
         }
     }
+    let _ = std::fs::remove_file(spec.workdir.join("PASTE_ME.md"));
+    // Legacy paste filename (pre PASTE_ME.md)
+    let _ = std::fs::remove_file(spec.workdir.join("derived/obsidian-paste.md"));
     Ok(())
 }
 
@@ -680,6 +687,19 @@ impl HordeManager {
                 .filter_map(|s| s.artifact.clone().map(|a| (s.step.clone(), a)))
                 .collect()
         };
+        let paste_path = spec.workdir.join("PASTE_ME.md");
+        let paste_for_obsidian = std::fs::read_to_string(&paste_path).ok().map(|s| {
+            const MAX: usize = 48_000;
+            if s.len() <= MAX {
+                s
+            } else {
+                format!(
+                    "{}\n\n_(truncated to {} chars for federation payload)_\n",
+                    s.chars().take(MAX).collect::<String>(),
+                    MAX
+                )
+            }
+        });
         let env = self.build_envelope(
             &spec.topic,
             AclMessage::RunFinished {
@@ -687,10 +707,12 @@ impl HordeManager {
                 horde: spec.id.clone(),
                 artifacts: artifacts.clone(),
                 text: Some(format!(
-                    "{} run completed; {} artifact(s).",
+                    "{} run completed; {} artifact(s). Copy-paste markdown is in `paste_for_obsidian` and on disk at `{}`.",
                     spec.display_name,
-                    artifacts.len()
+                    artifacts.len(),
+                    paste_path.display()
                 )),
+                paste_for_obsidian,
             },
         );
         {

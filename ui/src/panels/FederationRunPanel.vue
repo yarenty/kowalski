@@ -66,12 +66,30 @@ const runCompleted = computed(
     activeRunFromHistory.value?.status === "completed",
 );
 const progressText = ref("idle");
-const obsidianRoot = computed(() =>
-  (selectedHorde.value?.workdir || selectedHorde.value?.root_path)
-    ? `${selectedHorde.value?.workdir || selectedHorde.value?.root_path}/${selectedHorde.value?.delivery_root_rel || "wiki"}`
-    : "(unknown)",
-);
+const copyPasteErr = ref<string | null>(null);
+async function copyPasteToClipboard() {
+  copyPasteErr.value = null;
+  const t = pasteForObsidian.value;
+  if (!t) {
+    copyPasteErr.value = "Nothing to copy.";
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(t);
+  } catch {
+    copyPasteErr.value = "Clipboard failed — select the text in the box and copy manually (Cmd/Ctrl+C).";
+  }
+}
 const finalShortSummary = computed(() => selectedHorde.value?.delivery_summary_note || "Run completed.");
+const pasteForObsidian = computed(() => {
+  if (!runResult.value) return "";
+  try {
+    const p = JSON.parse(runResult.value) as { paste_for_obsidian?: string };
+    return typeof p.paste_for_obsidian === "string" ? p.paste_for_obsidian : "";
+  } catch {
+    return "";
+  }
+});
 const hasCompletedRun = computed(() => runCompleted.value);
 const isProcessing = computed(() => runBusy.value || followupBusy.value);
 const processingLabel = computed(() =>
@@ -569,9 +587,27 @@ onUnmounted(() => {
         <p class="muted"><strong>Summary:</strong> {{ finalShortSummary }}</p>
         <p class="muted"><strong>{{ selectedHorde?.delivery_title || "Final delivery" }}</strong></p>
         <p class="muted">{{ selectedHorde?.delivery_note || "" }}</p>
-        <p class="muted"><strong>Obsidian-ready folder:</strong> <code>{{ obsidianRoot }}</code></p>
-        <p class="muted">
-          Copy/sync this folder into your Obsidian vault (or set your vault root there).
+        <template v-if="pasteForObsidian">
+          <h4 style="margin: 0.75rem 0 0.35rem">Obsidian paste</h4>
+          <p class="muted">
+            Copy this block into a <strong>new note</strong>. The top includes a short tip on where to file it in your
+            vault (example tree only — adjust to your layout).
+          </p>
+          <textarea
+            readonly
+            class="inp paste-for-obsidian"
+            rows="22"
+            spellcheck="false"
+            :value="pasteForObsidian"
+          />
+          <p>
+            <button type="button" class="primary" @click="copyPasteToClipboard">Copy to clipboard</button>
+          </p>
+          <p v-if="copyPasteErr" class="err">{{ copyPasteErr }}</p>
+        </template>
+        <p v-else class="muted">
+          No paste payload in this run (e.g. pipeline ended before <code>lint</code>, or run failed). Intermediates live
+          under <code>workdir/debug/</code>; copy surface is <code>PASTE_ME.md</code> at <code>workdir</code> root when present.
         </p>
         <div v-if="finalArtifacts.length" class="artifact-list">
           <article v-for="a in finalArtifacts" :key="`${a[0]}-${a[1]}`" class="artifact-item">
@@ -661,6 +697,16 @@ onUnmounted(() => {
 .err { color: #e88; font-size: 0.9rem; }
 .lbl { display: block; font-size: 0.8rem; color: #8b92a5; margin-bottom: 0.25rem; }
 .inp { width: 100%; max-width: 48rem; box-sizing: border-box; background: #1a1d26; border: 1px solid #3d4658; color: #e8e8ec; border-radius: 6px; padding: 0.4rem 0.55rem; font: inherit; }
+.paste-for-obsidian {
+  max-width: 100%;
+  width: 100%;
+  min-height: 14rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  resize: vertical;
+  white-space: pre;
+  overflow-x: auto;
+}
 .chat-feed { border: 1px solid #2a2e38; border-radius: 8px; background: #141820; padding: 0.6rem; display: grid; gap: 0.45rem; max-height: 55vh; overflow: auto; }
 .followup-feed { max-height: none; overflow: visible; }
 .horde-box { border: 1px solid #2a2e38; border-radius: 8px; background: #161b22; padding: 0.55rem 0.65rem; margin-bottom: 0.55rem; }

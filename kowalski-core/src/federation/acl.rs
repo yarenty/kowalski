@@ -125,6 +125,9 @@ pub enum AclMessage {
         artifacts: Vec<(String, String)>,
         #[serde(default)]
         text: Option<String>,
+        /// Markdown for operators to copy into a note (e.g. Obsidian). Capped on the server when read from disk.
+        #[serde(default)]
+        paste_for_obsidian: Option<String>,
     },
     /// Horde run lifecycle: orchestrator declares the run failed.
     RunFailed {

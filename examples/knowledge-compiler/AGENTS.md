@@ -2,43 +2,36 @@
 
 > **Read this** before changing prompts, the horde manifest, or **`kowalski-core` internal tool** behavior used by ingest for this app.
 
+## Principles (this example)
+
+These apply to **this** Knowledge Compiler horde / `agent-app` example only. **Other hordes** in Kowalski may use different workdir layouts, primary artifacts, and processing—there is no global requirement to match this pattern.
+
+- **Straightforward defaults (here):** one operator-facing file at the workdir root (**`PASTE_ME.md`**), produced by this app’s **`lint`** + `write_paste_me_file` path. No extra flags for that behavior in this example.
+- **`debug/` (here):** this example puts intermediates under **`workdir/debug/`** for monitoring and tooling. That directory name and role are **not** a framework-wide contract; another horde might write only JSON, binary artifacts, or a flat tree with different names.
+
 ## What this is
 
-A **markdown-native knowledge pipeline**: **ingest** (collect sources) → **compile** (LLM + wiki) → **ask** (Q&A) → **lint** (consistency). Optional: **research** (seed/tip → investigation packet).  
-It is **not** a full Obsidian or mdBook product: delivery is **files** under a `workdir` with `[[wikilinks]]` and optional **merging** into an existing [mdBook](https://rust-lang.github.io/mdBook/) repo (e.g. [dev_tips](https://github.com/yarenty/dev_tips)).
+A **markdown-native knowledge pipeline**: **ingest** → **compile** → **ask** → **lint**.  
+**Single manifest:** **[`horde.md`](horde.md)** defines the horde **id**, **pipeline** order, **`workdir`**, delivery copy, federation topic, and (with the server) loads **`agents/*.md`** for each step. **`kowalski-cli agent-app`** reads the **same** `horde.md` + `agents/` for **`list`**, **`validate`**, **`run`**, and **`worker --role`**.
+
+For **this** app, delivery is **files** under `workdir`. For quick repeated runs, use **`PASTE_ME.md`** at the workdir root (and the Horde UI **Copy to clipboard** on `run_finished` when wired). Other pipeline output lives under **`debug/`** for monitoring only.
 
 ## Surfaces
 
 | Surface | Entry | Notes |
 |--------|--------|--------|
-| Horde + UI | [`horde.md`](horde.md) | `workdir` holds all runtime artifacts. |
-| CLI | `cargo run -p kowalski-cli -- agent-app …` | Writes under app root if not using horde workdir. |
-| Worker | `agent-app worker --role <ingest\|compile\|ask\|lint\|research>` | One role per process for federation. |
+| Horde + UI | [`horde.md`](horde.md) | `workdir` holds runtime artifacts; **layout is defined by this app** (see below), not by Horde generically. |
+| CLI | `cargo run -p kowalski-cli -- agent-app …` | Same **`horde.md`** + **`agents/`**; default **`output/`** workdir matches **`horde.md`**. |
+| Worker | `agent-app worker --role <ingest\|compile\|ask\|lint>` | One role per process for federation (`kind` in `agents/<step>.md`). |
 
-## Workdir layout
+## Workdir layout (this example)
 
-- `raw/sources/` — combined ingest output (markdown).
-- `wiki/concepts/`, `wiki/summaries/` — compiled notes; `wiki/index.md` is auto-generated.
-- `derived/reports/`, `derived/lint/`, `derived/research/` — ask, lint, optional research.
-- `derived/mdbook-summary-suggestion.md` — when `external_vault_root` is set, **suggested** `SUMMARY.md` lines (apply manually).
-- `scratch/` — orchestration logs.
-
-## Optional mdBook / dev_tips merge
-
-In [`main-agent.md`](main-agent.md) TOML frontmatter you can add (all optional):
-
-- `external_vault_root` — path to a clone of your book repo (absolute or **relative to the app root**), e.g. `../dev_tips`.
-- `mdbook_doc_rel` — subdirectory for markdown (default `doc`).
-- `corpus_budget_chars` — max characters of existing `**/*.md` under that doc tree to inject into **compile** and **research** (default `120000`).
-
-**Compile** will prepend a “Existing vault corpus” section so new notes can link to real titles. **No** automatic edit of your clone’s `SUMMARY.md` — use `derived/mdbook-summary-suggestion.md` and merge by hand until you trust automation.
-
-**Clone workflow (typical):**
-
-```bash
-git clone https://github.com/yarenty/dev_tips.git
-# In main-agent.md set: external_vault_root = "../dev_tips"  (or your path)
-```
+- **`PASTE_ME.md`** — for this horde, the main hand-off at the workdir root; copy into Obsidian (regenerated after `lint` in this pipeline).
+- **`debug/`** — in this example, all intermediate / monitoring output:
+  - `debug/raw/sources/` — ingest
+  - `debug/wiki/` — concepts, summaries, `index.md` (extra top-level folders under `wiki/` still appear in **Bundled reference** in `index.md` if you add them manually)
+  - `debug/derived/reports|lint/` — ask, lint
+  - `debug/scratch/` — orchestration logs
 
 ## GitHub URL capture (internal tool, MCP optional)
 
@@ -54,7 +47,7 @@ If GitHub-specific fetching fails, ingest **falls back** to a plain HTTP GET of 
 ## MCP vs internal tools
 
 | Use case | Recommendation |
-|----------|------------------|
+|----------|----------------|
 | Horde/automation | Internal GitHub + HTTP helpers in core today; workers stay thin. |
 | Rich GitHub / OAuth / search | Use an **MCP** server (in-repo, stdio, or [Docker MCP Toolkit](https://docs.docker.com/ai/mcp-catalog-and-toolkit/toolkit/) profile); wire through `McpHub` when horde steps invoke tools. |
 | Interactive exploration | Configure MCP on your **chat** agent in `config.toml`; paste URLs or files into ingest. |
@@ -82,21 +75,6 @@ Keep this **optional**; the repo does not ship a compose file by default.
 - **Compile** prompt asks for concept links; [`normalize_and_repair_wiki`](../../kowalski-cli/src/agent_app_ops.rs) ensures stubs for links from **summaries** (Sources backlink) and from **concept pages** (reciprocal **Related Concepts** backlinks).
 - Templates include **`extends`** / **`see_also`** hints — use real existing note titles when linking (e.g. Byobu builds on `[[tmux]]`).
 
-## Research seed (“tip line” → structured packet)
-
-1. **Ingest** a URL or paste text (short tip).
-2. Either run **`research`** as a pipeline step after ingest (see below), or run manually:
-
-```bash
-cargo run -p kowalski-cli -- agent-app run \
-  "mcp-remote: …" --path examples/knowledge-compiler
-# Custom pipeline: ingest -> research (edit main-agent.md pipeline)
-```
-
-3. Output: `derived/research/latest.md` — promotion into `dev_tips/doc/…` is manual or scripted outside Kowalski.
-
-Default [`main-agent.md`](main-agent.md) keeps the original four-step pipeline; add **`research`** to `pipeline` only when you want this step in UI/CLI runs.
-
 ## Worker roles
 
 | Role | Capability |
@@ -105,13 +83,12 @@ Default [`main-agent.md`](main-agent.md) keeps the original four-step pipeline; 
 | compile | `kc.compile` |
 | ask | `kc.ask` |
 | lint | `kc.lint` |
-| research | `kc.research` |
 
 ## Troubleshooting
 
-- **Wrong artifact path**: Horde runs use `horde.workdir`; standalone `agent-app run` uses paths beside `main-agent.md`.
+- **Wrong artifact path**: For this example, Horde and standalone **`agent-app run`** both use **`output/`** under the app root (`horde.workdir` and the CLI default match).
+- **Validate errors**: every **`horde.md`** pipeline step must have **`agents/<step>.md`**; do not leave extra agent files that are not listed in the pipeline.
 - **GitHub HTML instead of README**: use repo URL `https://github.com/o/r` or blob URL to the file; set `GITHUB_TOKEN` if rate-limited.
-- **Vault corpus missing**: check `external_vault_root` resolves from app root; confirm `mdbook_doc_rel` exists.
 
 ## Related docs
 

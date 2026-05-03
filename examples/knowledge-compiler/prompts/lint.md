@@ -12,7 +12,7 @@ Tasks:
 6. Suggest 3-10 high-value next pages to create.
 
 Output:
-- Write a report to `derived/lint/latest.md` with sections:
+- Write a report to `debug/derived/lint/latest.md` with sections:
   - Issues
   - Suggested Fixes
   - Candidate New Articles

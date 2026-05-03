@@ -5,7 +5,7 @@ capability = "kc.ingest"
 default_agent_id = "kc-ingest"
 display_name = "Ingest Agent"
 description = "Collects raw source material and stores normalized markdown."
-output = "raw/sources/"
+output = "debug/raw/sources/"
 ---
 
 # Ingest Agent
@@ -25,4 +25,4 @@ Set **`GITHUB_TOKEN`** in the worker environment for private repos or better rat
 
 ## Vault / Obsidian
 
-There is **no** Obsidian import API in this repo. Output is **markdown on disk** under the horde `workdir/` (for example `wiki/`). Bringing notes into a vault is an **operator** step: copy, `rsync`, sync folder, or Git—whatever fits your vault layout.
+There is **no** Obsidian import API in this repo. After a full pipeline, copy **`workdir/PASTE_ME.md`** into your vault (or use the UI paste). Raw captures live under **`workdir/debug/raw/`** for debugging only.

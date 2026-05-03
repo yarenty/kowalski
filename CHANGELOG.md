@@ -8,16 +8,18 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Added
 
-- **Knowledge Compiler:** [`examples/knowledge-compiler/AGENTS.md`](examples/knowledge-compiler/AGENTS.md) operator guide (mdBook merge, `GITHUB_TOKEN`, MCP vs CLI).
+- **Knowledge Compiler:** [`examples/knowledge-compiler/AGENTS.md`](examples/knowledge-compiler/AGENTS.md) operator guide (`GITHUB_TOKEN`, MCP vs CLI).
 - **GitHub-aware URL fetch** as an **internal tool** in `kowalski-core`: [`tools/internal/github.rs`](kowalski-core/src/tools/internal/github.rs) (README API + `raw.githubusercontent.com`, optional `GITHUB_TOKEN`, plain-HTTP fallback). **HTML → readable Markdown** heuristics in [`tools/internal/web.rs`](kowalski-core/src/tools/internal/web.rs); ingest bundling moved to [`source_bundle.rs`](kowalski-core/src/source_bundle.rs) so **`kowalski-cli` stays an executor**. **`KOWALSKI_AGENT_APP_ROOT`** overrides the dev-only default app path. See **Tool sources** / **Strict boundaries** in AGENTS files.
-- **Optional mdBook vault merge:** `main-agent.md` keys `external_vault_root`, `mdbook_doc_rel`, `corpus_budget_chars` inject existing `doc/**/*.md` into compile; `derived/mdbook-summary-suggestion.md` lists suggested `SUMMARY.md` lines.
+- **Obsidian operator flow (paste-first):** each run ends with **`workdir/PASTE_ME.md`** (and **`run_finished.paste_for_obsidian`** in the UI) — one markdown block for copy-paste. All intermediate pipeline output (ingest, wiki, reports, scratch) is under **`workdir/debug/`**. **Horde Run** panel: **Copy to clipboard**.
 - **Concept wikilink repair** extends to concept→concept links with reciprocal **Related Concepts** backlinks.
-- **Optional `research` agent** (`kc.research`): investigation packet prompts / templates; federation worker `--role research`.
 - **Operator UI:** root + `ui/` + `kowalski-core` **AGENTS** now state UI-first smoke acceptance (Horde / Federation / Chat); Federation panel help text updated for `agent-app` + Horde tab (removed stale `extension run`).
 - **`ui/README.md`:** **Operator smoke checklist (~2 minutes)** (Home, Chat, Federation **Start All**, Horde **Run Horde**, optional registry refresh).
 
 ### Changed
 
+- **Knowledge Compiler / `agent-app`:** **`main-agent.md` removed** — CLI **`list` / `validate` / `run` / `worker`** now read **`horde.md`** + **`agents/*.md`** (same source as the server). Removed unused **`kc.research`** agent, prompts, and investigation template from the example.
+- **Knowledge Compiler / `.gitignore`:** local **`agent-app run`** uses **`examples/knowledge-compiler/output/{PASTE_ME.md,debug/}`** (same default workdir as **`horde.md`**). Ignore rules target **`output/`** only.
+- **Knowledge Compiler:** removed optional **external mdBook vault** wiring from `agent_app_ops` (no `external_vault_root` / corpus injection / `EXTERNAL_VAULT_MERGED.md` / `mdbook-summary-suggestion.md`).
 - CI: added **`docs`** job (Lychee markdown link check, offline). Local: **`just docs-links`** / `./scripts/docs-linkcheck.sh`.
 - Added **`.lychee.toml`**, **`justfile`**, **`scripts/docs-linkcheck.sh`**, root **`LICENSE`** (MIT), and **`CONTRIBUTING.md`**.
 - Added docs governance: **`docs/GOVERNANCE.md`** plus governance references in docs index.

@@ -156,8 +156,10 @@ There are **no** standalone `kowalski-academic-agent` / `kowalski-web-agent` cra
 ### Strict boundaries: CLI and UI are executors only
 
 - **`kowalski-cli`** and **`ui/`** must **not** own reusable domain logic (URL fetch rules, HTML shaping, horde-specific parsers). They **parse argv / render UX** and call **`kowalski`** HTTP APIs or **`kowalski-core`** libraries used by the worker runtime.
-- **No baked-in horde types**: `agent-app` resolves the app only from **`--path`** or env **`KOWALSKI_AGENT_APP_ROOT`**; the dev default `examples/knowledge-compiler` is a **convenience**, not a type system.
+- **No baked-in horde types**: `agent-app` resolves the app only from **`--path`** or env **`KOWALSKI_AGENT_APP_ROOT`**; the dev default `examples/knowledge-compiler` is a **convenience**, not a type system. The manifest is **`horde.md`** + **`agents/*.md`** (same files the server loads for that horde).
+- **Local `agent-app run` workdir**: for the default KC app tree, the CLI uses **`LOCAL_AGENT_APP_WORKDIR`** (`"output"`) under the app root so artifacts match **`horde.md`** `workdir = "output"` (`output/PASTE_ME.md`, `output/debug/`, …).
 - **Source capture** for federation ingest lives in **`kowalski_core::source_bundle`** (uses **`tools::internal::{github, web}`**). The CLI only calls it from `agent_app_ops` when executing a worker step — same code the server could call later without duplicating behavior.
+- **Knowledge Compiler compile** (orchestration-only): reads ingest output + prompts, writes **`debug/wiki/summaries/latest.md`**, runs **`normalize_and_repair_wiki`** (concepts, backlinks, **`rebuild_index`** including **Bundled reference** lines for extra top-level `wiki/` folders). After **`lint`**, **`write_paste_me_file`** writes **`workdir/PASTE_ME.md`**; intermediates live under **`workdir/debug/`**. The server reads that file into **`run_finished.paste_for_obsidian`**.
 
 ---
 
@@ -341,7 +343,7 @@ If you can answer these questions, your context management is solid:
 ### Current Status
 **1.1.0**: `kowalski-cli` provides CLI operators (`run`, `config`, `db`, `doctor`, `mcp`, **`extension`**, **`agent-app`**, federation helpers). The **`kowalski`** binary provides the HTTP **`/api/*`** server. Build with **`--features postgres`** for SQL memory alignment with **`kowalski`** graph routes.
 
-**Agent-app ingest step:** calls **`kowalski_core::source_bundle`** (GitHub-aware fetch + **HTML→readable-Markdown** when the body looks like HTML). See [`kowalski-core/AGENTS.md`](../kowalski-core/AGENTS.md) for the three-way tool model. **`agent-app worker --role …`** uses the `kind` from whatever app `--path` points at (including optional **`kc.research`** in the Knowledge Compiler example).
+**Agent-app ingest step:** calls **`kowalski_core::source_bundle`** (GitHub-aware fetch + **HTML→readable-Markdown** when the body looks like HTML). See [`kowalski-core/AGENTS.md`](../kowalski-core/AGENTS.md) for the three-way tool model. **`agent-app list|validate|run`** and **`worker --role`** read **`horde.md`** + **`agents/*.md`** under **`--path`** (same files as the server’s horde loader for markdown-defined apps).
 
 ### Roadmap
 See [`ROADMAP.md`](ROADMAP.md) here and root [`../ROADMAP.md`](../ROADMAP.md).

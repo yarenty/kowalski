@@ -20,7 +20,7 @@ A sophisticated Rust-based multi-agent framework for interacting with various LL
 ## Horde changes in 1.1.0 (since 1.0.0)
 
 - Added the **Knowledge Compiler** as the first horde-style app workflow (ingest -> compile -> ask -> lint) with markdown-native artifacts.
-- Added markdown-defined sub-agent orchestration (`main-agent.md` + `agents/*.md`) and validation/run operators.
+- Added markdown-defined sub-agent orchestration (`horde.md` + `agents/*.md`) and validation/run operators.
 - Added federation delegate/worker execution with task progress and final artifact reporting.
 - Improved operator UX for horde runs in CLI and UI with clearer traceability.
 

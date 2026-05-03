@@ -1950,7 +1950,7 @@ async fn post_horde_followup(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Persist follow-up output as a concrete artifact so this interaction is actionable.
-    let follow_dir = spec.workdir.join("derived/reports/followups");
+    let follow_dir = spec.workdir.join("debug/derived/reports/followups");
     if let Err(e) = std::fs::create_dir_all(&follow_dir) {
         log::warn!("follow-up artifact mkdir failed: {}", e);
     }

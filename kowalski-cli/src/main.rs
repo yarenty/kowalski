@@ -183,26 +183,26 @@ enum ExtensionCommands {
 
 #[derive(Parser, Debug)]
 enum AgentAppCommands {
-    /// List declared agents and pipeline
+    /// List horde pipeline and agents
     List {
-        /// App dir (`main-agent.md` + `agents/`). Env `KOWALSKI_AGENT_APP_ROOT`, else dev default `examples/knowledge-compiler`.
+        /// App dir (`horde.md` + `agents/`). Env `KOWALSKI_AGENT_APP_ROOT`, else dev default `examples/knowledge-compiler`.
         #[clap(short, long)]
         path: Option<String>,
     },
-    /// Validate main-agent/sub-agent definitions and references
+    /// Validate `horde.md` + `agents/*.md` (pipeline vs agent files)
     Validate {
-        /// App dir (`main-agent.md` + `agents/`). Env `KOWALSKI_AGENT_APP_ROOT`, else dev default `examples/knowledge-compiler`.
+        /// App dir (`horde.md` + `agents/`). Env `KOWALSKI_AGENT_APP_ROOT`, else dev default `examples/knowledge-compiler`.
         #[clap(short, long)]
         path: Option<String>,
     },
-    /// Run main agent orchestration
+    /// Run pipeline sequentially (same steps as `horde.md` pipeline)
     Run {
         /// Source URL or text
         source: String,
         /// Optional question for query phase
         #[clap(short, long)]
         question: Option<String>,
-        /// App dir (`main-agent.md` + `agents/`). Env `KOWALSKI_AGENT_APP_ROOT`, else dev default `examples/knowledge-compiler`.
+        /// App dir (`horde.md` + `agents/`). Env `KOWALSKI_AGENT_APP_ROOT`, else dev default `examples/knowledge-compiler`.
         #[clap(short, long)]
         path: Option<String>,
         /// Kowalski API base URL (default: http://127.0.0.1:3456)
@@ -227,7 +227,7 @@ enum AgentAppCommands {
     Worker {
         /// Worker agent id
         agent_id: String,
-        /// Directory containing `main-agent.md` and `agents/*.md` (defaults: env `KOWALSKI_AGENT_APP_ROOT`, else repo `examples/knowledge-compiler` for local dev only).
+        /// Directory containing `horde.md` and `agents/*.md` (defaults: env `KOWALSKI_AGENT_APP_ROOT`, else repo `examples/knowledge-compiler` for local dev only).
         #[clap(short, long)]
         path: Option<String>,
         /// Kowalski API base URL
@@ -246,7 +246,7 @@ enum AgentAppCommands {
     },
     /// Print reproducible end-to-end federation proof-run checklist
     Proof {
-        /// App dir (`main-agent.md` + `agents/`). Env `KOWALSKI_AGENT_APP_ROOT`, else dev default `examples/knowledge-compiler`.
+        /// App dir (`horde.md` + `agents/`). Env `KOWALSKI_AGENT_APP_ROOT`, else dev default `examples/knowledge-compiler`.
         #[clap(short, long)]
         path: Option<String>,
         /// Kowalski API base URL

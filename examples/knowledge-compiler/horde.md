@@ -9,8 +9,8 @@ default_topic = "federation"
 artifacts_root = "."
 workdir = "output"
 delivery_title = "Obsidian Delivery"
-delivery_note = "Import the wiki folder into your vault or merge into an mdBook repo (see AGENTS.md). Reports/lint/summary suggestions are optional side artifacts."
-delivery_root_rel = "wiki"
+delivery_note = "When the run finishes, use **Obsidian paste** in the UI or open **`workdir/PASTE_ME.md`**. All pipeline intermediates live under **`workdir/debug/`** for monitoring only."
+delivery_root_rel = "PASTE_ME.md"
 delivery_summary_note = "Knowledge Sucking Swarm ingests your source, compiles Obsidian-friendly notes, generates a focused answer, and validates note consistency."
 prompt_tip = "Try: can you check https://yarenty.com and get summary into obsidian?"
 ---
@@ -21,10 +21,10 @@ A multi-agent horde for transforming web sources into a maintained Obsidian-styl
 
 ## Sub-agents
 
-- `ingest` (capability `kc.ingest`): fetches and normalizes inputs into `workdir/raw/sources/`.
-- `compile` (capability `kc.compile`): turns sources into a structured wiki summary and refreshes wiki concept stubs / index under `workdir/wiki/`.
-- `ask` (capability `kc.ask`): answers the user question against `workdir/wiki/` context.
-- `lint` (capability `kc.lint`): produces a quality report under `workdir/derived/lint/`.
+- `ingest` (capability `kc.ingest`): fetches and normalizes inputs into `workdir/debug/raw/sources/`.
+- `compile` (capability `kc.compile`): turns sources into a structured wiki summary and refreshes wiki concept stubs / index under `workdir/debug/wiki/`.
+- `ask` (capability `kc.ask`): answers the user question against `workdir/debug/wiki/` context.
+- `lint` (capability `kc.lint`): produces a quality report under `workdir/debug/derived/lint/` and writes **`workdir/PASTE_ME.md`** for copy-paste.
 
 ## Orchestration model
 

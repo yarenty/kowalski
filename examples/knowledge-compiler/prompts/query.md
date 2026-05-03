@@ -7,7 +7,7 @@ Input:
 Tasks:
 1. Select the minimum set of relevant files.
 2. Synthesize a direct answer with explicit uncertainty markers when needed.
-3. Write output to `derived/reports/<timestamp>-<slug>.md`.
+3. Write output under `debug/derived/reports/` (e.g. `latest.md` or timestamped files).
 4. Include a "Sources used" section with wiki links.
 
 Rules:
