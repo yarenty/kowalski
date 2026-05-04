@@ -6,21 +6,7 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
-### Added
-
-- **Horde workdir:** `POST /api/hordes/{horde_id}/clean-workdir` runs the same filesystem cleanup as **clean on startup** (removes `debug/`, legacy top-level `raw/` / `wiki/` / `scratch/`, `agents_log/`, and workdir `PASTE_ME.md`). Vue **Horde Run** and **Federation → Horde cards** include an inline **Clean now** control next to “Clean on startup”.
-
-### Fixed
-
-- **`markdown_pipeline` normalization:** for non-empty LLM output, optional `normalize_sections` no longer appends extra `##` headings using substring checks — models that use emoji or alternate titles (e.g. `## 📝 TL;DR` instead of `## TL;DR`) were falsely treated as “missing” sections, which duplicated headings and injected `normalize_fallback` text (e.g. “Model output was empty…”) into otherwise valid handoff files. Synthesis from **truly** empty output is unchanged.
-- **HTML → markdown (internal web ingest):** `<a href="…">` is converted to **`[text](url)`** before tag stripping so hyperlinks survive the heuristic HTML pass (plain tag removal previously dropped URLs entirely).
-- **`agent-app worker`** (federation SSE): the blocking HTTP client used the default **30s** request timeout, so idle **`GET /api/federation/stream`** reads failed and stderr showed `federation stream decode warning (ignored): error decoding response body` (reqwest’s misleading label for that timeout). The stream client now disables that timeout for the long-lived connection.
-
-### Changed
-
-- **Horde / ACL:** `run_finished.paste_for_obsidian` is renamed to **`handoff_markdown`** (serde still accepts the old JSON key when deserializing). Generic server defaults no longer assume Obsidian or the Knowledge Compiler narrative; per-app copy belongs in each **`horde.md`**.
-- **`agent-app` markdown stages:** local and federation **`compile` / `ask` / …** workers share **`kowalski_core::markdown_pipeline`** (`context_paths`, `@artifact@`, `@step:name@`, per-stage **`output`**, optional **`normalize_*`**). Rust no longer runs wiki repair, index rebuild, or **`write_paste_me_file`** — final deliverable shape is whatever the last stage’s prompt writes (the KC example ends with **`PASTE_ME.md`** as `agents/lint.md` `output`). **`horde.md`** **`delivery_*`** fields remain for server/UI copy; the sample manifest dropped unused **`handoff_*`** keys.
-- **LLM / operator UX:** Ollama and **OpenAI-compatible** providers now attach the same style of **“what to check”** hints (API base, model, key, network). [`kowalski-core/src/llm/provider.rs`](kowalski-core/src/llm/provider.rs) documents the convention for future **`LLMProvider`** implementations. **`agent-app`** `chat_no_tools` preserves the server error body on failed **`POST /api/chat`**; CLI **`friendly_http_status_error`** adds Ollama-specific hints for HTTP 5xx on `/api/chat`.
+Nothing yet.
 
 ## [1.2.0] - 2026-05-03
 
@@ -34,6 +20,13 @@ All notable changes to this project will be documented in this file, or at least
 - **Concept wikilink repair** extends to concept→concept links with reciprocal **Related Concepts** backlinks.
 - **Operator UI:** root + `ui/` + `kowalski-core` **AGENTS** now state UI-first smoke acceptance (Horde / Federation / Chat); Federation panel help text updated for `agent-app` + Horde tab (removed stale `extension run`).
 - **`ui/README.md`:** **Operator smoke checklist (~2 minutes)** (Home, Chat, Federation **Start All**, Horde **Run Horde**, optional registry refresh).
+- **Horde workdir:** `POST /api/hordes/{horde_id}/clean-workdir` runs the same filesystem cleanup as **clean on startup** (removes `debug/`, legacy top-level `raw/` / `wiki/` / `scratch/`, `agents_log/`, and workdir `PASTE_ME.md`). Vue **Horde Run** and **Federation → Horde cards** include an inline **Clean now** control next to “Clean on startup”. After a successful clean, the UI starts a **new Chat** session (`POST /api/chat/reset`), matching sidebar **New conversation**.
+
+### Fixed
+
+- **`markdown_pipeline` normalization:** for non-empty LLM output, optional `normalize_sections` no longer appends extra `##` headings using substring checks — models that use emoji or alternate titles (e.g. `## 📝 TL;DR` instead of `## TL;DR`) were falsely treated as “missing” sections, which duplicated headings and injected `normalize_fallback` text (e.g. “Model output was empty…”) into otherwise valid handoff files. Synthesis from **truly** empty output is unchanged.
+- **HTML → markdown (internal web ingest):** `<a href="…">` is converted to **`[text](url)`** before tag stripping so hyperlinks survive the heuristic HTML pass (plain tag removal previously dropped URLs entirely).
+- **`agent-app worker`** (federation SSE): the blocking HTTP client used the default **30s** request timeout, so idle **`GET /api/federation/stream`** reads failed and stderr showed `federation stream decode warning (ignored): error decoding response body` (reqwest’s misleading label for that timeout). The stream client now disables that timeout for the long-lived connection.
 
 ### Changed
 
@@ -49,6 +42,9 @@ All notable changes to this project will be documented in this file, or at least
 - Added docs governance: **`docs/GOVERNANCE.md`** plus governance references in docs index.
 - Added architecture snapshots: **`docs/architecture_v02.md`**, **`docs/architecture_v03_future.md`**, and Excalidraw sources under `docs/img/`.
 - Consolidated legacy AGENTS content into **`docs/purgatory/legacy_v1.1.0.md`** and replaced inline legacy blocks with pointers.
+- **Horde / ACL:** `run_finished.paste_for_obsidian` is renamed to **`handoff_markdown`** (serde still accepts the old JSON key when deserializing). Generic server defaults no longer assume Obsidian or the Knowledge Compiler narrative; per-app copy belongs in each **`horde.md`**.
+- **`agent-app` markdown stages:** local and federation **`compile` / `ask` / …** workers share **`kowalski_core::markdown_pipeline`** (`context_paths`, `@artifact@`, `@step:name@`, per-stage **`output`**, optional **`normalize_*`**). Rust no longer runs wiki repair, index rebuild, or **`write_paste_me_file`** — final deliverable shape is whatever the last stage’s prompt writes (the KC example ends with **`PASTE_ME.md`** as `agents/lint.md` `output`). **`horde.md`** **`delivery_*`** fields remain for server/UI copy; the sample manifest dropped unused **`handoff_*`** keys.
+- **LLM / operator UX:** Ollama and **OpenAI-compatible** providers now attach the same style of **“what to check”** hints (API base, model, key, network). [`kowalski-core/src/llm/provider.rs`](kowalski-core/src/llm/provider.rs) documents the convention for future **`LLMProvider`** implementations. **`agent-app`** `chat_no_tools` preserves the server error body on failed **`POST /api/chat`**; CLI **`friendly_http_status_error`** adds Ollama-specific hints for HTTP 5xx on `/api/chat`.
 
 ## [1.1.0] - 2026-04-30
 
