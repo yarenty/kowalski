@@ -588,7 +588,7 @@ onUnmounted(() => {
           title="Delete workdir debug tree, legacy raw/wiki/scratch, agents_log, and PASTE_ME.md (same paths as server clean-on-startup)"
           @click="cleanSelectedWorkdir"
         >
-          {{ cleanWorkdirBusy ? "…" : "Clean now" }}
+          {{ cleanWorkdirBusy ? "…" : "FORCE Clean" }}
         </button>
       </p>
     </div>

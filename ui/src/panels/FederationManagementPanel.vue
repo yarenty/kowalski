@@ -187,7 +187,7 @@ onMounted(() => void refreshAll());
             Open output folder
           </button>
         </p>
-        <p class="muted workdir-row clean-on-row">
+        <p class="muted workdir-row">
           <span>
             Clean on startup:
             <strong>{{ (card.horde.config_on_startup_effective ?? card.horde.config_on_startup) ? "true" : "false" }}</strong>
@@ -199,7 +199,7 @@ onMounted(() => void refreshAll());
             title="Delete workdir debug tree, legacy paths, agents_log, and PASTE_ME.md for this horde"
             @click="cleanHordeWorkdir(card.horde.id)"
           >
-            {{ cleanBusyHordeId === card.horde.id ? "…" : "Clean now" }}
+            {{ cleanBusyHordeId === card.horde.id ? "…" : "FORCE Clean" }}
           </button>
         </p>
         <p>
