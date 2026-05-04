@@ -11,7 +11,7 @@ use sqlx::postgres::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-/// Semantic store using **`semantic_memory`** and **`semantic_relation`** tables (see `migrations/postgres/003_semantic_memory.sql`).
+/// Semantic store using **`semantic_memory`** and **`semantic_relation`** tables (see `migrations/postgres/003_semantic_memory.sql` in this crate).
 ///
 /// [`MemoryProvider::retrieve`] embeds the query via [`LLMProvider::embed`] and runs **cosine-distance** ordering (`<=>`).
 pub struct PostgresSemanticStore {

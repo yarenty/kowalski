@@ -128,7 +128,7 @@ kowalski/                         # repository root (you are in kowalski-core/)
 ├── kowalski-cli/                 # REPL, operators, extension, agent-app
 ├── kowalski/                     # Facade + HTTP server binary
 ├── kowalski-mcp-datafusion/      # Optional MCP server (DataFusion)
-├── ui/, examples/, migrations/, docs/, tools/, resources/
+├── ui/, examples/, docs/, tools/, resources/   # SQL migrations: `migrations/` within this crate
 ```
 
 Tools and federation types live **in this crate** (`src/tools`, `src/tools/internal/`, `src/federation`, …)—not in separate `kowalski-tools` / `kowalski-federation` packages.

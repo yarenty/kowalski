@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Schema for the episodic SQLite file (same as `migrations/sqlite/002_episodic_kv.sql`).
+/// Schema for the episodic SQLite file (same as `migrations/sqlite/002_episodic_kv.sql` in this crate).
 const EPISODIC_KV_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS episodic_kv (
     id TEXT PRIMARY KEY NOT NULL,

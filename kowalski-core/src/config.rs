@@ -119,7 +119,7 @@ pub struct MemoryConfig {
     /// Optional: set to **`postgres://…`** / **`postgresql://…`** to use PostgreSQL for Tier 2 (`episodic_kv`) and Tier 3 semantic SQL (**requires** `kowalski-core` **`--features postgres`**). If omitted, Tier 2 stays on **SQLite** ([`Self::episodic_path`]) — the default.
     #[serde(default)]
     pub database_url: Option<String>,
-    /// Embedding width for **PostgreSQL** `semantic_memory.embedding` (`vector(N)`). Must match your embedder (e.g. **768** for Ollama `nomic-embed-text`) and the dimension in `migrations/postgres/003_semantic_memory.sql`.
+    /// Embedding width for **PostgreSQL** `semantic_memory.embedding` (`vector(N)`). Must match your embedder (e.g. **768** for Ollama `nomic-embed-text`) and the dimension in `migrations/postgres/003_semantic_memory.sql` (this crate).
     #[serde(default = "default_embedding_vector_dimensions")]
     pub embedding_vector_dimensions: usize,
     #[serde(flatten)]

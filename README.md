@@ -45,9 +45,7 @@ kowalski/
 ├── kowalski/                # HTTP API server binary (`kowalski`)
 ├── kowalski-mcp-datafusion/ # Standalone MCP server: DataFusion SQL over CSV/Parquet
 ├── ui/                      # Vue 3 + Vite operator UI (Chat, MCP, federation, graph status)
-├── migrations/
-│   ├── postgres/            # SQL migrations when using Postgres memory
-│   └── legacy_prompts/      # Stashed prompts from legacy specialized agents
+├── kowalski-core/migrations/# SQLite + Postgres SQL migrations (bundled with kowalski-core for sqlx / crates.io)
 ├── resources/               # Configs, tokenizer, etc.
 └── docs/                    # Design notes, architecture
 ```
@@ -194,7 +192,7 @@ kowalski> create code
 kowalski> chat code-agent
 ```
 
-Legacy prompt configurations are currently stored in `migrations/legacy_prompts/`.
+Legacy prompt configurations may live under `migrations/legacy_prompts/` when present in a checkout.
 
 ---
 

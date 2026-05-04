@@ -145,9 +145,7 @@ kowalski/                         # repository root
 ├── kowalski-mcp-datafusion/      # Optional standalone MCP server (DataFusion over files)
 ├── ui/                           # Vue 3 operator UI (Vite)
 ├── examples/                     # App patterns (knowledge-compiler: see examples/knowledge-compiler/AGENTS.md)
-├── migrations/
-│   ├── postgres/                 # SQL migrations (memory + federation)
-│   └── legacy_prompts/           # Salvaged prompts from removed specialized-agent crates
+├── kowalski-core/migrations/     # SQL migrations (SQLite + Postgres), bundled with kowalski-core for sqlx + crates.io
 ├── docs/                         # Design articles (see docs/README.md)
 ├── tools/                        # Repo tooling docs (SOLID guides, task templates) — not a Rust crate
 └── resources/                    # Configs, tokenizer, etc.
@@ -366,7 +364,7 @@ If you can answer these questions, your context management is solid:
 See [`ROADMAP.md`](ROADMAP.md) (root and per-crate **`ROADMAP.md`** where present).
 
 ### Technical Debt
-- Legacy prompts remain in `migrations/legacy_prompts/` for optional config-based loading.
+- Legacy prompts (when shipped in a tree) may remain under `migrations/legacy_prompts/` for optional config-based loading; **SQL** migrations ship inside **`kowalski-core/migrations/`**.
 - Further MCP transports and packaging (desktop, etc.) are out of band for the core repo.
 
 ### Known Issues

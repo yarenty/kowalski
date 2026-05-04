@@ -27,7 +27,7 @@ fn migrate_err(e: sqlx::migrate::MigrateError) -> KowalskiError {
 pub async fn run_migrations(database_url: &str) -> Result<(), KowalskiError> {
     if database_url.starts_with("sqlite:") || database_url.starts_with("sqlite://") {
         let pool = SqlitePool::connect(database_url).await.map_err(db_err)?;
-        sqlx::migrate!("../migrations/sqlite")
+        sqlx::migrate!("migrations/sqlite")
             .run(&pool)
             .await
             .map_err(migrate_err)?;
@@ -38,7 +38,7 @@ pub async fn run_migrations(database_url: &str) -> Result<(), KowalskiError> {
         #[cfg(feature = "postgres")]
         {
             let pool = PgPool::connect(database_url).await.map_err(db_err)?;
-            sqlx::migrate!("../migrations/postgres")
+            sqlx::migrate!("migrations/postgres")
                 .run(&pool)
                 .await
                 .map_err(migrate_err)?;

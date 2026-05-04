@@ -131,7 +131,7 @@ kowalski/                         # repository root (you are in crate kowalski/)
 ├── kowalski-mcp-datafusion/      # Optional standalone MCP (DataFusion)
 ├── ui/                           # Vue operator UI
 ├── examples/                     # e.g. knowledge-compiler
-├── migrations/, docs/, tools/, resources/
+├── docs/, tools/, resources/   # SQL migrations live in `kowalski-core/migrations/`
 ```
 
 There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-federation` crates in this workspace; tools and federation live in **`kowalski-core`**.

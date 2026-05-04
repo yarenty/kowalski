@@ -127,7 +127,7 @@ kowalski/                         # repository root (you are in kowalski-cli/)
 ├── kowalski-cli/                 # This crate: REPL, operators, extension, agent-app
 ├── kowalski/                     # Facade + HTTP server binary (not this crate)
 ├── kowalski-mcp-datafusion/      # Optional MCP server (DataFusion)
-├── ui/, examples/, migrations/, docs/, tools/, resources/
+├── ui/, examples/, docs/, tools/, resources/   # SQL migrations: `kowalski-core/migrations/`
 ```
 
 There are **no** standalone `kowalski-academic-agent` / `kowalski-web-agent` crates; personas come from **config + prompts** (`migrations/legacy_prompts/`, etc.).

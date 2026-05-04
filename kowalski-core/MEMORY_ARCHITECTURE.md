@@ -59,7 +59,7 @@ graph TD
 - **No Qdrant** (or other vector service) is required for the default build.
 - **Ollama** (or your configured LLM provider) is still needed for chat/embeddings when those features are used.
 - **Episodic SQLite** opens `episodic.sqlite` under the configured directory (or the path you set if it ends with `.sqlite` / `.db`).
-- Optional **SQL** migrations run when `memory.database_url` is set (e.g. `sqlite:…`); see [`src/db/mod.rs`](./src/db/mod.rs) and the repo `migrations/` folder.
+- Optional **SQL** migrations run when `memory.database_url` is set (e.g. `sqlite:…`); see [`src/db/mod.rs`](./src/db/mod.rs) and this crate’s [`migrations/`](./migrations/) tree.
 
 ### Graph relationships (in-memory map)
 
