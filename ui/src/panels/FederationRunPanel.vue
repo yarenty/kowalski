@@ -9,6 +9,7 @@ import {
 } from "../api";
 const props = defineProps<{ activeThreadId: string | null }>();
 const emit = defineEmits<{
+  (e: "new-chat-session"): void;
   (e: "thread-upsert", item: { id: string; title: string; updatedAt: number }): void;
   (e: "new-thread-from-suggestion", payload: { prompt: string; hordeId: string }): void;
   (e: "thread-create-from-run", payload: {
@@ -248,6 +249,7 @@ async function cleanSelectedWorkdir() {
   try {
     const r = await api.hordeCleanWorkdir(selectedHordeId.value);
     pathAction.value = `Workdir cleaned: ${r.workdir}`;
+    emit("new-chat-session");
   } catch (e) {
     pathAction.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -574,7 +576,7 @@ onUnmounted(() => {
           Open output folder
         </button>
       </p>
-      <p class="muted workdir-row clean-on-row">
+      <p class="muted workdir-row">
         <span>
           Clean on startup:
           <strong>{{ (selectedHorde.config_on_startup_effective ?? selectedHorde.config_on_startup) ? "true" : "false" }}</strong>

@@ -2,6 +2,10 @@
 import { computed, onMounted, ref } from "vue";
 import { api, type FederationRegistryResponse, type FederationWorkerProfile, type HordeCatalogItem } from "../api";
 
+const emit = defineEmits<{
+  (e: "new-chat-session"): void;
+}>();
+
 const hordes = ref<HordeCatalogItem[]>([]);
 const workersByHorde = ref<Record<string, FederationWorkerProfile[]>>({});
 const workerErr = ref<string | null>(null);
@@ -83,6 +87,7 @@ async function cleanHordeWorkdir(hordeId: string) {
   try {
     const r = await api.hordeCleanWorkdir(hordeId);
     pathAction.value = `Workdir cleaned (${hordeId}): ${r.workdir}`;
+    emit("new-chat-session");
   } catch (e) {
     pathAction.value = e instanceof Error ? e.message : String(e);
   } finally {
