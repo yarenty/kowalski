@@ -1,0 +1,111 @@
+# Progress Log
+
+## 2026-04-14
+
+- Initialized planning artifacts.
+- Confirmed missing `examples/` folder and started full scaffold creation for `examples/knowledge-compiler`.
+- Added full example scaffold: configs, prompts, templates, scripts, and readme docs.
+- Executed smoke flow: init -> ingest -> compile -> ask -> lint.
+- Fixed `compile.sh` portability issue by removing `xargs` dependency.
+- Integrated native `kowalski-cli knowledge-compiler` subcommands (`init`, `ingest`, `compile`, `ask`, `lint`).
+- Verified `cargo check -p kowalski-cli` and end-to-end CLI smoke run with the new commands.
+- Refactored to generic extension model:
+  - Added `kowalski-cli extension list`
+  - Added `kowalski-cli extension run <name> [-- <args...>]`
+  - Added local extension runner `.kowalski/extensions/knowledge-compiler/run`
+- Removed built-in `knowledge-compiler` domain ops from core CLI module set.
+- Added federation-first app mechanics:
+  - `knowledge-compiler` extension commands for register/delegate/worker/heartbeat/status.
+  - New server endpoint `/api/federation/publish` for generic ACL event publishing.
+- Updated example docs with a runnable federation workflow.
+- Updated user-facing docs to reflect current commands:
+  - corrected `kowalski` server startup command (no `serve` subcommand).
+  - refreshed `kowalski-cli/README.md` to current operator + extension workflow.
+- Implemented step 4 (agent-driven app internals):
+  - `knowledge-compiler` extension `compile`, `ask`, and `lint` now call `POST /api/chat`.
+  - prompt files are loaded and fused with wiki/source context, then model output is written back to markdown artifacts.
+- Added `/api/chat` no-tools switch (`use_tools`) and switched extension chat calls to deterministic no-tools mode.
+- Implemented real URL ingest path in extension:
+  - fetches URL content
+  - extracts HTML text/title
+  - persists normalized markdown in `debug/raw/`.
+- Added markdown fallback guards for compile/ask/lint when model output is `{}` or empty.
+- Added a main orchestrator command in the extension:
+  - `knowledge-compiler orchestrate "<source>" "<question>"`
+  - coordinates ingest -> compile -> ask -> lint
+  - writes execution log to `examples/knowledge-compiler/scratch/orchestration-*.md`.
+- Reworked to markdown-defined orchestration:
+  - Knowledge Compiler spec: `horde.md` + `agents/*.md` (no separate `main-agent.md`)
+  - added `examples/knowledge-compiler/agents/{ingest,compile,ask,lint}.md`
+  - added `kowalski-cli agent-app {list,validate,run}` engine for AGENTS.md-style orchestration.
+- Reduced `.kowalski/extensions/knowledge-compiler/run` to a thin wrapper over `agent-app`.
+- Continued hardening (one-by-one):
+  - added markdown schema normalization for compile/ask/lint outputs in `agent_app_ops`
+  - added automatic `wiki/index.md` rebuild after compile step
+  - kept fallback content generation for empty/`{}` model replies.
+- Completed Obsidian output hardening:
+  - normalize concept filenames to slug-safe format
+  - auto-create missing concept pages from summary wikilinks
+  - enforce source backlinks from concepts to summary pages
+  - rebuild `wiki/index.md` after wiki repair.
+- Completed federation validation slice:
+  - added `agent-app delegate` (posts orchestrated run task via federation delegate endpoint)
+  - added `agent-app worker` (listens federation stream, executes `kc.run` instruction, publishes `task_result`)
+  - task outcomes now include artifact paths (report and lint output).
+- Added reproducible proof-run helper:
+  - `agent-app proof` preflight + explicit 3-terminal checklist
+  - extension wrapper command `knowledge-compiler proof`.
+- Started UX hardening phase:
+  - implement a natural-language style extension command for "can you check <url> and summarize into Obsidian"
+  - add serialized sub-agent task trace output so each step is visible during execution
+  - surface final generated artifact paths clearly at end of run.
+- Completed UX hardening phase:
+  - extension fallback now accepts natural-language requests containing a URL and routes to `agent-app run`
+  - `agent_app_ops::run` now prints serialized step execution and per-step outputs in terminal
+  - run completion now prints final summary/report/lint artifact paths plus orchestration log path
+  - updated example README with natural-language usage example and trace behavior note.
+- Improved runtime error UX for API calls in `agent_app_ops`:
+  - `/api/chat` and federation HTTP paths now return actionable diagnostics
+  - errors include likely root causes and concrete fix commands (`cargo run -p kowalski --bin kowalski`, health check, API URL verification)
+  - includes HTTP-status-specific hints (404, 5xx, 401/403).
+- Added UI federation execution visibility:
+  - worker now publishes `task_progress` events (`started`, `step_complete`, `completed`) while running `kc.run`
+  - federation panel now includes chat-like "Run knowledge-compiler" prompt flow with URL extraction
+  - panel now tracks active task timeline (sub-agent steps + outputs) and final delivery outcome
+  - panel highlights registered `knowledge-compiler`/`kc.run` federation agents.
+
+- Updated workspace docs to 1.2.0 release messaging across all README files, root changelog, and roadmap with explicit horde delta notes vs 1.0.0.
+- Completed full workspace clippy cleanup: `cargo clippy --all-targets --all-features` now completes cleanly after broad auto-fix + targeted manual updates.
+- Started next phase planning per AGENTS.md:
+  - Phase 17: dependency/security baseline (`cargo deny`) — started
+  - Phase 18: runtime artifact hygiene validation — started
+  - Phase 19: horde UX polish — queued
+  - Phase 20: multi-URL ingest traceability — queued
+- Validated runtime hygiene state for `examples/knowledge-compiler`: only `output/` remains as runtime artifact tree; legacy top-level `raw/wiki/scratch` are gone.
+- Phase 1 executed and completed:
+  - added repo-level `deny.toml`
+  - updated fixable vulnerable deps (`rustls-webpki`, `tracing-subscriber`, `rand` lines)
+  - documented temporary transitive advisory exceptions for currently unavoidable crates
+  - `cargo deny check` now passes
+- Phase 2 validated complete:
+  - runtime tree confirmed under `examples/knowledge-compiler/output/*`
+  - `.gitignore` confirms generated knowledge-compiler outputs are ignored
+- Phase 3 completed:
+  - Horde Management and Horde Run now display `workdir` and `clean_on_startup`
+  - added "Open output folder" quick action (attempt open + clipboard copy fallback)
+- Phase 4 completed:
+  - multi-input ingest artifact now includes `Sources Metadata` markdown table
+  - each source section now has explicit begin/end markers and normalized headings for URL/file/text inputs
+
+## 2026-05-03 (phase 23)
+
+- **Phase 23 (mdBook / Obsidian bundle):** superseded — external vault / mdBook merge paths removed; **paste-first** + **`debug/`** tree + optional manual `wiki/` subfolders for bundled refs remain.
+- Docs: `examples/knowledge-compiler/AGENTS.md`, `horde.md`, `agents/compile.md`, root `CHANGELOG.md`.
+
+## 2026-05-03
+
+- Documented **next delivery phases** (21–26) in `task_plan.md` and aligned `progress.md` / `findings.md`.
+- **Phase 21 (complete):** KC `AGENTS.md`, README cross-links, ingest agent doc updated with URL routing (GitHub vs generic web) and vault/Obsidian operator boundary.
+- **Phase 22 (complete):** `kowalski-core` `source_bundle::fetch_url_for_bundle` — GitHub-shaped URLs use GitHub ingest first, then one-shot web fallback; other URLs use `fetch_url_as_markdown`; file tokens use bounded reads via `tools::internal::file_system`; removed redundant `list_tree_one_level`; `internal/mod.rs` re-exports file-system + web + `resolve_github_fetch`.
+- **Phases 23–26 (pending):** relationship templates + reciprocal link hygiene; Docker/MCP operator documentation. (mdBook external merge and `kc.research` removed from KC example scope.)
+- **Validation:** `cargo build -p kowalski-core -p kowalski-cli`, `cargo test -p kowalski-core` passed after ingest/source_bundle changes.
