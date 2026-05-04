@@ -6,7 +6,7 @@ Use this folder for **design articles**, **architecture notes**, and **long-form
 
 | Doc | Purpose |
 |-----|---------|
-| [`OVERVIEW_1_1.md`](./OVERVIEW_1_1.md) | Short narrative of the **1.1.0** line: horde workflows, Knowledge Compiler, extensions, federation UX. |
+| [`OVERVIEW_1_1.md`](./OVERVIEW_1_1.md) | Narrative of the **1.1.0** horde introduction (still accurate background). **Current release:** **1.2.0** — see root [`CHANGELOG.md`](../CHANGELOG.md). |
 | [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](./DESIGN_MEMORY_AND_DEPENDENCIES.md) | Canonical memory stack rationale (dependency-light defaults, Qdrant as PoC). |
 | [`../examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md) | First **horde-style app** example (ingest → compile → ask → lint). |
 

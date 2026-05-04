@@ -1,21 +1,25 @@
-# Kowalski Roadmap & Features (1.1.0+)
+# Kowalski Roadmap & Features (1.2.0+)
 
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"
 
-**Release:** **1.1.0** — see [`CHANGELOG.md`](CHANGELOG.md).  
+**Release:** **1.2.0** — see [`CHANGELOG.md`](CHANGELOG.md).  
 **Per-crate roadmaps:** [`kowalski-core/ROADMAP.md`](kowalski-core/ROADMAP.md), [`kowalski-cli/ROADMAP.md`](kowalski-cli/ROADMAP.md), [`kowalski-mcp-datafusion/ROADMAP.md`](kowalski-mcp-datafusion/ROADMAP.md), [`ui/ROADMAP.md`](ui/ROADMAP.md).
+
+## Shipped in 1.2.0 (2026-05-03)
+
+See [`CHANGELOG.md`](CHANGELOG.md) (**[1.2.0]**). Highlights: Knowledge Compiler **`workdir/debug/`** layout without **`derived/`** (`raw`, `reports`, `lint`, `followups`), horde HTTP conventions **`agents_log`** + **`debug/followups/`**, GitHub-aware **`source_bundle`**, **`horde.md`-only** `agent-app`, operator docs and UI smoke guidance.
 
 ## Horde changes in 1.1.0 (since 1.0.0)
 
 - First complete **Knowledge Compiler horde** app flow (ingest -> compile -> ask -> lint).
-- Markdown-defined agent topology and execution (`main-agent.md`, `agents/*.md`, `agent-app` commands).
+- Markdown-defined agent topology and execution (`horde.md`, `agents/*.md`, `agent-app` commands).
 - Federation delegate/worker path with task progress publishing and artifact-bearing task results.
 - UI federation timeline updates for operator visibility during horde runs.
 
 ## Horde & app extensions (1.1.0)
 
 - [x] **Knowledge Compiler** example (`examples/knowledge-compiler`) — ingest → compile → ask → lint, Obsidian-style **`wiki/`** outputs.
-- [x] Markdown agent definitions (`main-agent.md`, `agents/*.md`) + CLI validation before run.
+- [x] Markdown agent definitions (`horde.md`, `agents/*.md`) + CLI validation before run.
 - [x] **`kowalski-cli`**: `extension` dispatch + **`agent-app`** (list / validate / run / delegate / worker / proof).
 - [x] Federation **task progress** + **task results** for delegate/worker apps (artifact paths in outcomes).
 

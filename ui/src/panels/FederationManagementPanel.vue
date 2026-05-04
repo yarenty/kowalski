@@ -2,6 +2,10 @@
 import { computed, onMounted, ref } from "vue";
 import { api, type FederationRegistryResponse, type FederationWorkerProfile, type HordeCatalogItem } from "../api";
 
+const emit = defineEmits<{
+  (e: "new-chat-session"): void;
+}>();
+
 const hordes = ref<HordeCatalogItem[]>([]);
 const workersByHorde = ref<Record<string, FederationWorkerProfile[]>>({});
 const workerErr = ref<string | null>(null);
@@ -10,6 +14,7 @@ const workerBusy = ref<string | null>(null);
 const fedRegistry = ref<FederationRegistryResponse | null>(null);
 const fedRegistryErr = ref<string | null>(null);
 const pathAction = ref<string | null>(null);
+const cleanBusyHordeId = ref<string | null>(null);
 
 const federationAgents = computed(() => fedRegistry.value?.agents ?? []);
 const hordeCards = computed(() =>
@@ -73,6 +78,20 @@ async function openOutputFolder(path?: string) {
     } catch {
       pathAction.value = `Open failed (${msg}). Path: ${path}`;
     }
+  }
+}
+
+async function cleanHordeWorkdir(hordeId: string) {
+  cleanBusyHordeId.value = hordeId;
+  pathAction.value = null;
+  try {
+    const r = await api.hordeCleanWorkdir(hordeId);
+    pathAction.value = `Workdir cleaned (${hordeId}): ${r.workdir}`;
+    emit("new-chat-session");
+  } catch (e) {
+    pathAction.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    cleanBusyHordeId.value = null;
   }
 }
 
@@ -168,9 +187,20 @@ onMounted(() => void refreshAll());
             Open output folder
           </button>
         </p>
-        <p class="muted">
-          Clean on startup:
-          <strong>{{ (card.horde.config_on_startup_effective ?? card.horde.config_on_startup) ? "true" : "false" }}</strong>
+        <p class="muted workdir-row">
+          <span>
+            Clean on startup:
+            <strong>{{ (card.horde.config_on_startup_effective ?? card.horde.config_on_startup) ? "true" : "false" }}</strong>
+          </span>
+          <button
+            type="button"
+            class="inline-btn"
+            :disabled="cleanBusyHordeId === card.horde.id"
+            title="Delete workdir debug tree, legacy paths, agents_log, and PASTE_ME.md for this horde"
+            @click="cleanHordeWorkdir(card.horde.id)"
+          >
+            {{ cleanBusyHordeId === card.horde.id ? "…" : "FORCE Clean" }}
+          </button>
         </p>
         <p>
           <button
@@ -238,6 +268,7 @@ onMounted(() => void refreshAll());
 .status-off { border-color: #555f74; color: #b0b7c7; background: #2a3142; }
 .muted { color: #6a7285; font-size: 0.9rem; }
 .workdir-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.clean-on-row { align-items: center; justify-content: space-between; gap: 0.75rem; }
 .err { color: #e88; font-size: 0.9rem; }
 button { background: #2a3142; border: 1px solid #3d4658; color: #c8cfdd; padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; margin-right: 0.5rem; }
 button.primary { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }

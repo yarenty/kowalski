@@ -20,8 +20,10 @@ Cargo.lock
 */*/*/*/*/*/*/*/*/target/
 */*/*/*/*/*/*/*/*/*/target/
 
-/examples/knowledge-compiler/derived
+# Knowledge Compiler example — horde + local `agent-app run` use workdir `output/` (see horde.md).
+/examples/knowledge-compiler/output/
+
+# Legacy top-level (older CLI); not written anymore — safe to delete if present.
 /examples/knowledge-compiler/wiki
 /examples/knowledge-compiler/scratch
 /examples/knowledge-compiler/raw
-/examples/knowledge-compiler/output

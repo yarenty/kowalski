@@ -408,13 +408,17 @@ onMounted(async () => {
         @send-chat="sendChat"
         @new-conversation="newConversation"
       />
-      <FederationManagementPanel v-else-if="tab === 'federation-management'" />
+      <FederationManagementPanel
+        v-else-if="tab === 'federation-management'"
+        @new-chat-session="newConversation"
+      />
       <FederationRunPanel
         v-else-if="tab === 'federation-run'"
         :active-thread-id="activeHordeInteractionId"
         @thread-upsert="upsertHordeInteraction"
         @new-thread-from-suggestion="newHordeInteractionFromSuggestion"
         @thread-create-from-run="createHordeInteractionFromRun"
+        @new-chat-session="newConversation"
       />
       <GraphPanel v-else-if="tab === 'graph'" />
       <AboutPanel v-else-if="tab === 'about'" />

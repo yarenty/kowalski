@@ -9,6 +9,7 @@ import {
 } from "../api";
 const props = defineProps<{ activeThreadId: string | null }>();
 const emit = defineEmits<{
+  (e: "new-chat-session"): void;
   (e: "thread-upsert", item: { id: string; title: string; updatedAt: number }): void;
   (e: "new-thread-from-suggestion", payload: { prompt: string; hordeId: string }): void;
   (e: "thread-create-from-run", payload: {
@@ -40,6 +41,7 @@ const followupInput = ref("");
 const followupBusy = ref(false);
 const followupMsgs = ref<Array<{ role: "user" | "assistant" | "orchestrator"; speaker: string; text: string }>>([]);
 const pathAction = ref<string | null>(null);
+const cleanWorkdirBusy = ref(false);
 const runPromotedToHistory = ref(false);
 
 const selectedHorde = computed(() => hordes.value.find((h) => h.id === selectedHordeId.value) ?? null);
@@ -66,12 +68,35 @@ const runCompleted = computed(
     activeRunFromHistory.value?.status === "completed",
 );
 const progressText = ref("idle");
-const obsidianRoot = computed(() =>
-  (selectedHorde.value?.workdir || selectedHorde.value?.root_path)
-    ? `${selectedHorde.value?.workdir || selectedHorde.value?.root_path}/${selectedHorde.value?.delivery_root_rel || "wiki"}`
-    : "(unknown)",
-);
+const copyPasteErr = ref<string | null>(null);
+async function copyPasteToClipboard() {
+  copyPasteErr.value = null;
+  const t = handoffMarkdown.value;
+  if (!t) {
+    copyPasteErr.value = "Nothing to copy.";
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(t);
+  } catch {
+    copyPasteErr.value = "Clipboard failed — select the text in the box and copy manually (Cmd/Ctrl+C).";
+  }
+}
 const finalShortSummary = computed(() => selectedHorde.value?.delivery_summary_note || "Run completed.");
+const handoffMarkdown = computed(() => {
+  if (!runResult.value) return "";
+  try {
+    const p = JSON.parse(runResult.value) as {
+      handoff_markdown?: string;
+      paste_for_obsidian?: string;
+    };
+    if (typeof p.handoff_markdown === "string") return p.handoff_markdown;
+    if (typeof p.paste_for_obsidian === "string") return p.paste_for_obsidian;
+    return "";
+  } catch {
+    return "";
+  }
+});
 const hasCompletedRun = computed(() => runCompleted.value);
 const isProcessing = computed(() => runBusy.value || followupBusy.value);
 const processingLabel = computed(() =>
@@ -217,6 +242,21 @@ async function openOutputFolder(path?: string) {
   }
 }
 
+async function cleanSelectedWorkdir() {
+  if (!selectedHordeId.value) return;
+  cleanWorkdirBusy.value = true;
+  pathAction.value = null;
+  try {
+    const r = await api.hordeCleanWorkdir(selectedHordeId.value);
+    pathAction.value = `Workdir cleaned: ${r.workdir}`;
+    emit("new-chat-session");
+  } catch (e) {
+    pathAction.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    cleanWorkdirBusy.value = false;
+  }
+}
+
 function isWorkerReady(w: FederationWorkerProfile): boolean {
   return Boolean(w.managed_running && w.registered_exact && !w.stale_registration);
 }
@@ -347,7 +387,7 @@ function suggestedPromptFromConversation(): string {
     activeRunFromHistory.value?.question?.trim() ||
     "summarize key findings and practical improvements";
   const base = source ? `Analyze ${source}.` : "Analyze the provided source URL.";
-  return `${base} Focus on: ${latestUserFocus}. Produce Obsidian-ready summary and clear action points.`;
+  return `${base} Focus on: ${latestUserFocus}. Produce a structured summary and clear action points.`;
 }
 
 function redefineAndStartAgain() {
@@ -536,9 +576,20 @@ onUnmounted(() => {
           Open output folder
         </button>
       </p>
-      <p class="muted">
-        Clean on startup:
-        <strong>{{ (selectedHorde.config_on_startup_effective ?? selectedHorde.config_on_startup) ? "true" : "false" }}</strong>
+      <p class="muted workdir-row">
+        <span>
+          Clean on startup:
+          <strong>{{ (selectedHorde.config_on_startup_effective ?? selectedHorde.config_on_startup) ? "true" : "false" }}</strong>
+        </span>
+        <button
+          type="button"
+          class="inline-btn"
+          :disabled="cleanWorkdirBusy"
+          title="Delete workdir debug tree, legacy raw/wiki/scratch, agents_log, and PASTE_ME.md (same paths as server clean-on-startup)"
+          @click="cleanSelectedWorkdir"
+        >
+          {{ cleanWorkdirBusy ? "…" : "FORCE Clean" }}
+        </button>
       </p>
     </div>
     <p v-if="pathAction" class="muted">{{ pathAction }}</p>
@@ -569,9 +620,28 @@ onUnmounted(() => {
         <p class="muted"><strong>Summary:</strong> {{ finalShortSummary }}</p>
         <p class="muted"><strong>{{ selectedHorde?.delivery_title || "Final delivery" }}</strong></p>
         <p class="muted">{{ selectedHorde?.delivery_note || "" }}</p>
-        <p class="muted"><strong>Obsidian-ready folder:</strong> <code>{{ obsidianRoot }}</code></p>
-        <p class="muted">
-          Copy/sync this folder into your Obsidian vault (or set your vault root there).
+        <template v-if="handoffMarkdown">
+          <h4 style="margin: 0.75rem 0 0.35rem">Markdown hand-off</h4>
+          <p class="muted">
+            Copy this block into your documentation or tracker. Wording at the top comes from this horde’s
+            <code>horde.md</code> when configured.
+          </p>
+          <textarea
+            readonly
+            class="inp paste-handoff-markdown"
+            rows="22"
+            spellcheck="false"
+            :value="handoffMarkdown"
+          />
+          <p>
+            <button type="button" class="primary" @click="copyPasteToClipboard">Copy to clipboard</button>
+          </p>
+          <p v-if="copyPasteErr" class="err">{{ copyPasteErr }}</p>
+        </template>
+        <p v-else class="muted">
+          No markdown hand-off in this run (e.g. pipeline ended before <code>lint</code>, or run failed). Intermediates
+          live under <code>workdir/debug/</code>; the same content may exist as <code>PASTE_ME.md</code> at the workdir
+          root when the pipeline wrote it.
         </p>
         <div v-if="finalArtifacts.length" class="artifact-list">
           <article v-for="a in finalArtifacts" :key="`${a[0]}-${a[1]}`" class="artifact-item">
@@ -658,9 +728,24 @@ onUnmounted(() => {
   gap: 0.5rem;
   flex-wrap: wrap;
 }
+.clean-on-row {
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
 .err { color: #e88; font-size: 0.9rem; }
 .lbl { display: block; font-size: 0.8rem; color: #8b92a5; margin-bottom: 0.25rem; }
 .inp { width: 100%; max-width: 48rem; box-sizing: border-box; background: #1a1d26; border: 1px solid #3d4658; color: #e8e8ec; border-radius: 6px; padding: 0.4rem 0.55rem; font: inherit; }
+.paste-handoff-markdown {
+  max-width: 100%;
+  width: 100%;
+  min-height: 14rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  resize: vertical;
+  white-space: pre;
+  overflow-x: auto;
+}
 .chat-feed { border: 1px solid #2a2e38; border-radius: 8px; background: #141820; padding: 0.6rem; display: grid; gap: 0.45rem; max-height: 55vh; overflow: auto; }
 .followup-feed { max-height: none; overflow: visible; }
 .horde-box { border: 1px solid #2a2e38; border-radius: 8px; background: #161b22; padding: 0.55rem 0.65rem; margin-bottom: 0.55rem; }

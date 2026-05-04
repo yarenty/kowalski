@@ -17,6 +17,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 
 const DEFAULT_TOPIC: &str = "federation";
+/// Relative path under `workdir` for managed federation worker stdout/stderr logs (HTTP server convention).
+pub const AGENTS_LOG_REL: &str = "agents_log";
+/// Relative path under `workdir` for follow-up chat markdown from `POST .../followup` (HTTP server convention).
+pub const FOLLOWUP_ARTIFACT_REL: &str = "debug/followups";
 static RUN_SEQ: AtomicU64 = AtomicU64::new(1);
 
 fn now_ts() -> String {
@@ -115,6 +119,10 @@ pub struct HordeSpec {
     pub prompt_tip: String,
     pub root_path: PathBuf,
     pub sub_agents: Vec<SubAgentSpec>,
+    /// Resolved directory for follow-up chat artifacts ([`FOLLOWUP_ARTIFACT_REL`] under `workdir`).
+    pub followup_artifact_dir: PathBuf,
+    /// Resolved directory for managed worker process logs ([`AGENTS_LOG_REL`] under `workdir`).
+    pub worker_log_dir: PathBuf,
 }
 
 impl HordeSpec {
@@ -210,6 +218,20 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
         sub_agents.push(agent);
     }
 
+    let workdir = if let Some(w) = &meta.workdir {
+        let p = PathBuf::from(w.clone());
+        if p.is_absolute() {
+            p
+        } else {
+            root.join(w)
+        }
+    } else {
+        root.join("workdir")
+    };
+
+    let followup_artifact_dir = workdir.join(FOLLOWUP_ARTIFACT_REL);
+    let worker_log_dir = workdir.join(AGENTS_LOG_REL);
+
     Ok(HordeSpec {
         id: meta.id,
         display_name: meta.display_name,
@@ -221,33 +243,47 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
             .unwrap_or_else(|| "What changed?".to_string()),
         topic: meta.default_topic.unwrap_or_else(|| DEFAULT_TOPIC.to_string()),
         artifacts_root: root.join(meta.artifacts_root.unwrap_or_else(|| ".".to_string())),
-        workdir: if let Some(w) = meta.workdir {
-            let p = PathBuf::from(w.clone());
-            if p.is_absolute() { p } else { root.join(w) }
-        } else {
-            root.join("workdir")
-        },
+        workdir,
         config_on_startup: meta.config_on_startup.unwrap_or(false),
         delivery_title: meta
             .delivery_title
             .unwrap_or_else(|| "Final delivery".to_string()),
         delivery_note: meta.delivery_note.unwrap_or_else(|| {
-            "Review generated artifacts and import the horde output folder into your target knowledge system."
+            "When the run completes, use the markdown hand-off in the run payload (if present) or the file named by `delivery_root_rel` under the workdir. Intermediate artifacts are usually under `workdir/debug/`."
                 .to_string()
         }),
         delivery_root_rel: meta
             .delivery_root_rel
-            .unwrap_or_else(|| "wiki".to_string()),
-        delivery_summary_note: meta.delivery_summary_note.unwrap_or_else(|| {
-            "This horde extracts source knowledge, compiles it into wiki notes, answers the user question, and produces a lint report."
-                .to_string()
-        }),
+            .unwrap_or_else(|| "PASTE_ME.md".to_string()),
+        delivery_summary_note: meta
+            .delivery_summary_note
+            .unwrap_or_else(|| String::new()),
         prompt_tip: meta.prompt_tip.unwrap_or_else(|| {
             "Provide a prompt that includes source URL and desired output style.".to_string()
         }),
         root_path: root.to_path_buf(),
         sub_agents,
+        followup_artifact_dir,
+        worker_log_dir,
     })
+}
+
+/// Remove horde workdir artifacts (same tree as “clean on startup”): `debug/`, legacy top-level
+/// `raw/` / `wiki/` / `scratch/`, `agents_log/`, and root `PASTE_ME.md`. Does not remove the
+/// workdir root itself.
+pub fn clean_horde_workdir(spec: &HordeSpec) -> Result<(), Box<dyn std::error::Error>> {
+    for rel in ["debug", "raw", "wiki", "scratch", "agents_log"] {
+        let p = spec.workdir.join(rel);
+        if p.exists() {
+            let _ = if p.is_dir() {
+                std::fs::remove_dir_all(&p)
+            } else {
+                std::fs::remove_file(&p)
+            };
+        }
+    }
+    let _ = std::fs::remove_file(spec.workdir.join("PASTE_ME.md"));
+    Ok(())
 }
 
 pub fn prepare_workdir_on_startup_with_policy(
@@ -258,12 +294,7 @@ pub fn prepare_workdir_on_startup_with_policy(
     if !clean_on_startup {
         return Ok(());
     }
-    for rel in ["raw", "wiki", "derived", "scratch"] {
-        let p = spec.workdir.join(rel);
-        if p.exists() {
-            std::fs::remove_dir_all(&p)?;
-        }
-    }
+    clean_horde_workdir(spec)?;
     Ok(())
 }
 
@@ -680,6 +711,19 @@ impl HordeManager {
                 .filter_map(|s| s.artifact.clone().map(|a| (s.step.clone(), a)))
                 .collect()
         };
+        let paste_path = spec.workdir.join("PASTE_ME.md");
+        let handoff_markdown = std::fs::read_to_string(&paste_path).ok().map(|s| {
+            const MAX: usize = 48_000;
+            if s.len() <= MAX {
+                s
+            } else {
+                format!(
+                    "{}\n\n_(truncated to {} chars for federation payload)_\n",
+                    s.chars().take(MAX).collect::<String>(),
+                    MAX
+                )
+            }
+        });
         let env = self.build_envelope(
             &spec.topic,
             AclMessage::RunFinished {
@@ -687,10 +731,12 @@ impl HordeManager {
                 horde: spec.id.clone(),
                 artifacts: artifacts.clone(),
                 text: Some(format!(
-                    "{} run completed; {} artifact(s).",
+                    "{} run completed; {} artifact(s). Markdown hand-off: `handoff_markdown` in this event; file `{}`.",
                     spec.display_name,
-                    artifacts.len()
+                    artifacts.len(),
+                    paste_path.display()
                 )),
+                handoff_markdown,
             },
         );
         {

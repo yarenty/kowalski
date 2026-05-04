@@ -33,7 +33,7 @@ const knowledgeCompilerAgents = computed(() =>
   ),
 );
 
-const runPrompt = ref("can you check https://yarenty.com and get summary into obsidian?");
+const runPrompt = ref("Summarize https://yarenty.com — key claims and open questions.");
 const runBusy = ref(false);
 const runTaskId = ref<string | null>(null);
 const runTimeline = ref<string[]>([]);
@@ -203,7 +203,7 @@ async function runKnowledgeCompiler() {
     if (!out.delegated_to) {
       runBusy.value = false;
       runResult.value =
-        "No federation worker matched capability `kc.run`.\n\nHow to fix:\n- Start worker: cargo run -p kowalski-cli -- extension run knowledge-compiler worker kc-worker-1\n- Click Refresh registry and verify an agent with `kc.run` capability is active.\n- Retry this run.";
+        "No federation worker matched capability `kc.run`.\n\nHow to fix:\n- **Preferred (operator UI):** open the **Horde** tab → select **Knowledge Sucking Swarm** → **Start All** workers → use **Horde Run** (four-step pipeline; matches what the UI expects).\n- **Legacy single worker:** `cargo run -p kowalski-cli -- agent-app worker <id> --path examples/knowledge-compiler --api http://127.0.0.1:3456` (omit `--role` so the process accepts `kc.run`; see examples/knowledge-compiler README).\n- Click **Refresh registry** and confirm an agent lists `kc.run`.\n- Retry this run.";
       runTimeline.value = [
         ...runTimeline.value,
         "blocked: no target worker available for capability kc.run",
@@ -356,7 +356,7 @@ onUnmounted(() => {
         v-model="runPrompt"
         class="inp"
         type="text"
-        placeholder="can you check https://yarenty.com and get summary into obsidian?"
+        placeholder="Summarize https://example.com/article — key claims and open questions."
       />
     </p>
     <p>

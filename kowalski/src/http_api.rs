@@ -238,6 +238,10 @@ pub async fn serve(
             post(post_horde_worker_stop),
         )
         .route("/api/hordes/{horde_id}/run", post(post_horde_run))
+        .route(
+            "/api/hordes/{horde_id}/clean-workdir",
+            post(post_horde_clean_workdir),
+        )
         .route("/api/hordes/{horde_id}/followup", post(post_horde_followup))
         .route("/api/hordes/{horde_id}/runs", get(get_horde_runs))
         .route(
@@ -652,20 +656,29 @@ async fn post_chat(
         body.use_memory,
         conv_id
     );
+    // Honor `use_memory` on the plain path: `Agent::chat_with_history` hardcodes memory on for
+    // `TemplateAgent`; horde workers send `use_memory: false` (see `kowalski-cli` `chat_no_tools`).
     let reply = if body.use_tools {
         guard
             .agent
             .chat_with_tools_with_options(&conv_id, body.message.trim(), body.use_memory)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     } else {
-        // Plain generation path for deterministic app-level workflows.
         guard
             .agent
-            .chat_with_history(&conv_id, body.message.trim(), None)
+            .base_mut()
+            .chat_with_history_with_options(
+                &conv_id,
+                body.message.trim(),
+                None,
+                body.use_memory,
+            )
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    };
+    }
+    .map_err(|e| {
+        log::error!("POST /api/chat failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
     Ok(Json(ChatResponse {
         reply,
         mode: "agent",
@@ -970,7 +983,7 @@ fn worker_profiles(state: &ApiState) -> Vec<WorkerProfile> {
                     sub.default_agent_id.clone(),
                 ],
                 cwd: root.display().to_string(),
-                log_dir: spec.workdir.join("scratch/workers").display().to_string(),
+                log_dir: spec.worker_log_dir.display().to_string(),
             });
         }
     }
@@ -1816,6 +1829,34 @@ async fn post_horde_worker_stop(
     Ok(Json(json!({ "ok": true, "stopped": stopped })))
 }
 
+async fn post_horde_clean_workdir(
+    State(state): State<ApiState>,
+    AxumPath(horde_id): AxumPath<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let spec = state.horde_manager.find(&horde_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("unknown horde id: {}", horde_id),
+        )
+    })?;
+    crate::horde::clean_horde_workdir(spec).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("clean workdir: {}", e),
+        )
+    })?;
+    log::info!(
+        "horde workdir cleaned via API horde={} workdir={}",
+        horde_id,
+        spec.workdir.display()
+    );
+    Ok(Json(json!({
+        "ok": true,
+        "horde_id": horde_id,
+        "workdir": spec.workdir.display().to_string(),
+    })))
+}
+
 async fn post_horde_run(
     State(state): State<ApiState>,
     AxumPath(horde_id): AxumPath<String>,
@@ -1949,32 +1990,38 @@ async fn post_horde_followup(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // Persist follow-up output as a concrete artifact so this interaction is actionable.
-    let follow_dir = spec.workdir.join("derived/reports/followups");
-    if let Err(e) = std::fs::create_dir_all(&follow_dir) {
+    // Persist follow-up output under workdir (`debug/followups/` — `horde::FOLLOWUP_ARTIFACT_REL`).
+    let follow_dir = &spec.followup_artifact_dir;
+    let (output_path, _saved_ok) = if let Err(e) = std::fs::create_dir_all(follow_dir) {
         log::warn!("follow-up artifact mkdir failed: {}", e);
-    }
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let out_path = follow_dir.join(format!("{}-{}.md", run.run_id, stamp));
-    let saved = format!(
-        "# Horde Follow-up Response\n\n- Horde: {}\n- Run: {}\n- Follow-up: {}\n\n## Response\n\n{}\n",
-        spec.display_name,
-        run.run_id,
-        body.message.trim(),
-        reply
-    );
-    if let Err(e) = std::fs::write(&out_path, saved) {
-        log::warn!("follow-up artifact write failed: {}", e);
-    }
+        (None, false)
+    } else {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let out_path = follow_dir.join(format!("{}-{}.md", run.run_id, stamp));
+        let saved = format!(
+            "# Horde Follow-up Response\n\n- Horde: {}\n- Run: {}\n- Follow-up: {}\n\n## Response\n\n{}\n",
+            spec.display_name,
+            run.run_id,
+            body.message.trim(),
+            reply
+        );
+        match std::fs::write(&out_path, saved) {
+            Ok(()) => (Some(out_path.display().to_string()), true),
+            Err(e) => {
+                log::warn!("follow-up artifact write failed: {}", e);
+                (None, false)
+            }
+        }
+    };
     Ok(Json(json!({
         "ok": true,
         "horde_id": horde_id,
         "run_id": run.run_id,
         "reply": reply,
-        "output_path": out_path.display().to_string(),
+        "output_path": output_path,
         "mode": "horde_followup_chat_continuation",
     })))
 }

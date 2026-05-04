@@ -6,13 +6,45 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.2.0] - 2026-05-03
+
+> Workspace and crates **`1.2.0`**: Knowledge Compiler layout simplification (`debug/raw`, `debug/reports`, `debug/lint`, `debug/followups`, `agents_log`), horde HTTP artifact conventions, GitHub-aware ingest, and operator docs/UI updates (full list below).
+
+### Added
+
+- **Knowledge Compiler:** [`examples/knowledge-compiler/AGENTS.md`](examples/knowledge-compiler/AGENTS.md) operator guide (`GITHUB_TOKEN`, MCP vs CLI).
+- **GitHub-aware URL fetch** as an **internal tool** in `kowalski-core`: [`tools/internal/github.rs`](kowalski-core/src/tools/internal/github.rs) (README API + `raw.githubusercontent.com`, optional `GITHUB_TOKEN`, plain-HTTP fallback). **HTML → readable Markdown** heuristics in [`tools/internal/web.rs`](kowalski-core/src/tools/internal/web.rs); ingest bundling moved to [`source_bundle.rs`](kowalski-core/src/source_bundle.rs) so **`kowalski-cli` stays an executor**. **`KOWALSKI_AGENT_APP_ROOT`** overrides the dev-only default app path. See **Tool sources** / **Strict boundaries** in AGENTS files.
+- **Obsidian operator flow (paste-first):** each run ends with **`workdir/PASTE_ME.md`** (and **`run_finished.paste_for_obsidian`** in the UI) — one markdown block for copy-paste. All intermediate pipeline output (ingest, wiki, reports, scratch) is under **`workdir/debug/`**. **Horde Run** panel: **Copy to clipboard**.
+- **Concept wikilink repair** extends to concept→concept links with reciprocal **Related Concepts** backlinks.
+- **Operator UI:** root + `ui/` + `kowalski-core` **AGENTS** now state UI-first smoke acceptance (Horde / Federation / Chat); Federation panel help text updated for `agent-app` + Horde tab (removed stale `extension run`).
+- **`ui/README.md`:** **Operator smoke checklist (~2 minutes)** (Home, Chat, Federation **Start All**, Horde **Run Horde**, optional registry refresh).
+- **Horde workdir:** `POST /api/hordes/{horde_id}/clean-workdir` runs the same filesystem cleanup as **clean on startup** (removes `debug/`, legacy top-level `raw/` / `wiki/` / `scratch/`, `agents_log/`, and workdir `PASTE_ME.md`). Vue **Horde Run** and **Federation → Horde cards** include an inline **Clean now** control next to “Clean on startup”. After a successful clean, the UI starts a **new Chat** session (`POST /api/chat/reset`), matching sidebar **New conversation**.
+
+### Fixed
+
+- **`markdown_pipeline` normalization:** for non-empty LLM output, optional `normalize_sections` no longer appends extra `##` headings using substring checks — models that use emoji or alternate titles (e.g. `## 📝 TL;DR` instead of `## TL;DR`) were falsely treated as “missing” sections, which duplicated headings and injected `normalize_fallback` text (e.g. “Model output was empty…”) into otherwise valid handoff files. Synthesis from **truly** empty output is unchanged.
+- **HTML → markdown (internal web ingest):** `<a href="…">` is converted to **`[text](url)`** before tag stripping so hyperlinks survive the heuristic HTML pass (plain tag removal previously dropped URLs entirely).
+- **`agent-app worker`** (federation SSE): the blocking HTTP client used the default **30s** request timeout, so idle **`GET /api/federation/stream`** reads failed and stderr showed `federation stream decode warning (ignored): error decoding response body` (reqwest’s misleading label for that timeout). The stream client now disables that timeout for the long-lived connection.
+
 ### Changed
 
+- **Knowledge Compiler:** ingest bundles live under **`workdir/debug/raw/`** (was **`debug/raw/sources/`**); **`kowalski_core::source_bundle`**, `agent-app`, and example docs updated.
+- **Knowledge Compiler:** removed the **`debug/derived/**` tree — ask output is **`workdir/debug/reports/`**, Marp/slides prompts use **`debug/slides/`**; `agent-app`, **`agents/ask.md`**, prompts, and README updated. Horde startup cleanup no longer references top-level **`derived/`** or legacy **`derived/obsidian-paste.md`**.
+- **Knowledge Compiler:** lint report path is **`workdir/debug/lint/`** (was **`debug/derived/lint/`**); `agent-app`, **`agents/lint.md`**, and prompts updated accordingly.
+- **Horde HTTP:** follow-up markdown and managed worker log directories are fixed paths under **`workdir`** defined as **`FOLLOWUP_ARTIFACT_REL`** (`debug/followups/`) and **`AGENTS_LOG_REL`** (`agents_log/`) in [`kowalski/src/horde.rs`](kowalski/src/horde.rs) (not `horde.md` frontmatter).
+- **Knowledge Compiler / `agent-app`:** **`main-agent.md` removed** — CLI **`list` / `validate` / `run` / `worker`** now read **`horde.md`** + **`agents/*.md`** (same source as the server). Removed unused **`kc.research`** agent, prompts, and investigation template from the example.
+- **Knowledge Compiler / `.gitignore`:** local **`agent-app run`** uses **`examples/knowledge-compiler/output/{PASTE_ME.md,debug/}`** (same default workdir as **`horde.md`**). Ignore rules target **`output/`** only.
+- **Knowledge Compiler:** removed optional **external mdBook vault** wiring from `agent_app_ops` (no `external_vault_root` / corpus injection / `EXTERNAL_VAULT_MERGED.md` / `mdbook-summary-suggestion.md`).
 - CI: added **`docs`** job (Lychee markdown link check, offline). Local: **`just docs-links`** / `./scripts/docs-linkcheck.sh`.
 - Added **`.lychee.toml`**, **`justfile`**, **`scripts/docs-linkcheck.sh`**, root **`LICENSE`** (MIT), and **`CONTRIBUTING.md`**.
 - Added docs governance: **`docs/GOVERNANCE.md`** plus governance references in docs index.
 - Added architecture snapshots: **`docs/architecture_v02.md`**, **`docs/architecture_v03_future.md`**, and Excalidraw sources under `docs/img/`.
 - Consolidated legacy AGENTS content into **`docs/purgatory/legacy_v1.1.0.md`** and replaced inline legacy blocks with pointers.
+- **Horde / ACL:** `run_finished.paste_for_obsidian` is renamed to **`handoff_markdown`** (serde still accepts the old JSON key when deserializing). Generic server defaults no longer assume Obsidian or the Knowledge Compiler narrative; per-app copy belongs in each **`horde.md`**.
+- **`agent-app` markdown stages:** local and federation **`compile` / `ask` / …** workers share **`kowalski_core::markdown_pipeline`** (`context_paths`, `@artifact@`, `@step:name@`, per-stage **`output`**, optional **`normalize_*`**). Rust no longer runs wiki repair, index rebuild, or **`write_paste_me_file`** — final deliverable shape is whatever the last stage’s prompt writes (the KC example ends with **`PASTE_ME.md`** as `agents/lint.md` `output`). **`horde.md`** **`delivery_*`** fields remain for server/UI copy; the sample manifest dropped unused **`handoff_*`** keys.
+- **LLM / operator UX:** Ollama and **OpenAI-compatible** providers now attach the same style of **“what to check”** hints (API base, model, key, network). [`kowalski-core/src/llm/provider.rs`](kowalski-core/src/llm/provider.rs) documents the convention for future **`LLMProvider`** implementations. **`agent-app`** `chat_no_tools` preserves the server error body on failed **`POST /api/chat`**; CLI **`friendly_http_status_error`** adds Ollama-specific hints for HTTP 5xx on `/api/chat`.
 
 ## [1.1.0] - 2026-04-30
 
@@ -61,6 +93,7 @@ All notable changes to this project will be documented in this file, or at least
 - Documented **memory stack rationale**: **Qdrant** was used in an **initial proof of concept** for semantic memory; the **ongoing goal** is a **simple, robust, dependency-light** default with **minimal moving parts**. Canonical write-up: [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md). Linked from root and component `AGENTS.md`, READMEs, memory articles, and rebuild notes.
 - Refreshed **README.md**, **AGENTS.md**, **ROADMAP.md** (root and key sub-crates).
 
+[1.2.0]: https://github.com/yarenty/kowalski/releases/tag/1.2.0
 [1.1.0]: https://github.com/yarenty/kowalski/releases/tag/1.1.0
 [1.0.0]: https://github.com/yarenty/kowalski/releases/tag/1.0.0
 

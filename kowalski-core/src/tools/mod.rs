@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 
+pub mod internal;
 pub mod manager;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

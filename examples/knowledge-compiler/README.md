@@ -1,14 +1,15 @@
 # Knowledge Compiler example
 
-**Example aligned with workspace release line 1.1.0**
+**Example aligned with workspace release line 1.2.0**
+
+Operator-focused behavior, GitHub ingest, and federation roles are documented in **[`AGENTS.md`](AGENTS.md)**.
 
 This example is a markdown-native **knowledge compiler**: ingest heterogeneous inputs → compile an Obsidian-style wiki → answer a focused question → lint/consistency report.  
 It integrates three surfaces:
 
 | Surface | Purpose |
 |---------|---------|
-| **`horde.md`** | Horde catalog for `kowalski` HTTP serve + Operator UI (**Horde Run** / Federation) |
-| **`main-agent.md` + `agents/*.md`** | App spec parsed by **`kowalski-cli agent-app`** (list / validate / run / worker / delegate / proof) |
+| **`horde.md` + `agents/*.md`** | Single spec: **`kowalski`** (Horde UI / federation) and **`kowalski-cli agent-app`** (list / validate / run / worker / delegate / proof) |
 | **`prompts/`**, **`templates/`** | Prompt bodies and shaping templates referenced by specialists |
 
 ---
@@ -24,21 +25,23 @@ It integrates three surfaces:
 
 ## Where outputs go (important)
 
-There are **two** artifact layouts, depending on how you run the workflow:
+**Horde UI**, **federation workers**, and **`agent-app run`** all use the same **`workdir`** from **`horde.md`** (default **`output/`** under this example). Operators care about **`PASTE_ME.md`** at the workdir root. Pipeline intermediates live under **`debug/`** (ingest, wiki, reports, scratch — for monitoring only). The HTTP server may also create **`agents_log/`** at the workdir root for managed worker stdout/stderr when using **Start All** from the UI.
 
-### 1) Horde path (UI **`Horde Run`**, or federation workers with horde orchestration)
-
-The server reads **`horde.md`** and resolves a single **`workdir`**. Everything under **`workdir`** is the runtime tree (`raw`, `wiki`, `derived`, `scratch` as subfolders).
+### Layout (Horde UI or `agent-app run`)
 
 Typical layout after runs:
 
 ```text
 examples/knowledge-compiler/output/        # horde.workdir (see horde.md; gitignored)
-├── raw/sources/                           # ingest
-├── wiki/                                  # Obsidian-oriented notes (delivery_root_rel = wiki)
-├── derived/reports/                       # ask output, follow-ups, …
-├── derived/lint/
-└── scratch/workers/                       # worker logs when managed by serve
+├── PASTE_ME.md                            # copy into Obsidian (delivery_root_rel default)
+├── debug/
+│   ├── raw/                               # ingest (timestamped `*-inputs-*.md`)
+│   ├── wiki/                              # compiled notes + index
+│   ├── followups/                         # HTTP POST …/followup markdown (server)
+│   ├── reports/                           # ask
+│   ├── lint/                              # lint report
+│   └── scratch/                           # orchestration logs
+└── agents_log/                            # managed federation worker stdout/stderr (HTTP server)
 ```
 
 **Configure `workdir`** in **`horde.md`**:
@@ -52,20 +55,7 @@ examples/knowledge-compiler/output/        # horde.workdir (see horde.md; gitign
 - **`horde.md`** — `config_on_startup = true|false` **or** alias `clean_on_startup` (same key as global; horde overrides global when set).
 - The Operator UI displays the **effective** value (`GET /api/hordes*` includes `config_on_startup_effective`).
 
-### 2) Standalone **`agent-app run`** path (CLI only, sequential pipeline)
-
-Command **`cargo run -p kowalski-cli -- agent-app run ...`** executes the pipeline **in-process** and writes beside the manifests under the **app root** (default `examples/knowledge-compiler/`), **not** under `horde.workdir`:
-
-```text
-examples/knowledge-compiler/
-├── raw/sources/
-├── wiki/
-├── derived/reports/
-├── derived/lint/
-└── scratch/                               # orchestration logs (orchestration-*.md)
-```
-
-These paths are **gitignored** at repo root (see `.gitignore`) so generated trees do not clutter commits.
+**`agent-app run`** writes the same tree under **`output/`** (see layout above). The **`output/`** tree is **gitignored** (see `.gitignore`).
 
 ---
 
@@ -75,8 +65,8 @@ Static definition only (no bundled shell `scripts/` or `config/*.yaml`; those we
 
 ```text
 examples/knowledge-compiler/
-├── horde.md                 # Horde id, pipeline, workdir, delivery metadata, federation topic
-├── main-agent.md            # agent-app pipeline + declared sub-agent names
+├── AGENTS.md                # Operator guide (GITHUB_TOKEN, MCP vs CLI)
+├── horde.md                 # Horde id, pipeline, workdir, delivery, federation (also drives agent-app)
 ├── agents/
 │   ├── ingest.md
 │   ├── compile.md
@@ -99,10 +89,10 @@ examples/knowledge-compiler/
 
 | Step | Capability | Role |
 |------|-------------|------|
-| ingest | `kc.ingest` | Normalize inputs → `raw/sources/` |
-| compile | `kc.compile` | Wiki + summaries under `wiki/` |
-| ask | `kc.ask` | Answer → `derived/reports/` |
-| lint | `kc.lint` | Report → `derived/lint/` |
+| ingest | `kc.ingest` | Normalize inputs → `debug/raw/` |
+| compile | `kc.compile` | Wiki + summaries under `debug/wiki/` |
+| ask | `kc.ask` | Answer → `debug/reports/` |
+| lint | `kc.lint` | Report → `debug/lint/` (+ writes `PASTE_ME.md`) |
 
 Default worker **`default_agent_id`** values in **`agents/*.md`**: `kc-ingest`, `kc-compile`, `kc-ask`, `kc-lint`.
 
@@ -126,7 +116,7 @@ cd ui && bun install && bun run dev
 
 3. Open the app → **Horde** → pick **Knowledge Sucking Swarm** (id `knowledge-compiler`).  
 
-4. Obsidian consumption: sync or open **`workdir/wiki`** (shown in UI as Obsidian-ready path).  
+4. Obsidian consumption: sync or open **`workdir/debug/wiki/`** (shown in UI as Obsidian-ready path).  
    Use **Open output folder** — it invokes **`POST /api/system/open-path`** so the desktop file manager opens the path (avoid `file://` in the browser).
 
 ---
@@ -143,7 +133,7 @@ Run serve from repo root **or** set **`KOWALSKI_HORDES_DIR`** to this example’
 
 ## CLI — **`kowalski-cli agent-app`** (native)
 
-Default app root: **`examples/knowledge-compiler`** (override with **`--path <dir>`** on list/validate/run/worker/proof).
+Default app root: env **`KOWALSKI_AGENT_APP_ROOT`**, else **`examples/knowledge-compiler`** (override with **`--path <dir>`** on list/validate/run/worker/proof).
 
 ```bash
 # Help
@@ -152,10 +142,10 @@ cargo run -p kowalski-cli -- agent-app --help
 # Inspect pipeline
 cargo run -p kowalski-cli -- agent-app list
 
-# Validate main-agent + agents/*.md consistency
+# Validate horde.md pipeline vs agents/*.md
 cargo run -p kowalski-cli -- agent-app validate
 
-# Sequential run (writes under app root dirs: raw/, wiki/, derived/, scratch/)
+# Sequential run (writes under output/ — same workdir as horde.md)
 # Requires serve + working LLM for compile/ask/lint HTTP steps
 cargo run -p kowalski-cli -- agent-app run "https://example.com/article" --question "What changed?"
 
@@ -220,7 +210,7 @@ Prefer **`agent-app`** for accurate flags; avoid outdated **`config/`**, **`scri
 
 - **UI says LLM/API errors**: confirm **`cargo run -p kowalski`** and Ollama (or **`[llm]`** provider) per root **`config.toml`**.
 - **Horde workers not READY**: use Federation Management **Start All** or start four **`agent-app worker … --role <step>`** processes with IDs matching **`default_agent_id`** in **`agents/*.md`**.
-- **Wrong artifact location**: Horde UI runs use **`horde.md` → `workdir`**; **`agent-app run`** uses files next to **`main-agent.md`** (see sections above).
+- **Wrong artifact location**: Both Horde UI and local **`agent-app run`** use the same default **`workdir`** for this example: **`output/`** under the app root (see **`horde.md`** and the layout section above).
 
 ---
 

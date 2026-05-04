@@ -55,7 +55,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: kowalski-cli  
-**Release**: **1.1.0** (see crate `Cargo.toml`).  
+**Release**: **1.2.0** (see crate `Cargo.toml`).  
 **Purpose**: Command-line interface (REPL + operators). The HTTP server (`kowalski`) for the Vue operator UI exposes `/api/chat`, `/api/chat/stream` (with **`tools_stream`**), MCP, federation, graph status / Cypher (Postgres + AGE).  
 **Core Value Proposition**: Modular, extensible, and distributed architecture supporting standalone and federated deployments with privacy-preserving capabilities.  
 **Primary Mechanism**: Multi-agent orchestration and pluggable tools interfacing with local (Ollama) and remote LLMs.  
@@ -152,6 +152,14 @@ There are **no** standalone `kowalski-academic-agent` / `kowalski-web-agent` cra
 ### Service Architecture
 - This crate ships **`kowalski-cli`** operators; **`kowalski`** binary (HTTP) is the **`kowalski`** crate.
 - **`extension`** / **`agent-app`** orchestrate app workflows (e.g. Knowledge Compiler) against **`kowalski`** `/api/*`.
+
+### Strict boundaries: CLI and UI are executors only
+
+- **`kowalski-cli`** and **`ui/`** must **not** own reusable domain logic (URL fetch rules, HTML shaping, horde-specific parsers). They **parse argv / render UX** and call **`kowalski`** HTTP APIs or **`kowalski-core`** libraries used by the worker runtime.
+- **No baked-in app types**: `agent-app` resolves the tree only from **`--path`** or env **`KOWALSKI_AGENT_APP_ROOT`**; the dev default `examples/knowledge-compiler` is a **convenience**, not a type system. The manifest is **`app.md`** or legacy **`horde.md`**, plus **`agents/*.md`** (aligned with `kowalski_core::markdown_pipeline` and the server catalog).
+- **Local `agent-app run` workdir**: for the default KC app tree, the CLI uses **`LOCAL_AGENT_APP_WORKDIR`** (`"output"`) under the app root so artifacts match **`horde.md`** `workdir = "output"` (`output/PASTE_ME.md`, `output/debug/`, …).
+- **Source capture** for federation ingest lives in **`kowalski_core::source_bundle`** (uses **`tools::internal::{github, web}`**). The CLI only calls it from `agent_app_ops` when executing a worker step — same code the server could call later without duplicating behavior.
+- **Markdown app pipeline** (`app.md` / `horde.md` + `agents/*.md`): each LLM stage loads **`prompt_file`**, **`context_paths`** (workdir-relative paths and/or `@artifact@` / `@step:name@`), writes **`output`** under the workdir, and optionally applies **`normalize_*`** fields via **`kowalski_core::markdown_pipeline`**. There is **no** wiki repair, index rebuild, or Rust-side paste-pack builder — final shape is whatever the last stage’s prompt declares (the KC example uses **`PASTE_ME.md`** as the last stage `output`). The server still surfaces delivery copy from manifest **`delivery_*`** fields and reads the finished handoff into **`run_finished.handoff_markdown`** where applicable.
 
 ---
 
@@ -333,7 +341,9 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-**1.1.0**: `kowalski-cli` provides CLI operators (`run`, `config`, `db`, `doctor`, `mcp`, **`extension`**, **`agent-app`**, federation helpers). The **`kowalski`** binary provides the HTTP **`/api/*`** server. Build with **`--features postgres`** for SQL memory alignment with **`kowalski`** graph routes.
+**1.2.0**: `kowalski-cli` provides CLI operators (`run`, `config`, `db`, `doctor`, `mcp`, **`extension`**, **`agent-app`**, federation helpers). The **`kowalski`** binary provides the HTTP **`/api/*`** server. Build with **`--features postgres`** for SQL memory alignment with **`kowalski`** graph routes.
+
+**Agent-app ingest step:** calls **`kowalski_core::source_bundle`** (GitHub-aware fetch + **HTML→readable-Markdown** when the body looks like HTML). See [`kowalski-core/AGENTS.md`](../kowalski-core/AGENTS.md) for the three-way tool model. **`agent-app list|validate|run`** and **`worker --role`** read **`horde.md`** + **`agents/*.md`** under **`--path`** (same files as the server’s horde loader for markdown-defined apps).
 
 ### Roadmap
 See [`ROADMAP.md`](ROADMAP.md) here and root [`../ROADMAP.md`](../ROADMAP.md).

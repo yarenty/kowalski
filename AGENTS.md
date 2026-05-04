@@ -55,7 +55,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: Kowalski  
-**Release line**: **1.1.0** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).  
+**Release line**: **1.2.0** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).  
 **Purpose**: A Rust-native multi-agent framework: **`kowalski-core`** (agents, LLM, memory, MCP client), **`kowalski-cli`** (REPL + operators, extensions, **`agent-app`**), **`kowalski`** (HTTP **`/api/*`** server), optional **`kowalski-mcp-datafusion`**, Vue **`ui/`**, optional PostgreSQL (**pgvector**, **Apache AGE**).  
 **Core Value Proposition**: Modular, extensible deployment with MCP-first tools and federation-oriented APIs.  
 **Primary Mechanism**: `TemplateAgent` + pluggable tools (built-in + MCP), Ollama/OpenAI-compatible providers.  
@@ -83,12 +83,28 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 - **Message Passing Pattern**: For agent-to-agent communication
 - **Plugin Pattern**: For dynamic tool integration
 
+### Tool sources (where capabilities live)
+
+All “do something with the outside world” behavior should align with **one model**, documented in [`kowalski-core/AGENTS.md`](kowalski-core/AGENTS.md) (**Tool execution model**):
+
+1. **In-repo MCP servers** you ship and register (e.g. [`kowalski-mcp-datafusion`](kowalski-mcp-datafusion/)).
+2. **External MCP** reached via gateways or catalogs (e.g. [Docker MCP Toolkit](https://docs.docker.com/ai/mcp-catalog-and-toolkit/toolkit/) — profiles, OAuth, catalog).
+3. **`kowalski-core` internal tools** — small in-process modules under [`kowalski-core/src/tools/internal/`](kowalski-core/src/tools/internal/) (GitHub-aware fetch, web, filesystem) with **config toggles** (planned) to disable or replace with MCP without rewriting apps.
+
+**Rule:** Do not treat CLI or HTTP crates as the home for reusable fetch/FS/GitHub rules; extend **`tools/internal`** or **MCP**, not random `src/` helpers in surface binaries.
+
+**CLI / UI executors only:** `kowalski-cli` and `ui/` ship **interaction** (argv, HTTP client, Vue). Shared capture and tool behavior live in **`kowalski-core`** (e.g. [`source_bundle`](kowalski-core/src/source_bundle.rs), [`tools/internal`](kowalski-core/src/tools/internal/)). See [`kowalski-cli/AGENTS.md`](kowalski-cli/AGENTS.md) (**Strict boundaries**).
+
 ### Cross-Cutting Concerns
 - **Logging**: Standard Rust tracing/logging
 - **Error Handling**: Centralized error types (`KowalskiError`)
 - **Security**: Secure multi-party computation (MPC) and role-based access
 - **Performance**: Async-first using Tokio
 - **Monitoring**: Built-in activity tracking and LLM observability
+
+### Operator UI (first-class acceptance surface)
+
+The Vue **`ui/`** is the default way operators run Chat, **Horde** (e.g. Knowledge Compiler), and **Federation** management. Work that changes HTTP **`/api/*`** contracts, horde discovery, federation events, or worker ergonomics is **incomplete** until **`ui/`** still builds and the affected tab is manually smoke-tested (see [`ui/AGENTS.md`](ui/AGENTS.md)). Prefer fixing stale in-UI help text (CLI commands, capabilities) in the same change as backend doc updates.
 
 ### Memory stack and dependencies (design)
 
@@ -128,7 +144,7 @@ kowalski/                         # repository root
 ├── kowalski/                     # Facade crate + HTTP server binary (`kowalski` → `/api/*`)
 ├── kowalski-mcp-datafusion/      # Optional standalone MCP server (DataFusion over files)
 ├── ui/                           # Vue 3 operator UI (Vite)
-├── examples/                     # App patterns (e.g. knowledge-compiler horde)
+├── examples/                     # App patterns (knowledge-compiler: see examples/knowledge-compiler/AGENTS.md)
 ├── migrations/
 │   ├── postgres/                 # SQL migrations (memory + federation)
 │   └── legacy_prompts/           # Salvaged prompts from removed specialized-agent crates
@@ -239,6 +255,10 @@ Component-specific files contain crucial information about:
 - Common issues and troubleshooting steps
 - Integration patterns with other services
 
+### Cursor IDE: persistent instructions
+- **This repository:** Always-applied **project rules** live in **[`.cursor/rules/`](.cursor/rules/)** (planning, `task_plan.md` / `progress.md` / `findings.md`, and core-vs-CLI boundaries). They complement this `AGENTS.md` so you do not repeat the same reminders every conversation.
+- **All repositories on your machine:** Paste the block from **[`tools/cursor_user_rules_all_repos.md`](tools/cursor_user_rules_all_repos.md)** into **Cursor Settings → Rules → User Rules** once. User Rules apply to **Agent (Chat)** globally (per [Cursor Rules docs](https://cursor.com/docs/context/rules)).
+
 ### Rule 1: Create Plan First
 Never start a complex task without creating a `task.md` file. Use the template in [`tools/task_template.md`](tools/task_template.md).
 
@@ -340,7 +360,7 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-**1.1.0** continues the consolidated workspace: **`TemplateAgent`** in **`kowalski-core`**, **`kowalski-cli`** operators plus **`extension`** / **`agent-app`**, **`kowalski`** HTTP API, **`kowalski-mcp-datafusion`**, Vue UI — plus the **Knowledge Compiler** horde example and federation task-progress UX (see [`CHANGELOG.md`](CHANGELOG.md), [`docs/OVERVIEW_1_1.md`](docs/OVERVIEW_1_1.md)).
+**1.2.0** continues the consolidated workspace: **`TemplateAgent`** in **`kowalski-core`**, **`kowalski-cli`** operators plus **`extension`** / **`agent-app`**, **`kowalski`** HTTP API, **`kowalski-mcp-datafusion`**, Vue UI — plus the **Knowledge Compiler** horde example and federation task-progress UX (see [`CHANGELOG.md`](CHANGELOG.md), [`docs/OVERVIEW_1_1.md`](docs/OVERVIEW_1_1.md)).
 
 ### Roadmap
 See [`ROADMAP.md`](ROADMAP.md) (root and per-crate **`ROADMAP.md`** where present).

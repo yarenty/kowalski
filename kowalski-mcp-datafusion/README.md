@@ -1,6 +1,6 @@
 # kowalski-mcp-datafusion
 
-**Version 1.1.0** — standalone **MCP** server (Streamable HTTP: JSON + SSE) exposing **DataFusion** tools over a registered **CSV** (or similar) table.
+**Version 1.2.0** — standalone **MCP** server (Streamable HTTP: JSON + SSE) exposing **DataFusion** tools over a registered **CSV** (or similar) table.
 
 ## Horde changes in 1.1.0 (since 1.0.0)
 

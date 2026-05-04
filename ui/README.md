@@ -1,6 +1,6 @@
 # Kowalski UI (Vue 3 + Vite)
 
-**Version 1.1.0** · Operator-facing web shell for Kowalski, calling **`kowalski`** under `/api/*`.
+**Version 1.2.0** · Operator-facing web shell for Kowalski, calling **`kowalski`** under `/api/*`.
 
 Features: health, MCP ping, **Chat** (`POST /api/chat`, SSE **`POST /api/chat/stream`** with optional **Tool-aware stream** / `tools_stream`), federation, graph extension status. See [`ROADMAP.md`](./ROADMAP.md).
 
@@ -50,3 +50,33 @@ This binds **`127.0.0.1:3456`** and serves JSON under `/api` (`/api/health`, `/a
 ## API proxy
 
 `vite.config.ts` proxies `/api` to `http://127.0.0.1:3456` so the Vue app can call relative paths like `/api/health`. For a production build on another origin, set `VITE_API_BASE` to the full API origin (no trailing slash).
+
+## Operator smoke checklist (~2 minutes)
+
+Use this after any change to **`kowalski`**, **`kowalski-core`**, or **`ui/`** that could affect `/api/*`, horde catalog, federation, or chat. Full governance: [`AGENTS.md`](./AGENTS.md) (**UI-first**).
+
+**Prerequisites**
+
+1. Repo root: `cargo run -p kowalski -- -c config.toml` (default `http://127.0.0.1:3456`).
+2. Second terminal: `cd ui && bun install && bun run dev` → open [http://localhost:5173](http://localhost:5173).
+
+**Steps**
+
+| # | Sidebar tab | What to do | Pass criteria |
+|---|-------------|------------|-----------------|
+| 1 | **Home** | Open once | No blank crash; optional: app version from health appears when API is up. |
+| 2 | **Chat** | Send one short message | **Optional** if `[llm]` / Ollama is configured: you get a normal reply or a **clear** error in the thread (not a silent hang). Skip if you have no LLM. |
+| 3 | **Federation** | Scroll to **Knowledge Sucking Swarm** (Knowledge Compiler horde) → **Start All** | Workers move toward ready; no permanent red error. If workers never become ready, start matching `agent-app worker … --role …` processes from [`examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md). |
+| 4 | **Horde** | In **Horde Run**, confirm horde **Knowledge Sucking Swarm** (or same display name), paste a stable source (e.g. `https://github.com/rust-lang/rust`), default question is fine → **Run Horde** | Stream shows ingest → compile → ask → lint (or explicit failure text). After completion: delivery section lists artifacts; **Open output folder** works if the desktop API is allowed. |
+| 5 | **Federation** (optional extra) | Lower on the same panel: **Refresh registry** if you use raw delegate / `kc.run` smoke | Registry JSON loads; see [`examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md) for legacy worker commands. |
+
+**Failure triage**
+
+- **CORS / network**: confirm Vite dev proxy and that the browser URL is the Vite origin (5173), not the API port directly.
+- **Horde run stuck**: workers not started or wrong topic — return to step 3 and server logs.
+- **Chat only**: horde can still be healthy; file issues separately if Chat breaks but Horde passes.
+
+## See also
+
+- [`AGENTS.md`](./AGENTS.md) — UI-first acceptance and conventions.
+- [`../examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md) — CLI worker commands aligned with the UI.

@@ -183,26 +183,26 @@ enum ExtensionCommands {
 
 #[derive(Parser, Debug)]
 enum AgentAppCommands {
-    /// List declared agents and pipeline
+    /// List horde pipeline and agents
     List {
-        /// App root path (default: examples/knowledge-compiler)
+        /// App dir (`horde.md` + `agents/`). Env `KOWALSKI_AGENT_APP_ROOT`, else dev default `examples/knowledge-compiler`.
         #[clap(short, long)]
         path: Option<String>,
     },
-    /// Validate main-agent/sub-agent definitions and references
+    /// Validate `horde.md` + `agents/*.md` (pipeline vs agent files)
     Validate {
-        /// App root path (default: examples/knowledge-compiler)
+        /// App dir (`horde.md` + `agents/`). Env `KOWALSKI_AGENT_APP_ROOT`, else dev default `examples/knowledge-compiler`.
         #[clap(short, long)]
         path: Option<String>,
     },
-    /// Run main agent orchestration
+    /// Run pipeline sequentially (same steps as `horde.md` pipeline)
     Run {
         /// Source URL or text
         source: String,
         /// Optional question for query phase
         #[clap(short, long)]
         question: Option<String>,
-        /// App root path (default: examples/knowledge-compiler)
+        /// App dir (`horde.md` + `agents/`). Env `KOWALSKI_AGENT_APP_ROOT`, else dev default `examples/knowledge-compiler`.
         #[clap(short, long)]
         path: Option<String>,
         /// Kowalski API base URL (default: http://127.0.0.1:3456)
@@ -222,12 +222,12 @@ enum AgentAppCommands {
         #[clap(long)]
         api: Option<String>,
     },
-    /// Run a federated worker that executes `kc.run:<source>|<question>` delegates,
-    /// or a single sub-agent role (ingest|compile|ask|lint) when `--role` is set.
+    /// Run a federated worker: either whole-app delegations (no `--role`) or a single pipeline
+    /// step when `--role` matches a `kind` from the app’s `agents/*.md` (defined only by `--path`).
     Worker {
         /// Worker agent id
         agent_id: String,
-        /// App root path (default: examples/knowledge-compiler)
+        /// Directory containing `horde.md` and `agents/*.md` (defaults: env `KOWALSKI_AGENT_APP_ROOT`, else repo `examples/knowledge-compiler` for local dev only).
         #[clap(short, long)]
         path: Option<String>,
         /// Kowalski API base URL
@@ -236,18 +236,17 @@ enum AgentAppCommands {
         /// Federation topic (default: federation)
         #[clap(long)]
         topic: Option<String>,
-        /// Restrict the worker to a single sub-agent role: ingest, compile, ask, or lint.
-        /// When omitted the worker handles legacy `kc.run` whole-pipeline delegations.
+        /// Pipeline step name from the app spec (`agents/*.md` → `kind`), e.g. the ingest step’s `kind`.
+        /// Omit to accept whole-pipeline delegates for whatever capability the server sends.
         #[clap(long)]
         role: Option<String>,
-        /// Override the registered capability. Defaults to `kc.<role>` when role is set,
-        /// or `kc.run`+`knowledge-compiler` for legacy mode.
+        /// Override the registered capability; default derives from `--role` or from legacy whole-run mode.
         #[clap(long)]
         capability: Option<String>,
     },
     /// Print reproducible end-to-end federation proof-run checklist
     Proof {
-        /// App root path (default: examples/knowledge-compiler)
+        /// App dir (`horde.md` + `agents/`). Env `KOWALSKI_AGENT_APP_ROOT`, else dev default `examples/knowledge-compiler`.
         #[clap(short, long)]
         path: Option<String>,
         /// Kowalski API base URL

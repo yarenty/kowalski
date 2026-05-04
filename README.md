@@ -7,7 +7,7 @@
 > During this transition, some modules, commands, and docs may still evolve quickly.
 > We are focused on stability, clearer module boundaries, production-ready operator workflows, and robust multi-agent federation.
 
-**Version 1.1.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-datafusion`, Vue `ui/`)
+**Version 1.2.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-datafusion`, Vue `ui/`)
 
 > "AI agents are like pets – they're cute, but they make a mess."  
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"
@@ -20,7 +20,7 @@ A sophisticated Rust-based multi-agent framework for interacting with various LL
 ## Horde changes in 1.1.0 (since 1.0.0)
 
 - Added the **Knowledge Compiler** as the first horde-style app workflow (ingest -> compile -> ask -> lint) with markdown-native artifacts.
-- Added markdown-defined sub-agent orchestration (`main-agent.md` + `agents/*.md`) and validation/run operators.
+- Added markdown-defined sub-agent orchestration (`horde.md` + `agents/*.md`) and validation/run operators.
 - Added federation delegate/worker execution with task progress and final artifact reporting.
 - Improved operator UX for horde runs in CLI and UI with clearer traceability.
 
