@@ -9,7 +9,7 @@ Current 1.1.x architecture focused on the delivered workspace status.
 flowchart TB
   subgraph Clients
     CLI[kowalski-cli]
-    UI[ui (Vue)]
+    UI[UI Vue]
     APIUsers[HTTP integrations]
   end
 
