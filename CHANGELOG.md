@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Added
+
+- **Horde workdir:** `POST /api/hordes/{horde_id}/clean-workdir` runs the same filesystem cleanup as **clean on startup** (removes `debug/`, legacy top-level `raw/` / `wiki/` / `scratch/`, `agents_log/`, and workdir `PASTE_ME.md`). Vue **Horde Run** and **Federation → Horde cards** include an inline **Clean now** control next to “Clean on startup”.
+
 ### Fixed
 
 - **`markdown_pipeline` normalization:** for non-empty LLM output, optional `normalize_sections` no longer appends extra `##` headings using substring checks — models that use emoji or alternate titles (e.g. `## 📝 TL;DR` instead of `## TL;DR`) were falsely treated as “missing” sections, which duplicated headings and injected `normalize_fallback` text (e.g. “Model output was empty…”) into otherwise valid handoff files. Synthesis from **truly** empty output is unchanged.

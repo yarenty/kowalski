@@ -268,14 +268,10 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
     })
 }
 
-pub fn prepare_workdir_on_startup_with_policy(
-    spec: &HordeSpec,
-    clean_on_startup: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
-    std::fs::create_dir_all(&spec.workdir)?;
-    if !clean_on_startup {
-        return Ok(());
-    }
+/// Remove horde workdir artifacts (same tree as “clean on startup”): `debug/`, legacy top-level
+/// `raw/` / `wiki/` / `scratch/`, `agents_log/`, and root `PASTE_ME.md`. Does not remove the
+/// workdir root itself.
+pub fn clean_horde_workdir(spec: &HordeSpec) -> Result<(), Box<dyn std::error::Error>> {
     for rel in ["debug", "raw", "wiki", "scratch", "agents_log"] {
         let p = spec.workdir.join(rel);
         if p.exists() {
@@ -287,6 +283,18 @@ pub fn prepare_workdir_on_startup_with_policy(
         }
     }
     let _ = std::fs::remove_file(spec.workdir.join("PASTE_ME.md"));
+    Ok(())
+}
+
+pub fn prepare_workdir_on_startup_with_policy(
+    spec: &HordeSpec,
+    clean_on_startup: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    std::fs::create_dir_all(&spec.workdir)?;
+    if !clean_on_startup {
+        return Ok(());
+    }
+    clean_horde_workdir(spec)?;
     Ok(())
 }
 

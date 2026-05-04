@@ -291,6 +291,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  hordeCleanWorkdir: (hordeId: string) =>
+    json<{ ok: boolean; horde_id: string; workdir: string }>(
+      `/api/hordes/${encodeURIComponent(hordeId)}/clean-workdir`,
+      { method: "POST", body: "{}" },
+    ),
   hordeRuns: (hordeId: string) =>
     json<{ horde_id: string; runs: HordeRunRecord[] }>(`/api/hordes/${encodeURIComponent(hordeId)}/runs`),
   hordeRunDetail: (hordeId: string, runId: string) =>

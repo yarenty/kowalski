@@ -183,6 +183,35 @@ pub fn maybe_normalize_markdown(agent: &StageAgentMeta, raw: &str) -> String {
     normalize_markdown_sections(raw, title, &sec_refs, fallback, &fallback_for)
 }
 
+/// True when the note already has a Markdown H1, including after optional YAML frontmatter
+/// (`---` … `---`) at the very start (Obsidian handoff files).
+fn markdown_body_has_h1(raw: &str) -> bool {
+    let t = raw.trim_start();
+    if t.starts_with("# ") {
+        return true;
+    }
+    if !t.starts_with("---") {
+        return false;
+    }
+    let mut lines = t.lines();
+    lines.next(); // opening ---
+    let mut in_fm = true;
+    for line in lines {
+        if in_fm {
+            if line.trim() == "---" {
+                in_fm = false;
+            }
+            continue;
+        }
+        let s = line.trim_start();
+        if s.is_empty() {
+            continue;
+        }
+        return s.starts_with("# ");
+    }
+    false
+}
+
 fn normalize_markdown_sections(
     raw: &str,
     title: &str,
@@ -211,7 +240,9 @@ fn normalize_markdown_sections(
     // `## 📝 TL;DR` instead of `## TL;DR`), and exact `contains("## TL;DR")` checks falsely
     // inject duplicate sections plus `normalize_fallback` text into otherwise valid output.
     let start = body.trim_start();
-    if !start.starts_with("# ") {
+    if start.starts_with("---") {
+        // YAML frontmatter first (e.g. Obsidian `tags:`); never prepend `# title` before `---`.
+    } else if !markdown_body_has_h1(start) {
         body = format!("# {}\n\n{}", title, start);
     }
     body.push('\n');
@@ -256,5 +287,15 @@ mod tests {
         let out = maybe_normalize_markdown(&agent, "  ");
         assert!(out.contains("SHOULD_NOT_APPEAR"));
         assert!(out.contains("# Vault paste pack"));
+    }
+
+    #[test]
+    fn maybe_normalize_does_not_prepend_h1_before_yaml_frontmatter() {
+        let agent = lint_like_agent();
+        let raw = "---\ntags:\n  - cuda\n  - hpc\n---\n\n# YarentY Profile\n\nbody\n";
+        let out = maybe_normalize_markdown(&agent, raw);
+        assert!(out.trim_start().starts_with("---"));
+        assert!(!out.contains("# Vault paste pack\n\n---"));
+        assert!(out.contains("# YarentY Profile"));
     }
 }

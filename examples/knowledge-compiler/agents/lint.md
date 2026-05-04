@@ -4,7 +4,7 @@ kind = "lint"
 capability = "kc.lint"
 default_agent_id = "kc-lint"
 display_name = "Handoff Agent"
-description = "Final handoff: synthesize attached stage markdown into one Obsidian-ready note (see prompts/lint.md); includes a required Keywords section."
+description = "Final handoff: YAML tags only; thematic content as ## headings + bodies in markdown (prompts/lint.md)."
 prompt_file = "prompts/lint.md"
 output = "PASTE_ME.md"
 context_paths = [
@@ -14,11 +14,10 @@ context_paths = [
 normalize_doc_title = "Vault paste pack"
 normalize_sections = [
   "TL;DR",
-  "Suggested vault notes",
+  "Themed extracts",
   "Answer recap",
   "Consistency and gaps",
   "Sources and follow-ups",
-  "Keywords",
 ]
 normalize_fallback = "- Model output was empty; re-run when the LLM endpoint is reachable.\n"
 normalize_fallback_sections = ["TL;DR", "Answer recap"]

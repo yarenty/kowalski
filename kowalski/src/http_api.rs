@@ -238,6 +238,10 @@ pub async fn serve(
             post(post_horde_worker_stop),
         )
         .route("/api/hordes/{horde_id}/run", post(post_horde_run))
+        .route(
+            "/api/hordes/{horde_id}/clean-workdir",
+            post(post_horde_clean_workdir),
+        )
         .route("/api/hordes/{horde_id}/followup", post(post_horde_followup))
         .route("/api/hordes/{horde_id}/runs", get(get_horde_runs))
         .route(
@@ -1823,6 +1827,34 @@ async fn post_horde_worker_stop(
         }
     }
     Ok(Json(json!({ "ok": true, "stopped": stopped })))
+}
+
+async fn post_horde_clean_workdir(
+    State(state): State<ApiState>,
+    AxumPath(horde_id): AxumPath<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let spec = state.horde_manager.find(&horde_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("unknown horde id: {}", horde_id),
+        )
+    })?;
+    crate::horde::clean_horde_workdir(spec).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("clean workdir: {}", e),
+        )
+    })?;
+    log::info!(
+        "horde workdir cleaned via API horde={} workdir={}",
+        horde_id,
+        spec.workdir.display()
+    );
+    Ok(Json(json!({
+        "ok": true,
+        "horde_id": horde_id,
+        "workdir": spec.workdir.display().to_string(),
+    })))
 }
 
 async fn post_horde_run(

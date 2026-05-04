@@ -40,6 +40,7 @@ const followupInput = ref("");
 const followupBusy = ref(false);
 const followupMsgs = ref<Array<{ role: "user" | "assistant" | "orchestrator"; speaker: string; text: string }>>([]);
 const pathAction = ref<string | null>(null);
+const cleanWorkdirBusy = ref(false);
 const runPromotedToHistory = ref(false);
 
 const selectedHorde = computed(() => hordes.value.find((h) => h.id === selectedHordeId.value) ?? null);
@@ -237,6 +238,20 @@ async function openOutputFolder(path?: string) {
     } catch {
       pathAction.value = `Open failed (${msg}). Path: ${path}`;
     }
+  }
+}
+
+async function cleanSelectedWorkdir() {
+  if (!selectedHordeId.value) return;
+  cleanWorkdirBusy.value = true;
+  pathAction.value = null;
+  try {
+    const r = await api.hordeCleanWorkdir(selectedHordeId.value);
+    pathAction.value = `Workdir cleaned: ${r.workdir}`;
+  } catch (e) {
+    pathAction.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    cleanWorkdirBusy.value = false;
   }
 }
 
@@ -559,9 +574,20 @@ onUnmounted(() => {
           Open output folder
         </button>
       </p>
-      <p class="muted">
-        Clean on startup:
-        <strong>{{ (selectedHorde.config_on_startup_effective ?? selectedHorde.config_on_startup) ? "true" : "false" }}</strong>
+      <p class="muted workdir-row clean-on-row">
+        <span>
+          Clean on startup:
+          <strong>{{ (selectedHorde.config_on_startup_effective ?? selectedHorde.config_on_startup) ? "true" : "false" }}</strong>
+        </span>
+        <button
+          type="button"
+          class="inline-btn"
+          :disabled="cleanWorkdirBusy"
+          title="Delete workdir debug tree, legacy raw/wiki/scratch, agents_log, and PASTE_ME.md (same paths as server clean-on-startup)"
+          @click="cleanSelectedWorkdir"
+        >
+          {{ cleanWorkdirBusy ? "…" : "Clean now" }}
+        </button>
       </p>
     </div>
     <p v-if="pathAction" class="muted">{{ pathAction }}</p>
@@ -699,6 +725,11 @@ onUnmounted(() => {
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+.clean-on-row {
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 .err { color: #e88; font-size: 0.9rem; }
 .lbl { display: block; font-size: 0.8rem; color: #8b92a5; margin-bottom: 0.25rem; }
