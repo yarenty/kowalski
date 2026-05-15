@@ -387,6 +387,30 @@ export const api = {
         body: JSON.stringify(body ?? {}),
       },
     ),
+  rookeryPatchPenguin: (
+    sessionId: string,
+    penguinName: string,
+    body: {
+      kind?: string;
+      display_name?: string;
+      description?: string;
+      prompt_body?: string;
+      agent_body?: string;
+      clear_agent_body?: boolean;
+      output?: string;
+      context_paths?: string[];
+      tool_ids?: string[];
+    },
+  ) =>
+    json<{ session: RookerySessionResponse }>(
+      `/api/rookery/sessions/${encodeURIComponent(sessionId)}/penguins/${encodeURIComponent(penguinName)}`,
+      { method: "PATCH", body: JSON.stringify(body) },
+    ),
+  rookerySaveHorde: (sessionId: string) =>
+    json<RookerySaveHordeResponse>(
+      `/api/rookery/sessions/${encodeURIComponent(sessionId)}/save-horde`,
+      { method: "POST", body: "{}" },
+    ),
 };
 
 export type RookeryPenguinSpec = {
@@ -449,6 +473,15 @@ export type RookeryProposeResponse = {
 };
 
 export type RookeryGiveBirthResponse = {
+  ok: boolean;
+  horde_root: string;
+  horde_id: string;
+  validate_ok: boolean;
+  validate_errors: string | null;
+  session: RookerySessionResponse;
+};
+
+export type RookerySaveHordeResponse = {
   ok: boolean;
   horde_root: string;
   horde_id: string;

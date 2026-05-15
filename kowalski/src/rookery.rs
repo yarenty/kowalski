@@ -295,6 +295,48 @@ pub struct GiveBirthResponse {
     pub session: RookerySessionResponse,
 }
 
+/// Partial update to one penguin in the session draft (draft buffer until save / give birth).
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct PatchPenguinBody {
+    #[serde(default)]
+    pub kind: Option<String>,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub prompt_body: Option<String>,
+    #[serde(default)]
+    pub agent_body: Option<String>,
+    #[serde(default)]
+    pub clear_agent_body: bool,
+    #[serde(default)]
+    pub output: Option<String>,
+    #[serde(default)]
+    pub context_paths: Option<Vec<String>>,
+    #[serde(default)]
+    pub tool_ids: Option<Vec<String>>,
+    #[serde(default)]
+    pub model_id: Option<String>,
+    #[serde(default)]
+    pub clear_model_id: bool,
+}
+
+#[derive(Serialize)]
+pub struct PatchPenguinResponse {
+    pub session: RookerySessionResponse,
+}
+
+#[derive(Serialize)]
+pub struct SaveHordeResponse {
+    pub ok: bool,
+    pub horde_root: String,
+    pub horde_id: String,
+    pub validate_ok: bool,
+    pub validate_errors: Option<String>,
+    pub session: RookerySessionResponse,
+}
+
 pub type RookeryState = Arc<Mutex<RookeryStore>>;
 
 pub async fn post_sessions(
@@ -598,6 +640,138 @@ pub async fn post_give_birth(
         .ok_or_else(|| internal_err_str("session disappeared"))?;
 
     Ok(Json(GiveBirthResponse {
+        ok: validate_ok,
+        horde_id: draft.id.clone(),
+        horde_root: horde_root.display().to_string(),
+        validate_ok,
+        validate_errors,
+        session: RookerySessionResponse::from_session(session, &out_display),
+    }))
+}
+
+pub async fn patch_penguin(
+    Extension(store): Extension<RookeryState>,
+    AxumPath((session_id, penguin_name)): AxumPath<(String, String)>,
+    Json(body): Json<PatchPenguinBody>,
+) -> Result<Json<PatchPenguinResponse>, (StatusCode, String)> {
+    let mut guard = store.lock().await;
+    let output_root = guard.output_root.clone();
+    let session = guard
+        .get_mut(&session_id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "session not found".into()))?;
+    let draft = session.draft.as_mut().ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            "no draft on session; call POST .../propose first".into(),
+        )
+    })?;
+    let penguin = draft
+        .penguins
+        .iter_mut()
+        .find(|p| p.name == penguin_name)
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("penguin `{penguin_name}` not found in draft"),
+            )
+        })?;
+
+    if let Some(v) = body.kind {
+        penguin.kind = v;
+    }
+    if let Some(v) = body.display_name {
+        penguin.display_name = v;
+    }
+    if let Some(v) = body.description {
+        penguin.description = v;
+    }
+    if let Some(v) = body.prompt_body {
+        penguin.prompt_body = v;
+    }
+    if body.clear_agent_body {
+        penguin.agent_body = None;
+    } else if let Some(v) = body.agent_body {
+        penguin.agent_body = Some(v);
+    }
+    if let Some(v) = body.output {
+        penguin.output = v;
+    }
+    if let Some(v) = body.context_paths {
+        penguin.context_paths = v;
+    }
+    if let Some(v) = body.tool_ids {
+        penguin.tool_ids = v;
+    }
+    if body.clear_model_id {
+        penguin.model_id = None;
+    } else if let Some(v) = body.model_id {
+        penguin.model_id = Some(v);
+    }
+
+    validate_draft(draft).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    RookeryStore::touch(session);
+
+    let session = guard
+        .get(&session_id)
+        .ok_or_else(|| internal_err_str("session disappeared"))?;
+    Ok(Json(PatchPenguinResponse {
+        session: RookerySessionResponse::from_session(session, &output_root),
+    }))
+}
+
+/// Re-write the on-disk horde from the current draft (after edits). Does not change session status.
+pub async fn post_save_horde(
+    Extension(store): Extension<RookeryState>,
+    AxumPath(session_id): AxumPath<String>,
+) -> Result<Json<SaveHordeResponse>, (StatusCode, String)> {
+    let (draft, output_root) = {
+        let guard = store.lock().await;
+        let session = guard
+            .get(&session_id)
+            .ok_or_else(|| (StatusCode::NOT_FOUND, "session not found".into()))?;
+        let draft = session.draft.clone().ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                "no draft on session; call POST .../propose first".into(),
+            )
+        })?;
+        if session.status != RookerySessionStatus::Born {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "session is not born; use give-birth first".into(),
+            ));
+        }
+        let output_root = session
+            .horde_root
+            .as_ref()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+            .unwrap_or_else(|| guard.output_root.clone());
+        (draft, output_root)
+    };
+
+    let horde_root = write_horde_tree(
+        &output_root,
+        &HordeBirthSpec::new(draft.clone()).with_overwrite(true),
+    )
+    .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+
+    let validate_result = validate_horde_tree(&horde_root);
+    let (validate_ok, validate_errors) = match validate_result {
+        Ok(()) => (true, None),
+        Err(e) => (false, Some(e.to_string())),
+    };
+
+    let mut guard = store.lock().await;
+    let out_display = guard.output_root.clone();
+    if let Some(session) = guard.get_mut(&session_id) {
+        session.horde_root = Some(horde_root.clone());
+        RookeryStore::touch(session);
+    }
+    let session = guard
+        .get(&session_id)
+        .ok_or_else(|| internal_err_str("session disappeared"))?;
+
+    Ok(Json(SaveHordeResponse {
         ok: validate_ok,
         horde_id: draft.id.clone(),
         horde_root: horde_root.display().to_string(),

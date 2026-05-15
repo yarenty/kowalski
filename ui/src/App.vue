@@ -52,6 +52,8 @@ const rookeryBusy = ref(false);
 const rookeryNewBusy = ref(false);
 const rookeryProposeBusy = ref(false);
 const rookeryBirthBusy = ref(false);
+const rookerySaveHordeBusy = ref(false);
+const rookeryPenguinSaveBusy = ref(false);
 const rookeryErr = ref<string | null>(null);
 const rookeryBirthOverwrite = ref(false);
 
@@ -575,6 +577,77 @@ async function proposeRookery() {
   }
 }
 
+async function savePenguinRookery(payload: {
+  name: string;
+  patch: {
+    kind: string;
+    display_name: string;
+    description: string;
+    prompt_body: string;
+    agent_body: string | null;
+    output: string;
+    context_paths: string[];
+    tool_ids: string[];
+  };
+}) {
+  const session = activeRookerySession();
+  if (!session) return;
+  rookeryPenguinSaveBusy.value = true;
+  rookeryErr.value = null;
+  try {
+    await ensureRookeryBackendSession(session);
+    const body: Parameters<typeof api.rookeryPatchPenguin>[2] = {
+      kind: payload.patch.kind,
+      display_name: payload.patch.display_name,
+      description: payload.patch.description,
+      prompt_body: payload.patch.prompt_body,
+      output: payload.patch.output,
+      context_paths: payload.patch.context_paths,
+      tool_ids: payload.patch.tool_ids,
+    };
+    if (payload.patch.agent_body) {
+      body.agent_body = payload.patch.agent_body;
+    } else {
+      body.clear_agent_body = true;
+    }
+    const r = await api.rookeryPatchPenguin(
+      session.serverSessionId,
+      payload.name,
+      body,
+    );
+    applyRookeryServerState(session, r.session);
+  } catch (e) {
+    rookeryErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    session.updatedAt = Date.now();
+    persistRookerySessions();
+    rookeryPenguinSaveBusy.value = false;
+  }
+}
+
+async function saveHordeRookery() {
+  const session = activeRookerySession();
+  if (!session) return;
+  rookerySaveHordeBusy.value = true;
+  rookeryErr.value = null;
+  try {
+    await ensureRookeryBackendSession(session);
+    const r = await api.rookerySaveHorde(session.serverSessionId);
+    applyRookeryServerState(session, r.session);
+    session.hordeRoot = r.horde_root;
+    session.birthNote = r.validate_ok
+      ? `Saved OK · horde id ${r.horde_id}`
+      : `Saved with validate errors: ${r.validate_errors ?? "unknown"}`;
+    if (!r.validate_ok) rookeryErr.value = r.validate_errors ?? "validate failed";
+  } catch (e) {
+    rookeryErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    session.updatedAt = Date.now();
+    persistRookerySessions();
+    rookerySaveHordeBusy.value = false;
+  }
+}
+
 async function giveBirthRookery() {
   const session = activeRookerySession();
   if (!session) return;
@@ -659,12 +732,16 @@ onMounted(async () => {
         :chat-busy="rookeryBusy"
         :propose-busy="rookeryProposeBusy"
         :birth-busy="rookeryBirthBusy"
+        :save-horde-busy="rookerySaveHordeBusy"
+        :penguin-save-busy="rookeryPenguinSaveBusy"
         :new-busy="rookeryNewBusy"
         :err="rookeryErr"
         :birth-overwrite="rookeryBirthOverwrite"
         @send-chat="sendRookeryChat"
         @propose="proposeRookery"
         @give-birth="giveBirthRookery"
+        @save-horde="saveHordeRookery"
+        @save-penguin="savePenguinRookery"
         @new-session="newRookerySession"
         @open-horde="tab = 'federation-run'"
         @toggle-birth-overwrite="rookeryBirthOverwrite = $event"

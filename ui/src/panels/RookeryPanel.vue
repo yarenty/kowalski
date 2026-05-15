@@ -4,6 +4,7 @@ import DOMPurify from "dompurify";
 import { marked } from "marked";
 import type { RookeryDraft, RookeryPenguinSpec, RookerySessionStatus } from "../api";
 import PenguinCanvas from "../components/PenguinCanvas.vue";
+import PenguinEditor from "../components/PenguinEditor.vue";
 
 export type RookeryTurn = { role: "user" | "assistant"; content: string };
 
@@ -28,6 +29,8 @@ const props = defineProps<{
   chatBusy: boolean;
   proposeBusy: boolean;
   birthBusy: boolean;
+  saveHordeBusy: boolean;
+  penguinSaveBusy: boolean;
   newBusy: boolean;
   err: string | null;
   birthOverwrite: boolean;
@@ -37,9 +40,26 @@ const emit = defineEmits<{
   (e: "send-chat", message: string): void;
   (e: "propose"): void;
   (e: "give-birth"): void;
+  (e: "save-horde"): void;
   (e: "new-session"): void;
   (e: "open-horde"): void;
   (e: "toggle-birth-overwrite", value: boolean): void;
+  (
+    e: "save-penguin",
+    payload: {
+      name: string;
+      patch: {
+        kind: string;
+        display_name: string;
+        description: string;
+        prompt_body: string;
+        agent_body: string | null;
+        output: string;
+        context_paths: string[];
+        tool_ids: string[];
+      };
+    },
+  ): void;
 }>();
 
 const chatIn = ref("");
@@ -182,19 +202,13 @@ function send() {
           @select-penguin="onSelectPenguin"
         />
 
-        <div v-if="selectedPenguin" class="penguin-detail">
-          <h4>{{ selectedPenguin.display_name }}</h4>
-          <p class="muted small">{{ selectedPenguin.description }}</p>
-          <dl class="detail-grid">
-            <dt>Step</dt>
-            <dd class="mono">{{ selectedPenguin.name }}</dd>
-            <dt>Kind</dt>
-            <dd class="mono">{{ selectedPenguin.kind }}</dd>
-            <dt>Output</dt>
-            <dd class="mono">{{ selectedPenguin.output || "—" }}</dd>
-          </dl>
-          <p class="muted small editor-hint">Agent editor (Phase 5) will open here.</p>
-        </div>
+        <PenguinEditor
+          v-if="selectedPenguin && activeSession.draft"
+          :penguin="selectedPenguin"
+          :readonly="activeSession.status === 'interviewing'"
+          :save-busy="penguinSaveBusy"
+          @save="emit('save-penguin', { name: selectedPenguin.name, patch: $event })"
+        />
 
         <p v-if="activeSession.summary" class="summary-md md-content" v-html="renderMarkdown(activeSession.summary)" />
         <p v-else-if="!activeSession.pipeline.length" class="muted">
@@ -222,6 +236,9 @@ function send() {
           <p v-if="activeSession.hordeRoot" class="mono path">{{ activeSession.hordeRoot }}</p>
           <p v-if="activeSession.birthNote" class="muted">{{ activeSession.birthNote }}</p>
           <p class="actions">
+            <button type="button" :disabled="saveHordeBusy" @click="emit('save-horde')">
+              {{ saveHordeBusy ? "Saving…" : "Save horde to disk" }}
+            </button>
             <button type="button" @click="emit('open-horde')">Open Horde tab</button>
           </p>
           <p class="muted small">

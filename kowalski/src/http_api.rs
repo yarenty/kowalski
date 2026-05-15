@@ -9,7 +9,7 @@ use axum::extract::ws::{WebSocket, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::response::sse::{Event, Sse};
-use axum::routing::{get, post};
+use axum::routing::{get, patch, post};
 use axum::{Extension, Json, Router};
 use futures::Stream;
 use futures::StreamExt;
@@ -279,6 +279,14 @@ pub async fn serve(
         .route(
             "/api/rookery/sessions/{session_id}/give-birth",
             post(crate::rookery::post_give_birth),
+        )
+        .route(
+            "/api/rookery/sessions/{session_id}/save-horde",
+            post(crate::rookery::post_save_horde),
+        )
+        .route(
+            "/api/rookery/sessions/{session_id}/penguins/{penguin_name}",
+            patch(crate::rookery::patch_penguin),
         );
     #[cfg(feature = "postgres")]
     let router = router.route("/api/graph/cypher", post(post_graph_cypher));
