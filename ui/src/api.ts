@@ -217,6 +217,8 @@ export const api = {
   agents: () => json<AgentsResponse>("/api/agents"),
   sessions: () => json<SessionsResponse>("/api/sessions"),
   doctor: () => json<Doctor>("/api/doctor"),
+  models: () =>
+    json<{ default_model: string; models: string[] }>("/api/models"),
   mcpServers: () => json<McpServer[]>("/api/mcp/servers"),
   mcpPing: () =>
     json<McpPingResult[]>("/api/mcp/ping", { method: "POST", body: "{}" }),
@@ -400,6 +402,8 @@ export const api = {
       output?: string;
       context_paths?: string[];
       tool_ids?: string[];
+      model_id?: string;
+      clear_model_id?: boolean;
     },
   ) =>
     json<{ session: RookerySessionResponse }>(
@@ -409,6 +413,11 @@ export const api = {
   rookerySaveHorde: (sessionId: string) =>
     json<RookerySaveHordeResponse>(
       `/api/rookery/sessions/${encodeURIComponent(sessionId)}/save-horde`,
+      { method: "POST", body: "{}" },
+    ),
+  rookeryValidateDraft: (sessionId: string) =>
+    json<{ ok: boolean; errors: string | null; session: RookerySessionResponse }>(
+      `/api/rookery/sessions/${encodeURIComponent(sessionId)}/validate`,
       { method: "POST", body: "{}" },
     ),
 };

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { ref, watch } from "vue";
 import type { RookeryPenguinSpec } from "../api";
-import { api, type McpServer } from "../api";
+import PenguinForm from "./PenguinForm.vue";
 
 const props = defineProps<{
   penguin: RookeryPenguinSpec;
@@ -21,10 +21,12 @@ const emit = defineEmits<{
       output: string;
       context_paths: string[];
       tool_ids: string[];
+      model_id: string | null;
     },
   ): void;
 }>();
 
+const editorTab = ref<"form" | "markdown">("form");
 const kind = ref("");
 const displayName = ref("");
 const description = ref("");
@@ -33,9 +35,7 @@ const agentBody = ref("");
 const output = ref("");
 const contextPathsText = ref("");
 const toolIds = ref<string[]>([]);
-const toolIdInput = ref("");
-const showAdvanced = ref(false);
-const mcpServers = ref<McpServer[]>([]);
+const modelId = ref("");
 
 function loadFromPenguin(p: RookeryPenguinSpec) {
   kind.value = p.kind;
@@ -46,6 +46,7 @@ function loadFromPenguin(p: RookeryPenguinSpec) {
   output.value = p.output;
   contextPathsText.value = (p.context_paths ?? []).join("\n");
   toolIds.value = [...(p.tool_ids ?? [])];
+  modelId.value = p.model_id ?? "";
 }
 
 watch(
@@ -56,35 +57,11 @@ watch(
   { immediate: true },
 );
 
-void api
-  .mcpServers()
-  .then((s) => {
-    mcpServers.value = s;
-  })
-  .catch(() => {
-    mcpServers.value = [];
-  });
-
-const mcpServerNames = computed(() =>
-  mcpServers.value.map((s) => s.name).filter(Boolean),
-);
-
 function parseContextPaths(): string[] {
   return contextPathsText.value
     .split(/[\n,]+/)
     .map((s) => s.trim())
     .filter(Boolean);
-}
-
-function addToolId() {
-  const id = toolIdInput.value.trim();
-  if (!id || toolIds.value.includes(id)) return;
-  toolIds.value = [...toolIds.value, id];
-  toolIdInput.value = "";
-}
-
-function removeToolId(id: string) {
-  toolIds.value = toolIds.value.filter((t) => t !== id);
 }
 
 function save() {
@@ -97,6 +74,7 @@ function save() {
     output: output.value.trim(),
     context_paths: parseContextPaths(),
     tool_ids: toolIds.value,
+    model_id: modelId.value.trim() || null,
   });
 }
 </script>
@@ -108,53 +86,34 @@ function save() {
       <span class="mono muted small">agents/{{ penguin.name }}.md · prompts/{{ penguin.name }}.md</span>
     </div>
 
-    <label class="field">
-      <span>Display name</span>
-      <input v-model="displayName" type="text" :disabled="readonly" />
-    </label>
-    <label class="field">
-      <span>Kind</span>
-      <input v-model="kind" type="text" :disabled="readonly" class="mono" />
-    </label>
-    <label class="field">
-      <span>Description</span>
-      <textarea v-model="description" rows="2" :disabled="readonly" />
-    </label>
-    <label class="field">
-      <span>Output path (workdir-relative)</span>
-      <input v-model="output" type="text" :disabled="readonly" class="mono" />
-    </label>
-    <label class="field">
-      <span>Context paths (one per line or comma-separated)</span>
-      <textarea v-model="contextPathsText" rows="2" :disabled="readonly" class="mono small" />
-    </label>
-
-    <label class="field">
-      <span>Prompt body <code>prompts/{{ penguin.name }}.md</code></span>
-      <textarea v-model="promptBody" rows="8" :disabled="readonly" class="mono editor-ta" />
-    </label>
-
-    <div class="field">
-      <span>Tool IDs <span v-if="mcpServerNames.length" class="muted small">(MCP: {{ mcpServerNames.join(", ") }})</span></span>
-      <div v-if="toolIds.length" class="chips">
-        <span v-for="tid in toolIds" :key="tid" class="chip">
-          {{ tid }}
-          <button v-if="!readonly" type="button" class="chip-x" aria-label="Remove" @click="removeToolId(tid)">×</button>
-        </span>
-      </div>
-      <p v-if="!readonly" class="tool-add">
-        <input v-model="toolIdInput" type="text" class="mono" placeholder="tool-id" @keydown.enter.prevent="addToolId" />
-        <button type="button" @click="addToolId">Add</button>
-      </p>
+    <div class="tabs">
+      <button type="button" :class="{ active: editorTab === 'form' }" @click="editorTab = 'form'">Form</button>
+      <button type="button" :class="{ active: editorTab === 'markdown' }" @click="editorTab = 'markdown'">Advanced</button>
     </div>
 
-    <button type="button" class="linkish" @click="showAdvanced = !showAdvanced">
-      {{ showAdvanced ? "Hide" : "Show" }} agent markdown body
-    </button>
-    <label v-if="showAdvanced" class="field">
-      <span>Agent body (after frontmatter in <code>agents/{{ penguin.name }}.md</code>)</span>
-      <textarea v-model="agentBody" rows="6" :disabled="readonly" class="mono editor-ta" />
-    </label>
+    <PenguinForm
+      v-show="editorTab === 'form'"
+      v-model:kind="kind"
+      v-model:display-name="displayName"
+      v-model:description="description"
+      v-model:output="output"
+      v-model:context-paths-text="contextPathsText"
+      v-model:tool-ids="toolIds"
+      v-model:model-id="modelId"
+      :penguin-name="penguin.name"
+      :readonly="readonly"
+    />
+
+    <div v-show="editorTab === 'markdown'" class="markdown-pane">
+      <label class="field">
+        <span>Prompt body <code>prompts/{{ penguin.name }}.md</code></span>
+        <textarea v-model="promptBody" rows="10" :disabled="readonly" class="mono editor-ta" />
+      </label>
+      <label class="field">
+        <span>Agent body (after frontmatter)</span>
+        <textarea v-model="agentBody" rows="6" :disabled="readonly" class="mono editor-ta" />
+      </label>
+    </div>
 
     <p v-if="!readonly" class="actions">
       <button type="button" class="primary" :disabled="saveBusy" @click="save">
@@ -177,9 +136,20 @@ function save() {
   overflow: auto;
 }
 .editor-head h4 { margin: 0; font-size: 0.95rem; }
+.tabs { display: flex; gap: 0.35rem; }
+.tabs button {
+  background: #2a3142;
+  border: 1px solid #3d4658;
+  color: #c8cfdd;
+  padding: 0.25rem 0.55rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.tabs button.active { background: #3d6cb5; border-color: #5a8fd4; color: #fff; }
+.markdown-pane { display: flex; flex-direction: column; gap: 0.5rem; }
 .field { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.82rem; }
 .field span { color: #8b92a5; }
-.field input,
 .field textarea {
   background: #12161f;
   border: 1px solid #2e3648;
@@ -189,36 +159,6 @@ function save() {
   font: inherit;
 }
 .editor-ta { font-size: 0.78rem; line-height: 1.35; resize: vertical; }
-.chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.25rem; }
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  background: #2a3142;
-  border-radius: 4px;
-  padding: 0.15rem 0.4rem;
-  font-size: 0.75rem;
-  font-family: ui-monospace, monospace;
-}
-.chip-x {
-  border: none;
-  background: transparent;
-  color: #8b92a5;
-  cursor: pointer;
-  padding: 0;
-  line-height: 1;
-}
-.tool-add { display: flex; gap: 0.35rem; margin: 0.35rem 0 0; }
-.tool-add input { flex: 1; }
-.linkish {
-  background: none;
-  border: none;
-  color: #7aa2e8;
-  cursor: pointer;
-  font-size: 0.8rem;
-  padding: 0;
-  text-align: left;
-}
 .actions { margin: 0.25rem 0 0; }
 .actions .primary {
   background: #3d6cb5;

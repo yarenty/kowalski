@@ -7,6 +7,7 @@ import {
   type HordeCatalogItem,
   type HordeRunRecord,
 } from "../api";
+import HordeRunForm from "../components/HordeRunForm.vue";
 const props = defineProps<{ activeThreadId: string | null }>();
 const emit = defineEmits<{
   (e: "new-chat-session"): void;
@@ -437,11 +438,11 @@ watch(
   { deep: true },
 );
 
-async function runKnowledgeCompiler() {
+async function runHordeWithPayload(payload: { prompt: string; source: string; question: string }) {
   await Promise.all([loadHordes(), loadProfiles()]);
-  const prompt = followupInput.value.trim();
+  const prompt = payload.prompt.trim();
   if (!prompt) {
-    runErr.value = "Prompt is required.";
+    runErr.value = "Source URL or text is required.";
     return;
   }
   const sources = extractUrls(prompt);
@@ -478,9 +479,9 @@ async function runKnowledgeCompiler() {
   try {
     const out = await api.hordeRun(selectedHordeId.value, {
       prompt,
-      source: prompt,
+      source: payload.source,
+      question: payload.question,
     });
-    followupInput.value = "";
     runId.value = out.run.run_id;
     feed("orchestrator", `run started: ${out.run.run_id}`, "Agent: Boss");
     runWatchdog.value = window.setTimeout(() => {
@@ -498,9 +499,9 @@ async function runKnowledgeCompiler() {
   }
 }
 
-async function askFollowup() {
+async function onHordeFormSubmit(payload: { prompt: string; source: string; question: string }) {
   if (!hasCompletedRun.value) {
-    await runKnowledgeCompiler();
+    await runHordeWithPayload(payload);
     return;
   }
   if (!selectedHordeId.value) return;
@@ -509,11 +510,10 @@ async function askFollowup() {
     if (fallbackRunId) runId.value = fallbackRunId;
   }
   if (!runId.value) return;
-  const q = followupInput.value.trim();
+  const q = payload.prompt.trim();
   if (!q) return;
   followupMsgs.value = [...followupMsgs.value, { role: "user", speaker: "You", text: q }];
   upsertThreadMeta();
-  followupInput.value = "";
   followupBusy.value = true;
   try {
     const out = await api.hordeFollowup(selectedHordeId.value, {
@@ -670,42 +670,15 @@ onUnmounted(() => {
       </div>
     </section>
     <section class="followup-composer">
-      <p class="muted">
-        {{
-          hasCompletedRun
-            ? 'Ask refining questions about this run, e.g. "emphasize AI findings" or "only technology part in simple language".'
-            : (selectedHorde?.prompt_tip || "Enter your prompt with source URL to start a new horde interaction.")
-        }}
-      </p>
-      <p>
-        <label class="lbl">{{ hasCompletedRun ? "Follow-up question" : "Prompt" }}</label>
-        <input
-          v-model="followupInput"
-          class="inp"
-          type="text"
-          :disabled="runBusy || followupBusy"
-          @keydown.enter.prevent="askFollowup"
-        />
-      </p>
-      <p>
+      <HordeRunForm
+        :horde="selectedHorde"
+        :disabled="!selectedHordeId"
+        :busy="runBusy || followupBusy"
+        :follow-up-mode="hasCompletedRun"
+        @submit="onHordeFormSubmit"
+      />
+      <p v-if="hasCompletedRun">
         <button
-          type="button"
-          class="primary"
-          :disabled="runBusy || followupBusy || !followupInput.trim()"
-          @click="askFollowup"
-        >
-          {{
-            followupBusy
-              ? "Asking..."
-              : runBusy
-                ? "Running Horde..."
-                : hasCompletedRun
-                  ? "Ask follow-up"
-                  : "Run Horde"
-          }}
-        </button>
-        <button
-          v-if="hasCompletedRun"
           type="button"
           :disabled="runBusy || followupBusy"
           @click="redefineAndStartAgain"

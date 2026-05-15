@@ -168,6 +168,8 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
 | `POST` | `/api/rookery/sessions/{id}/give-birth` | Body: `{ "output_root"?, "overwrite"? }` → `write_horde_tree` + validate |
 | `PATCH` | `/api/rookery/sessions/{id}/penguins/{name}` | Update one penguin in session draft |
 | `POST` | `/api/rookery/sessions/{id}/save-horde` | Re-write born horde from draft (overwrite on disk) |
+| `POST` | `/api/rookery/sessions/{id}/validate` | Validate draft without birth |
+| `GET` | `/api/models` | Ollama model list + server default |
 
 Builder system prompt: [`../resources/prompts/rookery/builder.md`](../resources/prompts/rookery/builder.md). Default birth directory: `examples/` (`KOWALSKI_ROOKERY_OUTPUT`).
 

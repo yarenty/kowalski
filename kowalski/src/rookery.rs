@@ -781,6 +781,42 @@ pub async fn post_save_horde(
     }))
 }
 
+#[derive(Serialize)]
+pub struct ValidateDraftResponse {
+    pub ok: bool,
+    pub errors: Option<String>,
+    pub session: RookerySessionResponse,
+}
+
+pub async fn post_validate_draft(
+    Extension(store): Extension<RookeryState>,
+    AxumPath(session_id): AxumPath<String>,
+) -> Result<Json<ValidateDraftResponse>, (StatusCode, String)> {
+    let guard = store.lock().await;
+    let output_root = guard.output_root.clone();
+    let session = guard
+        .get(&session_id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "session not found".into()))?;
+    let draft = session.draft.as_ref().ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            "no draft on session; call POST .../propose first".into(),
+        )
+    })?;
+    match validate_draft(draft) {
+        Ok(()) => Ok(Json(ValidateDraftResponse {
+            ok: true,
+            errors: None,
+            session: RookerySessionResponse::from_session(session, &output_root),
+        })),
+        Err(e) => Ok(Json(ValidateDraftResponse {
+            ok: false,
+            errors: Some(e.to_string()),
+            session: RookerySessionResponse::from_session(session, &output_root),
+        })),
+    }
+}
+
 fn summarize_proposal(text: &str) -> String {
     if let Some(json_start) = text.find("```") {
         return text[..json_start].trim().to_string();

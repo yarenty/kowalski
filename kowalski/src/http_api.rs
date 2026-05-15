@@ -207,6 +207,7 @@ pub async fn serve(
         .route("/api/agents", get(get_agents))
         .route("/api/sessions", get(get_sessions))
         .route("/api/doctor", get(get_doctor))
+        .route("/api/models", get(get_models))
         .route("/api/mcp/servers", get(get_mcp_servers))
         .route("/api/mcp/ping", post(post_mcp_ping))
         .route("/api/memory/status", get(get_memory_status))
@@ -287,6 +288,10 @@ pub async fn serve(
         .route(
             "/api/rookery/sessions/{session_id}/penguins/{penguin_name}",
             patch(crate::rookery::patch_penguin),
+        )
+        .route(
+            "/api/rookery/sessions/{session_id}/validate",
+            post(crate::rookery::post_validate_draft),
         );
     #[cfg(feature = "postgres")]
     let router = router.route("/api/graph/cypher", post(post_graph_cypher));
@@ -374,6 +379,23 @@ async fn get_sessions(State(state): State<ApiState>) -> Json<serde_json::Value> 
 
 async fn get_doctor(State(state): State<ApiState>) -> Json<crate::http_ops::DoctorJson> {
     Json(crate::http_ops::doctor_json(state.ollama_url.clone(), Some(&state.full_config)).await)
+}
+
+async fn get_models(State(state): State<ApiState>) -> Json<serde_json::Value> {
+    let ollama_url = state.ollama_url.clone().unwrap_or_else(|| {
+        format!(
+            "http://{}:{}",
+            state.full_config.ollama.host, state.full_config.ollama.port
+        )
+    });
+    let mut models = crate::http_ops::list_ollama_models(&ollama_url).await;
+    if !models.iter().any(|m| m == &state.model) {
+        models.insert(0, state.model.clone());
+    }
+    Json(json!({
+        "default_model": state.model,
+        "models": models,
+    }))
 }
 
 async fn get_mcp_servers(

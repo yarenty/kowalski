@@ -178,6 +178,29 @@ pub async fn mcp_ping_results(
     Ok(out)
 }
 
+/// Model names from Ollama `GET /api/tags` (empty if unreachable).
+pub async fn list_ollama_models(base: &str) -> Vec<String> {
+    let base = base.trim_end_matches('/');
+    let tags_url = format!("{base}/api/tags");
+    let Ok(r) = reqwest::get(&tags_url).await else {
+        return Vec::new();
+    };
+    if !r.status().is_success() {
+        return Vec::new();
+    }
+    let Ok(v) = r.json::<serde_json::Value>().await else {
+        return Vec::new();
+    };
+    v.get("models")
+        .and_then(|m| m.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| m.get("name").and_then(|n| n.as_str()).map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 async fn probe_ollama_tags(base: &str) -> OllamaProbeJson {
     let base = base.trim_end_matches('/');
     let tags_url = format!("{}/api/tags", base);

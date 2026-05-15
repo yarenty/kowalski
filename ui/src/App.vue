@@ -54,7 +54,9 @@ const rookeryProposeBusy = ref(false);
 const rookeryBirthBusy = ref(false);
 const rookerySaveHordeBusy = ref(false);
 const rookeryPenguinSaveBusy = ref(false);
+const rookeryValidateBusy = ref(false);
 const rookeryErr = ref<string | null>(null);
+const rookeryValidateNote = ref<string | null>(null);
 const rookeryBirthOverwrite = ref(false);
 
 function persistConversations() {
@@ -588,6 +590,7 @@ async function savePenguinRookery(payload: {
     output: string;
     context_paths: string[];
     tool_ids: string[];
+    model_id: string | null;
   };
 }) {
   const session = activeRookerySession();
@@ -610,6 +613,11 @@ async function savePenguinRookery(payload: {
     } else {
       body.clear_agent_body = true;
     }
+    if (payload.patch.model_id) {
+      body.model_id = payload.patch.model_id;
+    } else {
+      body.clear_model_id = true;
+    }
     const r = await api.rookeryPatchPenguin(
       session.serverSessionId,
       payload.name,
@@ -622,6 +630,29 @@ async function savePenguinRookery(payload: {
     session.updatedAt = Date.now();
     persistRookerySessions();
     rookeryPenguinSaveBusy.value = false;
+  }
+}
+
+async function validateRookeryDraft() {
+  const session = activeRookerySession();
+  if (!session) return;
+  rookeryValidateBusy.value = true;
+  rookeryErr.value = null;
+  rookeryValidateNote.value = null;
+  try {
+    await ensureRookeryBackendSession(session);
+    const r = await api.rookeryValidateDraft(session.serverSessionId);
+    applyRookeryServerState(session, r.session);
+    rookeryValidateNote.value = r.ok
+      ? "Draft validates OK."
+      : `Validation failed: ${r.errors ?? "unknown"}`;
+    if (!r.ok) rookeryErr.value = r.errors ?? "validation failed";
+  } catch (e) {
+    rookeryErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    session.updatedAt = Date.now();
+    persistRookerySessions();
+    rookeryValidateBusy.value = false;
   }
 }
 
@@ -734,11 +765,14 @@ onMounted(async () => {
         :birth-busy="rookeryBirthBusy"
         :save-horde-busy="rookerySaveHordeBusy"
         :penguin-save-busy="rookeryPenguinSaveBusy"
+        :validate-busy="rookeryValidateBusy"
+        :validate-note="rookeryValidateNote"
         :new-busy="rookeryNewBusy"
         :err="rookeryErr"
         :birth-overwrite="rookeryBirthOverwrite"
         @send-chat="sendRookeryChat"
         @propose="proposeRookery"
+        @validate-draft="validateRookeryDraft"
         @give-birth="giveBirthRookery"
         @save-horde="saveHordeRookery"
         @save-penguin="savePenguinRookery"
