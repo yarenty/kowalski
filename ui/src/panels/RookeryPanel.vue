@@ -31,6 +31,8 @@ const props = defineProps<{
   birthBusy: boolean;
   saveHordeBusy: boolean;
   penguinSaveBusy: boolean;
+  validateBusy: boolean;
+  validateNote: string | null;
   newBusy: boolean;
   err: string | null;
   birthOverwrite: boolean;
@@ -39,6 +41,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "send-chat", message: string): void;
   (e: "propose"): void;
+  (e: "validate-draft"): void;
   (e: "give-birth"): void;
   (e: "save-horde"): void;
   (e: "new-session"): void;
@@ -57,6 +60,7 @@ const emit = defineEmits<{
         output: string;
         context_paths: string[];
         tool_ids: string[];
+        model_id: string | null;
       };
     },
   ): void;
@@ -216,6 +220,16 @@ function send() {
         </p>
 
         <p v-if="activeSession.parseError" class="warn">{{ activeSession.parseError }}</p>
+        <p v-if="validateNote" class="ok-note">{{ validateNote }}</p>
+
+        <div
+          v-if="activeSession.draft && (activeSession.status === 'proposed' || activeSession.status === 'born')"
+          class="validate-row"
+        >
+          <button type="button" :disabled="validateBusy || proposeBusy" @click="emit('validate-draft')">
+            {{ validateBusy ? "Validating…" : "Validate draft" }}
+          </button>
+        </div>
 
         <div v-if="activeSession.status === 'proposed'" class="birth-box">
           <label class="chk">
@@ -376,6 +390,16 @@ function send() {
 .ok { color: #8de3a8; margin: 0; }
 .path { word-break: break-all; }
 .warn { color: #f2b8c1; font-size: 0.85rem; }
+.ok-note { color: #7dcea0; font-size: 0.85rem; margin: 0.35rem 0; }
+.validate-row { margin: 0.35rem 0; }
+.validate-row button {
+  background: #2a3142;
+  border: 1px solid #3d4658;
+  color: #c8cfdd;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
 .muted { color: #6a7285; font-size: 0.9rem; }
 .small { font-size: 0.8rem; }
 .err { color: #f2b8c1; margin-top: 0.5rem; }
