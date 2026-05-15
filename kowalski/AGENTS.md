@@ -160,7 +160,7 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
 
 | Method | Path | Notes |
 |--------|------|--------|
-| `POST` | `/api/rookery/sessions` | Create interview session |
+| `POST` | `/api/rookery/sessions` | Create session; optional body `{ history?, draft?, summary?, status? }` to restore after server restart |
 | `GET` | `/api/rookery/sessions/{id}` | Draft + status |
 | `DELETE` | `/api/rookery/sessions/{id}` | Drop session |
 | `POST` | `/api/rookery/sessions/{id}/chat` | Body: `{ "message", "stream"? }` — no tools/memory |

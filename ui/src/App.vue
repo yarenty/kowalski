@@ -141,6 +141,31 @@ function activeRookerySession(): RookeryUiSession | null {
   return rookerySessions.value.find((r) => r.id === activeRookerySessionId.value) ?? null;
 }
 
+function isRookerySessionNotFound(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /session not found/i.test(message);
+}
+
+/** Re-create backend session when server restarted but UI still has local turns/draft. */
+async function ensureRookeryBackendSession(session: RookeryUiSession): Promise<boolean> {
+  try {
+    await api.rookerySession(session.serverSessionId);
+    return false;
+  } catch (e) {
+    if (!isRookerySessionNotFound(e)) throw e;
+  }
+  const r = await api.rookeryCreateSession({
+    history: session.turns,
+    draft: session.draft,
+    summary: session.summary,
+    status: session.status,
+  });
+  session.serverSessionId = r.session.session_id;
+  applyRookeryServerState(session, r.session);
+  persistRookerySessions();
+  return true;
+}
+
 restoreConversations();
 restoreHordeInteractions();
 restoreRookerySessions();
@@ -452,10 +477,14 @@ async function refreshRookerySession(localId: string) {
   const session = rookerySessions.value.find((r) => r.id === localId);
   if (!session) return;
   try {
-    const remote = await api.rookerySession(session.serverSessionId);
-    applyRookeryServerState(session, remote);
+    const reconnected = await ensureRookeryBackendSession(session);
+    if (!reconnected) {
+      const remote = await api.rookerySession(session.serverSessionId);
+      applyRookeryServerState(session, remote);
+    }
     session.updatedAt = Date.now();
     persistRookerySessions();
+    rookeryErr.value = null;
   } catch (e) {
     rookeryErr.value = e instanceof Error ? e.message : String(e);
   }
@@ -492,6 +521,7 @@ async function sendRookeryChat(message: string) {
   const assistantTurn = { role: "assistant" as const, content: "" };
   session.turns.push(assistantTurn);
   try {
+    await ensureRookeryBackendSession(session);
     await rookeryChatStream(session.serverSessionId, msg, (ev) => {
       if (ev.type === "token") {
         assistantTurn.content += ev.content;
@@ -531,6 +561,7 @@ async function proposeRookery() {
   rookeryProposeBusy.value = true;
   rookeryErr.value = null;
   try {
+    await ensureRookeryBackendSession(session);
     const r = await api.rookeryPropose(session.serverSessionId);
     applyRookeryServerState(session, r.session);
     session.parseError = r.parse_error;
@@ -550,6 +581,7 @@ async function giveBirthRookery() {
   rookeryBirthBusy.value = true;
   rookeryErr.value = null;
   try {
+    await ensureRookeryBackendSession(session);
     const r = await api.rookeryGiveBirth(session.serverSessionId, {
       overwrite: rookeryBirthOverwrite.value,
     });

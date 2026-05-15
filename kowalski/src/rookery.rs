@@ -9,6 +9,7 @@ use axum::Json;
 use futures::StreamExt;
 use kowalski_core::agent::Agent;
 use kowalski_core::config::Config;
+use kowalski_core::conversation::Message;
 use kowalski_core::rookery::{
     normalize_draft, parse_draft_from_assistant, validate_draft, validate_horde_tree,
     write_horde_tree,
@@ -28,7 +29,7 @@ use uuid::Uuid;
 const BUILDER_PROMPT_REL: &str = "resources/prompts/rookery/builder.md";
 const PROPOSE_USER_MESSAGE: &str = "Based on our conversation so far, emit ONLY a single ```json code block containing a complete RookeryDraft object (fields: id, display_name, description, pipeline, penguins with name, kind, display_name, description, prompt_body, output, and optional context_paths). Use a linear pipeline. No other prose.\n\nID rules (required): `id` and every penguin `name` / pipeline entry must be lowercase ASCII kebab-case: start with a letter or digit, then only `a-z`, `0-9`, and hyphens (e.g. `rust-project-scaffolder`, `ingest`, `deliver`). Put human-readable titles in `display_name` only — never TitleCase or underscores in `name`.\n\nJSON shape: every scalar field (`description`, `prompt_body`, `output`, etc.) must be a JSON **string**, not a nested object. `pipeline` is a JSON array of step name strings (e.g. `[\"ingest\",\"deliver\"]`).";
 
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum RookerySessionStatus {
     Interviewing,
@@ -207,6 +208,56 @@ pub struct CreateSessionResponse {
     pub session: RookerySessionResponse,
 }
 
+/// Optional restore payload when the UI reconnects after a server restart.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct CreateSessionBody {
+    #[serde(default)]
+    pub history: Vec<RookeryHistoryTurn>,
+    #[serde(default)]
+    pub draft: Option<RookeryDraft>,
+    #[serde(default)]
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub status: Option<RookerySessionStatus>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RookeryHistoryTurn {
+    pub role: String,
+    pub content: String,
+}
+
+fn history_to_messages(history: &[RookeryHistoryTurn]) -> Vec<Message> {
+    history
+        .iter()
+        .filter(|t| {
+            let role = t.role.as_str();
+            (role == "user" || role == "assistant") && !t.content.trim().is_empty()
+        })
+        .map(|t| Message {
+            role: t.role.clone(),
+            content: t.content.clone(),
+            tool_calls: None,
+        })
+        .collect()
+}
+
+fn apply_session_restore(session: &mut RookerySession, body: &CreateSessionBody) {
+    if let Some(draft) = body.draft.clone() {
+        let mut d = draft;
+        normalize_draft(&mut d);
+        session.draft = Some(d);
+    }
+    if let Some(summary) = &body.summary {
+        session.summary = Some(summary.clone());
+    }
+    if let Some(status) = &body.status {
+        session.status = status.clone();
+    } else if session.draft.is_some() {
+        session.status = RookerySessionStatus::Proposed;
+    }
+}
+
 #[derive(Deserialize)]
 pub struct RookeryChatBody {
     pub message: String,
@@ -248,12 +299,33 @@ pub type RookeryState = Arc<Mutex<RookeryStore>>;
 
 pub async fn post_sessions(
     Extension(store): Extension<RookeryState>,
+    body: Option<Json<CreateSessionBody>>,
 ) -> Result<Json<CreateSessionResponse>, (StatusCode, String)> {
+    let body = body.map(|j| j.0).unwrap_or_default();
     let mut guard = store.lock().await;
     let output_root = guard.output_root.clone();
     let session = guard.create_session();
+    let session_id = session.id.clone();
+    let conversation_id = session.conversation_id.clone();
+
+    let messages = history_to_messages(&body.history);
+    if !messages.is_empty() {
+        guard
+            .agent
+            .replace_conversation_messages(&conversation_id, messages)
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    }
+
+    if let Some(session) = guard.get_mut(&session_id) {
+        apply_session_restore(session, &body);
+        RookeryStore::touch(session);
+    }
+
+    let session = guard
+        .get(&session_id)
+        .ok_or_else(|| internal_err_str("session disappeared"))?;
     Ok(Json(CreateSessionResponse {
-        session: RookerySessionResponse::from_session(&session, &output_root),
+        session: RookerySessionResponse::from_session(session, &output_root),
     }))
 }
 

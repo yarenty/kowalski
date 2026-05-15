@@ -344,10 +344,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ stale_after_secs }),
     }),
-  rookeryCreateSession: () =>
+  rookeryCreateSession: (body?: {
+    history?: { role: "user" | "assistant"; content: string }[];
+    draft?: RookeryDraft | null;
+    summary?: string | null;
+    status?: RookerySessionStatus;
+  }) =>
     json<RookeryCreateSessionResponse>("/api/rookery/sessions", {
       method: "POST",
-      body: "{}",
+      body: JSON.stringify(body ?? {}),
     }),
   rookerySession: (sessionId: string) =>
     json<RookerySessionResponse>(
