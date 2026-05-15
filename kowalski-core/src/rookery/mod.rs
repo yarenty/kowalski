@@ -2,11 +2,13 @@
 //!
 //! 1.3.0 supports **linear** pipelines only (`horde.md` `pipeline = [...]`). DAG / `edges[]` are 1.4.0+.
 
+mod draft_parse;
 mod fixture;
 mod types;
 mod validate;
 mod writer;
 
+pub use draft_parse::{extract_json_block, parse_draft_from_assistant};
 pub use fixture::minimal_linear_draft;
 pub use types::{HordeBirthSpec, PenguinSpec, RookeryDraft};
 pub use validate::{

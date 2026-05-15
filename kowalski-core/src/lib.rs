@@ -44,8 +44,9 @@ pub use markdown_pipeline::{
     resolve_manifest_path, AppManifestMeta, StageAgentMeta,
 };
 pub use rookery::{
-    horde_root_path, minimal_linear_draft, validate_draft, validate_horde_tree, write_horde_tree,
-    HordeBirthSpec, PenguinSpec, RookeryDraft,
+    extract_json_block, horde_root_path, minimal_linear_draft, parse_draft_from_assistant,
+    validate_draft, validate_horde_tree, write_horde_tree, HordeBirthSpec, PenguinSpec,
+    RookeryDraft,
 };
 pub use mcp::{
     CallToolResponse, McpClient, McpConnection, McpHub, McpStdioClient, McpToolBinding,

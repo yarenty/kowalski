@@ -156,6 +156,19 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
 ### Service Architecture
 - **`TemplateAgent`** and tools live in **`kowalski-core`**; this crate re-exports **`core`** and optionally **`cli`**.
 - **HTTP server** (`kowalski` binary): **`/api/*`** for UI and automation.
+- **Rookery** (`src/rookery.rs`, 1.3.0): horde builder API — see [`../PLAN.md`](../PLAN.md). Routes (require `Extension` store + running LLM for chat/propose):
+
+| Method | Path | Notes |
+|--------|------|--------|
+| `POST` | `/api/rookery/sessions` | Create interview session |
+| `GET` | `/api/rookery/sessions/{id}` | Draft + status |
+| `DELETE` | `/api/rookery/sessions/{id}` | Drop session |
+| `POST` | `/api/rookery/sessions/{id}/chat` | Body: `{ "message", "stream"? }` — no tools/memory |
+| `POST` | `/api/rookery/sessions/{id}/propose` | Parse `RookeryDraft` JSON from builder reply |
+| `POST` | `/api/rookery/sessions/{id}/give-birth` | Body: `{ "output_root"?, "overwrite"? }` → `write_horde_tree` + validate |
+
+Builder system prompt: [`../resources/prompts/rookery/builder.md`](../resources/prompts/rookery/builder.md). Default birth directory: `examples/` (`KOWALSKI_ROOKERY_OUTPUT`).
+
 - **MCP**: client/hub in core; optional **`kowalski-mcp-datafusion`** server for heavy SQL.
 
 ---

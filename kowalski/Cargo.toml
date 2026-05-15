@@ -39,6 +39,7 @@ tower-http = { workspace = true, features = ["cors", "trace"] }
 reqwest = { workspace = true }
 axum-server = { version = "0.8.0", features = ["tls-rustls"] }
 toml = { workspace = true }
+uuid = { version = "1.7", features = ["v4"] }
 
 [lib]
 name = "kowalski"

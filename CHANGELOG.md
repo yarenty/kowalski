@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Added
+
+- **Rookery (1.3.0, in progress):** `kowalski-core::rookery` — linear draft validation and `write_horde_tree` for born hordes; builder prompt at [`resources/prompts/rookery/builder.md`](resources/prompts/rookery/builder.md). HTTP API on the `kowalski` server: `POST/GET/DELETE /api/rookery/sessions`, `POST .../chat` (optional SSE via `"stream": true`), `POST .../propose`, `POST .../give-birth`. Default output root: `examples/` (override with `KOWALSKI_ROOKERY_OUTPUT` or `give-birth.output_root`).
+
 ### Changed
 
 - **SQL migrations** (`sqlite/` + `postgres/` embedded by `sqlx::migrate!`) live under **`kowalski-core/migrations/`**, not the repository root—required for **crates.io** packaging and shared with `kowalski_core::db::run_migrations`.

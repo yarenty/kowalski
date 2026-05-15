@@ -10,7 +10,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::response::sse::{Event, Sse};
 use axum::routing::{get, post};
-use axum::{Json, Router};
+use axum::{Extension, Json, Router};
 use futures::Stream;
 use futures::StreamExt;
 use kowalski_core::agent::Agent;
@@ -185,6 +185,8 @@ pub async fn serve(
     }
     crate::horde::spawn_orchestrator_loop(horde_manager.clone());
 
+    let rookery = crate::rookery::new_rookery_store(&full_config, &config_path).await?;
+
     let state = ApiState {
         config_path,
         ollama_url,
@@ -260,11 +262,29 @@ pub async fn serve(
         .route("/api/federation/heartbeat", post(post_federation_heartbeat))
         .route("/api/federation/delegate", post(post_federation_delegate))
         .route("/api/federation/publish", post(post_federation_publish))
-        .route("/api/graph/status", get(get_graph_status));
+        .route("/api/graph/status", get(get_graph_status))
+        .route("/api/rookery/sessions", post(crate::rookery::post_sessions))
+        .route(
+            "/api/rookery/sessions/{session_id}",
+            get(crate::rookery::get_session).delete(crate::rookery::delete_session),
+        )
+        .route(
+            "/api/rookery/sessions/{session_id}/chat",
+            post(crate::rookery::post_chat),
+        )
+        .route(
+            "/api/rookery/sessions/{session_id}/propose",
+            post(crate::rookery::post_propose),
+        )
+        .route(
+            "/api/rookery/sessions/{session_id}/give-birth",
+            post(crate::rookery::post_give_birth),
+        );
     #[cfg(feature = "postgres")]
     let router = router.route("/api/graph/cypher", post(post_graph_cypher));
     let app = router
         .with_state(state)
+        .layer(Extension(rookery))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(DefaultMakeSpan::new().include_headers(false))
