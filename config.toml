@@ -1,7 +1,8 @@
 [ollama]
 host = "localhost"
 port = 11434
-model = "llama3.2"
+# model = "llama3.2"
+model = "gemma4:e2b"
 
 # LLM backend: `ollama` (above) or `openai` (Chat Completions — OpenAI, Groq, LM Studio, vLLM, …)
 # [llm]

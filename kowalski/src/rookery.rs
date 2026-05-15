@@ -26,7 +26,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
 const BUILDER_PROMPT_REL: &str = "resources/prompts/rookery/builder.md";
-const PROPOSE_USER_MESSAGE: &str = "Based on our conversation so far, emit ONLY a single ```json code block containing a complete RookeryDraft object (fields: id, display_name, description, pipeline, penguins with name, kind, display_name, description, prompt_body, output, and optional context_paths). Use a linear pipeline. No other prose.\n\nID rules (required): `id` and every penguin `name` / pipeline entry must be lowercase ASCII kebab-case: start with a letter or digit, then only `a-z`, `0-9`, and hyphens (e.g. `rust-project-scaffolder`, `ingest`, `deliver`). Put human-readable titles in `display_name` only — never TitleCase or underscores in `name`.";
+const PROPOSE_USER_MESSAGE: &str = "Based on our conversation so far, emit ONLY a single ```json code block containing a complete RookeryDraft object (fields: id, display_name, description, pipeline, penguins with name, kind, display_name, description, prompt_body, output, and optional context_paths). Use a linear pipeline. No other prose.\n\nID rules (required): `id` and every penguin `name` / pipeline entry must be lowercase ASCII kebab-case: start with a letter or digit, then only `a-z`, `0-9`, and hyphens (e.g. `rust-project-scaffolder`, `ingest`, `deliver`). Put human-readable titles in `display_name` only — never TitleCase or underscores in `name`.\n\nJSON shape: every scalar field (`description`, `prompt_body`, `output`, etc.) must be a JSON **string**, not a nested object. `pipeline` is a JSON array of step name strings (e.g. `[\"ingest\",\"deliver\"]`).";
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
