@@ -9,6 +9,25 @@
 
 See [`CHANGELOG.md`](CHANGELOG.md) (**[1.2.0]**). Highlights: Knowledge Compiler **`workdir/debug/`** layout without **`derived/`** (`raw`, `reports`, `lint`, `followups`), horde HTTP conventions **`agents_log`** + **`debug/followups/`**, GitHub-aware **`source_bundle`**, **`horde.md`-only** `agent-app`, operator docs and UI smoke guidance.
 
+## Planned: Rookery horde builder (1.3.0)
+
+Canonical plan: [`PLAN.md`](PLAN.md).
+
+- [ ] **`kowalski-core::rookery`** — draft schema, validate, write `horde.md` + `agents/` + `prompts/` tree.
+- [ ] **`/api/rookery/*`** — interview chat, propose, **Give birth** (linear pipeline only).
+- [ ] **UI Rookery tab** — conversational builder + summary + birth; linear penguin canvas (Phases 4–6 in plan).
+- **Topology:** **linear** `pipeline = [...]` only (same as Knowledge Compiler today).
+
+## Planned: DAG horde pipelines (1.4.0+)
+
+**Not in 1.3.0.** After linear Rookery ships:
+
+- [ ] Draft/manifest **`edges[]`** (dependencies, parallel branches, join points).
+- [ ] Horde orchestrator schedules by graph, not list order only.
+- [ ] Rookery UI canvas: fork/join; builder may propose branches.
+
+Existing linear hordes remain valid without migration.
+
 ## Horde changes in 1.1.0 (since 1.0.0)
 
 - First complete **Knowledge Compiler horde** app flow (ingest -> compile -> ask -> lint).
