@@ -11,6 +11,7 @@ Vue 3 + Vite + TypeScript single-page app. It is **not** the source of truth for
 Features are **not done** until an operator can complete the primary flows in **`ui/`** against a running **`kowalski`** server:
 
 - **Chat** tab (LLM + optional tools stream).
+- **Rookery** tab (1.3.0): conversational horde builder → **Propose horde** → **Give birth** (`/api/rookery/*`).
 - **Horde** tab: catalog → worker lifecycle → **Horde Run** (e.g. Knowledge Compiler delivery).
 - **Federation** tab: registry, worker start/stop, delegate smoke tests.
 

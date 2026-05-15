@@ -1,11 +1,24 @@
 <script setup lang="ts">
-type TabId = "home" | "mcp" | "chat" | "federation-management" | "federation-run" | "graph" | "about";
+type TabId =
+  | "home"
+  | "mcp"
+  | "chat"
+  | "rookery"
+  | "federation-management"
+  | "federation-run"
+  | "graph"
+  | "about";
 type ConversationItem = {
   id: string;
   title: string;
   updatedAt: number;
 };
 type HordeInteractionItem = {
+  id: string;
+  title: string;
+  updatedAt: number;
+};
+type RookerySessionItem = {
   id: string;
   title: string;
   updatedAt: number;
@@ -18,6 +31,8 @@ defineProps<{
   activeConversationId: string | null;
   hordeInteractions: HordeInteractionItem[];
   activeHordeInteractionId: string | null;
+  rookerySessions: RookerySessionItem[];
+  activeRookerySessionId: string | null;
   appVersion: string;
 }>();
 
@@ -29,6 +44,9 @@ const emit = defineEmits<{
   (e: "select-horde-interaction", id: string): void;
   (e: "new-horde-interaction"): void;
   (e: "delete-horde-interaction", id: string): void;
+  (e: "select-rookery-session", id: string): void;
+  (e: "new-rookery-session"): void;
+  (e: "delete-rookery-session", id: string): void;
 }>();
 
 function timeAgo(ts: number): string {
@@ -55,6 +73,7 @@ function timeAgo(ts: number): string {
       <nav class="nav">
         <button :class="{ active: activeTab === 'chat' }" @click="emit('select-tab', 'chat')">Chat</button>
         <button :class="{ active: activeTab === 'federation-run' }" @click="emit('select-tab', 'federation-run')">Horde</button>
+        <button :class="{ active: activeTab === 'rookery' }" @click="emit('select-tab', 'rookery')">Rookery</button>
         <button
           class="is-disabled"
           :class="{ active: activeTab === 'mcp' }"
@@ -89,6 +108,34 @@ function timeAgo(ts: number): string {
             <span class="title">{{ c.title }}</span>
           </button>
           <p v-if="!conversations.length" class="muted">No conversations yet.</p>
+        </div>
+      </section>
+
+      <section v-if="activeTab === 'rookery'" class="chat-list">
+        <div class="chat-list-head">
+          <strong>Rookery sessions</strong>
+          <button class="new-btn" @click="emit('new-rookery-session')">+</button>
+        </div>
+        <div class="chat-list-scroll">
+          <div v-for="r in rookerySessions" :key="r.id" class="horde-row">
+            <button
+              class="conv-btn horde-item-btn"
+              :class="{ active: r.id === activeRookerySessionId }"
+              @click="emit('select-rookery-session', r.id)"
+            >
+              <span class="title">{{ r.title }}</span>
+              <span class="time">{{ timeAgo(r.updatedAt) }}</span>
+            </button>
+            <button
+              class="delete-btn"
+              title="Delete session"
+              aria-label="Delete session"
+              @click.stop="emit('delete-rookery-session', r.id)"
+            >
+              🗑
+            </button>
+          </div>
+          <p v-if="!rookerySessions.length" class="muted">No Rookery sessions yet.</p>
         </div>
       </section>
 

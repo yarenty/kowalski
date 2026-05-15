@@ -8,9 +8,12 @@ import FederationRunPanel from "./panels/FederationRunPanel.vue";
 import GraphPanel from "./panels/GraphPanel.vue";
 import HomePanel from "./panels/HomePanel.vue";
 import McpPanel from "./panels/McpPanel.vue";
-import { api, chatStream } from "./api";
+import RookeryPanel, { type RookeryUiSession } from "./panels/RookeryPanel.vue";
+import { api, chatStream, rookeryChatStream, type RookerySessionResponse } from "./api";
 
-const tab = ref<"home" | "mcp" | "chat" | "federation-management" | "federation-run" | "graph" | "about">("chat");
+const tab = ref<
+  "home" | "mcp" | "chat" | "rookery" | "federation-management" | "federation-run" | "graph" | "about"
+>("chat");
 const sidebarCollapsed = ref(false);
 
 type ChatTurn = { role: "user" | "assistant"; content: string };
@@ -30,6 +33,7 @@ type HordeInteraction = {
 
 const CHAT_LIST_KEY = "kowalski.ui.chat.list.v2";
 const HORDE_LIST_KEY = "kowalski.ui.horde.list.v1";
+const ROOKERY_LIST_KEY = "kowalski.ui.rookery.list.v1";
 const conversations = ref<Conversation[]>([]);
 const activeConversationId = ref<string | null>(null);
 const hordeInteractions = ref<HordeInteraction[]>([]);
@@ -42,6 +46,14 @@ const chatUseMemory = ref(true);
 const chatMessagesView = ref<string>("");
 const chatMessagesBusy = ref(false);
 const appVersion = ref<string>("unknown");
+const rookerySessions = ref<RookeryUiSession[]>([]);
+const activeRookerySessionId = ref<string | null>(null);
+const rookeryBusy = ref(false);
+const rookeryNewBusy = ref(false);
+const rookeryProposeBusy = ref(false);
+const rookeryBirthBusy = ref(false);
+const rookeryErr = ref<string | null>(null);
+const rookeryBirthOverwrite = ref(false);
 
 function persistConversations() {
   localStorage.setItem(CHAT_LIST_KEY, JSON.stringify(conversations.value));
@@ -84,8 +96,52 @@ function restoreHordeInteractions() {
   }
 }
 
+function persistRookerySessions() {
+  localStorage.setItem(ROOKERY_LIST_KEY, JSON.stringify(rookerySessions.value));
+}
+
+function restoreRookerySessions() {
+  const raw = localStorage.getItem(ROOKERY_LIST_KEY);
+  if (!raw) return;
+  try {
+    const parsed = JSON.parse(raw) as RookeryUiSession[];
+    if (Array.isArray(parsed)) {
+      rookerySessions.value = parsed
+        .filter((r) => r && typeof r.id === "string" && typeof r.serverSessionId === "string")
+        .map((r) => ({
+          ...r,
+          turns: Array.isArray(r.turns) ? r.turns : [],
+          pipeline: Array.isArray(r.pipeline) ? r.pipeline : [],
+          updatedAt: r.updatedAt ?? Date.now(),
+        }));
+      if (!activeRookerySessionId.value && rookerySessions.value.length) {
+        activeRookerySessionId.value = rookerySessions.value[0].id;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function applyRookeryServerState(local: RookeryUiSession, remote: RookerySessionResponse) {
+  local.status = remote.status;
+  local.summary = remote.summary;
+  local.pipeline = remote.pipeline ?? [];
+  local.hordeRoot = remote.horde_root;
+  local.outputRoot = remote.output_root;
+  if (remote.draft?.display_name && (local.title === "New Rookery session" || !local.title)) {
+    local.title = remote.draft.display_name;
+  }
+}
+
+function activeRookerySession(): RookeryUiSession | null {
+  if (!activeRookerySessionId.value) return null;
+  return rookerySessions.value.find((r) => r.id === activeRookerySessionId.value) ?? null;
+}
+
 restoreConversations();
 restoreHordeInteractions();
+restoreRookerySessions();
 
 function newHordeInteraction() {
   const id = `horde-${Date.now()}`;
@@ -354,7 +410,172 @@ function selectConversation(id: string) {
   activeConversationId.value = id;
 }
 
-function selectTab(nextTab: "home" | "mcp" | "chat" | "federation-management" | "federation-run" | "graph" | "about") {
+async function newRookerySession() {
+  rookeryNewBusy.value = true;
+  rookeryErr.value = null;
+  try {
+    const r = await api.rookeryCreateSession();
+    const localId = `rookery-ui-${Date.now()}`;
+    const item: RookeryUiSession = {
+      id: localId,
+      serverSessionId: r.session.session_id,
+      title: "New Rookery session",
+      turns: [],
+      status: r.session.status,
+      summary: r.session.summary,
+      pipeline: r.session.pipeline,
+      hordeRoot: r.session.horde_root,
+      outputRoot: r.session.output_root,
+      birthNote: null,
+      parseError: null,
+      updatedAt: Date.now(),
+    };
+    rookerySessions.value = [item, ...rookerySessions.value];
+    activeRookerySessionId.value = localId;
+    persistRookerySessions();
+  } catch (e) {
+    rookeryErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    rookeryNewBusy.value = false;
+  }
+}
+
+function selectRookerySession(id: string) {
+  activeRookerySessionId.value = id;
+  void refreshRookerySession(id);
+}
+
+async function refreshRookerySession(localId: string) {
+  const session = rookerySessions.value.find((r) => r.id === localId);
+  if (!session) return;
+  try {
+    const remote = await api.rookerySession(session.serverSessionId);
+    applyRookeryServerState(session, remote);
+    session.updatedAt = Date.now();
+    persistRookerySessions();
+  } catch (e) {
+    rookeryErr.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
+function deleteRookerySession(id: string) {
+  const session = rookerySessions.value.find((r) => r.id === id);
+  rookerySessions.value = rookerySessions.value.filter((r) => r.id !== id);
+  if (session) {
+    void api.rookeryDeleteSession(session.serverSessionId).catch(() => {
+      /* best effort */
+    });
+  }
+  if (!rookerySessions.value.length) {
+    activeRookerySessionId.value = null;
+  } else if (activeRookerySessionId.value === id) {
+    activeRookerySessionId.value = rookerySessions.value[0].id;
+  }
+  persistRookerySessions();
+}
+
+async function sendRookeryChat(message: string) {
+  let session = activeRookerySession();
+  if (!session) {
+    await newRookerySession();
+    session = activeRookerySession();
+  }
+  if (!session) return;
+  const msg = message.trim();
+  if (!msg) return;
+  session.turns.push({ role: "user", content: msg });
+  rookeryBusy.value = true;
+  rookeryErr.value = null;
+  const assistantTurn = { role: "assistant" as const, content: "" };
+  session.turns.push(assistantTurn);
+  try {
+    await rookeryChatStream(session.serverSessionId, msg, (ev) => {
+      if (ev.type === "token") {
+        assistantTurn.content += ev.content;
+      } else if (ev.type === "assistant") {
+        assistantTurn.content = ev.content;
+      } else if (ev.type === "error") {
+        rookeryErr.value = ev.message;
+        assistantTurn.content = `[error] ${ev.message}`;
+      }
+    });
+    if (!assistantTurn.content.trim()) {
+      const r = await api.rookeryChat(session.serverSessionId, msg);
+      assistantTurn.content = r.reply;
+      applyRookeryServerState(session, r.session);
+    } else {
+      const remote = await api.rookerySession(session.serverSessionId);
+      applyRookeryServerState(session, remote);
+    }
+    if (session.title === "New Rookery session") {
+      session.title = msg.slice(0, 42) || session.title;
+    }
+  } catch (e) {
+    const errMsg = e instanceof Error ? e.message : String(e);
+    rookeryErr.value = errMsg;
+    assistantTurn.content = `[error] ${errMsg}`;
+  } finally {
+    session.updatedAt = Date.now();
+    rookerySessions.value = [...rookerySessions.value].sort((a, b) => b.updatedAt - a.updatedAt);
+    persistRookerySessions();
+    rookeryBusy.value = false;
+  }
+}
+
+async function proposeRookery() {
+  const session = activeRookerySession();
+  if (!session) return;
+  rookeryProposeBusy.value = true;
+  rookeryErr.value = null;
+  try {
+    const r = await api.rookeryPropose(session.serverSessionId);
+    applyRookeryServerState(session, r.session);
+    session.parseError = r.parse_error;
+    if (r.session.summary) session.summary = r.session.summary;
+  } catch (e) {
+    rookeryErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    session.updatedAt = Date.now();
+    persistRookerySessions();
+    rookeryProposeBusy.value = false;
+  }
+}
+
+async function giveBirthRookery() {
+  const session = activeRookerySession();
+  if (!session) return;
+  rookeryBirthBusy.value = true;
+  rookeryErr.value = null;
+  try {
+    const r = await api.rookeryGiveBirth(session.serverSessionId, {
+      overwrite: rookeryBirthOverwrite.value,
+    });
+    applyRookeryServerState(session, r.session);
+    session.hordeRoot = r.horde_root;
+    session.birthNote = r.validate_ok
+      ? `Validated OK · horde id ${r.horde_id}`
+      : `Born with validate errors: ${r.validate_errors ?? "unknown"}`;
+    if (!r.validate_ok) rookeryErr.value = r.validate_errors ?? "validate failed";
+  } catch (e) {
+    rookeryErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    session.updatedAt = Date.now();
+    persistRookerySessions();
+    rookeryBirthBusy.value = false;
+  }
+}
+
+function selectTab(
+  nextTab:
+    | "home"
+    | "mcp"
+    | "chat"
+    | "rookery"
+    | "federation-management"
+    | "federation-run"
+    | "graph"
+    | "about",
+) {
   tab.value = nextTab;
   if (nextTab === "federation-run") {
     activeHordeInteractionId.value = null;
@@ -380,6 +601,8 @@ onMounted(async () => {
       :active-conversation-id="activeConversationId"
       :horde-interactions="hordeInteractions"
       :active-horde-interaction-id="activeHordeInteractionId"
+      :rookery-sessions="rookerySessions"
+      :active-rookery-session-id="activeRookerySessionId"
       :app-version="appVersion"
       @toggle-collapse="sidebarCollapsed = !sidebarCollapsed"
       @select-tab="selectTab"
@@ -388,10 +611,29 @@ onMounted(async () => {
       @select-horde-interaction="selectHordeInteraction"
       @new-horde-interaction="newHordeInteraction"
       @delete-horde-interaction="deleteHordeInteraction"
+      @select-rookery-session="selectRookerySession"
+      @new-rookery-session="newRookerySession"
+      @delete-rookery-session="deleteRookerySession"
     />
     <main class="main">
       <HomePanel v-if="tab === 'home'" />
       <McpPanel v-else-if="tab === 'mcp'" />
+      <RookeryPanel
+        v-else-if="tab === 'rookery'"
+        :active-session="activeRookerySession()"
+        :chat-busy="rookeryBusy"
+        :propose-busy="rookeryProposeBusy"
+        :birth-busy="rookeryBirthBusy"
+        :new-busy="rookeryNewBusy"
+        :err="rookeryErr"
+        :birth-overwrite="rookeryBirthOverwrite"
+        @send-chat="sendRookeryChat"
+        @propose="proposeRookery"
+        @give-birth="giveBirthRookery"
+        @new-session="newRookerySession"
+        @open-horde="tab = 'federation-run'"
+        @toggle-birth-overwrite="rookeryBirthOverwrite = $event"
+      />
       <ChatPanel
         v-else-if="tab === 'chat'"
         :active-conversation="activeConversation()"

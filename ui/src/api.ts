@@ -344,7 +344,120 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ stale_after_secs }),
     }),
+  rookeryCreateSession: () =>
+    json<RookeryCreateSessionResponse>("/api/rookery/sessions", {
+      method: "POST",
+      body: "{}",
+    }),
+  rookerySession: (sessionId: string) =>
+    json<RookerySessionResponse>(
+      `/api/rookery/sessions/${encodeURIComponent(sessionId)}`,
+    ),
+  rookeryDeleteSession: (sessionId: string) =>
+    json<{ ok: boolean; session_id: string }>(
+      `/api/rookery/sessions/${encodeURIComponent(sessionId)}`,
+      { method: "DELETE" },
+    ),
+  rookeryChat: (sessionId: string, message: string) =>
+    json<RookeryChatResponse>(
+      `/api/rookery/sessions/${encodeURIComponent(sessionId)}/chat`,
+      {
+        method: "POST",
+        body: JSON.stringify({ message, stream: false }),
+      },
+    ),
+  rookeryPropose: (sessionId: string) =>
+    json<RookeryProposeResponse>(
+      `/api/rookery/sessions/${encodeURIComponent(sessionId)}/propose`,
+      { method: "POST", body: "{}" },
+    ),
+  rookeryGiveBirth: (
+    sessionId: string,
+    body?: { output_root?: string; overwrite?: boolean },
+  ) =>
+    json<RookeryGiveBirthResponse>(
+      `/api/rookery/sessions/${encodeURIComponent(sessionId)}/give-birth`,
+      {
+        method: "POST",
+        body: JSON.stringify(body ?? {}),
+      },
+    ),
 };
+
+export type RookeryPenguinSpec = {
+  name: string;
+  kind: string;
+  display_name: string;
+  description: string;
+  prompt_body: string;
+  agent_body?: string | null;
+  output: string;
+  context_paths?: string[];
+  tool_ids?: string[];
+  model_id?: string | null;
+};
+
+export type RookeryDraft = {
+  id: string;
+  display_name: string;
+  description: string;
+  capability_prefix?: string | null;
+  pipeline: string[];
+  penguins: RookeryPenguinSpec[];
+  default_question?: string | null;
+  default_topic?: string | null;
+  workdir?: string | null;
+  delivery_title?: string | null;
+  delivery_note?: string | null;
+  delivery_root_rel?: string | null;
+  delivery_summary_note?: string | null;
+  prompt_tip?: string | null;
+};
+
+export type RookerySessionStatus = "interviewing" | "proposed" | "born";
+
+export type RookerySessionResponse = {
+  session_id: string;
+  conversation_id: string;
+  status: RookerySessionStatus;
+  draft: RookeryDraft | null;
+  summary: string | null;
+  pipeline: string[];
+  horde_root: string | null;
+  output_root: string;
+  created_at_ms: number;
+  updated_at_ms: number;
+};
+
+export type RookeryCreateSessionResponse = {
+  session: RookerySessionResponse;
+};
+
+export type RookeryChatResponse = {
+  reply: string;
+  session: RookerySessionResponse;
+};
+
+export type RookeryProposeResponse = {
+  session: RookerySessionResponse;
+  parse_error: string | null;
+};
+
+export type RookeryGiveBirthResponse = {
+  ok: boolean;
+  horde_root: string;
+  horde_id: string;
+  validate_ok: boolean;
+  validate_errors: string | null;
+  session: RookerySessionResponse;
+};
+
+export type RookeryStreamEvent =
+  | { type: "start"; session_id: string; model: string }
+  | { type: "token"; content: string }
+  | { type: "assistant"; content: string }
+  | { type: "error"; message: string }
+  | { type: "done" };
 
 /** `EventSource` for `GET /api/federation/stream` — caller must `close()` when done. */
 export function openFederationEventSource(
@@ -400,6 +513,51 @@ export async function chatStream(
           onEvent(JSON.parse(raw) as ChatStreamEvent);
         } catch {
           /* ignore non-JSON keepalives */
+        }
+      }
+    }
+  }
+}
+
+/** SSE from `POST /api/rookery/sessions/{id}/chat` with `{ stream: true }`. */
+export async function rookeryChatStream(
+  sessionId: string,
+  message: string,
+  onEvent: (ev: RookeryStreamEvent) => void,
+): Promise<void> {
+  const res = await fetch(
+    `${base}/api/rookery/sessions/${encodeURIComponent(sessionId)}/chat`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, stream: true }),
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`${res.status} ${res.statusText}: ${text.slice(0, 200)}`);
+  }
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("No response body");
+  const dec = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let idx: number;
+    while ((idx = buf.indexOf("\n\n")) >= 0) {
+      const block = buf.slice(0, idx);
+      buf = buf.slice(idx + 2);
+      for (const line of block.split("\n")) {
+        const m = line.match(/^data:\s*(.*)$/);
+        if (!m) continue;
+        const raw = m[1]?.trim();
+        if (!raw) continue;
+        try {
+          onEvent(JSON.parse(raw) as RookeryStreamEvent);
+        } catch {
+          /* ignore */
         }
       }
     }
