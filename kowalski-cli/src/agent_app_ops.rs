@@ -6,10 +6,11 @@ use kowalski_core::markdown_pipeline::{
     maybe_normalize_markdown, parse_app_manifest, parse_stage_agent, render_context_attachments,
     resolve_manifest_path, AppManifestMeta, StageAgentMeta,
 };
+use kowalski_core::rookery::validate_horde_tree;
 use kowalski_core::source_bundle::{ingest_assets_markdown, parse_input_assets};
 use chrono::Utc;
 use reqwest::blocking as reqwest_blocking;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
@@ -126,44 +127,9 @@ pub fn list_agents(path: Option<&str>) -> Result<(), Box<dyn std::error::Error>>
 
 pub fn validate(path: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     let root = app_root(path);
-    let (main, agents) = load_spec(&root)?;
-    let mut errs = Vec::new();
-    let defs: BTreeSet<_> = agents.keys().cloned().collect();
-    let pipeline_set: BTreeSet<_> = main.meta.pipeline.iter().cloned().collect();
-
-    for name in &main.meta.pipeline {
-        if !defs.contains(name) {
-            errs.push(format!(
-                "manifest pipeline references missing agent definition `{name}` (expected agents/{name}.md)"
-            ));
-        }
-    }
-    for name in &defs {
-        if !pipeline_set.contains(name) {
-            errs.push(format!(
-                "agents/{name}.md exists but `{name}` is not listed in the manifest pipeline"
-            ));
-        }
-    }
-    for (name, agent) in &agents {
-        if agent.meta.name != *name {
-            errs.push(format!(
-                "agent name mismatch in {} (key `{}` vs meta `{}`)",
-                agent.path.display(),
-                name,
-                agent.meta.name
-            ));
-        }
-    }
-
-    if errs.is_empty() {
-        println!("OK - manifest + agents/ definitions are valid");
-        return Ok(());
-    }
-    for e in errs {
-        eprintln!("ERROR: {}", e);
-    }
-    Err("manifest + agents/ definition invalid".into())
+    validate_horde_tree(&root).map_err(|e| e.to_string())?;
+    println!("OK - manifest + agents/ definitions are valid");
+    Ok(())
 }
 
 fn chat_no_tools(api: &str, prompt: &str) -> Result<String, Box<dyn std::error::Error>> {

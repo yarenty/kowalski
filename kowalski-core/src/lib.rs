@@ -10,6 +10,7 @@ pub mod source_bundle;
 pub mod logging;
 pub mod markdown_pipeline;
 pub mod mcp;
+pub mod rookery;
 pub mod memory;
 pub mod model;
 pub mod role;
@@ -41,6 +42,10 @@ pub use logging::*;
 pub use markdown_pipeline::{
     maybe_normalize_markdown, parse_app_manifest, parse_stage_agent, render_context_attachments,
     resolve_manifest_path, AppManifestMeta, StageAgentMeta,
+};
+pub use rookery::{
+    horde_root_path, minimal_linear_draft, validate_draft, validate_horde_tree, write_horde_tree,
+    HordeBirthSpec, PenguinSpec, RookeryDraft,
 };
 pub use mcp::{
     CallToolResponse, McpClient, McpConnection, McpHub, McpStdioClient, McpToolBinding,

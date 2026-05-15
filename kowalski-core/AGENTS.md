@@ -181,6 +181,8 @@ Agents ultimately call **capabilities** that behave like tools. Those capabiliti
 
 **[`source_bundle`](./src/source_bundle.rs):** builds `raw/*.md` bundles under the given root (typically `workdir/debug`, so **`debug/raw/`**) from URL / file / text tokens (used by `kowalski-cli` worker ingest and any future server-side ingest). Uses **`tools::internal::github`** and **`tools::internal::web`** (HTML heuristic → Markdown). Not horde-specific.
 
+**[`rookery`](./src/rookery/):** horde builder (1.3.0) — `RookeryDraft`, `validate_draft`, `validate_horde_tree`, `write_horde_tree` (linear pipelines only). Builder system prompt: [`../resources/prompts/rookery/builder.md`](../resources/prompts/rookery/builder.md). Fixture: `minimal_linear_draft()`.
+
 ---
 
 ## 6. Development Workflows
