@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Changed
 
+- **Rookery:** `normalize_draft` slugifies LLM-produced horde/penguin ids (e.g. `Ingest` → `ingest`, `rust_project_scaffolder_1.0` → `rust-project-scaffolder-1-0`) before validation; builder prompt documents kebab-case id rules.
+
 - **SQL migrations** (`sqlite/` + `postgres/` embedded by `sqlx::migrate!`) live under **`kowalski-core/migrations/`**, not the repository root—required for **crates.io** packaging and shared with `kowalski_core::db::run_migrations`.
 
 ## [1.2.0] - 2026-05-03

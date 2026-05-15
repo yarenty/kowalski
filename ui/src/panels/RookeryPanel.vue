@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
-import type { RookerySessionStatus } from "../api";
+import type { RookeryDraft, RookeryPenguinSpec, RookerySessionStatus } from "../api";
+import PenguinCanvas from "../components/PenguinCanvas.vue";
 
 export type RookeryTurn = { role: "user" | "assistant"; content: string };
 
@@ -14,6 +15,7 @@ export type RookeryUiSession = {
   status: RookerySessionStatus;
   summary: string | null;
   pipeline: string[];
+  draft: RookeryDraft | null;
   hordeRoot: string | null;
   outputRoot: string | null;
   birthNote: string | null;
@@ -42,6 +44,24 @@ const emit = defineEmits<{
 
 const chatIn = ref("");
 const transcriptEl = ref<HTMLElement | null>(null);
+const selectedPenguinName = ref<string | null>(null);
+
+watch(
+  () => props.activeSession?.id,
+  () => {
+    selectedPenguinName.value = null;
+  },
+);
+
+const selectedPenguin = computed((): RookeryPenguinSpec | null => {
+  const session = props.activeSession;
+  if (!session?.draft || !selectedPenguinName.value) return null;
+  return session.draft.penguins.find((p) => p.name === selectedPenguinName.value) ?? null;
+});
+
+function onSelectPenguin(name: string) {
+  selectedPenguinName.value = selectedPenguinName.value === name ? null : name;
+}
 
 function renderMarkdown(content: string): string {
   const html = marked.parse(content, { breaks: true, gfm: true }) as string;
@@ -154,15 +174,32 @@ function send() {
 
       <div class="summary-col">
         <h3>Proposed pipeline</h3>
-        <p v-if="activeSession.summary" class="summary-md md-content" v-html="renderMarkdown(activeSession.summary)" />
-        <p v-else class="muted">Run <strong>Propose horde</strong> after the interview to see the plan here.</p>
+        <PenguinCanvas
+          :pipeline="activeSession.pipeline"
+          :penguins="activeSession.draft?.penguins ?? null"
+          :session-status="activeSession.status"
+          :selected-name="selectedPenguinName"
+          @select-penguin="onSelectPenguin"
+        />
 
-        <ol v-if="activeSession.pipeline.length" class="pipeline">
-          <li v-for="(step, i) in activeSession.pipeline" :key="step">
-            <span class="step-idx">{{ i + 1 }}</span>
-            <span class="step-name">{{ step }}</span>
-          </li>
-        </ol>
+        <div v-if="selectedPenguin" class="penguin-detail">
+          <h4>{{ selectedPenguin.display_name }}</h4>
+          <p class="muted small">{{ selectedPenguin.description }}</p>
+          <dl class="detail-grid">
+            <dt>Step</dt>
+            <dd class="mono">{{ selectedPenguin.name }}</dd>
+            <dt>Kind</dt>
+            <dd class="mono">{{ selectedPenguin.kind }}</dd>
+            <dt>Output</dt>
+            <dd class="mono">{{ selectedPenguin.output || "—" }}</dd>
+          </dl>
+          <p class="muted small editor-hint">Agent editor (Phase 5) will open here.</p>
+        </div>
+
+        <p v-if="activeSession.summary" class="summary-md md-content" v-html="renderMarkdown(activeSession.summary)" />
+        <p v-else-if="!activeSession.pipeline.length" class="muted">
+          Run <strong>Propose horde</strong> after the interview to see the plan here.
+        </p>
 
         <p v-if="activeSession.parseError" class="warn">{{ activeSession.parseError }}</p>
 
@@ -297,25 +334,24 @@ function send() {
 }
 .actions button.primary { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
 .actions button:disabled { opacity: 0.5; cursor: not-allowed; }
-.pipeline { margin: 0.5rem 0; padding-left: 0; list-style: none; }
-.pipeline li {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.35rem 0;
-  border-bottom: 1px solid #2a2e38;
+.penguin-detail {
+  border: 1px solid #3d5a8c;
+  border-radius: 8px;
+  padding: 0.6rem 0.65rem;
+  background: #1a2230;
 }
-.step-idx {
-  width: 1.4rem;
-  height: 1.4rem;
-  border-radius: 4px;
-  background: #2a3142;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.75rem;
+.penguin-detail h4 { margin: 0 0 0.25rem; font-size: 0.95rem; }
+.detail-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.2rem 0.65rem;
+  margin: 0.5rem 0 0;
+  font-size: 0.82rem;
 }
-.step-name { font-weight: 500; }
+.detail-grid dt { color: #8b92a5; margin: 0; }
+.detail-grid dd { margin: 0; color: #d2d9e8; }
+.editor-hint { margin: 0.5rem 0 0; }
+.summary-md { margin: 0.5rem 0 0; max-height: 8rem; overflow: auto; }
 .birth-box { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #2a2e38; }
 .birth-btn { width: 100%; margin-top: 0.5rem; }
 .chk { display: flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; color: #8b92a5; }

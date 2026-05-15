@@ -112,6 +112,7 @@ function restoreRookerySessions() {
           ...r,
           turns: Array.isArray(r.turns) ? r.turns : [],
           pipeline: Array.isArray(r.pipeline) ? r.pipeline : [],
+          draft: r.draft ?? null,
           updatedAt: r.updatedAt ?? Date.now(),
         }));
       if (!activeRookerySessionId.value && rookerySessions.value.length) {
@@ -127,6 +128,7 @@ function applyRookeryServerState(local: RookeryUiSession, remote: RookerySession
   local.status = remote.status;
   local.summary = remote.summary;
   local.pipeline = remote.pipeline ?? [];
+  local.draft = remote.draft ?? null;
   local.hordeRoot = remote.horde_root;
   local.outputRoot = remote.output_root;
   if (remote.draft?.display_name && (local.title === "New Rookery session" || !local.title)) {
@@ -424,6 +426,7 @@ async function newRookerySession() {
       status: r.session.status,
       summary: r.session.summary,
       pipeline: r.session.pipeline,
+      draft: r.session.draft,
       hordeRoot: r.session.horde_root,
       outputRoot: r.session.output_root,
       birthNote: null,
