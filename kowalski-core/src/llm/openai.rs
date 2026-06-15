@@ -100,7 +100,7 @@ impl LLMProvider for OpenAIProvider {
                 let finish = response
                     .choices
                     .first()
-                    .and_then(|c| c.finish_reason.clone())
+                    .and_then(|c| c.finish_reason)
                     .map(|r| format!(" first_choice_finish_reason={:?}", r))
                     .unwrap_or_default();
                 KowalskiError::Server(format!(

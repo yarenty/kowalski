@@ -39,7 +39,7 @@ async fn postgres_age_cypher_returns_rows() {
         .execute(&mut *conn)
         .await
         .expect("search_path");
-    sqlx::query(&create_sql)
+    sqlx::query(sqlx::AssertSqlSafe(create_sql))
         .execute(&mut *conn)
         .await
         .expect("create_graph");

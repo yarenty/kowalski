@@ -113,13 +113,13 @@ pub fn list_agents(path: Option<&str>) -> Result<(), Box<dyn std::error::Error>>
         }
     }
     for name in agents.keys() {
-        if !main.meta.pipeline.contains(name) {
-            if let Some(agent) = agents.get(name) {
-                println!(
-                    "- {} ({}) [not in manifest pipeline — remove or add to pipeline]",
-                    name, agent.meta.kind
-                );
-            }
+        if !main.meta.pipeline.contains(name)
+            && let Some(agent) = agents.get(name)
+        {
+            println!(
+                "- {} ({}) [not in manifest pipeline — remove or add to pipeline]",
+                name, agent.meta.kind
+            );
         }
     }
     Ok(())
@@ -208,6 +208,7 @@ fn load_agent_doc(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_llm_stage(
     api: &str,
     app_root: &Path,

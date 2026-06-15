@@ -197,14 +197,14 @@ pub fn fetch_url_for_ingest(original_url: &str) -> Result<FetchedUrlBody, String
     if let Some(resolved) = resolve_github_fetch(original_url) {
         let kind = resolved.fetch_kind();
         let resolved_url = resolved.resolved_url_display();
-        if let Ok(resp) = resolved.fetch(&client) {
-            if let Ok(text) = read_response_text(resp) {
-                return Ok(FetchedUrlBody {
-                    text,
-                    kind,
-                    resolved_url,
-                });
-            }
+        if let Ok(resp) = resolved.fetch(&client)
+            && let Ok(text) = read_response_text(resp)
+        {
+            return Ok(FetchedUrlBody {
+                text,
+                kind,
+                resolved_url,
+            });
         }
         // GitHub resolution failed; fall through to plain GET of the browser URL.
     }

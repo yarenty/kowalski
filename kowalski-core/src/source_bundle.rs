@@ -91,8 +91,9 @@ fn normalize_fetched_url_body(text: &str) -> String {
 /// If GitHub-specific fetch fails, falls back once to the web path.
 fn fetch_url_for_bundle(url: &str) -> Result<(String, String, String), String> {
     let github_shape = resolve_github_fetch(url).is_some();
-    if github_shape {
-        if let Ok(fetched) = fetch_url_for_ingest(url) {
+    if github_shape
+        && let Ok(fetched) = fetch_url_for_ingest(url)
+    {
             let via = match fetched.kind {
                 GithubFetchKind::ReadmeApi => "github readme api",
                 GithubFetchKind::RawUserContent => "github raw",
@@ -105,7 +106,6 @@ fn fetch_url_for_bundle(url: &str) -> Result<(String, String, String), String> {
                 via.to_string()
             };
             return Ok((body, note, fetched.resolved_url));
-        }
     }
     let body = fetch_url_as_markdown(url).map_err(|e| e.to_string())?;
     let note = if github_shape {

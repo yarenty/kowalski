@@ -130,10 +130,10 @@ pub fn validate_draft(draft: &RookeryDraft) -> Result<(), KowalskiError> {
         }
     }
 
-    if let Some(w) = &draft.workdir {
-        if let Err(e) = validate_workdir_relative_path(w) {
-            errs.push(format!("workdir: {e}"));
-        }
+    if let Some(w) = &draft.workdir
+        && let Err(e) = validate_workdir_relative_path(w)
+    {
+        errs.push(format!("workdir: {e}"));
     }
 
     if errs.is_empty() {

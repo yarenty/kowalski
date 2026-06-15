@@ -472,10 +472,10 @@ fn coerce_penguin_object(obj: &mut Map<String, Value>, index: usize) {
             },
         );
     }
-    if !obj.contains_key("tool_ids") {
-        if let Some(v) = obj.remove("tools") {
-            obj.insert("tool_ids".to_string(), v);
-        }
+    if !obj.contains_key("tool_ids")
+        && let Some(v) = obj.remove("tools")
+    {
+        obj.insert("tool_ids".to_string(), v);
     }
     for key in [
         "name",
@@ -518,32 +518,32 @@ fn coerce_draft_value(mut root: Value) -> Value {
     coerce_optional_string_field(obj, "capability_prefix");
     coerce_pipeline_field(obj);
 
-    if !obj.contains_key("penguins") {
-        if let Some(steps) = obj.remove("steps") {
-            obj.insert("penguins".to_string(), steps);
-        }
+    if !obj.contains_key("penguins")
+        && let Some(steps) = obj.remove("steps")
+    {
+        obj.insert("penguins".to_string(), steps);
     }
 
-    if !obj.contains_key("id") {
-        if let Some(display) = obj.get("display_name").and_then(Value::as_str) {
-            let slug = display
-                .to_lowercase()
-                .replace(' ', "-")
-                .chars()
-                .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
-                .collect::<String>();
-            if !slug.is_empty() {
-                obj.insert("id".to_string(), Value::String(slug));
-            }
+    if !obj.contains_key("id")
+        && let Some(display) = obj.get("display_name").and_then(Value::as_str)
+    {
+        let slug = display
+            .to_lowercase()
+            .replace(' ', "-")
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+            .collect::<String>();
+        if !slug.is_empty() {
+            obj.insert("id".to_string(), Value::String(slug));
         }
     }
-    if !obj.contains_key("display_name") {
-        if let Some(id) = obj.get("id").and_then(Value::as_str) {
-            obj.insert(
-                "display_name".to_string(),
-                Value::String(title_from_step_name(id)),
-            );
-        }
+    if !obj.contains_key("display_name")
+        && let Some(id) = obj.get("id").and_then(Value::as_str)
+    {
+        obj.insert(
+            "display_name".to_string(),
+            Value::String(title_from_step_name(id)),
+        );
     }
     if !obj.contains_key("description") {
         obj.insert(

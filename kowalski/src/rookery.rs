@@ -71,14 +71,14 @@ impl RookeryStore {
         let removed = self.sessions.remove(id);
         if removed.is_some() {
             let path = session_file_path(&self.persist_dir, id);
-            if let Err(e) = std::fs::remove_file(&path) {
-                if e.kind() != std::io::ErrorKind::NotFound {
-                    log::warn!(
-                        "rookery: failed to delete session file {}: {}",
-                        path.display(),
-                        e
-                    );
-                }
+            if let Err(e) = std::fs::remove_file(&path)
+                && e.kind() != std::io::ErrorKind::NotFound
+            {
+                log::warn!(
+                    "rookery: failed to delete session file {}: {}",
+                    path.display(),
+                    e
+                );
             }
         }
         removed
@@ -574,7 +574,7 @@ pub async fn list_sessions(
         .values()
         .map(|s| RookerySessionResponse::from_session(s, &output_root))
         .collect();
-    sessions.sort_by(|a, b| b.updated_at_ms.cmp(&a.updated_at_ms));
+    sessions.sort_by_key(|s| std::cmp::Reverse(s.updated_at_ms));
     Json(ListSessionsResponse { sessions })
 }
 
@@ -655,8 +655,8 @@ pub async fn post_chat_stream(
     let msg = body.message.trim().to_string();
     if msg.is_empty() {
         let payload = json!({ "type": "error", "message": "message is required" });
-        let _ = tx.send(Ok(Event::default().data(payload.to_string())));
-        let _ = tx.send(Ok(Event::default().data(r#"{"type":"done"}"#)));
+        let _ = tx.send(Ok(Event::default().data(payload.to_string()))).await;
+        let _ = tx.send(Ok(Event::default().data(r#"{"type":"done"}"#))).await;
         return Sse::new(ReceiverStream::new(rx));
     }
     tokio::spawn(async move {

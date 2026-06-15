@@ -286,7 +286,7 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
         },
         delivery_summary_note: meta
             .delivery_summary_note
-            .unwrap_or_else(|| String::new()),
+            .unwrap_or_default(),
         prompt_tip: meta.prompt_tip.unwrap_or_else(|| {
             "Provide a prompt that includes source URL and desired output style.".to_string()
         }),
