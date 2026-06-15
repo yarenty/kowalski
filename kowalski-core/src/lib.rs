@@ -9,7 +9,9 @@ pub mod llm;
 pub mod source_bundle;
 pub mod logging;
 pub mod markdown_pipeline;
+pub mod operator_input;
 pub mod mcp;
+pub mod rookery;
 pub mod memory;
 pub mod model;
 pub mod role;
@@ -41,6 +43,16 @@ pub use logging::*;
 pub use markdown_pipeline::{
     maybe_normalize_markdown, parse_app_manifest, parse_stage_agent, render_context_attachments,
     resolve_manifest_path, AppManifestMeta, StageAgentMeta,
+};
+pub use operator_input::{
+    answers_to_prompt, default_ingest_form_fields, validate_form_answers, HordeRunFormSpec,
+    OperatorInputField,
+};
+pub use rookery::{
+    assign_penguin_avatars, extract_json_block, horde_root_path, infer_penguin_avatar,
+    minimal_linear_draft, parse_draft_from_assistant, normalize_draft, output_looks_invalid,
+    repair_horde_tree_outputs, validate_draft, validate_horde_tree, write_horde_tree,
+    HordeBirthSpec, PenguinSpec, RookeryDraft,
 };
 pub use mcp::{
     CallToolResponse, McpClient, McpConnection, McpHub, McpStdioClient, McpToolBinding,

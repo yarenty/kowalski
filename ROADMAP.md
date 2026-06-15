@@ -1,13 +1,53 @@
-# Kowalski Roadmap & Features (1.2.0+)
+# Kowalski Roadmap & Features (1.3.0+)
 
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"
 
-**Release:** **1.2.0** — see [`CHANGELOG.md`](CHANGELOG.md).  
+**Release:** **1.3.0** — see [`CHANGELOG.md`](CHANGELOG.md).  
 **Per-crate roadmaps:** [`kowalski-core/ROADMAP.md`](kowalski-core/ROADMAP.md), [`kowalski-cli/ROADMAP.md`](kowalski-cli/ROADMAP.md), [`kowalski-mcp-datafusion/ROADMAP.md`](kowalski-mcp-datafusion/ROADMAP.md), [`ui/ROADMAP.md`](ui/ROADMAP.md).
+
+## Shipped in 1.3.0 (2026-06-14)
+
+See [`CHANGELOG.md`](CHANGELOG.md) (**[1.3.0]**). Highlights: **Rookery** horde builder (core + `/api/rookery/*` + Vue tab), **`kowalski-mcp-rookery`** + **`kowalski-mcp-transport`** (stateless Streamable HTTP), Docker MCP gateway, server-owned Rookery sessions (YAML), penguin avatars, server-validated horde operator forms, A2A federation-edge design note (implementation 1.4/1.5).
 
 ## Shipped in 1.2.0 (2026-05-03)
 
 See [`CHANGELOG.md`](CHANGELOG.md) (**[1.2.0]**). Highlights: Knowledge Compiler **`workdir/debug/`** layout without **`derived/`** (`raw`, `reports`, `lint`, `followups`), horde HTTP conventions **`agents_log`** + **`debug/followups/`**, GitHub-aware **`source_bundle`**, **`horde.md`-only** `agent-app`, operator docs and UI smoke guidance.
+
+## Planned: Rookery horde builder (1.3.0) — **shipped**
+
+Canonical plan: **this file** ([`ROADMAP.md`](ROADMAP.md) § *Planned: Rookery* / *1.3.x cleanup*).
+
+- [x] **`kowalski-core::rookery`** — draft schema, validate, write `horde.md` + `agents/` + `prompts/` tree.
+- [x] **`/api/rookery/*`** — interview chat, propose, **Give birth** (linear pipeline only).
+- [x] **UI Rookery tab** — conversational builder + summary + birth; linear penguin canvas + per-penguin editor + structured form (Phases 4–6 in plan).
+- **Topology:** **linear** `pipeline = [...]` only (same as Knowledge Compiler today).
+
+### 1.3.x — Cleanup + reposition (architectural debt)
+
+The builder shipped, but the UI absorbed core responsibilities. Pay down before resuming Phase 7–9 (details in **§1.3.x cleanup** below):
+
+- [x] **R1** Server owns the Rookery draft — dropped the `localStorage` draft round-trip; sessions persist as YAML under `db/rookery/` and reload on startup. UI is render + dispatch only.
+- [x] **R2** Rookery as an **in-repo MCP server** (`kowalski-mcp-rookery`, stdio) over `kowalski-core::rookery`; `/api/rookery/*` and the new server share the same core primitives (any MCP client can build hordes). LLM-free — the calling agent drives the interview.
+- [x] **R3** **Docker MCP gateway** as one stdio MCP server (`docker mcp gateway run`); dynamic mode + `--servers`/`--profile` direct mode. `tools/internal/*` stay the dependency-light fallback, shadowed by the gateway when present.
+- [x] **Transport** Shared `kowalski-mcp-transport` (stdio + **stateless Streamable HTTP**, no `Mcp-Session-Id`) — adopted by `kowalski-mcp-rookery` (`--transport stdio|http`) and `kowalski-mcp-datafusion` (now sessionless), so every in-repo MCP server is reachable over stateless HTTP.
+
+## Planned: DAG horde pipelines (1.4.0+)
+
+**Not in 1.3.0.** After linear Rookery ships:
+
+- [ ] Draft/manifest **`edges[]`** (dependencies, parallel branches, join points).
+- [ ] Horde orchestrator schedules by graph, not list order only.
+- [ ] Rookery UI canvas: fork/join; builder may propose branches.
+
+Existing linear hordes remain valid without migration.
+
+## Planned: A2A at the federation edge (1.4/1.5)
+
+**Design-only for now** (see [`docs/DESIGN_A2A_FEDERATION_EDGE.md`](docs/DESIGN_A2A_FEDERATION_EDGE.md)). Penguins inside a horde stay **orchestrator-mediated** (sequential/DAG + artifact handoff); the homegrown ACL (`federation/acl.rs`) stays the **internal** bus. A2A is adopted only as the **external** node↔node skin:
+
+- [ ] Each Kowalski node publishes an **A2A Agent Card** and accepts A2A tasks.
+- [ ] A2A task lifecycle maps onto `AclMessage`; an A2A endpoint delegates into the existing orchestrator.
+- [ ] **No** penguin-to-penguin A2A — that handoff stays files + orchestrator.
 
 ## Horde changes in 1.1.0 (since 1.0.0)
 

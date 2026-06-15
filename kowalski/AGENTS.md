@@ -55,7 +55,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: kowalski  
-**Release**: **1.2.0** — thin facade over **`kowalski-core`** with optional **`kowalski-cli`** (`cli` / `full` features).  
+**Release**: **1.3.0** — thin facade over **`kowalski-core`** with optional **`kowalski-cli`** (`cli` / `full` features).  
 **Purpose**: Optional unified dependency entry for apps that want the workspace crates from one package name.  
 **Core Value Proposition**: Modular, extensible, and distributed architecture supporting standalone and federated deployments with privacy-preserving capabilities.  
 **Primary Mechanism**: Multi-agent orchestration and pluggable tools interfacing with local (Ollama) and remote LLMs.  
@@ -156,6 +156,26 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
 ### Service Architecture
 - **`TemplateAgent`** and tools live in **`kowalski-core`**; this crate re-exports **`core`** and optionally **`cli`**.
 - **HTTP server** (`kowalski` binary): **`/api/*`** for UI and automation.
+- **Rookery** (`src/rookery.rs`, 1.3.0): horde builder API — see [`../ROADMAP.md`](../ROADMAP.md) (*Planned: Rookery*). Routes (require `Extension` store + running LLM for chat/propose):
+
+| Method | Path | Notes |
+|--------|------|--------|
+| `GET` | `/api/rookery/sessions` | List all server-owned sessions (newest first) |
+| `POST` | `/api/rookery/sessions` | Create session; optional body `{ history?, draft?, summary?, status? }` (legacy restore hint — no longer needed by the UI, see server-owned draft below) |
+| `GET` | `/api/rookery/sessions/{id}` | Draft + status |
+| `DELETE` | `/api/rookery/sessions/{id}` | Drop session |
+| `POST` | `/api/rookery/sessions/{id}/chat` | Body: `{ "message", "stream"? }` — no tools/memory |
+| `POST` | `/api/rookery/sessions/{id}/propose` | Parse `RookeryDraft` JSON from builder reply |
+| `POST` | `/api/rookery/sessions/{id}/give-birth` | Body: `{ "output_root"?, "overwrite"? }` → `write_horde_tree` + validate |
+| `PATCH` | `/api/rookery/sessions/{id}/penguins/{name}` | Update one penguin in session draft |
+| `POST` | `/api/rookery/sessions/{id}/save-horde` | Re-write born horde from draft (overwrite on disk) |
+| `POST` | `/api/rookery/sessions/{id}/validate` | Validate draft without birth |
+| `GET` | `/api/models` | Ollama model list + server default |
+
+Builder system prompt: [`../resources/prompts/rookery/builder.md`](../resources/prompts/rookery/builder.md). Default birth directory: `examples/` (`KOWALSKI_ROOKERY_OUTPUT`).
+
+**Server-owned draft (PLAN.md §R1):** the server is the **source of truth** for Rookery sessions. Each session (status, draft, summary, and chat transcript) is persisted as one **YAML** file under the state dir (default `db/rookery/`; override with `KOWALSKI_ROOKERY_STATE`) and reloaded on startup — so sessions survive a server restart **without** the browser re-POSTing the draft. The UI keeps only a thin session-id list and renders draft/status via `GET /api/rookery/sessions/{id}`. The legacy `POST` restore body (`history`/`draft`/…) is still accepted for back-compat but is no longer used by `ui/`.
+
 - **MCP**: client/hub in core; optional **`kowalski-mcp-datafusion`** server for heavy SQL.
 
 ---
@@ -338,7 +358,7 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-**1.2.0**: Re-exports / bundles **`kowalski-core`**; optional **`cli`** feature pulls in **`kowalski-cli`**. Prefer depending on **`kowalski-core`** / **`kowalski-cli`** directly for most new code.
+**1.3.0**: HTTP **`/api/rookery/*`**, horde catalog with **`avatar`** on sub-agents, server-validated **`form_answers`** on horde run; re-exports **`kowalski-core`**; optional **`cli`** feature pulls in **`kowalski-cli`**.
 
 ### Roadmap
 See [`../ROADMAP.md`](../ROADMAP.md).

@@ -6,9 +6,27 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-06-14
+
+> Workspace and crates **`1.3.0`**: **Rookery** horde builder (HTTP + UI + MCP), server-owned sessions, in-repo MCP transport unification, Docker MCP gateway, penguin avatars, and operator-form validation on the server.
+
+### Added
+
+- **A2A federation-edge design:** [`docs/DESIGN_A2A_FEDERATION_EDGE.md`](docs/DESIGN_A2A_FEDERATION_EDGE.md) — decision + mapping for adopting [A2A](https://a2a-protocol.org/) **only** at the node↔node boundary (Agent Card derived from `AgentRegistry` + horde catalog; A2A Task lifecycle mapped onto existing `AclMessage` variants; transport reused from `kowalski-mcp-transport`). Explicitly **no penguin-to-penguin A2A**; implementation deferred to 1.4/1.5.
+- **Stateless Streamable HTTP for in-repo MCP servers:** new shared crate **`kowalski-mcp-transport`** provides one `McpHandler` trait and two runners — **stdio** and **stateless Streamable HTTP** (no `Mcp-Session-Id` issued or required; every POST independent → restartable / horizontally scalable). Both **`kowalski-mcp-rookery`** (`--transport stdio|http`, `--bind`) and **`kowalski-mcp-datafusion`** now run on it, so every in-repo MCP server is reachable over stateless HTTP. The Kowalski MCP client already tolerates sessionless servers (captures `Mcp-Session-Id` only if present). See [`kowalski-mcp-transport/README.md`](kowalski-mcp-transport/README.md).
+- **Rookery MCP server:** new in-repo crate **`kowalski-mcp-rookery`** — an MCP server (stdio **or** stateless HTTP) that exposes the horde builder so any MCP client (the Kowalski agent, CLI, or external clients like Claude Desktop) can build hordes, not only the Vue tab. Tools: **`rookery_example_draft`**, **`rookery_validate_draft`**, **`rookery_parse_draft`**, **`rookery_give_birth`** — all delegate to `kowalski_core::rookery` (same primitives as `/api/rookery/*`, no duplicated orchestration). The server is **LLM-free**: the calling agent drives the interview; this server validates/parses/writes. Wire it via `config.toml` and verify with `kowalski-cli mcp ping`/`mcp tools`. See [`kowalski-mcp-rookery/README.md`](kowalski-mcp-rookery/README.md).
+- **Docker MCP gateway support:** Kowalski connects to the [Docker MCP Toolkit](https://docs.docker.com/ai/mcp-catalog-and-toolkit/toolkit/) catalog through **one** stdio MCP server (`command = ["docker", "mcp", "gateway", "run"]`) instead of wiring many individual servers — verified via `kowalski-cli mcp ping`/`mcp tools`. Default (no flags) exposes the gateway's **dynamic** management tools (`mcp-find`, `mcp-exec`, `code-mode`); `--servers <name>` / `--profile <id>` expose a specific server's tools by name (after it is configured in Docker Desktop). `tools/internal/*` remain the dependency-light fallback and are shadowed by the gateway when present. Documented in [`config.toml`](config.toml) and [`kowalski-core/AGENTS.md`](kowalski-core/AGENTS.md).
+- **Rookery horde builder:** `kowalski-core::rookery` — linear draft validation and `write_horde_tree` for born hordes; builder prompt at [`resources/prompts/rookery/builder.md`](resources/prompts/rookery/builder.md). HTTP API on the `kowalski` server: `POST/GET/DELETE /api/rookery/sessions`, `POST .../chat` (optional SSE via `"stream": true`), `POST .../propose`, `POST .../give-birth`. Vue **Rookery** tab: interview chat, pipeline summary, **Give birth**. Default output root: `examples/` (override with `KOWALSKI_ROOKERY_OUTPUT` or `give-birth.output_root`).
+- **Penguin avatars in UI:** per-step mascot images from [`ui/src/assets/pinguins/`](ui/src/assets/pinguins/) — auto-assigned on **Propose** from `kind` + step `name` (`kowalski-core::rookery::infer_penguin_avatar`), persisted in born horde `agents/*.md` frontmatter as `avatar = "…"`, editable per penguin in **PenguinEditor** (avatar picker). Shown on **PenguinCanvas**, Rookery/Chat/Federation run feeds.
+
 ### Changed
 
-- **SQL migrations** (`sqlite/` + `postgres/` embedded by `sqlx::migrate!`) live under **`kowalski-core/migrations/`**, not the repository root—required for **crates.io** packaging and shared with `kowalski_core::db::run_migrations`.
+- **Horde operator forms are server-validated (thin UI / thick core):** `POST /api/hordes/{id}/run` now accepts a structured `form_answers` map; the **server** validates it against the horde's `run_form` (required / `url` / `choice` rules via `kowalski_core::validate_form_answers`, 400 on error) and builds the operator-input prompt block via `kowalski_core::answers_to_prompt`. The Vue **Horde Run** form no longer hand-assembles that block or enforces field rules client-side — it sends the raw answers.
+- **UI:** the duplicated SSE line-pump in `ui/src/api.ts` is extracted into one `streamSse<T>()` helper shared by `chatStream` and `rookeryChatStream`.
+- **`kowalski-mcp-datafusion` is now stateless:** it no longer generates or echoes an `Mcp-Session-Id` (the per-process `uuid` session was removed), and its HTTP/SSE plumbing moved to `kowalski-mcp-transport`. `AppState::new(ctx, table)` drops the former `session_id` argument. Tools and wire shapes are unchanged.
+- **Rookery — server-owned draft:** the `kowalski` server now **persists each Rookery session** (status, draft, summary, chat transcript) as one **YAML** file under `db/rookery/` (override `KOWALSKI_ROOKERY_STATE`) and **reloads them on startup**, so sessions survive a restart without the browser re-POSTing the draft. New `GET /api/rookery/sessions` lists server-owned sessions. The Vue **Rookery** tab now keeps only a thin session-id list in `localStorage` and hydrates draft/status via `GET /api/rookery/sessions/{id}`; the legacy `POST` restore body is still accepted but no longer used by `ui/`.
+- **Rookery:** per-penguin editor (`PenguinEditor.vue`), `PATCH /api/rookery/sessions/{id}/penguins/{name}`, `POST .../save-horde` to flush draft edits to disk after give birth; session recovery on server restart.
+- **Rookery:** `normalize_draft` slugifies LLM-produced horde/penguin ids (e.g. `Ingest` → `ingest`, `rust_project_scaffolder_1.0` → `rust-project-scaffolder-1-0`) before validation; builder prompt documents kebab-case id rules. `parse_draft_from_assistant` coerces common LLM JSON mistakes (objects instead of strings for `description`/`output`, object entries in `pipeline`).
 
 ## [1.2.0] - 2026-05-03
 
@@ -95,6 +113,7 @@ All notable changes to this project will be documented in this file, or at least
 - Documented **memory stack rationale**: **Qdrant** was used in an **initial proof of concept** for semantic memory; the **ongoing goal** is a **simple, robust, dependency-light** default with **minimal moving parts**. Canonical write-up: [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md). Linked from root and component `AGENTS.md`, READMEs, memory articles, and rebuild notes.
 - Refreshed **README.md**, **AGENTS.md**, **ROADMAP.md** (root and key sub-crates).
 
+[1.3.0]: https://github.com/yarenty/kowalski/releases/tag/1.3.0
 [1.2.0]: https://github.com/yarenty/kowalski/releases/tag/1.2.0
 [1.1.0]: https://github.com/yarenty/kowalski/releases/tag/1.1.0
 [1.0.0]: https://github.com/yarenty/kowalski/releases/tag/1.0.0

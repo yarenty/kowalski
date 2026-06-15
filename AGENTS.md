@@ -55,7 +55,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: Kowalski  
-**Release line**: **1.2.0** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).  
+**Release line**: **1.3.0** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).  
 **Purpose**: A Rust-native multi-agent framework: **`kowalski-core`** (agents, LLM, memory, MCP client), **`kowalski-cli`** (REPL + operators, extensions, **`agent-app`**), **`kowalski`** (HTTP **`/api/*`** server), optional **`kowalski-mcp-datafusion`**, Vue **`ui/`**, optional PostgreSQL (**pgvector**, **Apache AGE**).  
 **Core Value Proposition**: Modular, extensible deployment with MCP-first tools and federation-oriented APIs.  
 **Primary Mechanism**: `TemplateAgent` + pluggable tools (built-in + MCP), Ollama/OpenAI-compatible providers.  
@@ -266,6 +266,15 @@ Never start a complex task without creating a `task.md` file. Use the template i
 - Building/creating new components
 - Tasks spanning multiple files or components
 
+**For multi-step work, use local planning files (not committed to git):** `PLAN.md`, `task_plan.md`, `progress.md`, `findings.md`, and optional `continuity_prompt.md`. Canonical **shipped** design and roadmap live in committed [`ROADMAP.md`](ROADMAP.md) and [`CHANGELOG.md`](CHANGELOG.md).
+
+**Always pair a new local plan with a `continuity_prompt.md`.** Whenever you start a new plan (`task_plan.md` / `PLAN.md`), also create or refresh a **`continuity_prompt.md`** next to it (local only). This file holds a ready-to-paste **catch-up prompt** so that if context is lost (new chat, cleared window, agent hand-off), a fresh agent can reconstruct status from disk and resume safely. It must:
+- Point to the planning files to read in order (component `AGENTS.md` → `ROADMAP.md` → local `PLAN.md` / `task_plan.md` / `progress.md` / `findings.md`) and to reconcile against `git status` / `git log`.
+- Restate the plan's **guardrails** (architecture boundaries, deferred scope) and the **resume point** (current phase + first unchecked TODO).
+- Instruct the resumed agent to write back to `progress.md` / `task_plan.md` after each step.
+
+Keep the **Snapshot** (active plan, current phase, last-updated date) at the top of `continuity_prompt.md` current. Use the structure in your local copy (not in the repo).
+
 ### Rule 2: The 2-Action Rule
 > "After every 2 view/browser/search operations, IMMEDIATELY save key findings to text files."
 
@@ -358,7 +367,7 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-**1.2.0** continues the consolidated workspace: **`TemplateAgent`** in **`kowalski-core`**, **`kowalski-cli`** operators plus **`extension`** / **`agent-app`**, **`kowalski`** HTTP API, **`kowalski-mcp-datafusion`**, Vue UI — plus the **Knowledge Compiler** horde example and federation task-progress UX (see [`CHANGELOG.md`](CHANGELOG.md), [`docs/OVERVIEW_1_1.md`](docs/OVERVIEW_1_1.md)).
+**1.3.0** ships **Rookery** (horde builder HTTP + UI + MCP), server-owned sessions, **`kowalski-mcp-transport`** (stateless HTTP for in-repo MCP servers), Docker MCP gateway wiring, penguin avatars, and server-validated horde operator forms — on top of the **1.2.0** Knowledge Compiler / federation stack (see [`CHANGELOG.md`](CHANGELOG.md), [`docs/OVERVIEW_1_1.md`](docs/OVERVIEW_1_1.md)).
 
 ### Roadmap
 See [`ROADMAP.md`](ROADMAP.md) (root and per-crate **`ROADMAP.md`** where present).

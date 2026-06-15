@@ -1,6 +1,6 @@
 # kowalski-cli roadmap
 
-Crate version **1.2.0** (see `Cargo.toml`). Workspace overview: **[`../ROADMAP.md`](../ROADMAP.md)**.
+Crate version **1.3.0** (see `Cargo.toml`). Workspace overview: **[`../ROADMAP.md`](../ROADMAP.md)**.
 
 ## Near term
 

@@ -4,6 +4,7 @@
 //! workdir), optional `@artifact@` / `@step:name@` tokens, and optional markdown normalization.
 
 use crate::error::KowalskiError;
+use crate::operator_input::OperatorInputField;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
@@ -44,6 +45,9 @@ pub struct StageAgentMeta {
     /// Section headings (## name) that receive `normalize_fallback` body when synthesized.
     #[serde(default)]
     pub normalize_fallback_sections: Vec<String>,
+    /// Pre-run operator form (`[[inputs]]` in frontmatter).
+    #[serde(default)]
+    pub inputs: Vec<OperatorInputField>,
 }
 
 /// Prefer `app.md`, then legacy `horde.md`.
@@ -264,6 +268,7 @@ mod tests {
             normalize_sections: vec!["TL;DR".into(), "Suggested notes".into()],
             normalize_fallback: Some("SHOULD_NOT_APPEAR".into()),
             normalize_fallback_sections: vec!["TL;DR".into()],
+            inputs: vec![],
         }
     }
 

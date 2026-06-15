@@ -86,6 +86,10 @@ pub struct SubAgentMeta {
     pub prompt_file: Option<String>,
     #[serde(default)]
     pub output: Option<String>,
+    #[serde(default)]
+    pub inputs: Vec<kowalski_core::OperatorInputField>,
+    #[serde(default)]
+    pub avatar: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -98,6 +102,8 @@ pub struct SubAgentSpec {
     pub description: String,
     pub prompt_file: Option<String>,
     pub output: Option<String>,
+    pub inputs: Vec<kowalski_core::OperatorInputField>,
+    pub avatar: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -123,6 +129,8 @@ pub struct HordeSpec {
     pub followup_artifact_dir: PathBuf,
     /// Resolved directory for managed worker process logs ([`AGENTS_LOG_REL`] under `workdir`).
     pub worker_log_dir: PathBuf,
+    /// Pre-run operator form (first pipeline step that declares `[[inputs]]`).
+    pub run_form: Option<kowalski_core::HordeRunFormSpec>,
 }
 
 impl HordeSpec {
@@ -195,6 +203,9 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
             .description
             .clone()
             .unwrap_or_else(|| format!("{} sub-agent of {}", raw.kind, meta.id));
+        let avatar = raw.avatar.clone().or_else(|| {
+            Some(kowalski_core::infer_penguin_avatar(&raw.kind, &raw.name))
+        });
         by_name.insert(
             raw.name.clone(),
             SubAgentSpec {
@@ -206,6 +217,8 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
                 description,
                 prompt_file: raw.prompt_file,
                 output: raw.output,
+                inputs: raw.inputs,
+                avatar,
             },
         );
     }
@@ -232,6 +245,15 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
     let followup_artifact_dir = workdir.join(FOLLOWUP_ARTIFACT_REL);
     let worker_log_dir = workdir.join(AGENTS_LOG_REL);
 
+    let run_form = sub_agents
+        .iter()
+        .find(|a| !a.inputs.is_empty())
+        .map(|a| kowalski_core::HordeRunFormSpec {
+            step: a.name.clone(),
+            display_name: Some(a.display_name.clone()),
+            inputs: a.inputs.clone(),
+        });
+
     Ok(HordeSpec {
         id: meta.id,
         display_name: meta.display_name,
@@ -252,12 +274,19 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
             "When the run completes, use the markdown hand-off in the run payload (if present) or the file named by `delivery_root_rel` under the workdir. Intermediate artifacts are usually under `workdir/debug/`."
                 .to_string()
         }),
-        delivery_root_rel: meta
-            .delivery_root_rel
-            .unwrap_or_else(|| "PASTE_ME.md".to_string()),
+        delivery_root_rel: {
+            let r = meta
+                .delivery_root_rel
+                .unwrap_or_else(|| "HANDOFF.md".to_string());
+            if kowalski_core::rookery::output_looks_invalid(&r) {
+                "HANDOFF.md".to_string()
+            } else {
+                r
+            }
+        },
         delivery_summary_note: meta
             .delivery_summary_note
-            .unwrap_or_else(|| String::new()),
+            .unwrap_or_default(),
         prompt_tip: meta.prompt_tip.unwrap_or_else(|| {
             "Provide a prompt that includes source URL and desired output style.".to_string()
         }),
@@ -265,6 +294,7 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
         sub_agents,
         followup_artifact_dir,
         worker_log_dir,
+        run_form,
     })
 }
 

@@ -1,6 +1,6 @@
 # Kowalski 1.1.x overview
 
-Release **1.1.0** introduced **horde-style app workflows** (current workspace line: **1.2.0** — see root `CHANGELOG.md`): multi-step, markdown-defined agent orchestration on top of the existing **`TemplateAgent`**, **HTTP API** (`kowalski` binary), **federation** primitives, and the **Vue** operator UI.
+Release **1.1.0** introduced **horde-style app workflows** (current workspace line: **1.3.0** — see root `CHANGELOG.md`): multi-step, markdown-defined agent orchestration on top of the existing **`TemplateAgent`**, **HTTP API** (`kowalski` binary), **federation** primitives, and the **Vue** operator UI.
 
 ## What shipped vs 1.0.0
 

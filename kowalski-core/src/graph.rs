@@ -111,7 +111,7 @@ pub async fn postgres_age_cypher(
         graph_name, tag, cypher, tag
     );
 
-    let raw: Vec<Option<String>> = sqlx::query_scalar(&sql)
+    let raw: Vec<Option<String>> = sqlx::query_scalar(sqlx::AssertSqlSafe(sql))
         .fetch_all(&mut *conn)
         .await
         .map_err(|e| KowalskiError::Configuration(format!("cypher execution: {e}")))?;

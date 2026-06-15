@@ -1,6 +1,6 @@
 # Kowalski UI (Vue 3 + Vite)
 
-**Version 1.2.0** · Operator-facing web shell for Kowalski, calling **`kowalski`** under `/api/*`.
+**Version 1.3.0** · Operator-facing web shell for Kowalski, calling **`kowalski`** under `/api/*`.
 
 Features: health, MCP ping, **Chat** (`POST /api/chat`, SSE **`POST /api/chat/stream`** with optional **Tool-aware stream** / `tools_stream`), federation, graph extension status. See [`ROADMAP.md`](./ROADMAP.md).
 
@@ -67,8 +67,24 @@ Use this after any change to **`kowalski`**, **`kowalski-core`**, or **`ui/`** t
 | 1 | **Home** | Open once | No blank crash; optional: app version from health appears when API is up. |
 | 2 | **Chat** | Send one short message | **Optional** if `[llm]` / Ollama is configured: you get a normal reply or a **clear** error in the thread (not a silent hang). Skip if you have no LLM. |
 | 3 | **Federation** | Scroll to **Knowledge Sucking Swarm** (Knowledge Compiler horde) → **Start All** | Workers move toward ready; no permanent red error. If workers never become ready, start matching `agent-app worker … --role …` processes from [`examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md). |
-| 4 | **Horde** | In **Horde Run**, confirm horde **Knowledge Sucking Swarm** (or same display name), paste a stable source (e.g. `https://github.com/rust-lang/rust`), default question is fine → **Run Horde** | Stream shows ingest → compile → ask → lint (or explicit failure text). After completion: delivery section lists artifacts; **Open output folder** works if the desktop API is allowed. |
-| 5 | **Federation** (optional extra) | Lower on the same panel: **Refresh registry** if you use raw delegate / `kc.run` smoke | Registry JSON loads; see [`examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md) for legacy worker commands. |
+| 4 | **Horde** | **Knowledge Sucking Swarm**: URL + question form → **Run Horde**. **Rust Project Scaffolder** (`examples/rust-project-scaffolder`): operator form (project name, goals, crate shape) then **Run Horde** | Stream shows pipeline steps or explicit failure. Scaffolder ingest needs valid `output` paths (auto-repaired on birth/repair). |
+| 5 | **Rookery** (1.3.0) | **New session** → describe a 3-step workflow → **Propose horde** → **Give birth** | Summary + pipeline list on the right; birth shows path under `examples/<id>/`. Run `cargo run -p kowalski-cli -- agent-app validate --path examples/<id>` to confirm. Requires live LLM for chat/propose. |
+| 6 | **Federation** (optional extra) | Lower on the same panel: **Refresh registry** if you use raw delegate / `kc.run` smoke | Registry JSON loads; see [`examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md) for legacy worker commands. |
+
+
+
+**Rust scaffolder demo** (Rookery → Horde):
+
+1. **Rookery**: use the TEST PROMPT below → **Propose horde** → **Give birth** → `examples/rust-project-scaffolder/`
+2. Restart `kowalski` (reload horde catalog) → **Horde** tab → select **Rust Project Scaffolder Pipeline**
+3. Fill the **Operator input** form (project name, goals, optional URL, crate shape) → **Run horde**
+
+If an older born horde still has `output = "String"`, call `POST /api/hordes/rust-project-scaffolder/repair-outputs` or re-birth from Rookery with overwrite.
+
+TEST PROMPT (Rookery):
+```txt
+When having new rust project could you create pipeline to setup initial repository - project structure, invetigate crates that could be user for project, create first initial mock/mvp of the project and suggest todo list
+```
 
 **Failure triage**
 

@@ -9,8 +9,8 @@ use axum::extract::ws::{WebSocket, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::response::sse::{Event, Sse};
-use axum::routing::{get, post};
-use axum::{Json, Router};
+use axum::routing::{get, patch, post};
+use axum::{Extension, Json, Router};
 use futures::Stream;
 use futures::StreamExt;
 use kowalski_core::agent::Agent;
@@ -185,6 +185,8 @@ pub async fn serve(
     }
     crate::horde::spawn_orchestrator_loop(horde_manager.clone());
 
+    let rookery = crate::rookery::new_rookery_store(&full_config, &config_path).await?;
+
     let state = ApiState {
         config_path,
         ollama_url,
@@ -205,6 +207,7 @@ pub async fn serve(
         .route("/api/agents", get(get_agents))
         .route("/api/sessions", get(get_sessions))
         .route("/api/doctor", get(get_doctor))
+        .route("/api/models", get(get_models))
         .route("/api/mcp/servers", get(get_mcp_servers))
         .route("/api/mcp/ping", post(post_mcp_ping))
         .route("/api/memory/status", get(get_memory_status))
@@ -237,6 +240,10 @@ pub async fn serve(
             "/api/hordes/{horde_id}/workers/stop",
             post(post_horde_worker_stop),
         )
+        .route(
+            "/api/hordes/{horde_id}/repair-outputs",
+            post(post_horde_repair_outputs),
+        )
         .route("/api/hordes/{horde_id}/run", post(post_horde_run))
         .route(
             "/api/hordes/{horde_id}/clean-workdir",
@@ -260,11 +267,44 @@ pub async fn serve(
         .route("/api/federation/heartbeat", post(post_federation_heartbeat))
         .route("/api/federation/delegate", post(post_federation_delegate))
         .route("/api/federation/publish", post(post_federation_publish))
-        .route("/api/graph/status", get(get_graph_status));
+        .route("/api/graph/status", get(get_graph_status))
+        .route(
+            "/api/rookery/sessions",
+            get(crate::rookery::list_sessions).post(crate::rookery::post_sessions),
+        )
+        .route(
+            "/api/rookery/sessions/{session_id}",
+            get(crate::rookery::get_session).delete(crate::rookery::delete_session),
+        )
+        .route(
+            "/api/rookery/sessions/{session_id}/chat",
+            post(crate::rookery::post_chat),
+        )
+        .route(
+            "/api/rookery/sessions/{session_id}/propose",
+            post(crate::rookery::post_propose),
+        )
+        .route(
+            "/api/rookery/sessions/{session_id}/give-birth",
+            post(crate::rookery::post_give_birth),
+        )
+        .route(
+            "/api/rookery/sessions/{session_id}/save-horde",
+            post(crate::rookery::post_save_horde),
+        )
+        .route(
+            "/api/rookery/sessions/{session_id}/penguins/{penguin_name}",
+            patch(crate::rookery::patch_penguin),
+        )
+        .route(
+            "/api/rookery/sessions/{session_id}/validate",
+            post(crate::rookery::post_validate_draft),
+        );
     #[cfg(feature = "postgres")]
     let router = router.route("/api/graph/cypher", post(post_graph_cypher));
     let app = router
         .with_state(state)
+        .layer(Extension(rookery))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(DefaultMakeSpan::new().include_headers(false))
@@ -346,6 +386,23 @@ async fn get_sessions(State(state): State<ApiState>) -> Json<serde_json::Value> 
 
 async fn get_doctor(State(state): State<ApiState>) -> Json<crate::http_ops::DoctorJson> {
     Json(crate::http_ops::doctor_json(state.ollama_url.clone(), Some(&state.full_config)).await)
+}
+
+async fn get_models(State(state): State<ApiState>) -> Json<serde_json::Value> {
+    let ollama_url = state.ollama_url.clone().unwrap_or_else(|| {
+        format!(
+            "http://{}:{}",
+            state.full_config.ollama.host, state.full_config.ollama.port
+        )
+    });
+    let mut models = crate::http_ops::list_ollama_models(&ollama_url).await;
+    if !models.iter().any(|m| m == &state.model) {
+        models.insert(0, state.model.clone());
+    }
+    Json(json!({
+        "default_model": state.model,
+        "models": models,
+    }))
 }
 
 async fn get_mcp_servers(
@@ -1520,6 +1577,11 @@ struct HordeRunBody {
     source: Option<String>,
     #[serde(default)]
     question: Option<String>,
+    /// Raw operator answers keyed by `run_form` field id. The server validates them against the
+    /// horde's `run_form` and builds the operator-input block (thin UI / thick core) — the UI does
+    /// not pre-render the block or enforce field rules.
+    #[serde(default)]
+    form_answers: Option<std::collections::BTreeMap<String, String>>,
 }
 
 #[derive(Deserialize)]
@@ -1554,6 +1616,7 @@ async fn get_hordes(State(state): State<ApiState>) -> Json<serde_json::Value> {
                 "delivery_summary_note": s.delivery_summary_note,
                 "prompt_tip": s.prompt_tip,
                 "sub_agents": s.sub_agents,
+                "run_form": s.run_form,
             })
         })
         .collect();
@@ -1589,6 +1652,7 @@ async fn get_horde_detail(
         "delivery_summary_note": spec.delivery_summary_note,
         "prompt_tip": spec.prompt_tip,
         "sub_agents": spec.sub_agents,
+        "run_form": spec.run_form,
     })))
 }
 
@@ -1857,12 +1921,51 @@ async fn post_horde_clean_workdir(
     })))
 }
 
+async fn post_horde_repair_outputs(
+    State(state): State<ApiState>,
+    AxumPath(horde_id): AxumPath<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let spec = state.horde_manager.find(&horde_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("unknown horde id: {}", horde_id),
+        )
+    })?;
+    let fixed = kowalski_core::repair_horde_tree_outputs(&spec.root_path).map_err(|e| {
+        (StatusCode::BAD_REQUEST, e.to_string())
+    })?;
+    Ok(Json(json!({
+        "ok": true,
+        "horde_id": horde_id,
+        "files_fixed": fixed,
+    })))
+}
+
 async fn post_horde_run(
     State(state): State<ApiState>,
     AxumPath(horde_id): AxumPath<String>,
     Json(body): Json<HordeRunBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let prompt = body.prompt.unwrap_or_default();
+    // Server owns the operator form: validate answers against the horde's run_form and build the
+    // operator-input block via kowalski-core (no client-side prompt assembly or validation).
+    let operator_block = match (
+        body.form_answers.as_ref(),
+        state.horde_manager.find(&horde_id).and_then(|s| s.run_form.clone()),
+    ) {
+        (Some(answers), Some(form)) => {
+            kowalski_core::validate_form_answers(&form, answers)
+                .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+            Some(kowalski_core::answers_to_prompt(&form, answers))
+        }
+        _ => None,
+    };
+
+    let user_prompt = body.prompt.clone().unwrap_or_default();
+    let prompt = match &operator_block {
+        Some(block) if !user_prompt.trim().is_empty() => format!("{block}\n\n{user_prompt}"),
+        Some(block) => block.clone(),
+        None => user_prompt,
+    };
     let source_extracted = body
         .source
         .clone()

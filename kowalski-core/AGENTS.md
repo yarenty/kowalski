@@ -55,7 +55,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: kowalski-core  
-**Release**: **1.2.0** (see crate `Cargo.toml`).  
+**Release**: **1.3.0** (see crate `Cargo.toml`).  
 **Purpose**: Core foundational abstractions, conversation logic, agent traits, LLM providers, memory tiers, MCP client/hub, federation types, optional Postgres (pgvector) and graph helpers (AGE Cypher).  
 **Core Value Proposition**: Modular, extensible, and distributed architecture supporting standalone and federated deployments with privacy-preserving capabilities.  
 **Primary Mechanism**: Multi-agent orchestration and pluggable tools interfacing with local (Ollama) and remote LLMs.  
@@ -127,7 +127,9 @@ kowalski/                         # repository root (you are in kowalski-core/)
 ├── kowalski-core/                # This crate: TemplateAgent, tools, memory, MCP, federation
 ├── kowalski-cli/                 # REPL, operators, extension, agent-app
 ├── kowalski/                     # Facade + HTTP server binary
+├── kowalski-mcp-transport/       # Shared MCP transports (stdio + stateless Streamable HTTP)
 ├── kowalski-mcp-datafusion/      # Optional MCP server (DataFusion)
+├── kowalski-mcp-rookery/         # Optional MCP server (Rookery horde builder)
 ├── ui/, examples/, docs/, tools/, resources/   # SQL migrations: `migrations/` within this crate
 ```
 
@@ -140,7 +142,9 @@ Tools and federation types live **in this crate** (`src/tools`, `src/tools/inter
 - [kowalski-core/AGENTS.md](./AGENTS.md) (this crate)
 - [kowalski-cli/AGENTS.md](../kowalski-cli/AGENTS.md)
 - [kowalski/AGENTS.md](../kowalski/AGENTS.md)
+- [kowalski-mcp-transport/AGENTS.md](../kowalski-mcp-transport/AGENTS.md)
 - [kowalski-mcp-datafusion/AGENTS.md](../kowalski-mcp-datafusion/AGENTS.md)
+- [kowalski-mcp-rookery/AGENTS.md](../kowalski-mcp-rookery/AGENTS.md)
 - [ui/AGENTS.md](../ui/AGENTS.md)
 
 **Rule**: Before making changes to any component, **always read its specific AGENTS.md first** to understand:
@@ -160,8 +164,21 @@ Agents ultimately call **capabilities** that behave like tools. Those capabiliti
 
 | Source | What it is | Examples |
 |--------|------------|----------|
-| **1. In-repo MCP servers** | Separate processes/crates you ship (stdio or HTTP/SSE), registered in config | [`kowalski-mcp-datafusion`](../kowalski-mcp-datafusion/) |
+| **1. In-repo MCP servers** | Separate processes/crates you ship, registered in config. Both transports — **stdio** and **stateless Streamable HTTP** — come from the shared [`kowalski-mcp-transport`](../kowalski-mcp-transport/) (no `Mcp-Session-Id`). | [`kowalski-mcp-datafusion`](../kowalski-mcp-datafusion/) (DataFusion), [`kowalski-mcp-rookery`](../kowalski-mcp-rookery/) (horde builder over `kowalski-core::rookery`) |
 | **2. External MCP (gateway / catalog)** | Third-party or vendor MCP servers the client reaches through a gateway | [Docker MCP Toolkit](https://docs.docker.com/ai/mcp-catalog-and-toolkit/toolkit/) profiles (GitHub, Puppeteer, …), OAuth handled by the gateway |
+
+**Docker MCP gateway (source 2, recommended wiring — PLAN.md §R3):** add **one** stdio server to `[[mcp.servers]]` rather than N individual servers:
+
+```toml
+[[mcp.servers]]
+name = "docker-mcp"
+transport = "stdio"
+command = ["docker", "mcp", "gateway", "run"]
+```
+
+- Verified: Kowalski's stdio MCP client (`McpStdioClient`) connects to `docker mcp gateway run` and lists tools (`kowalski-cli mcp ping` → `OK`).
+- **Two modes.** Default (no flags) = **dynamic**: the gateway exposes management tools (`mcp-find`, `mcp-add`, `mcp-exec`, `code-mode`) so an agent discovers/runs catalog tools on demand — zero config, works out of the box. **Direct** (`--servers <name>` / `--profile <id>`): the named server's tools are exposed by name, but only after that server is installed **and configured (secrets/OAuth)** in Docker Desktop and its container is ready — a one-shot `mcp tools` may report 0 tools until then. Enable servers in Docker Desktop (`docker mcp profile server ls`).
+- **`internal` ↔ gateway policy:** `tools/internal/*` (GitHub, web, FS) remain the **dependency-light default / CI path**. When the gateway provides an equivalent (e.g. GitHub, Fetch, Filesystem), it **shadows** the internal tool for that deployment; do not delete the internal fallback.
 | **3. Internal tools** | Small, **in-process** helpers under [`src/tools/internal/`](./src/tools/internal/) — fast defaults, strict scope | [`internal/github`](./src/tools/internal/github.rs) (README API + raw fetch), [`internal/web`](./src/tools/internal/web.rs) (plain HTTP path, to grow), [`internal/file_system`](./src/tools/internal/file_system.rs) (bounded FS, planned) |
 
 **Principles (no shortcuts):**
@@ -180,6 +197,8 @@ Agents ultimately call **capabilities** that behave like tools. Those capabiliti
 **Operator UI:** behavior visible in the Vue **`ui/`** (chat, horde, federation) must stay coherent with **`/api/*`**; validate smoke paths after changes that affect agents, tools, or federation payloads. See root [`AGENTS.md`](../AGENTS.md) and [`ui/AGENTS.md`](../ui/AGENTS.md).
 
 **[`source_bundle`](./src/source_bundle.rs):** builds `raw/*.md` bundles under the given root (typically `workdir/debug`, so **`debug/raw/`**) from URL / file / text tokens (used by `kowalski-cli` worker ingest and any future server-side ingest). Uses **`tools::internal::github`** and **`tools::internal::web`** (HTML heuristic → Markdown). Not horde-specific.
+
+**[`rookery`](./src/rookery/):** horde builder (1.3.0) — `RookeryDraft`, `validate_draft`, `validate_horde_tree`, `write_horde_tree` (linear pipelines only). Builder system prompt: [`../resources/prompts/rookery/builder.md`](../resources/prompts/rookery/builder.md). Fixture: `minimal_linear_draft()`.
 
 ---
 
@@ -361,7 +380,7 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-**1.2.0**: `BaseAgent` / `TemplateAgent`, `chat_with_tools`, optional **`chat_with_tools_stream_final`** for SSE, MCP integration, memory (SQLite default; Postgres optional), federation primitives used by horde apps (e.g. Knowledge Compiler). See also [`../ROADMAP.md`](../ROADMAP.md) and [`ROADMAP.md`](ROADMAP.md) in this crate.
+**1.3.0**: **`rookery`** module (draft validate/write, avatar inference, operator forms), plus existing **`TemplateAgent`**, MCP, federation, and horde apps. See [`../ROADMAP.md`](../ROADMAP.md) and [`ROADMAP.md`](ROADMAP.md).
 
 ### Roadmap
 See [`ROADMAP.md`](ROADMAP.md) (this crate) and root [`../ROADMAP.md`](../ROADMAP.md).

@@ -1,0 +1,19 @@
+[package]
+name = "kowalski-mcp-transport"
+version = "1.3.0"
+edition = "2024"
+description = "Reusable MCP transports for in-repo Kowalski servers: stdio and stateless Streamable HTTP"
+license = "MIT"
+authors = ["yarenty <yarenty@gmail.com>"]
+repository = "https://github.com/yarenty/kowalski"
+homepage = "https://github.com/yarenty/kowalski"
+readme = "README.md"
+
+[dependencies]
+axum = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
+
+[dev-dependencies]
+reqwest = { workspace = true, features = ["json"] }

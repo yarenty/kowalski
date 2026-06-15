@@ -156,6 +156,23 @@ export type HordeSubAgent = {
   display_name: string;
   description: string;
   output?: string | null;
+  avatar?: string | null;
+};
+
+export type OperatorInputField = {
+  id: string;
+  type: string;
+  label: string;
+  required?: boolean;
+  placeholder?: string | null;
+  options?: string[];
+  default?: string | null;
+};
+
+export type HordeRunFormSpec = {
+  step: string;
+  display_name?: string | null;
+  inputs: OperatorInputField[];
 };
 
 export type HordeCatalogItem = {
@@ -176,6 +193,7 @@ export type HordeCatalogItem = {
   delivery_summary_note?: string;
   prompt_tip?: string;
   sub_agents: HordeSubAgent[];
+  run_form?: HordeRunFormSpec | null;
 };
 
 export type HordeCatalogResponse = {
@@ -217,6 +235,8 @@ export const api = {
   agents: () => json<AgentsResponse>("/api/agents"),
   sessions: () => json<SessionsResponse>("/api/sessions"),
   doctor: () => json<Doctor>("/api/doctor"),
+  models: () =>
+    json<{ default_model: string; models: string[] }>("/api/models"),
   mcpServers: () => json<McpServer[]>("/api/mcp/servers"),
   mcpPing: () =>
     json<McpPingResult[]>("/api/mcp/ping", { method: "POST", body: "{}" }),
@@ -286,7 +306,20 @@ export const api = {
       method: "POST",
       body: JSON.stringify(step ? { step } : {}),
     }),
-  hordeRun: (hordeId: string, body: { prompt?: string; source?: string; question?: string }) =>
+  hordeRepairOutputs: (hordeId: string) =>
+    json<{ ok: boolean; horde_id: string; files_fixed: number }>(
+      `/api/hordes/${encodeURIComponent(hordeId)}/repair-outputs`,
+      { method: "POST", body: "{}" },
+    ),
+  hordeRun: (
+    hordeId: string,
+    body: {
+      prompt?: string;
+      source?: string;
+      question?: string;
+      form_answers?: Record<string, string>;
+    },
+  ) =>
     json<{ ok: boolean; run: HordeRunRecord }>(`/api/hordes/${encodeURIComponent(hordeId)}/run`, {
       method: "POST",
       body: JSON.stringify(body),
@@ -344,7 +377,168 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ stale_after_secs }),
     }),
+  rookeryCreateSession: (body?: {
+    history?: { role: "user" | "assistant"; content: string }[];
+    draft?: RookeryDraft | null;
+    summary?: string | null;
+    status?: RookerySessionStatus;
+  }) =>
+    json<RookeryCreateSessionResponse>("/api/rookery/sessions", {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    }),
+  rookerySession: (sessionId: string) =>
+    json<RookerySessionResponse>(
+      `/api/rookery/sessions/${encodeURIComponent(sessionId)}`,
+    ),
+  rookeryDeleteSession: (sessionId: string) =>
+    json<{ ok: boolean; session_id: string }>(
+      `/api/rookery/sessions/${encodeURIComponent(sessionId)}`,
+      { method: "DELETE" },
+    ),
+  rookeryChat: (sessionId: string, message: string) =>
+    json<RookeryChatResponse>(
+      `/api/rookery/sessions/${encodeURIComponent(sessionId)}/chat`,
+      {
+        method: "POST",
+        body: JSON.stringify({ message, stream: false }),
+      },
+    ),
+  rookeryPropose: (sessionId: string) =>
+    json<RookeryProposeResponse>(
+      `/api/rookery/sessions/${encodeURIComponent(sessionId)}/propose`,
+      { method: "POST", body: "{}" },
+    ),
+  rookeryGiveBirth: (
+    sessionId: string,
+    body?: { output_root?: string; overwrite?: boolean },
+  ) =>
+    json<RookeryGiveBirthResponse>(
+      `/api/rookery/sessions/${encodeURIComponent(sessionId)}/give-birth`,
+      {
+        method: "POST",
+        body: JSON.stringify(body ?? {}),
+      },
+    ),
+  rookeryPatchPenguin: (
+    sessionId: string,
+    penguinName: string,
+    body: {
+      kind?: string;
+      display_name?: string;
+      description?: string;
+      prompt_body?: string;
+      agent_body?: string;
+      clear_agent_body?: boolean;
+      output?: string;
+      context_paths?: string[];
+      tool_ids?: string[];
+      model_id?: string;
+      clear_model_id?: boolean;
+      avatar?: string;
+      clear_avatar?: boolean;
+    },
+  ) =>
+    json<{ session: RookerySessionResponse }>(
+      `/api/rookery/sessions/${encodeURIComponent(sessionId)}/penguins/${encodeURIComponent(penguinName)}`,
+      { method: "PATCH", body: JSON.stringify(body) },
+    ),
+  rookerySaveHorde: (sessionId: string) =>
+    json<RookerySaveHordeResponse>(
+      `/api/rookery/sessions/${encodeURIComponent(sessionId)}/save-horde`,
+      { method: "POST", body: "{}" },
+    ),
+  rookeryValidateDraft: (sessionId: string) =>
+    json<{ ok: boolean; errors: string | null; session: RookerySessionResponse }>(
+      `/api/rookery/sessions/${encodeURIComponent(sessionId)}/validate`,
+      { method: "POST", body: "{}" },
+    ),
 };
+
+export type RookeryPenguinSpec = {
+  name: string;
+  kind: string;
+  display_name: string;
+  description: string;
+  prompt_body: string;
+  agent_body?: string | null;
+  output: string;
+  context_paths?: string[];
+  tool_ids?: string[];
+  model_id?: string | null;
+  avatar?: string | null;
+};
+
+export type RookeryDraft = {
+  id: string;
+  display_name: string;
+  description: string;
+  capability_prefix?: string | null;
+  pipeline: string[];
+  penguins: RookeryPenguinSpec[];
+  default_question?: string | null;
+  default_topic?: string | null;
+  workdir?: string | null;
+  delivery_title?: string | null;
+  delivery_note?: string | null;
+  delivery_root_rel?: string | null;
+  delivery_summary_note?: string | null;
+  prompt_tip?: string | null;
+};
+
+export type RookerySessionStatus = "interviewing" | "proposed" | "born";
+
+export type RookerySessionResponse = {
+  session_id: string;
+  conversation_id: string;
+  status: RookerySessionStatus;
+  draft: RookeryDraft | null;
+  summary: string | null;
+  pipeline: string[];
+  horde_root: string | null;
+  output_root: string;
+  created_at_ms: number;
+  updated_at_ms: number;
+};
+
+export type RookeryCreateSessionResponse = {
+  session: RookerySessionResponse;
+};
+
+export type RookeryChatResponse = {
+  reply: string;
+  session: RookerySessionResponse;
+};
+
+export type RookeryProposeResponse = {
+  session: RookerySessionResponse;
+  parse_error: string | null;
+};
+
+export type RookeryGiveBirthResponse = {
+  ok: boolean;
+  horde_root: string;
+  horde_id: string;
+  validate_ok: boolean;
+  validate_errors: string | null;
+  session: RookerySessionResponse;
+};
+
+export type RookerySaveHordeResponse = {
+  ok: boolean;
+  horde_root: string;
+  horde_id: string;
+  validate_ok: boolean;
+  validate_errors: string | null;
+  session: RookerySessionResponse;
+};
+
+export type RookeryStreamEvent =
+  | { type: "start"; session_id: string; model: string }
+  | { type: "token"; content: string }
+  | { type: "assistant"; content: string }
+  | { type: "error"; message: string }
+  | { type: "done" };
 
 /** `EventSource` for `GET /api/federation/stream` — caller must `close()` when done. */
 export function openFederationEventSource(
@@ -359,22 +553,12 @@ export function openFederationEventSource(
   return es;
 }
 
-/** Parses `text/event-stream` body: one JSON object per `data:` line. */
-export async function chatStream(
-  message: string,
-  onEvent: (ev: ChatStreamEvent) => void,
-  options?: { toolsStream?: boolean; useMemory?: boolean; conversationId?: string | null },
-): Promise<void> {
-  const res = await fetch(`${base}/api/chat/stream`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      message,
-      ...(options?.toolsStream ? { tools_stream: true } : {}),
-      ...(options?.useMemory !== undefined ? { use_memory: options.useMemory } : {}),
-      ...(options?.conversationId ? { conversation_id: options.conversationId } : {}),
-    }),
-  });
+/**
+ * Pump a `text/event-stream` response body, invoking `onEvent` with the parsed JSON of each
+ * `data:` line. Shared by all request-scoped chat streams (`/api/chat/stream`,
+ * `/api/rookery/.../chat`). Non-JSON keepalive lines are ignored.
+ */
+async function streamSse<T>(res: Response, onEvent: (ev: T) => void): Promise<void> {
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`${res.status} ${res.statusText}: ${text.slice(0, 200)}`);
@@ -397,11 +581,47 @@ export async function chatStream(
         const raw = m[1]?.trim();
         if (!raw) continue;
         try {
-          onEvent(JSON.parse(raw) as ChatStreamEvent);
+          onEvent(JSON.parse(raw) as T);
         } catch {
           /* ignore non-JSON keepalives */
         }
       }
     }
   }
+}
+
+/** SSE from `POST /api/chat/stream`: one JSON `ChatStreamEvent` per `data:` line. */
+export async function chatStream(
+  message: string,
+  onEvent: (ev: ChatStreamEvent) => void,
+  options?: { toolsStream?: boolean; useMemory?: boolean; conversationId?: string | null },
+): Promise<void> {
+  const res = await fetch(`${base}/api/chat/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message,
+      ...(options?.toolsStream ? { tools_stream: true } : {}),
+      ...(options?.useMemory !== undefined ? { use_memory: options.useMemory } : {}),
+      ...(options?.conversationId ? { conversation_id: options.conversationId } : {}),
+    }),
+  });
+  await streamSse<ChatStreamEvent>(res, onEvent);
+}
+
+/** SSE from `POST /api/rookery/sessions/{id}/chat` with `{ stream: true }`. */
+export async function rookeryChatStream(
+  sessionId: string,
+  message: string,
+  onEvent: (ev: RookeryStreamEvent) => void,
+): Promise<void> {
+  const res = await fetch(
+    `${base}/api/rookery/sessions/${encodeURIComponent(sessionId)}/chat`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, stream: true }),
+    },
+  );
+  await streamSse<RookeryStreamEvent>(res, onEvent);
 }

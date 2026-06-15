@@ -2,6 +2,7 @@
 import { nextTick, ref, watch } from "vue";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
+import PenguinAvatar from "../components/PenguinAvatar.vue";
 
 type ChatTurn = { role: "user" | "assistant"; content: string };
 type Conversation = {
@@ -124,7 +125,15 @@ function send(stream: boolean) {
         class="chat-turn"
         :class="`turn-${turn.role}`"
       >
-        <header>{{ turn.role === "user" ? "You" : "Assistant" }}</header>
+        <header class="turn-head">
+          <PenguinAvatar
+            v-if="turn.role === 'assistant'"
+            avatar="assistant"
+            variant="inline"
+            alt="Assistant"
+          />
+          <span>{{ turn.role === "user" ? "You" : "Assistant" }}</span>
+        </header>
         <pre v-if="turn.role === 'user'" class="chat-turn-content">{{ turn.content }}</pre>
         <div
           v-else
@@ -217,6 +226,7 @@ function send(stream: boolean) {
 }
 .turn-user { justify-self: end; }
 .chat-turn header { color: #9aa8c0; font-size: 0.8rem; margin-bottom: 0.2rem; }
+.turn-head { display: flex; align-items: center; gap: 0.4rem; }
 .chat-turn-content {
   margin: 0;
   white-space: pre-wrap;

@@ -29,16 +29,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ctx.register_csv(&args.table, path, CsvReadOptions::new())
         .await?;
 
-    let session_id = uuid::Uuid::new_v4().to_string();
-    let state = AppState::new(Arc::new(ctx), args.table.clone(), session_id.clone());
+    let state = AppState::new(Arc::new(ctx), args.table.clone());
 
     let app = app_router(state);
     let addr: SocketAddr = args.bind.parse()?;
     eprintln!(
-        "kowalski-mcp-datafusion: table `{}` <- `{}` | session {} | listening http://{}",
+        "kowalski-mcp-datafusion: table `{}` <- `{}` | stateless Streamable HTTP on http://{}",
         args.table,
         args.csv.display(),
-        session_id,
         addr
     );
     eprintln!("Accept header for clients: `{}`", ACCEPT_STREAMABLE);

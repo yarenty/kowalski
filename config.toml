@@ -1,7 +1,8 @@
 [ollama]
 host = "localhost"
 port = 11434
-model = "llama3.2"
+# model = "llama3.2"
+model = "gemma4:e2b"
 
 # LLM backend: `ollama` (above) or `openai` (Chat Completions — OpenAI, Groq, LM Studio, vLLM, …)
 # [llm]
@@ -25,9 +26,49 @@ episodic_path = "db/episodic_buffer"
 clean_on_startup = true
 
 # MCP servers (optional) — used by agents and: cargo run -p kowalski-cli -- mcp ping
-# DataFusion MCP (Docker): docker compose -f kowalski-mcp-datafusion/docker-compose.yml up — POST JSON-RPC to server root
+# In-repo MCP servers (kowalski-mcp-datafusion, kowalski-mcp-rookery) run over the shared
+# kowalski-mcp-transport: stdio OR stateless Streamable HTTP (no Mcp-Session-Id; every POST
+# independent, so the server is restartable / horizontally scalable).
+#
+# DataFusion MCP (stateless HTTP; Docker): docker compose -f kowalski-mcp-datafusion/docker-compose.yml up
 # [[mcp.servers]]
 # name = "datafusion"
 # url = "http://127.0.0.1:8080/"
 # transport = "http"   # or "sse" — both use Streamable HTTP + optional SSE responses
 # headers = { Authorization = "Bearer your-token" }
+
+# Docker MCP gateway (recommended — one stdio connection to the Docker MCP Toolkit catalog).
+# Requires Docker Desktop + MCP Toolkit (`docker mcp version`). Enable/disable individual
+# servers in Docker Desktop; Kowalski connects to all of them through this single entry.
+#
+# Default (no flags) = "dynamic" mode: exposes gateway management tools (mcp-find, mcp-add,
+# mcp-exec, code-mode) so an agent can discover/run catalog tools on demand. Zero config.
+# [[mcp.servers]]
+# name = "docker-mcp"
+# transport = "stdio"
+# command = ["docker", "mcp", "gateway", "run"]
+#
+# Direct mode: expose a specific server's tools by name (the server must be installed and
+# configured — including any secrets/OAuth — in Docker Desktop first; tools appear once its
+# container is ready). Use `--profile <id>` to load a saved profile instead of `--servers`.
+# [[mcp.servers]]
+# name = "docker-mcp-github"
+# transport = "stdio"
+# command = ["docker", "mcp", "gateway", "run", "--servers", "github"]
+
+# Rookery MCP (in-repo) — exposes the horde builder primitives so any MCP client
+# (the Kowalski agent, Claude Desktop, CLI) can validate and "give birth" to hordes.
+# LLM-free: the calling agent drives the interview; this server only validates/parses/writes.
+# Tools: rookery_example_draft, rookery_validate_draft, rookery_parse_draft, rookery_give_birth.
+#
+# stdio mode (Kowalski launches the subprocess):
+# [[mcp.servers]]
+# name = "rookery"
+# transport = "stdio"
+# command = ["cargo", "run", "-q", "-p", "kowalski-mcp-rookery", "--", "--transport", "stdio", "--output-root", "examples"]
+#
+# stateless HTTP mode (run separately: kowalski-mcp-rookery --transport http --bind 127.0.0.1:8081):
+# [[mcp.servers]]
+# name = "rookery"
+# transport = "http"
+# url = "http://127.0.0.1:8081/"
