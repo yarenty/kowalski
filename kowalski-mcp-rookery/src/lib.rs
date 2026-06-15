@@ -94,7 +94,19 @@ pub fn tools_list_json() -> Value {
             "pipeline": {
                 "type": "array",
                 "items": { "type": "string" },
-                "description": "Ordered step names; must match penguins[].name exactly (linear only in 1.3.0)"
+                "description": "Ordered step names; must match penguins[].name exactly; must be a topological order when edges are present"
+            },
+            "edges": {
+                "type": "array",
+                "description": "Optional DAG scheduling edges. Omit for linear hordes (implicit chain).",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "from": { "type": "string" },
+                        "to": { "type": "string" }
+                    },
+                    "required": ["from", "to"]
+                }
             },
             "penguins": {
                 "type": "array",

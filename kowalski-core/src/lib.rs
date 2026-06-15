@@ -42,8 +42,9 @@ pub use federation::{
 pub use graph::{postgres_age_cypher, postgres_graph_status};
 pub use logging::*;
 pub use horde_graph::{
-    all_steps_successful, execution_order, next_ready_step, resolve_execution_graph,
-    single_predecessor, ExecutionGraph, HordeEdge,
+    all_steps_successful, execution_order, inbound_predecessors, next_ready_step,
+    resolve_execution_graph, should_persist_edges, single_predecessor, ExecutionGraph,
+    HordeEdge,
 };
 pub use markdown_pipeline::{
     maybe_normalize_markdown, parse_app_manifest, parse_stage_agent, render_context_attachments,
@@ -55,7 +56,7 @@ pub use operator_input::{
 };
 pub use rookery::{
     assign_penguin_avatars, extract_json_block, horde_root_path, infer_penguin_avatar,
-    minimal_linear_draft, parse_draft_from_assistant, normalize_draft, output_looks_invalid,
+    minimal_dag_draft, minimal_linear_draft, parse_draft_from_assistant, normalize_draft, output_looks_invalid,
     repair_horde_tree_outputs, validate_draft, validate_horde_tree, write_horde_tree,
     HordeBirthSpec, PenguinSpec, RookeryDraft,
 };

@@ -1,6 +1,7 @@
 //! Write a born horde directory from a validated [`RookeryDraft`].
 
 use crate::error::KowalskiError;
+use crate::horde_graph::{inbound_predecessors, resolve_execution_graph, should_persist_edges};
 use crate::rookery::types::{HordeBirthSpec, PenguinSpec, RookeryDraft};
 use crate::operator_input::OperatorInputField;
 use crate::rookery::normalize::{default_output_for_penguin, output_looks_invalid};
@@ -68,14 +69,12 @@ fn write_penguin_files(
         prefix.replace('.', "-"),
         penguin.kind
     );
-    let context_paths = if penguin.context_paths.is_empty() {
-        if draft.pipeline.first() == Some(&penguin.name) {
-            vec![]
-        } else {
-            vec!["@artifact@".to_string()]
-        }
-    } else {
+    let context_paths = if !penguin.context_paths.is_empty() {
         penguin.context_paths.clone()
+    } else if graph_step_is_source(draft, &penguin.name) {
+        vec![]
+    } else {
+        vec!["@artifact@".to_string()]
     };
 
     let mut fm = String::new();
@@ -174,6 +173,17 @@ fn default_agent_body(penguin: &PenguinSpec) -> String {
     )
 }
 
+fn graph_step_is_source(draft: &RookeryDraft, step: &str) -> bool {
+    let edge_slice = if draft.edges.is_empty() {
+        None
+    } else {
+        Some(draft.edges.as_slice())
+    };
+    resolve_execution_graph(&draft.pipeline, edge_slice)
+        .map(|g| inbound_predecessors(&g.edges, step).is_empty())
+        .unwrap_or_else(|_| draft.pipeline.first().is_some_and(|s| s == step))
+}
+
 fn render_horde_md(draft: &RookeryDraft) -> String {
     let workdir = draft.workdir.as_deref().unwrap_or("output");
     let delivery_root_rel = draft
@@ -249,6 +259,14 @@ fn render_horde_md(draft: &RookeryDraft) -> String {
             escape_toml_str(&prompt_tip)
         ));
     }
+    if should_persist_edges(&draft.pipeline, &draft.edges) {
+        for edge in &draft.edges {
+            out.push_str(&format!(
+                "\n[[edges]]\nfrom = \"{}\"\nto = \"{}\"\n",
+                edge.from, edge.to
+            ));
+        }
+    }
     out.push_str("---\n\n");
     out.push_str(&format!("# {}\n\n", draft.display_name));
     out.push_str(&format!("{}\n\n", draft.description));
@@ -262,9 +280,22 @@ fn render_horde_md(draft: &RookeryDraft) -> String {
         }
     }
     out.push_str("\n## Orchestration model\n\n");
-    out.push_str("Linear pipeline (1.3.0):\n\n```\n");
+    if should_persist_edges(&draft.pipeline, &draft.edges) {
+        out.push_str(
+            "DAG pipeline (`pipeline` is a topological order; `[[edges]]` define scheduling deps). \
+Parallel branches run sequentially per process in 1.4.0 MVP.\n\n```\n",
+        );
+    } else {
+        out.push_str("Linear pipeline:\n\n```\n");
+    }
     out.push_str(&draft.pipeline.join(" -> "));
     out.push_str("\n```\n");
+    if should_persist_edges(&draft.pipeline, &draft.edges) {
+        out.push_str("\n### Edges\n\n");
+        for edge in &draft.edges {
+            out.push_str(&format!("- `{}` → `{}`\n", edge.from, edge.to));
+        }
+    }
     out
 }
 

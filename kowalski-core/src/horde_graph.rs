@@ -59,6 +59,28 @@ pub fn resolve_execution_graph(
     })
 }
 
+/// True when explicit `edges` differ from the implicit linear chain (emit `[[edges]]` on birth).
+pub fn should_persist_edges(pipeline: &[String], edges: &[HordeEdge]) -> bool {
+    if edges.is_empty() {
+        return false;
+    }
+    match (
+        resolve_execution_graph(pipeline, None),
+        resolve_execution_graph(pipeline, Some(edges)),
+    ) {
+        (Ok(linear), Ok(dag)) => linear.edges != dag.edges,
+        _ => true,
+    }
+}
+
+/// Inbound scheduling predecessors of `step` (empty for graph sources).
+pub fn inbound_predecessors(edges: &[HordeEdge], step: &str) -> Vec<String> {
+    predecessor_map(edges)
+        .get(step)
+        .cloned()
+        .unwrap_or_default()
+}
+
 fn effective_edges(
     pipeline: &[String],
     edges: Option<&[HordeEdge]>,

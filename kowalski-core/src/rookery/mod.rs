@@ -14,7 +14,7 @@ mod writer;
 
 pub use avatars::{assign_penguin_avatars, infer_penguin_avatar};
 pub use draft_parse::{extract_json_block, parse_draft_from_assistant};
-pub use fixture::minimal_linear_draft;
+pub use fixture::{minimal_dag_draft, minimal_linear_draft};
 pub use normalize::{
     default_output_for_penguin, normalize_draft, normalize_penguin_output, output_looks_invalid,
     slugify_horde_id,
@@ -92,6 +92,33 @@ mod tests {
         let mut draft = minimal_linear_draft();
         draft.id = "../evil".into();
         assert!(validate_draft(&draft).is_err());
+    }
+
+    #[test]
+    fn write_dag_fixture_emits_edges_and_validates() {
+        let dir = tempdir().unwrap();
+        let mut draft = minimal_dag_draft();
+        normalize_draft(&mut draft);
+        validate_draft(&draft).expect("DAG fixture should validate");
+        let spec = HordeBirthSpec::new(draft);
+        let root = write_horde_tree(dir.path(), &spec).unwrap();
+        validate_horde_tree(&root).expect("written DAG tree should validate");
+        let body = fs::read_to_string(root.join("horde.md")).unwrap();
+        assert!(body.contains("[[edges]]"));
+        assert!(body.contains("from = \"ingest\""));
+        let join_agent = fs::read_to_string(root.join("agents/join.md")).unwrap();
+        assert!(join_agent.contains("@step:branch-a@"));
+        assert!(join_agent.contains("@step:branch-b@"));
+    }
+
+    #[test]
+    fn write_linear_fixture_omits_edges() {
+        let dir = tempdir().unwrap();
+        let spec = HordeBirthSpec::new(minimal_linear_draft());
+        let root = write_horde_tree(dir.path(), &spec).unwrap();
+        let body = fs::read_to_string(root.join("horde.md")).unwrap();
+        assert!(!body.contains("[[edges]]"));
+        validate_horde_tree(&root).expect("linear tree should validate");
     }
 
     #[test]

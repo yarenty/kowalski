@@ -198,7 +198,7 @@ command = ["docker", "mcp", "gateway", "run"]
 
 **[`source_bundle`](./src/source_bundle.rs):** builds `raw/*.md` bundles under the given root (typically `workdir/debug`, so **`debug/raw/`**) from URL / file / text tokens (used by `kowalski-cli` worker ingest and any future server-side ingest). Uses **`tools::internal::github`** and **`tools::internal::web`** (HTML heuristic → Markdown). Not horde-specific.
 
-**[`rookery`](./src/rookery/):** horde builder — `RookeryDraft`, `validate_draft`, `validate_horde_tree`, `write_horde_tree`. Optional DAG scheduling via **`[[edges]]`** in manifest / draft (see [`horde_graph`](./src/horde_graph.rs)). Builder system prompt: [`../resources/prompts/rookery/builder.md`](../resources/prompts/rookery/builder.md). Fixture: `minimal_linear_draft()`.
+**[`rookery`](./src/rookery/):** horde builder — `RookeryDraft`, `validate_draft`, `validate_horde_tree`, `write_horde_tree`. Optional DAG scheduling via **`[[edges]]`** in manifest / draft (see [`horde_graph`](./src/horde_graph.rs)). **`write_horde_tree`** emits `[[edges]]` only when the graph differs from an implicit linear chain. Builder system prompt: [`../resources/prompts/rookery/builder.md`](../resources/prompts/rookery/builder.md). Fixtures: `minimal_linear_draft()`, `minimal_dag_draft()`.
 
 **[`horde_graph`](./src/horde_graph.rs):** `HordeEdge`, `resolve_execution_graph()` — validates acyclic graphs, pipeline topological order, and returns scheduling layers. **`execution_order`**, **`next_ready_step`**, **`single_predecessor`** drive CLI/HTTP orchestrators. Empty/missing `edges` → implicit chain along `pipeline` order (linear hordes unchanged). Parallel layers run **sequentially per process** in 1.4.0 MVP.
 
