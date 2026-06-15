@@ -884,7 +884,26 @@ fn handle_role_delegate(
         "ingest" => execute_ingest(api, topic, agent_id, &instr, &workspace_root, &workdir),
         "compile" => execute_compile(api, topic, agent_id, &instr, &workspace_root, &workdir),
         "ask" => execute_ask(api, topic, agent_id, &instr, &workspace_root, &workdir),
-        "lint" => execute_lint(api, topic, agent_id, &instr, &workspace_root, &workdir),
+        "lint" => execute_llm_step(
+            api,
+            topic,
+            agent_id,
+            &instr,
+            &workspace_root,
+            &workdir,
+            "federation handoff",
+            "handoff output",
+        ),
+        "process" | "step" | "deliver" | "final" => execute_llm_step(
+            api,
+            topic,
+            agent_id,
+            &instr,
+            &workspace_root,
+            &workdir,
+            "federation worker",
+            "stage output",
+        ),
         other => Err(format!("unsupported role kind `{}`", other).into()),
     };
 
@@ -1028,13 +1047,15 @@ fn execute_ask(
     ))
 }
 
-fn execute_lint(
+fn execute_llm_step(
     api: &str,
     topic: &str,
     agent_id: &str,
     instr: &HordeInstruction,
     workspace_root: &Path,
     workdir: &Path,
+    phase_label: &str,
+    summary_prefix: &str,
 ) -> Result<(String, String), Box<dyn std::error::Error>> {
     ensure_dirs(workdir)?;
     let agent = load_agent_doc(workspace_root, &instr.step)?;
@@ -1043,7 +1064,7 @@ fn execute_lint(
         topic,
         agent_id,
         instr,
-        &format!("LLM stage `{}` (federation handoff)", instr.step),
+        &format!("LLM stage `{}` ({})", instr.step, phase_label),
     );
     let step_paths = collect_step_paths(workspace_root, workdir)?;
     let prev = instr.previous_artifact.as_deref().map(Path::new);
@@ -1059,7 +1080,7 @@ fn execute_lint(
     )?;
     Ok((
         out.display().to_string(),
-        format!("handoff output: {}", out.display()),
+        format!("{summary_prefix}: {}", out.display()),
     ))
 }
 
