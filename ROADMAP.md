@@ -13,10 +13,18 @@ See [`CHANGELOG.md`](CHANGELOG.md) (**[1.2.0]**). Highlights: Knowledge Compiler
 
 Canonical plan: [`PLAN.md`](PLAN.md).
 
-- [ ] **`kowalski-core::rookery`** — draft schema, validate, write `horde.md` + `agents/` + `prompts/` tree.
-- [ ] **`/api/rookery/*`** — interview chat, propose, **Give birth** (linear pipeline only).
-- [ ] **UI Rookery tab** — conversational builder + summary + birth; linear penguin canvas (Phases 4–6 in plan).
+- [x] **`kowalski-core::rookery`** — draft schema, validate, write `horde.md` + `agents/` + `prompts/` tree.
+- [x] **`/api/rookery/*`** — interview chat, propose, **Give birth** (linear pipeline only).
+- [x] **UI Rookery tab** — conversational builder + summary + birth; linear penguin canvas + per-penguin editor + structured form (Phases 4–6 in plan).
 - **Topology:** **linear** `pipeline = [...]` only (same as Knowledge Compiler today).
+
+### 1.3.x — Cleanup + reposition (architectural debt)
+
+The builder shipped, but the UI absorbed core responsibilities. Pay down before resuming Phase 7–9 (details in [`PLAN.md`](PLAN.md) §1.3.x):
+
+- [ ] **R1** Server owns the Rookery draft — drop the `localStorage` draft round-trip; UI is render + dispatch only.
+- [ ] **R2** Rookery as an **in-repo MCP server** over `kowalski-core::rookery`; `/api/rookery/*` and CLI become thin clients (any MCP client can build hordes).
+- [ ] **R3** **Docker MCP gateway** as one stdio MCP server (`docker mcp gateway run`); enable **GitHub** first, then **Fetch** / **Filesystem**. `tools/internal/*` stay the dependency-light fallback, shadowed by the gateway when present.
 
 ## Planned: DAG horde pipelines (1.4.0+)
 
@@ -27,6 +35,14 @@ Canonical plan: [`PLAN.md`](PLAN.md).
 - [ ] Rookery UI canvas: fork/join; builder may propose branches.
 
 Existing linear hordes remain valid without migration.
+
+## Planned: A2A at the federation edge (1.4/1.5)
+
+**Design-only for now** ([`PLAN.md`](PLAN.md) §R4). Penguins inside a horde stay **orchestrator-mediated** (sequential/DAG + artifact handoff); the homegrown ACL (`federation/acl.rs`) stays the **internal** bus. A2A is adopted only as the **external** node↔node skin:
+
+- [ ] Each Kowalski node publishes an **A2A Agent Card** and accepts A2A tasks.
+- [ ] A2A task lifecycle maps onto `AclMessage`; an A2A endpoint delegates into the existing orchestrator.
+- [ ] **No** penguin-to-penguin A2A — that handoff stays files + orchestrator.
 
 ## Horde changes in 1.1.0 (since 1.0.0)
 

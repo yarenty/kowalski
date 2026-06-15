@@ -1,6 +1,8 @@
 //! Normalize LLM-produced ids to safe horde / step names before validation.
 
-use crate::rookery::types::RookeryDraft;
+use crate::operator_input::default_ingest_form_fields;
+use crate::rookery::types::{PenguinSpec, RookeryDraft};
+use crate::rookery::validate::validate_workdir_relative_path;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Convert arbitrary text to `[a-z0-9][a-z0-9-]*` (lowercase kebab-case).
@@ -80,11 +82,94 @@ pub fn normalize_draft(draft: &mut RookeryDraft) {
                 .unwrap_or_else(|| slugify_horde_id(step))
         })
         .collect();
+
+    normalize_delivery_root(draft);
+    let pipeline = draft.pipeline.clone();
+    let delivery_root = draft.delivery_root_rel.as_deref();
+    for p in &mut draft.penguins {
+        let is_first = pipeline.first() == Some(&p.name);
+        let is_last = pipeline.last() == Some(&p.name);
+        normalize_penguin_output(delivery_root, p, is_first, is_last);
+        if is_first && p.inputs.is_empty() && matches!(p.kind.as_str(), "ingest" | "step") {
+            p.inputs = default_ingest_form_fields();
+        }
+    }
+}
+
+fn normalize_delivery_root(draft: &mut RookeryDraft) {
+    let fix = |s: &str| -> bool {
+        let t = s.trim();
+        t.is_empty()
+            || t.eq_ignore_ascii_case("string")
+            || (!t.contains('/') && !t.contains('.') && t.len() < 64)
+    };
+    if draft
+        .delivery_root_rel
+        .as_ref()
+        .is_some_and(|r| fix(r))
+    {
+        draft.delivery_root_rel = Some("HANDOFF.md".into());
+    }
+}
+
+/// True when `output` looks like a placeholder (e.g. LLM wrote `String`) not a workdir path.
+pub fn output_looks_invalid(output: &str) -> bool {
+    let t = output.trim();
+    if t.is_empty() {
+        return true;
+    }
+    if t.eq_ignore_ascii_case("string")
+        || t.eq_ignore_ascii_case("path")
+        || t.eq_ignore_ascii_case("output")
+        || t.eq_ignore_ascii_case("artifact")
+    {
+        return true;
+    }
+    if !t.contains('/') && !t.contains('.') && t.chars().all(|c| c.is_alphabetic() || c.is_whitespace())
+    {
+        return true;
+    }
+    validate_workdir_relative_path(t).is_err()
+}
+
+pub fn default_output_for_penguin(
+    delivery_root_rel: Option<&str>,
+    penguin: &PenguinSpec,
+    is_first: bool,
+    is_last: bool,
+) -> String {
+    match penguin.kind.as_str() {
+        "ingest" => "debug/raw/".into(),
+        "deliver" => delivery_root_rel
+            .map(str::to_string)
+            .unwrap_or_else(|| "HANDOFF.md".into()),
+        _ if is_last => delivery_root_rel
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("debug/stage-{}.md", penguin.name)),
+        _ if is_first => format!("debug/stage-{}.md", penguin.name),
+        _ => format!("debug/stage-{}.md", penguin.name),
+    }
+}
+
+pub fn normalize_penguin_output(
+    delivery_root_rel: Option<&str>,
+    penguin: &mut PenguinSpec,
+    is_first: bool,
+    is_last: bool,
+) {
+    if output_looks_invalid(&penguin.output) {
+        penguin.output =
+            default_output_for_penguin(delivery_root_rel, penguin, is_first, is_last);
+    }
+    if !is_first && penguin.context_paths.is_empty() {
+        penguin.context_paths = vec!["@artifact@".into()];
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rookery::fixture::minimal_linear_draft;
     use crate::rookery::types::PenguinSpec;
     use crate::rookery::validate::validate_draft;
 
@@ -96,6 +181,15 @@ mod tests {
             "rust-project-scaffolder-1-0"
         );
         assert_eq!(slugify_horde_id("  Foo Bar  "), "foo-bar");
+    }
+
+    #[test]
+    fn fixes_placeholder_output_string() {
+        let mut draft = minimal_linear_draft();
+        draft.penguins[0].output = "String".into();
+        normalize_draft(&mut draft);
+        assert_eq!(draft.penguins[0].output, "debug/raw/");
+        validate_draft(&draft).expect("outputs should validate");
     }
 
     #[test]
@@ -122,6 +216,7 @@ mod tests {
                     context_paths: vec![],
                     tool_ids: vec![],
                     model_id: None,
+                    inputs: vec![],
                 },
                 PenguinSpec {
                     name: "Structure".into(),
@@ -134,6 +229,7 @@ mod tests {
                     context_paths: vec!["@artifact@".into()],
                     tool_ids: vec![],
                     model_id: None,
+                    inputs: vec![],
                 },
                 PenguinSpec {
                     name: "Deliver".into(),
@@ -146,6 +242,7 @@ mod tests {
                     context_paths: vec!["@artifact@".into()],
                     tool_ids: vec![],
                     model_id: None,
+                    inputs: vec![],
                 },
             ],
             default_question: None,

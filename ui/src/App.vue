@@ -9,7 +9,13 @@ import GraphPanel from "./panels/GraphPanel.vue";
 import HomePanel from "./panels/HomePanel.vue";
 import McpPanel from "./panels/McpPanel.vue";
 import RookeryPanel, { type RookeryUiSession } from "./panels/RookeryPanel.vue";
-import { api, chatStream, rookeryChatStream, type RookerySessionResponse } from "./api";
+import {
+  api,
+  chatStream,
+  rookeryChatStream,
+  type RookerySessionResponse,
+  type RookerySessionStatus,
+} from "./api";
 
 const tab = ref<
   "home" | "mcp" | "chat" | "rookery" | "federation-management" | "federation-run" | "graph" | "about"
@@ -101,26 +107,47 @@ function restoreHordeInteractions() {
 }
 
 function persistRookerySessions() {
-  localStorage.setItem(ROOKERY_LIST_KEY, JSON.stringify(rookerySessions.value));
+  // The server owns the draft/status/pipeline/summary (PLAN.md §R1). Persist only a thin
+  // session-id list (plus local display turns/title); server-owned state is fetched via GET.
+  const minimal = rookerySessions.value.map((r) => ({
+    id: r.id,
+    serverSessionId: r.serverSessionId,
+    title: r.title,
+    turns: r.turns,
+    updatedAt: r.updatedAt,
+  }));
+  localStorage.setItem(ROOKERY_LIST_KEY, JSON.stringify(minimal));
 }
 
 function restoreRookerySessions() {
   const raw = localStorage.getItem(ROOKERY_LIST_KEY);
   if (!raw) return;
   try {
-    const parsed = JSON.parse(raw) as RookeryUiSession[];
+    const parsed = JSON.parse(raw) as Array<Partial<RookeryUiSession>>;
     if (Array.isArray(parsed)) {
       rookerySessions.value = parsed
         .filter((r) => r && typeof r.id === "string" && typeof r.serverSessionId === "string")
         .map((r) => ({
-          ...r,
+          id: r.id as string,
+          serverSessionId: r.serverSessionId as string,
+          title: r.title ?? "Rookery session",
           turns: Array.isArray(r.turns) ? r.turns : [],
-          pipeline: Array.isArray(r.pipeline) ? r.pipeline : [],
-          draft: r.draft ?? null,
+          // Server-owned fields are placeholders until hydrated from GET on select.
+          status: "interviewing" as RookerySessionStatus,
+          summary: null,
+          pipeline: [],
+          draft: null,
+          hordeRoot: null,
+          outputRoot: null,
+          birthNote: null,
+          parseError: null,
           updatedAt: r.updatedAt ?? Date.now(),
         }));
       if (!activeRookerySessionId.value && rookerySessions.value.length) {
         activeRookerySessionId.value = rookerySessions.value[0].id;
+      }
+      if (activeRookerySessionId.value) {
+        void refreshRookerySession(activeRookerySessionId.value);
       }
     }
   } catch {
@@ -150,7 +177,12 @@ function isRookerySessionNotFound(error: unknown): boolean {
   return /session not found/i.test(message);
 }
 
-/** Re-create backend session when server restarted but UI still has local turns/draft. */
+/**
+ * Ensure the backend still has this session. The server persists sessions across restarts
+ * (PLAN.md §R1), so this normally just confirms existence. If the server genuinely lost the
+ * session (e.g. its state dir was cleared), create a fresh empty one — the client no longer
+ * round-trips the draft/history, since the server is the source of truth.
+ */
 async function ensureRookeryBackendSession(session: RookeryUiSession): Promise<boolean> {
   try {
     await api.rookerySession(session.serverSessionId);
@@ -158,13 +190,9 @@ async function ensureRookeryBackendSession(session: RookeryUiSession): Promise<b
   } catch (e) {
     if (!isRookerySessionNotFound(e)) throw e;
   }
-  const r = await api.rookeryCreateSession({
-    history: session.turns,
-    draft: session.draft,
-    summary: session.summary,
-    status: session.status,
-  });
+  const r = await api.rookeryCreateSession();
   session.serverSessionId = r.session.session_id;
+  session.turns = [];
   applyRookeryServerState(session, r.session);
   persistRookerySessions();
   return true;

@@ -158,6 +158,22 @@ export type HordeSubAgent = {
   output?: string | null;
 };
 
+export type OperatorInputField = {
+  id: string;
+  type: string;
+  label: string;
+  required?: boolean;
+  placeholder?: string | null;
+  options?: string[];
+  default?: string | null;
+};
+
+export type HordeRunFormSpec = {
+  step: string;
+  display_name?: string | null;
+  inputs: OperatorInputField[];
+};
+
 export type HordeCatalogItem = {
   id: string;
   display_name: string;
@@ -176,6 +192,7 @@ export type HordeCatalogItem = {
   delivery_summary_note?: string;
   prompt_tip?: string;
   sub_agents: HordeSubAgent[];
+  run_form?: HordeRunFormSpec | null;
 };
 
 export type HordeCatalogResponse = {
@@ -288,6 +305,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(step ? { step } : {}),
     }),
+  hordeRepairOutputs: (hordeId: string) =>
+    json<{ ok: boolean; horde_id: string; files_fixed: number }>(
+      `/api/hordes/${encodeURIComponent(hordeId)}/repair-outputs`,
+      { method: "POST", body: "{}" },
+    ),
   hordeRun: (hordeId: string, body: { prompt?: string; source?: string; question?: string }) =>
     json<{ ok: boolean; run: HordeRunRecord }>(`/api/hordes/${encodeURIComponent(hordeId)}/run`, {
       method: "POST",

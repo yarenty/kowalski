@@ -160,7 +160,8 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
 
 | Method | Path | Notes |
 |--------|------|--------|
-| `POST` | `/api/rookery/sessions` | Create session; optional body `{ history?, draft?, summary?, status? }` to restore after server restart |
+| `GET` | `/api/rookery/sessions` | List all server-owned sessions (newest first) |
+| `POST` | `/api/rookery/sessions` | Create session; optional body `{ history?, draft?, summary?, status? }` (legacy restore hint — no longer needed by the UI, see server-owned draft below) |
 | `GET` | `/api/rookery/sessions/{id}` | Draft + status |
 | `DELETE` | `/api/rookery/sessions/{id}` | Drop session |
 | `POST` | `/api/rookery/sessions/{id}/chat` | Body: `{ "message", "stream"? }` — no tools/memory |
@@ -172,6 +173,8 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
 | `GET` | `/api/models` | Ollama model list + server default |
 
 Builder system prompt: [`../resources/prompts/rookery/builder.md`](../resources/prompts/rookery/builder.md). Default birth directory: `examples/` (`KOWALSKI_ROOKERY_OUTPUT`).
+
+**Server-owned draft (PLAN.md §R1):** the server is the **source of truth** for Rookery sessions. Each session (status, draft, summary, and chat transcript) is persisted as one **YAML** file under the state dir (default `db/rookery/`; override with `KOWALSKI_ROOKERY_STATE`) and reloaded on startup — so sessions survive a server restart **without** the browser re-POSTing the draft. The UI keeps only a thin session-id list and renders draft/status via `GET /api/rookery/sessions/{id}`. The legacy `POST` restore body (`history`/`draft`/…) is still accepted for back-compat but is no longer used by `ui/`.
 
 - **MCP**: client/hub in core; optional **`kowalski-mcp-datafusion`** server for heavy SQL.
 

@@ -2,6 +2,8 @@
 
 use crate::error::KowalskiError;
 use crate::rookery::types::{HordeBirthSpec, PenguinSpec, RookeryDraft};
+use crate::operator_input::OperatorInputField;
+use crate::rookery::normalize::{default_output_for_penguin, output_looks_invalid};
 use crate::rookery::validate::{validate_draft, validate_horde_id};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -91,7 +93,13 @@ fn write_penguin_files(
         escape_toml_str(&penguin.description)
     ));
     fm.push_str(&format!("prompt_file = \"{prompt_rel}\"\n"));
-    fm.push_str(&format!("output = \"{}\"\n", penguin.output));
+    let output = effective_output(draft, penguin);
+    fm.push_str(&format!("output = \"{}\"\n", escape_toml_str(&output)));
+    if !penguin.inputs.is_empty() {
+        for input in &penguin.inputs {
+            write_input_field(&mut fm, input);
+        }
+    }
     if !context_paths.is_empty() {
         let inner = context_paths
             .iter()
@@ -116,6 +124,44 @@ fn write_penguin_files(
 
 fn escape_toml_str(s: &str) -> String {
     s.replace('\\', "\\\\").replace('\"', "\\\"")
+}
+
+fn effective_output(draft: &RookeryDraft, penguin: &PenguinSpec) -> String {
+    if output_looks_invalid(&penguin.output) {
+        let is_first = draft.pipeline.first() == Some(&penguin.name);
+        let is_last = draft.pipeline.last() == Some(&penguin.name);
+        default_output_for_penguin(draft.delivery_root_rel.as_deref(), penguin, is_first, is_last)
+    } else {
+        penguin.output.clone()
+    }
+}
+
+fn write_input_field(fm: &mut String, input: &OperatorInputField) {
+    fm.push_str("[[inputs]]\n");
+    fm.push_str(&format!("id = \"{}\"\n", escape_toml_str(&input.id)));
+    fm.push_str(&format!("type = \"{}\"\n", escape_toml_str(&input.field_type)));
+    fm.push_str(&format!("label = \"{}\"\n", escape_toml_str(&input.label)));
+    if input.required {
+        fm.push_str("required = true\n");
+    }
+    if let Some(p) = &input.placeholder {
+        fm.push_str(&format!(
+            "placeholder = \"{}\"\n",
+            escape_toml_str(p)
+        ));
+    }
+    if let Some(d) = &input.default {
+        fm.push_str(&format!("default = \"{}\"\n", escape_toml_str(d)));
+    }
+    if !input.options.is_empty() {
+        let inner = input
+            .options
+            .iter()
+            .map(|o| format!("\"{}\"", escape_toml_str(o)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        fm.push_str(&format!("options = [{inner}]\n"));
+    }
 }
 
 fn default_agent_body(penguin: &PenguinSpec) -> String {

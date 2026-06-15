@@ -22,6 +22,7 @@ Backend or `kowalski-core` changes that touch chat, horde, federation, or delive
 - Prefer **`fetch`** and small composables; keep `App.vue` readable—extract new tabs into components if they grow.
 - API helpers live in **`src/api.ts`**; extend `ChatStreamEvent` only when the backend adds event types.
 - **Tool-aware stream**: checkbox binds to `chatToolsStream` and passes `{ toolsStream: true }` into `chatStream()`.
+- **Rookery draft is server-owned** (PLAN.md §R1): `localStorage` (`kowalski.ui.rookery.list.v1`) holds only a thin session list (`id`, `serverSessionId`, `title`, display `turns`, `updatedAt`). The draft/status/pipeline/summary are **not** mirrored client-side — they are hydrated from `GET /api/rookery/sessions/{id}` on select/restore. Do not re-add a client-held draft round-trip to `POST /api/rookery/sessions`.
 
 ## Documentation closure (mandatory)
 

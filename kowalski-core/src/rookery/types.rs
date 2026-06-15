@@ -1,5 +1,6 @@
 //! Rookery draft types (linear pipeline only in 1.3.0).
 
+use crate::operator_input::OperatorInputField;
 use serde::{Deserialize, Serialize};
 
 /// In-memory draft between interview and **Give birth** (linear `pipeline` order only).
@@ -54,6 +55,9 @@ pub struct PenguinSpec {
     pub tool_ids: Vec<String>,
     #[serde(default)]
     pub model_id: Option<String>,
+    /// Pre-run operator form fields (`[[inputs]]` in agent frontmatter).
+    #[serde(default)]
+    pub inputs: Vec<OperatorInputField>,
 }
 
 /// Options for writing a born horde to disk.

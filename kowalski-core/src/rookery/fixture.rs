@@ -26,6 +26,7 @@ pub fn minimal_linear_draft() -> RookeryDraft {
                 context_paths: vec![],
                 tool_ids: vec![],
                 model_id: None,
+                inputs: vec![],
             },
             PenguinSpec {
                 name: "process".into(),
@@ -38,6 +39,7 @@ pub fn minimal_linear_draft() -> RookeryDraft {
                 context_paths: vec!["@artifact@".into()],
                 tool_ids: vec![],
                 model_id: None,
+                inputs: vec![],
             },
             PenguinSpec {
                 name: "deliver".into(),
@@ -50,6 +52,7 @@ pub fn minimal_linear_draft() -> RookeryDraft {
                 context_paths: vec!["@artifact@".into()],
                 tool_ids: vec![],
                 model_id: None,
+                inputs: vec![],
             },
         ],
         default_question: Some("What is the key takeaway?".into()),

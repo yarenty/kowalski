@@ -240,6 +240,10 @@ pub async fn serve(
             "/api/hordes/{horde_id}/workers/stop",
             post(post_horde_worker_stop),
         )
+        .route(
+            "/api/hordes/{horde_id}/repair-outputs",
+            post(post_horde_repair_outputs),
+        )
         .route("/api/hordes/{horde_id}/run", post(post_horde_run))
         .route(
             "/api/hordes/{horde_id}/clean-workdir",
@@ -264,7 +268,10 @@ pub async fn serve(
         .route("/api/federation/delegate", post(post_federation_delegate))
         .route("/api/federation/publish", post(post_federation_publish))
         .route("/api/graph/status", get(get_graph_status))
-        .route("/api/rookery/sessions", post(crate::rookery::post_sessions))
+        .route(
+            "/api/rookery/sessions",
+            get(crate::rookery::list_sessions).post(crate::rookery::post_sessions),
+        )
         .route(
             "/api/rookery/sessions/{session_id}",
             get(crate::rookery::get_session).delete(crate::rookery::delete_session),
@@ -1604,6 +1611,7 @@ async fn get_hordes(State(state): State<ApiState>) -> Json<serde_json::Value> {
                 "delivery_summary_note": s.delivery_summary_note,
                 "prompt_tip": s.prompt_tip,
                 "sub_agents": s.sub_agents,
+                "run_form": s.run_form,
             })
         })
         .collect();
@@ -1639,6 +1647,7 @@ async fn get_horde_detail(
         "delivery_summary_note": spec.delivery_summary_note,
         "prompt_tip": spec.prompt_tip,
         "sub_agents": spec.sub_agents,
+        "run_form": spec.run_form,
     })))
 }
 
@@ -1904,6 +1913,26 @@ async fn post_horde_clean_workdir(
         "ok": true,
         "horde_id": horde_id,
         "workdir": spec.workdir.display().to_string(),
+    })))
+}
+
+async fn post_horde_repair_outputs(
+    State(state): State<ApiState>,
+    AxumPath(horde_id): AxumPath<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let spec = state.horde_manager.find(&horde_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("unknown horde id: {}", horde_id),
+        )
+    })?;
+    let fixed = kowalski_core::repair_horde_tree_outputs(&spec.root_path).map_err(|e| {
+        (StatusCode::BAD_REQUEST, e.to_string())
+    })?;
+    Ok(Json(json!({
+        "ok": true,
+        "horde_id": horde_id,
+        "files_fixed": fixed,
     })))
 }
 

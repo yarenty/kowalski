@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Changed
 
+- **Rookery — server-owned draft (1.3.x cleanup, PLAN.md §R1):** the `kowalski` server now **persists each Rookery session** (status, draft, summary, chat transcript) as one **YAML** file under `db/rookery/` (override `KOWALSKI_ROOKERY_STATE`) and **reloads them on startup**, so sessions survive a restart without the browser re-POSTing the draft. New `GET /api/rookery/sessions` lists server-owned sessions. The Vue **Rookery** tab now keeps only a thin session-id list in `localStorage` and hydrates draft/status via `GET /api/rookery/sessions/{id}`; the legacy `POST` restore body is still accepted but no longer used by `ui/`.
 - **Rookery:** per-penguin editor (`PenguinEditor.vue`), `PATCH /api/rookery/sessions/{id}/penguins/{name}`, `POST .../save-horde` to flush draft edits to disk after give birth; session recovery on server restart.
 
 - **Rookery:** `normalize_draft` slugifies LLM-produced horde/penguin ids (e.g. `Ingest` → `ingest`, `rust_project_scaffolder_1.0` → `rust-project-scaffolder-1-0`) before validation; builder prompt documents kebab-case id rules. `parse_draft_from_assistant` coerces common LLM JSON mistakes (objects instead of strings for `description`/`output`, object entries in `pipeline`).

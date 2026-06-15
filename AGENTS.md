@@ -266,6 +266,13 @@ Never start a complex task without creating a `task.md` file. Use the template i
 - Building/creating new components
 - Tasks spanning multiple files or components
 
+**Always pair a new plan with a `continuity_prompt.md`.** Whenever you start a new plan (`task_plan.md` / `PLAN.md`), also create or refresh a **`continuity_prompt.md`** next to it. This file holds a ready-to-paste **catch-up prompt** so that if context is lost (new chat, cleared window, agent hand-off), a fresh agent can reconstruct status from disk and resume safely. It must:
+- Point to the planning files to read in order (component `AGENTS.md` → `PLAN.md` → `task_plan.md` → `progress.md` → `findings.md`) and to reconcile against `git status` / `git log`.
+- Restate the plan's **guardrails** (architecture boundaries, deferred scope) and the **resume point** (current phase + first unchecked TODO).
+- Instruct the resumed agent to write back to `progress.md` / `task_plan.md` after each step.
+
+Keep the **Snapshot** (active plan, current phase, last-updated date) at the top current. See [`continuity_prompt.md`](continuity_prompt.md) for the canonical structure.
+
 ### Rule 2: The 2-Action Rule
 > "After every 2 view/browser/search operations, IMMEDIATELY save key findings to text files."
 

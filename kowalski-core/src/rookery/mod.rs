@@ -5,13 +5,18 @@
 mod draft_parse;
 mod fixture;
 mod normalize;
+mod repair;
 mod types;
 mod validate;
 mod writer;
 
 pub use draft_parse::{extract_json_block, parse_draft_from_assistant};
 pub use fixture::minimal_linear_draft;
-pub use normalize::{normalize_draft, slugify_horde_id};
+pub use normalize::{
+    default_output_for_penguin, normalize_draft, normalize_penguin_output, output_looks_invalid,
+    slugify_horde_id,
+};
+pub use repair::repair_horde_tree_outputs;
 pub use types::{HordeBirthSpec, PenguinSpec, RookeryDraft};
 pub use validate::{
     validate_draft, validate_horde_id, validate_horde_tree, validate_step_name,

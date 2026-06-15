@@ -27,7 +27,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
 const BUILDER_PROMPT_REL: &str = "resources/prompts/rookery/builder.md";
-const PROPOSE_USER_MESSAGE: &str = "Based on our conversation so far, emit ONLY a single ```json code block containing a complete RookeryDraft object (fields: id, display_name, description, pipeline, penguins with name, kind, display_name, description, prompt_body, output, and optional context_paths). Use a linear pipeline. No other prose.\n\nID rules (required): `id` and every penguin `name` / pipeline entry must be lowercase ASCII kebab-case: start with a letter or digit, then only `a-z`, `0-9`, and hyphens (e.g. `rust-project-scaffolder`, `ingest`, `deliver`). Put human-readable titles in `display_name` only — never TitleCase or underscores in `name`.\n\nJSON shape: every scalar field (`description`, `prompt_body`, `output`, etc.) must be a JSON **string**, not a nested object. `pipeline` is a JSON array of step name strings (e.g. `[\"ingest\",\"deliver\"]`).";
+const PROPOSE_USER_MESSAGE: &str = "Based on our conversation so far, emit ONLY a single ```toml code block with the complete horde draft. No other prose.\n\nRequired top-level: `id`, `display_name`, `description`, `pipeline` (array of step names), and `[[penguins]]` rows with at least `name`, `description`, `prompt_body`, `output`. Optional per penguin: `kind` (inferred from `name` if omitted), `display_name`, `context_paths`, `inputs`.\n\nID rules: `id` and every penguin `name` / pipeline entry must be lowercase ASCII kebab-case (`a-z`, `0-9`, hyphens only). Human titles go in `display_name`, not in `name`.\n\nExample:\n```toml\nid = \"my-horde\"\ndisplay_name = \"My Horde\"\ndescription = \"…\"\npipeline = [\"ingest\", \"deliver\"]\n\n[[penguins]]\nname = \"ingest\"\ndescription = \"…\"\nprompt_body = \"…\"\noutput = \"debug/raw/\"\n\n[[penguins]]\nname = \"deliver\"\ndescription = \"…\"\nprompt_body = \"…\"\noutput = \"HANDOFF.md\"\n```\n\nYou may use ```json instead if needed; omitting `kind` is OK when the step `name` is ingest/deliver/ask/lint.";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -53,6 +53,8 @@ pub struct RookeryStore {
     pub agent: TemplateAgent,
     pub model: String,
     pub output_root: PathBuf,
+    /// Directory where session snapshots are persisted so they survive a server restart.
+    persist_dir: PathBuf,
     sessions: HashMap<String, RookerySession>,
 }
 
@@ -66,7 +68,20 @@ impl RookeryStore {
     }
 
     pub fn remove(&mut self, id: &str) -> Option<RookerySession> {
-        self.sessions.remove(id)
+        let removed = self.sessions.remove(id);
+        if removed.is_some() {
+            let path = session_file_path(&self.persist_dir, id);
+            if let Err(e) = std::fs::remove_file(&path) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    log::warn!(
+                        "rookery: failed to delete session file {}: {}",
+                        path.display(),
+                        e
+                    );
+                }
+            }
+        }
+        removed
     }
 
     pub fn create_session(&mut self) -> RookerySession {
@@ -83,13 +98,170 @@ impl RookeryStore {
             created_at_ms: now,
             updated_at_ms: now,
         };
-        self.sessions.insert(id, session.clone());
+        self.sessions.insert(id.clone(), session.clone());
+        self.persist(&id);
         session
     }
 
     fn touch(session: &mut RookerySession) {
         session.updated_at_ms = now_ms();
     }
+
+    /// Write a session snapshot (metadata + draft + chat transcript) to disk.
+    ///
+    /// The server is the source of truth for sessions; the UI no longer needs to round-trip
+    /// the draft/history through the browser to recover after a restart (see `PLAN.md` §R1).
+    pub fn persist(&self, session_id: &str) {
+        let Some(session) = self.sessions.get(session_id) else {
+            return;
+        };
+        let transcript = self
+            .agent
+            .get_conversation(&session.conversation_id)
+            .map(|c| {
+                c.messages
+                    .iter()
+                    .filter(|m| m.role == "user" || m.role == "assistant")
+                    .filter(|m| !m.content.trim().is_empty())
+                    .map(|m| PersistedTurn {
+                        role: m.role.clone(),
+                        content: m.content.clone(),
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let persisted = PersistedSession {
+            id: session.id.clone(),
+            status: session.status.clone(),
+            draft: session.draft.clone(),
+            summary: session.summary.clone(),
+            horde_root: session.horde_root.clone(),
+            created_at_ms: session.created_at_ms,
+            updated_at_ms: session.updated_at_ms,
+            transcript,
+        };
+        if let Err(e) = write_session_file(&self.persist_dir, &persisted) {
+            log::warn!("rookery: failed to persist session {}: {}", session_id, e);
+        }
+    }
+}
+
+/// Relative directory (under the config dir) for persisted Rookery session snapshots.
+const ROOKERY_STATE_DIR_REL: &str = "db/rookery";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PersistedTurn {
+    role: String,
+    content: String,
+}
+
+/// On-disk snapshot of a Rookery session (one YAML file per session).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PersistedSession {
+    id: String,
+    status: RookerySessionStatus,
+    #[serde(default)]
+    draft: Option<RookeryDraft>,
+    #[serde(default)]
+    summary: Option<String>,
+    #[serde(default)]
+    horde_root: Option<PathBuf>,
+    created_at_ms: u64,
+    updated_at_ms: u64,
+    #[serde(default)]
+    transcript: Vec<PersistedTurn>,
+}
+
+fn session_file_path(dir: &Path, session_id: &str) -> PathBuf {
+    dir.join(format!("{session_id}.yaml"))
+}
+
+fn write_session_file(dir: &Path, session: &PersistedSession) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    let yaml = serde_yaml::to_string(session)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    std::fs::write(session_file_path(dir, &session.id), yaml)
+}
+
+/// Directory used to persist Rookery sessions (`KOWALSKI_ROOKERY_STATE` overrides; else `db/rookery`).
+pub fn default_rookery_state_dir(config_dir: Option<&Path>) -> PathBuf {
+    if let Ok(env) = std::env::var("KOWALSKI_ROOKERY_STATE") {
+        let p = env.trim();
+        if !p.is_empty() {
+            return PathBuf::from(p);
+        }
+    }
+    let base = config_dir
+        .map(|c| c.to_path_buf())
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    base.join(ROOKERY_STATE_DIR_REL)
+}
+
+/// Load persisted sessions from disk, rebuilding each conversation in the agent.
+fn load_persisted_sessions(
+    agent: &mut TemplateAgent,
+    model: &str,
+    dir: &Path,
+) -> HashMap<String, RookerySession> {
+    let mut map = HashMap::new();
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return map,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("yaml") {
+            continue;
+        }
+        let persisted: PersistedSession = match std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|t| serde_yaml::from_str(&t).ok())
+        {
+            Some(p) => p,
+            None => {
+                log::warn!("rookery: skipping unreadable session file {}", path.display());
+                continue;
+            }
+        };
+        let conversation_id = agent.start_conversation(model);
+        if !persisted.transcript.is_empty() {
+            let messages = persisted
+                .transcript
+                .iter()
+                .map(|t| Message {
+                    role: t.role.clone(),
+                    content: t.content.clone(),
+                    tool_calls: None,
+                })
+                .collect::<Vec<_>>();
+            if let Err(e) = agent.replace_conversation_messages(&conversation_id, messages) {
+                log::warn!(
+                    "rookery: failed to restore transcript for {}: {}",
+                    persisted.id,
+                    e
+                );
+            }
+        }
+        let session = RookerySession {
+            id: persisted.id.clone(),
+            conversation_id,
+            status: persisted.status,
+            draft: persisted.draft,
+            summary: persisted.summary,
+            horde_root: persisted.horde_root,
+            created_at_ms: persisted.created_at_ms,
+            updated_at_ms: persisted.updated_at_ms,
+        };
+        map.insert(session.id.clone(), session);
+    }
+    if !map.is_empty() {
+        log::info!(
+            "rookery: restored {} session(s) from {}",
+            map.len(),
+            dir.display()
+        );
+    }
+    map
 }
 
 pub async fn new_rookery_store(
@@ -101,11 +273,21 @@ pub async fn new_rookery_store(
     agent = agent.with_system_prompt(&prompt);
     let model = config.ollama.model.clone();
     let output_root = default_rookery_output_root(config_path.parent());
+    let persist_dir = default_rookery_state_dir(config_path.parent());
+    if let Err(e) = std::fs::create_dir_all(&persist_dir) {
+        log::warn!(
+            "rookery: cannot create state dir {}: {}",
+            persist_dir.display(),
+            e
+        );
+    }
+    let sessions = load_persisted_sessions(&mut agent, &model, &persist_dir);
     Ok(Arc::new(Mutex::new(RookeryStore {
         agent,
         model,
         output_root,
-        sessions: HashMap::new(),
+        persist_dir,
+        sessions,
     })))
 }
 
@@ -362,6 +544,7 @@ pub async fn post_sessions(
         apply_session_restore(session, &body);
         RookeryStore::touch(session);
     }
+    guard.persist(&session_id);
 
     let session = guard
         .get(&session_id)
@@ -369,6 +552,26 @@ pub async fn post_sessions(
     Ok(Json(CreateSessionResponse {
         session: RookerySessionResponse::from_session(session, &output_root),
     }))
+}
+
+#[derive(Serialize)]
+pub struct ListSessionsResponse {
+    pub sessions: Vec<RookerySessionResponse>,
+}
+
+/// List all sessions (server-owned), newest first. Lets the UI render from the server.
+pub async fn list_sessions(
+    Extension(store): Extension<RookeryState>,
+) -> Json<ListSessionsResponse> {
+    let guard = store.lock().await;
+    let output_root = guard.output_root.clone();
+    let mut sessions: Vec<RookerySessionResponse> = guard
+        .sessions
+        .values()
+        .map(|s| RookerySessionResponse::from_session(s, &output_root))
+        .collect();
+    sessions.sort_by(|a, b| b.updated_at_ms.cmp(&a.updated_at_ms));
+    Json(ListSessionsResponse { sessions })
 }
 
 pub async fn get_session(
@@ -428,6 +631,7 @@ pub async fn post_chat(
     if let Some(ref mut s) = guard.get_mut(&session_id) {
         RookeryStore::touch(s);
     }
+    guard.persist(&session_id);
     let session = guard
         .get(&session_id)
         .ok_or_else(|| internal_err_str("session disappeared"))?;
@@ -513,6 +717,7 @@ pub async fn post_chat_stream(
                     RookeryStore::touch(s);
                 }
             }
+            guard.persist(&session_id);
         }
         let summary = json!({ "type": "assistant", "content": full });
         let _ = tx
@@ -577,6 +782,7 @@ pub async fn post_propose(
         }
         RookeryStore::touch(session);
     }
+    guard.persist(&session_id);
 
     let session = guard
         .get(&session_id)
@@ -635,6 +841,7 @@ pub async fn post_give_birth(
         session.horde_root = Some(horde_root.clone());
         RookeryStore::touch(session);
     }
+    guard.persist(&session_id);
     let session = guard
         .get(&session_id)
         .ok_or_else(|| internal_err_str("session disappeared"))?;
@@ -710,6 +917,7 @@ pub async fn patch_penguin(
 
     validate_draft(draft).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     RookeryStore::touch(session);
+    guard.persist(&session_id);
 
     let session = guard
         .get(&session_id)
@@ -767,6 +975,7 @@ pub async fn post_save_horde(
         session.horde_root = Some(horde_root.clone());
         RookeryStore::touch(session);
     }
+    guard.persist(&session_id);
     let session = guard
         .get(&session_id)
         .ok_or_else(|| internal_err_str("session disappeared"))?;
@@ -853,5 +1062,66 @@ mod tests {
             let prompt = load_builder_prompt(cfg).expect("builder.md");
             assert!(prompt.contains("Rookery"));
         }
+    }
+
+    #[test]
+    fn state_dir_env_override_wins() {
+        let key = "KOWALSKI_ROOKERY_STATE";
+        let prev = std::env::var(key).ok();
+        unsafe { std::env::set_var(key, "/tmp/rookery-state-test") };
+        let dir = default_rookery_state_dir(Some(Path::new("/opt/ml/kowalski")));
+        assert_eq!(dir, PathBuf::from("/tmp/rookery-state-test"));
+        match prev {
+            Some(v) => unsafe { std::env::set_var(key, v) },
+            None => unsafe { std::env::remove_var(key) },
+        }
+    }
+
+    #[test]
+    fn state_dir_defaults_under_config_dir() {
+        let key = "KOWALSKI_ROOKERY_STATE";
+        let prev = std::env::var(key).ok();
+        unsafe { std::env::remove_var(key) };
+        let dir = default_rookery_state_dir(Some(Path::new("/opt/ml/kowalski")));
+        assert!(dir.ends_with("db/rookery"));
+        if let Some(v) = prev {
+            unsafe { std::env::set_var(key, v) };
+        }
+    }
+
+    #[test]
+    fn session_file_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let persisted = PersistedSession {
+            id: "rookery-test-1".into(),
+            status: RookerySessionStatus::Proposed,
+            draft: None,
+            summary: Some("a summary".into()),
+            horde_root: None,
+            created_at_ms: 1,
+            updated_at_ms: 2,
+            transcript: vec![
+                PersistedTurn {
+                    role: "user".into(),
+                    content: "build me a horde".into(),
+                },
+                PersistedTurn {
+                    role: "assistant".into(),
+                    content: "sure, what steps?".into(),
+                },
+            ],
+        };
+        write_session_file(dir.path(), &persisted).unwrap();
+
+        let path = session_file_path(dir.path(), &persisted.id);
+        assert!(path.is_file());
+        assert_eq!(path.extension().and_then(|e| e.to_str()), Some("yaml"));
+        let loaded: PersistedSession =
+            serde_yaml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(loaded.id, "rookery-test-1");
+        assert_eq!(loaded.status, RookerySessionStatus::Proposed);
+        assert_eq!(loaded.summary.as_deref(), Some("a summary"));
+        assert_eq!(loaded.transcript.len(), 2);
+        assert_eq!(loaded.transcript[0].role, "user");
     }
 }
