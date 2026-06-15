@@ -4,6 +4,7 @@
 //! workdir), optional `@artifact@` / `@step:name@` tokens, and optional markdown normalization.
 
 use crate::error::KowalskiError;
+use crate::horde_graph::HordeEdge;
 use crate::operator_input::OperatorInputField;
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -17,6 +18,9 @@ pub struct AppManifestMeta {
     #[serde(default)]
     pub display_name: Option<String>,
     pub pipeline: Vec<String>,
+    /// Optional scheduling edges; absent or empty → implicit chain along `pipeline` order.
+    #[serde(default)]
+    pub edges: Vec<HordeEdge>,
     #[serde(default)]
     pub default_question: Option<String>,
 }

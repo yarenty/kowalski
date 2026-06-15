@@ -198,7 +198,37 @@ command = ["docker", "mcp", "gateway", "run"]
 
 **[`source_bundle`](./src/source_bundle.rs):** builds `raw/*.md` bundles under the given root (typically `workdir/debug`, so **`debug/raw/`**) from URL / file / text tokens (used by `kowalski-cli` worker ingest and any future server-side ingest). Uses **`tools::internal::github`** and **`tools::internal::web`** (HTML heuristic → Markdown). Not horde-specific.
 
-**[`rookery`](./src/rookery/):** horde builder (1.3.0) — `RookeryDraft`, `validate_draft`, `validate_horde_tree`, `write_horde_tree` (linear pipelines only). Builder system prompt: [`../resources/prompts/rookery/builder.md`](../resources/prompts/rookery/builder.md). Fixture: `minimal_linear_draft()`.
+**[`rookery`](./src/rookery/):** horde builder — `RookeryDraft`, `validate_draft`, `validate_horde_tree`, `write_horde_tree`. Optional DAG scheduling via **`[[edges]]`** in manifest / draft (see [`horde_graph`](./src/horde_graph.rs)). Builder system prompt: [`../resources/prompts/rookery/builder.md`](../resources/prompts/rookery/builder.md). Fixture: `minimal_linear_draft()`.
+
+**[`horde_graph`](./src/horde_graph.rs):** `HordeEdge`, `resolve_execution_graph()` — validates acyclic graphs, pipeline topological order, and returns scheduling layers. Empty/missing `edges` → implicit chain along `pipeline` order (linear hordes unchanged).
+
+**Horde manifest `[[edges]]` TOML (optional, 1.4.0+):**
+
+```toml
+pipeline = ["ingest", "branch-a", "branch-b", "join", "lint"]
+
+[[edges]]
+from = "ingest"
+to = "branch-a"
+
+[[edges]]
+from = "ingest"
+to = "branch-b"
+
+[[edges]]
+from = "branch-a"
+to = "join"
+
+[[edges]]
+from = "branch-b"
+to = "join"
+
+[[edges]]
+from = "join"
+to = "lint"
+```
+
+Omit `edges` (or leave empty) for linear hordes — no migration required.
 
 ---
 

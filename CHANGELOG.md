@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file, or at least
 ### Added
 
 - **One-line install:** [`install.sh`](install.sh) — `curl -fsSL https://raw.githubusercontent.com/yarenty/kowalski/main/install.sh | bash` installs `kowalski-cli` and `kowalski` from crates.io, seeds `~/.config/kowalski/config.toml`, and documents optional MCP / postgres feature flags.
+- **DAG horde graph (core, validation only):** optional `[[edges]]` on `horde.md` / `RookeryDraft`; `kowalski_core::horde_graph::resolve_execution_graph()` validates acyclic graphs, pipeline topological order, and returns scheduling layers. Empty/missing `edges` → implicit linear chain (existing hordes unchanged). Orchestrator scheduling (CLI/HTTP) follows in 1.4.0.
 
 ## [1.3.0] - 2026-06-14
 

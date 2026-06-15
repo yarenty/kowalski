@@ -1,6 +1,7 @@
 //! Validation for Rookery drafts and on-disk horde trees.
 
 use crate::error::KowalskiError;
+use crate::horde_graph::resolve_execution_graph;
 use crate::markdown_pipeline::{parse_app_manifest, parse_stage_agent, resolve_manifest_path};
 use crate::rookery::types::RookeryDraft;
 use std::collections::{BTreeMap, BTreeSet};
@@ -137,6 +138,12 @@ pub fn validate_draft(draft: &RookeryDraft) -> Result<(), KowalskiError> {
     }
 
     if errs.is_empty() {
+        if let Err(e) = resolve_execution_graph(&draft.pipeline, Some(&draft.edges)) {
+            errs.push(e.to_string());
+        }
+    }
+
+    if errs.is_empty() {
         Ok(())
     } else {
         Err(KowalskiError::Validation(errs.join("; ")))
@@ -201,6 +208,17 @@ pub fn validate_horde_tree(root: &Path) -> Result<(), KowalskiError> {
                 key,
                 agent.name
             ));
+        }
+    }
+
+    if errs.is_empty() {
+        let edge_slice = if meta.edges.is_empty() {
+            None
+        } else {
+            Some(meta.edges.as_slice())
+        };
+        if let Err(e) = resolve_execution_graph(&meta.pipeline, edge_slice) {
+            errs.push(e.to_string());
         }
     }
 

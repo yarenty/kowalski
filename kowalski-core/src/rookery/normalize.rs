@@ -206,6 +206,7 @@ mod tests {
                 "Structure".into(),
                 "Deliver".into(),
             ],
+            edges: vec![],
             penguins: vec![
                 PenguinSpec {
                     name: "Ingest".into(),

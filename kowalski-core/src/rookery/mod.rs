@@ -1,6 +1,7 @@
 //! **Rookery** — horde builder: validate drafts and write markdown-native horde trees.
 //!
-//! 1.3.0 supports **linear** pipelines only (`horde.md` `pipeline = [...]`). DAG / `edges[]` are 1.4.0+.
+//! 1.3.0 supports **linear** pipelines (`horde.md` `pipeline = [...]`). Optional **`edges[]`**
+//! (DAG scheduling) is validated via [`crate::horde_graph`] (1.4.0+).
 
 mod avatars;
 mod draft_parse;

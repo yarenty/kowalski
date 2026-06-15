@@ -14,6 +14,7 @@ pub fn minimal_linear_draft() -> RookeryDraft {
             "process".into(),
             "deliver".into(),
         ],
+        edges: vec![],
         penguins: vec![
             PenguinSpec {
                 name: "collect".into(),

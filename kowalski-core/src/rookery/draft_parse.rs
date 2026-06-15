@@ -1,6 +1,7 @@
 //! Parse `RookeryDraft` from builder output (TOML preferred, JSON accepted).
 
 use crate::error::KowalskiError;
+use crate::horde_graph::HordeEdge;
 use crate::rookery::types::{PenguinSpec, RookeryDraft};
 use serde::Deserialize;
 use serde_json::{Map, Value};
@@ -31,6 +32,8 @@ struct LenientDraft {
     display_name: Option<String>,
     description: Option<String>,
     pipeline: Option<Vec<LenientPipelineStep>>,
+    #[serde(default)]
+    edges: Vec<HordeEdge>,
     penguins: Option<Vec<LenientPenguin>>,
     steps: Option<Vec<LenientPenguin>>,
     #[serde(default)]
@@ -255,6 +258,7 @@ fn lenient_to_draft(l: LenientDraft) -> Result<RookeryDraft, KowalskiError> {
             .unwrap_or_else(|| "Born from Rookery interview.".into()),
         capability_prefix: l.capability_prefix,
         pipeline,
+        edges: l.edges,
         penguins,
         default_question: l.default_question,
         default_topic: l.default_topic,
