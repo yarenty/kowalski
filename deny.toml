@@ -32,6 +32,8 @@ allow = [
   "CC0-1.0",
   "bzip2-1.0.6",
   "MIT-0",
+  # reqwest 0.13 / rustls-platform-verifier → webpki-root-certs (Mozilla root CA bundle data)
+  "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.8
 
