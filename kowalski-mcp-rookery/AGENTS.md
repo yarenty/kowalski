@@ -4,7 +4,7 @@
 
 ## Scope
 
-Standalone **MCP server** that exposes the **Rookery** horde-builder primitives, over **stdio** or **stateless Streamable HTTP** (`--transport stdio|http`, shared [`../kowalski-mcp-transport`](../kowalski-mcp-transport/)). It is an **in-repo MCP server** (tool *source 1* per [`../kowalski-core/AGENTS.md`](../kowalski-core/AGENTS.md), *Tool execution model*) and the reposition described in [`../PLAN.md`](../PLAN.md) **§R2**: the builder is callable from CLI / external agents, not only the Vue tab.
+Standalone **MCP server** that exposes the **Rookery** horde-builder primitives, over **stdio** or **stateless Streamable HTTP** (`--transport stdio|http`, shared [`../kowalski-mcp-transport`](../kowalski-mcp-transport/)). It is an **in-repo MCP server** (tool *source 1* per [`../kowalski-core/AGENTS.md`](../kowalski-core/AGENTS.md), *Tool execution model*) and the **R2 reposition** in [`../ROADMAP.md`](../ROADMAP.md): the builder is callable from CLI / external agents, not only the Vue tab.
 
 ## Hard rules
 
@@ -34,4 +34,4 @@ After any change, update **[`README.md`](./README.md)**, root **[`../CHANGELOG.m
 
 - Root [`../AGENTS.md`](../AGENTS.md)
 - [`../kowalski-core/AGENTS.md`](../kowalski-core/AGENTS.md) — Tool execution model
-- [`../PLAN.md`](../PLAN.md) — §R2 reposition
+- [`../ROADMAP.md`](../ROADMAP.md) — R2 reposition (1.3.x cleanup)

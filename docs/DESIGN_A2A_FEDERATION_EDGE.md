@@ -1,6 +1,6 @@
 # Design: A2A at the federation edge (R4, target 1.4/1.5)
 
-> **Status:** design-only (no code in 1.3.x). Companion to [`../PLAN.md`](../PLAN.md) §R4 and
+> **Status:** design-only (no code in 1.3.x). Companion to [`../ROADMAP.md`](../ROADMAP.md) (*Planned: A2A at the federation edge*) and
 > [`../ROADMAP.md`](../ROADMAP.md) ("Planned: A2A at the federation edge").
 > **TL;DR:** Adopt [A2A](https://a2a-protocol.org/) (Agent2Agent) **only as the external skin at
 > the node↔node boundary**, mapped onto the existing [`AclMessage`](../kowalski-core/src/federation/acl.rs)

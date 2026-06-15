@@ -156,7 +156,7 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
 ### Service Architecture
 - **`TemplateAgent`** and tools live in **`kowalski-core`**; this crate re-exports **`core`** and optionally **`cli`**.
 - **HTTP server** (`kowalski` binary): **`/api/*`** for UI and automation.
-- **Rookery** (`src/rookery.rs`, 1.3.0): horde builder API — see [`../PLAN.md`](../PLAN.md). Routes (require `Extension` store + running LLM for chat/propose):
+- **Rookery** (`src/rookery.rs`, 1.3.0): horde builder API — see [`../ROADMAP.md`](../ROADMAP.md) (*Planned: Rookery*). Routes (require `Extension` store + running LLM for chat/propose):
 
 | Method | Path | Notes |
 |--------|------|--------|

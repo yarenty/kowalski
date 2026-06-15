@@ -13,6 +13,12 @@ exclude_path = [
   ".git",
   # Archived articles / HTML; relative assets not maintained
   "docs/purgatory",
+  # Local-only agent planning (gitignored; not on GitHub)
+  "PLAN.md",
+  "continuity_prompt.md",
+  "task_plan.md",
+  "progress.md",
+  "findings.md",
 ]
 
 # README references this PNG; repo has `architecture_v01.excalidraw` — export or refresh when updating the diagram

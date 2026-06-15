@@ -73,4 +73,4 @@ cargo test -p kowalski-mcp-rookery
 
 - [`AGENTS.md`](./AGENTS.md) — agent / contributor notes for this crate.
 - [`../kowalski-core/src/rookery/`](../kowalski-core/src/rookery/) — the primitives this server wraps.
-- [`../PLAN.md`](../PLAN.md) §R2 — reposition rationale.
+- [`../ROADMAP.md`](../ROADMAP.md) — R2 reposition rationale (1.3.x cleanup).

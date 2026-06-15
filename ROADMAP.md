@@ -15,7 +15,7 @@ See [`CHANGELOG.md`](CHANGELOG.md) (**[1.2.0]**). Highlights: Knowledge Compiler
 
 ## Planned: Rookery horde builder (1.3.0) — **shipped**
 
-Canonical plan: [`PLAN.md`](PLAN.md).
+Canonical plan: **this file** ([`ROADMAP.md`](ROADMAP.md) § *Planned: Rookery* / *1.3.x cleanup*).
 
 - [x] **`kowalski-core::rookery`** — draft schema, validate, write `horde.md` + `agents/` + `prompts/` tree.
 - [x] **`/api/rookery/*`** — interview chat, propose, **Give birth** (linear pipeline only).
@@ -24,7 +24,7 @@ Canonical plan: [`PLAN.md`](PLAN.md).
 
 ### 1.3.x — Cleanup + reposition (architectural debt)
 
-The builder shipped, but the UI absorbed core responsibilities. Pay down before resuming Phase 7–9 (details in [`PLAN.md`](PLAN.md) §1.3.x):
+The builder shipped, but the UI absorbed core responsibilities. Pay down before resuming Phase 7–9 (details in **§1.3.x cleanup** below):
 
 - [x] **R1** Server owns the Rookery draft — dropped the `localStorage` draft round-trip; sessions persist as YAML under `db/rookery/` and reload on startup. UI is render + dispatch only.
 - [x] **R2** Rookery as an **in-repo MCP server** (`kowalski-mcp-rookery`, stdio) over `kowalski-core::rookery`; `/api/rookery/*` and the new server share the same core primitives (any MCP client can build hordes). LLM-free — the calling agent drives the interview.
@@ -43,7 +43,7 @@ Existing linear hordes remain valid without migration.
 
 ## Planned: A2A at the federation edge (1.4/1.5)
 
-**Design-only for now** ([`PLAN.md`](PLAN.md) §R4). Penguins inside a horde stay **orchestrator-mediated** (sequential/DAG + artifact handoff); the homegrown ACL (`federation/acl.rs`) stays the **internal** bus. A2A is adopted only as the **external** node↔node skin:
+**Design-only for now** (see [`docs/DESIGN_A2A_FEDERATION_EDGE.md`](docs/DESIGN_A2A_FEDERATION_EDGE.md)). Penguins inside a horde stay **orchestrator-mediated** (sequential/DAG + artifact handoff); the homegrown ACL (`federation/acl.rs`) stays the **internal** bus. A2A is adopted only as the **external** node↔node skin:
 
 - [ ] Each Kowalski node publishes an **A2A Agent Card** and accepts A2A tasks.
 - [ ] A2A task lifecycle maps onto `AclMessage`; an A2A endpoint delegates into the existing orchestrator.
