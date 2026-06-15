@@ -438,10 +438,16 @@ watch(
   { deep: true },
 );
 
-async function runHordeWithPayload(payload: { prompt: string; source: string; question: string }) {
+async function runHordeWithPayload(payload: {
+  prompt: string;
+  source: string;
+  question: string;
+  formAnswers?: Record<string, string>;
+}) {
   await Promise.all([loadHordes(), loadProfiles()]);
   const prompt = payload.prompt.trim();
-  if (!prompt) {
+  const hasFormAnswers = !!payload.formAnswers && Object.keys(payload.formAnswers).length > 0;
+  if (!prompt && !hasFormAnswers) {
     runErr.value = "Source URL or text is required.";
     return;
   }
@@ -470,7 +476,7 @@ async function runHordeWithPayload(payload: { prompt: string; source: string; qu
   runMessages.value = [];
   clearRunWatchdog();
   connectStream();
-  feed("user", prompt, "You");
+  feed("user", prompt || "(operator form submitted)", "You");
   upsertThreadMeta();
   feed("orchestrator", "creating run", "Agent: Boss");
   if (sources.length) {
@@ -481,6 +487,7 @@ async function runHordeWithPayload(payload: { prompt: string; source: string; qu
       prompt,
       source: payload.source,
       question: payload.question,
+      form_answers: payload.formAnswers,
     });
     runId.value = out.run.run_id;
     feed("orchestrator", `run started: ${out.run.run_id}`, "Agent: Boss");
@@ -499,7 +506,12 @@ async function runHordeWithPayload(payload: { prompt: string; source: string; qu
   }
 }
 
-async function onHordeFormSubmit(payload: { prompt: string; source: string; question: string }) {
+async function onHordeFormSubmit(payload: {
+  prompt: string;
+  source: string;
+  question: string;
+  formAnswers?: Record<string, string>;
+}) {
   if (!hasCompletedRun.value) {
     await runHordeWithPayload(payload);
     return;

@@ -1577,6 +1577,11 @@ struct HordeRunBody {
     source: Option<String>,
     #[serde(default)]
     question: Option<String>,
+    /// Raw operator answers keyed by `run_form` field id. The server validates them against the
+    /// horde's `run_form` and builds the operator-input block (thin UI / thick core) — the UI does
+    /// not pre-render the block or enforce field rules.
+    #[serde(default)]
+    form_answers: Option<std::collections::BTreeMap<String, String>>,
 }
 
 #[derive(Deserialize)]
@@ -1941,7 +1946,26 @@ async fn post_horde_run(
     AxumPath(horde_id): AxumPath<String>,
     Json(body): Json<HordeRunBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let prompt = body.prompt.unwrap_or_default();
+    // Server owns the operator form: validate answers against the horde's run_form and build the
+    // operator-input block via kowalski-core (no client-side prompt assembly or validation).
+    let operator_block = match (
+        body.form_answers.as_ref(),
+        state.horde_manager.find(&horde_id).and_then(|s| s.run_form.clone()),
+    ) {
+        (Some(answers), Some(form)) => {
+            kowalski_core::validate_form_answers(&form, answers)
+                .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+            Some(kowalski_core::answers_to_prompt(&form, answers))
+        }
+        _ => None,
+    };
+
+    let user_prompt = body.prompt.clone().unwrap_or_default();
+    let prompt = match &operator_block {
+        Some(block) if !user_prompt.trim().is_empty() => format!("{block}\n\n{user_prompt}"),
+        Some(block) => block.clone(),
+        None => user_prompt,
+    };
     let source_extracted = body
         .source
         .clone()

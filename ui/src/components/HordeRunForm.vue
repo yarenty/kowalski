@@ -11,7 +11,15 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: "submit", payload: { prompt: string; source: string; question: string }): void;
+  (
+    e: "submit",
+    payload: {
+      prompt: string;
+      source: string;
+      question: string;
+      formAnswers?: Record<string, string>;
+    },
+  ): void;
 }>();
 
 const sourceUrl = ref("");
@@ -51,26 +59,15 @@ const canSubmit = computed(() => {
   return sourceUrl.value.trim().length > 0 || sourceText.value.trim().length > 0;
 });
 
-function buildOperatorBlock(): string {
-  const form = runForm.value;
-  if (!form) return "";
-  const lines = [`# Operator input (${form.display_name ?? form.step})`];
-  for (const field of form.inputs) {
-    const v = (formAnswers.value[field.id] ?? "").trim();
-    if (v) lines.push(`**${field.label}:** ${v}`);
-  }
-  return lines.join("\n\n");
-}
-
+// The operator-input block is built server-side from `formAnswers` (thin UI / thick core).
+// This prompt carries only the optional free-form URL / notes the operator adds alongside a form.
 function buildPrompt(): string {
   const parts: string[] = [];
-  const op = buildOperatorBlock();
-  if (op) parts.push(op);
   const url = sourceUrl.value.trim();
   const text = sourceText.value.trim();
   if (url) parts.push(url);
   if (text) parts.push(text);
-  if (!parts.length && question.value.trim()) return question.value.trim();
+  if (!parts.length && !runForm.value && question.value.trim()) return question.value.trim();
   return parts.join("\n\n");
 }
 
@@ -83,6 +80,7 @@ function submit() {
     prompt: props.followUpMode ? question.value.trim() : buildPrompt(),
     source: props.followUpMode ? question.value.trim() : buildPrompt(),
     question: q,
+    formAnswers: runForm.value ? { ...formAnswers.value } : undefined,
   });
 }
 </script>

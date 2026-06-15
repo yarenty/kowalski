@@ -19,7 +19,7 @@ const STRING_FROM_OBJECT_KEYS: &[&str] = &[
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DraftBlockFormat {
+pub(in crate::rookery) enum DraftBlockFormat {
     Toml,
     Json,
 }

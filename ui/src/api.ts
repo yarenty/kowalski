@@ -310,7 +310,15 @@ export const api = {
       `/api/hordes/${encodeURIComponent(hordeId)}/repair-outputs`,
       { method: "POST", body: "{}" },
     ),
-  hordeRun: (hordeId: string, body: { prompt?: string; source?: string; question?: string }) =>
+  hordeRun: (
+    hordeId: string,
+    body: {
+      prompt?: string;
+      source?: string;
+      question?: string;
+      form_answers?: Record<string, string>;
+    },
+  ) =>
     json<{ ok: boolean; run: HordeRunRecord }>(`/api/hordes/${encodeURIComponent(hordeId)}/run`, {
       method: "POST",
       body: JSON.stringify(body),

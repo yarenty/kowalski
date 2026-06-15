@@ -84,6 +84,84 @@ pub fn answers_to_prompt(form: &HordeRunFormSpec, answers: &BTreeMap<String, Str
     lines.join("\n\n")
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_form() -> HordeRunFormSpec {
+        HordeRunFormSpec {
+            step: "ingest".into(),
+            display_name: Some("Project Input".into()),
+            inputs: default_ingest_form_fields(),
+        }
+    }
+
+    fn answers(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn missing_required_field_is_rejected() {
+        let form = sample_form();
+        let err = validate_form_answers(&form, &answers(&[("project_name", "demo")]))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("Goals and constraints"), "got: {err}");
+    }
+
+    #[test]
+    fn required_fields_present_passes() {
+        let form = sample_form();
+        let a = answers(&[("project_name", "demo"), ("project_goals", "cli tool")]);
+        assert!(validate_form_answers(&form, &a).is_ok());
+    }
+
+    #[test]
+    fn invalid_url_is_rejected() {
+        let form = sample_form();
+        let a = answers(&[
+            ("project_name", "demo"),
+            ("project_goals", "cli tool"),
+            ("repo_url", "not-a-url"),
+        ]);
+        assert!(validate_form_answers(&form, &a).is_err());
+    }
+
+    #[test]
+    fn choice_outside_options_is_rejected() {
+        let form = sample_form();
+        let a = answers(&[
+            ("project_name", "demo"),
+            ("project_goals", "cli tool"),
+            ("crate_focus", "mainframe"),
+        ]);
+        assert!(validate_form_answers(&form, &a).is_err());
+    }
+
+    #[test]
+    fn prompt_includes_answered_fields_and_skips_blanks() {
+        let form = sample_form();
+        let a = answers(&[("project_name", "demo"), ("project_goals", "cli tool")]);
+        let prompt = answers_to_prompt(&form, &a);
+        assert!(prompt.contains("# Operator input (Project Input)"));
+        assert!(prompt.contains("**Project name:** demo"));
+        assert!(prompt.contains("**Goals and constraints:** cli tool"));
+        assert!(!prompt.contains("Existing repository URL"));
+    }
+
+    #[test]
+    fn prompt_falls_back_to_field_default() {
+        let form = sample_form();
+        let a = answers(&[("project_name", "demo"), ("project_goals", "cli tool")]);
+        let prompt = answers_to_prompt(&form, &a);
+        // `crate_focus` has default "cli" and is unanswered → default is emitted.
+        assert!(prompt.contains("**Primary project shape:** cli"));
+    }
+}
+
 /// Default ingest-stage form for Rust / greenfield project hordes.
 pub fn default_ingest_form_fields() -> Vec<OperatorInputField> {
     vec![
