@@ -156,6 +156,7 @@ export type HordeSubAgent = {
   display_name: string;
   description: string;
   output?: string | null;
+  avatar?: string | null;
 };
 
 export type OperatorInputField = {
@@ -434,6 +435,8 @@ export const api = {
       tool_ids?: string[];
       model_id?: string;
       clear_model_id?: boolean;
+      avatar?: string;
+      clear_avatar?: boolean;
     },
   ) =>
     json<{ session: RookerySessionResponse }>(
@@ -463,6 +466,7 @@ export type RookeryPenguinSpec = {
   context_paths?: string[];
   tool_ids?: string[];
   model_id?: string | null;
+  avatar?: string | null;
 };
 
 export type RookeryDraft = {

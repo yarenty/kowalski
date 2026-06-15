@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { RookeryPenguinSpec, RookerySessionStatus } from "../api";
+import PenguinAvatar from "./PenguinAvatar.vue";
+import { inferPenguinAvatarId } from "../penguins";
 
 export type PenguinCard = {
   name: string;
@@ -10,6 +12,7 @@ export type PenguinCard = {
   output: string;
   toolIds: string[];
   chip: "draft" | "ready" | "missing-tool";
+  avatar: string | null;
 };
 
 const props = defineProps<{
@@ -43,6 +46,7 @@ const cards = computed((): PenguinCard[] => {
         output: spec.output,
         toolIds,
         chip,
+        avatar: spec.avatar ?? inferPenguinAvatarId(spec.kind, spec.name),
       };
     }
     return {
@@ -53,6 +57,7 @@ const cards = computed((): PenguinCard[] => {
       output: "",
       toolIds: [],
       chip: "draft",
+      avatar: inferPenguinAvatarId("step", name),
     };
   });
 });
@@ -78,7 +83,14 @@ function chipLabel(chip: PenguinCard["chip"]): string {
           role="listitem"
           @click="emit('select-penguin', card.name)"
         >
-          <span class="emoji" aria-hidden="true">🐧</span>
+          <PenguinAvatar
+            class="card-avatar"
+            :avatar="card.avatar"
+            :kind="card.kind"
+            :name="card.name"
+            variant="card"
+            :alt="card.displayName"
+          />
           <span class="card-head">
             <strong class="name">{{ card.displayName }}</strong>
             <span class="chip">{{ chipLabel(card.chip) }}</span>
@@ -167,6 +179,9 @@ function chipLabel(chip: PenguinCard["chip"]): string {
 .emoji {
   font-size: 1.1rem;
   line-height: 1;
+}
+.card-avatar {
+  justify-self: start;
 }
 .card-head {
   display: flex;

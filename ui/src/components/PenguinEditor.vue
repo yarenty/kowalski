@@ -2,6 +2,8 @@
 import { ref, watch } from "vue";
 import type { RookeryPenguinSpec } from "../api";
 import PenguinForm from "./PenguinForm.vue";
+import PenguinAvatar from "./PenguinAvatar.vue";
+import { inferPenguinAvatarId } from "../penguins";
 
 const props = defineProps<{
   penguin: RookeryPenguinSpec;
@@ -22,6 +24,7 @@ const emit = defineEmits<{
       context_paths: string[];
       tool_ids: string[];
       model_id: string | null;
+      avatar: string;
     },
   ): void;
 }>();
@@ -36,6 +39,7 @@ const output = ref("");
 const contextPathsText = ref("");
 const toolIds = ref<string[]>([]);
 const modelId = ref("");
+const avatar = ref("");
 
 function loadFromPenguin(p: RookeryPenguinSpec) {
   kind.value = p.kind;
@@ -47,6 +51,8 @@ function loadFromPenguin(p: RookeryPenguinSpec) {
   contextPathsText.value = (p.context_paths ?? []).join("\n");
   toolIds.value = [...(p.tool_ids ?? [])];
   modelId.value = p.model_id ?? "";
+  avatar.value =
+    p.avatar?.trim() || inferPenguinAvatarId(p.kind, p.name);
 }
 
 watch(
@@ -75,6 +81,7 @@ function save() {
     context_paths: parseContextPaths(),
     tool_ids: toolIds.value,
     model_id: modelId.value.trim() || null,
+    avatar: avatar.value.trim(),
   });
 }
 </script>
@@ -82,8 +89,17 @@ function save() {
 <template>
   <div class="penguin-editor">
     <div class="editor-head">
-      <h4>{{ penguin.display_name }}</h4>
-      <span class="mono muted small">agents/{{ penguin.name }}.md · prompts/{{ penguin.name }}.md</span>
+      <PenguinAvatar
+        :avatar="avatar"
+        :kind="kind"
+        :name="penguin.name"
+        variant="editor"
+        :alt="penguin.display_name"
+      />
+      <div>
+        <h4>{{ penguin.display_name }}</h4>
+        <span class="mono muted small">agents/{{ penguin.name }}.md · prompts/{{ penguin.name }}.md</span>
+      </div>
     </div>
 
     <div class="tabs">
@@ -100,6 +116,7 @@ function save() {
       v-model:context-paths-text="contextPathsText"
       v-model:tool-ids="toolIds"
       v-model:model-id="modelId"
+      v-model:avatar="avatar"
       :penguin-name="penguin.name"
       :readonly="readonly"
     />
@@ -134,6 +151,11 @@ function save() {
   gap: 0.5rem;
   max-height: min(70vh, 640px);
   overflow: auto;
+}
+.editor-head {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
 }
 .editor-head h4 { margin: 0; font-size: 0.95rem; }
 .tabs { display: flex; gap: 0.35rem; }

@@ -72,6 +72,7 @@ pub fn repair_horde_tree_outputs(root: &Path) -> Result<u32, KowalskiError> {
             tool_ids: vec![],
             model_id: None,
             inputs: stage.inputs.clone(),
+            avatar: None,
         };
         let is_first = i == 0;
         let is_last = i == n - 1;

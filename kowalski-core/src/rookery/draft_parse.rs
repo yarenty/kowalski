@@ -82,6 +82,8 @@ struct LenientPenguin {
     model_id: Option<String>,
     #[serde(default)]
     inputs: Vec<crate::operator_input::OperatorInputField>,
+    #[serde(default)]
+    avatar: Option<String>,
 }
 
 /// Extract draft body from a fenced block (TOML preferred) or raw `{...}` / TOML document.
@@ -201,6 +203,7 @@ fn lenient_penguin_to_spec(p: LenientPenguin, index: usize) -> PenguinSpec {
         tool_ids: p.tool_ids.unwrap_or_default(),
         model_id: p.model_id,
         inputs: p.inputs,
+        avatar: p.avatar,
     }
 }
 

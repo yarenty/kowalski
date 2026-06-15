@@ -82,6 +82,9 @@ fn write_penguin_files(
     fm.push_str("---\n");
     fm.push_str(&format!("name = \"{}\"\n", penguin.name));
     fm.push_str(&format!("kind = \"{}\"\n", penguin.kind));
+    if let Some(avatar) = penguin.avatar.as_deref().filter(|s| !s.trim().is_empty()) {
+        fm.push_str(&format!("avatar = \"{}\"\n", escape_toml_str(avatar)));
+    }
     fm.push_str(&format!("capability = \"{capability}\"\n"));
     fm.push_str(&format!("default_agent_id = \"{default_agent_id}\"\n"));
     fm.push_str(&format!(

@@ -8,6 +8,8 @@ import {
   type HordeRunRecord,
 } from "../api";
 import HordeRunForm from "../components/HordeRunForm.vue";
+import PenguinAvatar from "../components/PenguinAvatar.vue";
+import { inferPenguinAvatarId } from "../penguins";
 const props = defineProps<{ activeThreadId: string | null }>();
 const emit = defineEmits<{
   (e: "new-chat-session"): void;
@@ -32,7 +34,7 @@ const hordes = ref<HordeCatalogItem[]>([]);
 const selectedHordeId = ref<string>("");
 const runBusy = ref(false);
 const runId = ref<string | null>(null);
-const runMessages = ref<Array<{ role: "orchestrator" | "worker" | "system" | "user"; speaker: string; text: string }>>([]);
+const runMessages = ref<Array<{ role: "orchestrator" | "worker" | "system" | "user"; speaker: string; text: string; step?: string }>>([]);
 const runResult = ref<string | null>(null);
 const runErr = ref<string | null>(null);
 const runWatchdog = ref<number | null>(null);
@@ -129,8 +131,39 @@ function speakerNameFromStep(step?: string): string {
   return `Agent: ${titleCase(step)}`;
 }
 
-function feed(role: "orchestrator" | "worker" | "system" | "user", text: string, speaker?: string) {
-  runMessages.value = [...runMessages.value, { role, speaker: speaker || (role === "orchestrator" ? "Agent: Boss" : "System"), text }];
+function feed(
+  role: "orchestrator" | "worker" | "system" | "user",
+  text: string,
+  speaker?: string,
+  step?: string,
+) {
+  runMessages.value = [
+    ...runMessages.value,
+    {
+      role,
+      speaker: speaker || (role === "orchestrator" ? "Agent: Boss" : "System"),
+      text,
+      ...(step ? { step } : {}),
+    },
+  ];
+}
+
+function avatarForRunMessage(m: {
+  role: string;
+  step?: string;
+}): { avatar: string; kind: string; name: string } | null {
+  if (m.role === "orchestrator") {
+    return { avatar: "director", kind: "orchestrator", name: "boss" };
+  }
+  if (m.role === "worker" && m.step) {
+    const agent = selectedHorde.value?.sub_agents.find((a) => a.name === m.step);
+    return {
+      avatar: agent?.avatar ?? inferPenguinAvatarId(agent?.kind ?? "process", m.step),
+      kind: agent?.kind ?? "process",
+      name: m.step,
+    };
+  }
+  return null;
 }
 
 function extractUrl(input: string): string | null {
@@ -165,16 +198,16 @@ function processFederationEvent(data: string) {
   } else if (kind === "task_started") {
     const step = String(payload.step ?? "?");
     progressText.value = `${step} running`;
-    feed("worker", `${step} started by ${String(payload.agent ?? "?")}`, speakerNameFromStep(step));
+    feed("worker", `${step} started by ${String(payload.agent ?? "?")}`, speakerNameFromStep(step), step);
   } else if (kind === "agent_message") {
     const step = String(payload.step ?? "");
-    feed("worker", String(payload.text ?? "(message)"), speakerNameFromStep(step || "worker"));
+    feed("worker", String(payload.text ?? "(message)"), speakerNameFromStep(step || "worker"), step || undefined);
   } else if (kind === "task_finished") {
     const step = String(payload.step ?? "?");
     const artifact = String(payload.artifact ?? "");
     const ok = Boolean(payload.success);
     progressText.value = ok ? `${step} completed` : `${step} failed`;
-    feed("worker", `${step} ${ok ? "completed" : "failed"}${artifact ? ` -> ${artifact}` : ""}`, speakerNameFromStep(step));
+    feed("worker", `${step} ${ok ? "completed" : "failed"}${artifact ? ` -> ${artifact}` : ""}`, speakerNameFromStep(step), step);
   } else if (kind === "run_finished") {
     runResult.value = JSON.stringify(payload, null, 2);
     progressText.value = "finished";
@@ -618,7 +651,17 @@ onUnmounted(() => {
 
     <div class="chat-feed">
       <article v-for="(m, i) in runMessages" :key="i" class="msg" :class="`msg-${m.role}`">
-        <header>{{ m.speaker }}</header>
+        <header class="msg-head">
+          <PenguinAvatar
+            v-if="avatarForRunMessage(m)"
+            :avatar="avatarForRunMessage(m)!.avatar"
+            :kind="avatarForRunMessage(m)!.kind"
+            :name="avatarForRunMessage(m)!.name"
+            variant="inline"
+            :alt="m.speaker"
+          />
+          <span>{{ m.speaker }}</span>
+        </header>
         <pre>{{ m.text }}</pre>
       </article>
     </div>
@@ -749,7 +792,9 @@ onUnmounted(() => {
 .artifact-list { display: grid; gap: 0.35rem; margin-top: 0.45rem; }
 .artifact-item { border: 1px solid #2a2e38; border-radius: 6px; background: #12161d; padding: 0.45rem 0.55rem; display: grid; gap: 0.25rem; }
 .msg { border: 1px solid #2a2e38; border-radius: 8px; background: #171b22; padding: 0.5rem 0.65rem; }
-.msg header { color: #9aa8c0; font-size: 0.8rem; margin-bottom: 0.2rem; text-transform: capitalize; }
+.msg header,
+.msg-head { color: #9aa8c0; font-size: 0.8rem; margin-bottom: 0.2rem; text-transform: capitalize; }
+.msg-head { display: flex; align-items: center; gap: 0.4rem; text-transform: none; }
 .msg pre { margin: 0; white-space: pre-wrap; word-break: break-word; color: #d2d9e8; font-size: 0.85rem; }
 .msg-orchestrator { border-color: #5a7ab8; }
 .msg-user { border-color: #5a7ab8; margin-left: auto; max-width: 80%; background: #1d2a42; }

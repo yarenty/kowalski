@@ -88,6 +88,8 @@ pub struct SubAgentMeta {
     pub output: Option<String>,
     #[serde(default)]
     pub inputs: Vec<kowalski_core::OperatorInputField>,
+    #[serde(default)]
+    pub avatar: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -101,6 +103,7 @@ pub struct SubAgentSpec {
     pub prompt_file: Option<String>,
     pub output: Option<String>,
     pub inputs: Vec<kowalski_core::OperatorInputField>,
+    pub avatar: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -200,6 +203,9 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
             .description
             .clone()
             .unwrap_or_else(|| format!("{} sub-agent of {}", raw.kind, meta.id));
+        let avatar = raw.avatar.clone().or_else(|| {
+            Some(kowalski_core::infer_penguin_avatar(&raw.kind, &raw.name))
+        });
         by_name.insert(
             raw.name.clone(),
             SubAgentSpec {
@@ -212,6 +218,7 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
                 prompt_file: raw.prompt_file,
                 output: raw.output,
                 inputs: raw.inputs,
+                avatar,
             },
         );
     }

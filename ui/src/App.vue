@@ -619,6 +619,7 @@ async function savePenguinRookery(payload: {
     context_paths: string[];
     tool_ids: string[];
     model_id: string | null;
+    avatar: string;
   };
 }) {
   const session = activeRookerySession();
@@ -635,6 +636,7 @@ async function savePenguinRookery(payload: {
       output: payload.patch.output,
       context_paths: payload.patch.context_paths,
       tool_ids: payload.patch.tool_ids,
+      avatar: payload.patch.avatar,
     };
     if (payload.patch.agent_body) {
       body.agent_body = payload.patch.agent_body;

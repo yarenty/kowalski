@@ -502,6 +502,10 @@ pub struct PatchPenguinBody {
     pub model_id: Option<String>,
     #[serde(default)]
     pub clear_model_id: bool,
+    #[serde(default)]
+    pub avatar: Option<String>,
+    #[serde(default)]
+    pub clear_avatar: bool,
 }
 
 #[derive(Serialize)]
@@ -913,6 +917,17 @@ pub async fn patch_penguin(
         penguin.model_id = None;
     } else if let Some(v) = body.model_id {
         penguin.model_id = Some(v);
+    }
+    if body.clear_avatar {
+        penguin.avatar = None;
+    } else if let Some(v) = body.avatar {
+        penguin.avatar = Some(v);
+    }
+    if penguin.avatar.as_deref().unwrap_or("").trim().is_empty() {
+        penguin.avatar = Some(kowalski_core::infer_penguin_avatar(
+            &penguin.kind,
+            &penguin.name,
+        ));
     }
 
     validate_draft(draft).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;

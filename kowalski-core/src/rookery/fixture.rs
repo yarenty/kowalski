@@ -27,6 +27,7 @@ pub fn minimal_linear_draft() -> RookeryDraft {
                 tool_ids: vec![],
                 model_id: None,
                 inputs: vec![],
+                avatar: None,
             },
             PenguinSpec {
                 name: "process".into(),
@@ -40,6 +41,7 @@ pub fn minimal_linear_draft() -> RookeryDraft {
                 tool_ids: vec![],
                 model_id: None,
                 inputs: vec![],
+                avatar: None,
             },
             PenguinSpec {
                 name: "deliver".into(),
@@ -53,6 +55,7 @@ pub fn minimal_linear_draft() -> RookeryDraft {
                 tool_ids: vec![],
                 model_id: None,
                 inputs: vec![],
+                avatar: None,
             },
         ],
         default_question: Some("What is the key takeaway?".into()),

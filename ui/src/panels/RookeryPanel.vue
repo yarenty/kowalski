@@ -5,6 +5,7 @@ import { marked } from "marked";
 import type { RookeryDraft, RookeryPenguinSpec, RookerySessionStatus } from "../api";
 import PenguinCanvas from "../components/PenguinCanvas.vue";
 import PenguinEditor from "../components/PenguinEditor.vue";
+import PenguinAvatar from "../components/PenguinAvatar.vue";
 
 export type RookeryTurn = { role: "user" | "assistant"; content: string };
 
@@ -61,6 +62,7 @@ const emit = defineEmits<{
         context_paths: string[];
         tool_ids: string[];
         model_id: string | null;
+        avatar: string;
       };
     },
   ): void;
@@ -154,7 +156,15 @@ function send() {
             class="chat-turn"
             :class="`turn-${turn.role}`"
           >
-            <header>{{ turn.role === "user" ? "You" : "Builder" }}</header>
+            <header class="turn-head">
+          <PenguinAvatar
+            v-if="turn.role === 'assistant'"
+            avatar="coordinator"
+            variant="inline"
+            alt="Rookery builder"
+          />
+              <span>{{ turn.role === "user" ? "You" : "Builder" }}</span>
+            </header>
             <pre v-if="turn.role === 'user'" class="chat-turn-content">{{ turn.content }}</pre>
             <div
               v-else
@@ -341,6 +351,12 @@ function send() {
 }
 .turn-user { border-color: #6f8fc7; justify-self: end; margin-left: auto; }
 .chat-turn header { color: #9aa8c0; font-size: 0.8rem; margin-bottom: 0.2rem; }
+.turn-head,
+.msg-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
 .chat-turn-content { margin: 0; white-space: pre-wrap; word-break: break-word; color: #d2d9e8; font-size: 0.85rem; }
 .md-content :deep(p) { margin: 0.35rem 0; }
 .md-content :deep(ul), .md-content :deep(ol) { margin: 0.35rem 0 0.35rem 1.1rem; }

@@ -58,6 +58,9 @@ pub struct PenguinSpec {
     /// Pre-run operator form fields (`[[inputs]]` in agent frontmatter).
     #[serde(default)]
     pub inputs: Vec<OperatorInputField>,
+    /// UI avatar id (e.g. `ingest`, `mock_builder`); maps to `ui/src/assets/pinguins/<id>.png`.
+    #[serde(default)]
+    pub avatar: Option<String>,
 }
 
 /// Options for writing a born horde to disk.

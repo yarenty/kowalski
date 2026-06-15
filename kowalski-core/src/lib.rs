@@ -49,9 +49,10 @@ pub use operator_input::{
     OperatorInputField,
 };
 pub use rookery::{
-    extract_json_block, horde_root_path, minimal_linear_draft, parse_draft_from_assistant,
-    normalize_draft, output_looks_invalid, repair_horde_tree_outputs, validate_draft,
-    validate_horde_tree, write_horde_tree, HordeBirthSpec, PenguinSpec, RookeryDraft,
+    assign_penguin_avatars, extract_json_block, horde_root_path, infer_penguin_avatar,
+    minimal_linear_draft, parse_draft_from_assistant, normalize_draft, output_looks_invalid,
+    repair_horde_tree_outputs, validate_draft, validate_horde_tree, write_horde_tree,
+    HordeBirthSpec, PenguinSpec, RookeryDraft,
 };
 pub use mcp::{
     CallToolResponse, McpClient, McpConnection, McpHub, McpStdioClient, McpToolBinding,

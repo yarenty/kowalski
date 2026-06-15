@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { api, type McpServer } from "../api";
+import PenguinAvatarPicker from "./PenguinAvatarPicker.vue";
+import { inferPenguinAvatarId } from "../penguins";
 
 const kind = defineModel<string>("kind", { required: true });
 const displayName = defineModel<string>("displayName", { required: true });
@@ -9,11 +11,14 @@ const output = defineModel<string>("output", { required: true });
 const contextPathsText = defineModel<string>("contextPathsText", { required: true });
 const toolIds = defineModel<string[]>("toolIds", { required: true });
 const modelId = defineModel<string>("modelId", { required: true });
+const avatar = defineModel<string>("avatar", { required: true });
 
-defineProps<{
+const props = defineProps<{
   penguinName: string;
   readonly: boolean;
 }>();
+
+const avatarTouched = ref(false);
 
 const kindOptions = ["ingest", "process", "deliver", "ask", "lint", "step", "custom"] as const;
 const toolIdInput = ref("");
@@ -43,6 +48,21 @@ function onKindChange() {
     if (kind.value === "ingest") output.value = "debug/raw/";
     else if (kind.value === "deliver") output.value = "HANDOFF.md";
   }
+  if (!avatarTouched.value) {
+    avatar.value = inferPenguinAvatarId(kind.value, props.penguinName);
+  }
+}
+
+watch(
+  () => props.penguinName,
+  () => {
+    avatarTouched.value = false;
+  },
+);
+
+function onAvatarPick(id: string) {
+  avatarTouched.value = true;
+  avatar.value = id;
 }
 
 function addToolId() {
@@ -59,6 +79,12 @@ function removeToolId(id: string) {
 
 <template>
   <div class="penguin-form">
+    <PenguinAvatarPicker
+      :model-value="avatar"
+      :readonly="readonly"
+      @update:model-value="onAvatarPick"
+    />
+
     <label class="field">
       <span>Display name</span>
       <input v-model="displayName" type="text" :disabled="readonly" />

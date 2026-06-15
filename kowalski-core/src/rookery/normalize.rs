@@ -1,6 +1,7 @@
 //! Normalize LLM-produced ids to safe horde / step names before validation.
 
 use crate::operator_input::default_ingest_form_fields;
+use crate::rookery::avatars::assign_penguin_avatars;
 use crate::rookery::types::{PenguinSpec, RookeryDraft};
 use crate::rookery::validate::validate_workdir_relative_path;
 use std::collections::{BTreeMap, BTreeSet};
@@ -94,6 +95,7 @@ pub fn normalize_draft(draft: &mut RookeryDraft) {
             p.inputs = default_ingest_form_fields();
         }
     }
+    assign_penguin_avatars(draft);
 }
 
 fn normalize_delivery_root(draft: &mut RookeryDraft) {
@@ -217,6 +219,7 @@ mod tests {
                     tool_ids: vec![],
                     model_id: None,
                     inputs: vec![],
+                    avatar: None,
                 },
                 PenguinSpec {
                     name: "Structure".into(),
@@ -230,6 +233,7 @@ mod tests {
                     tool_ids: vec![],
                     model_id: None,
                     inputs: vec![],
+                    avatar: None,
                 },
                 PenguinSpec {
                     name: "Deliver".into(),
@@ -243,6 +247,7 @@ mod tests {
                     tool_ids: vec![],
                     model_id: None,
                     inputs: vec![],
+                    avatar: None,
                 },
             ],
             default_question: None,
