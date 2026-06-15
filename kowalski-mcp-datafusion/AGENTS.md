@@ -1,6 +1,6 @@
 # kowalski-mcp-datafusion — AI agent notes
 
-**Crate**: `kowalski-mcp-datafusion` · **Version**: **1.2.0**
+**Crate**: `kowalski-mcp-datafusion` · **Version**: **1.3.0**
 
 ## Scope
 

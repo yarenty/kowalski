@@ -7,7 +7,7 @@
 > During this transition, some modules, commands, and docs may still evolve quickly.
 > We are focused on stability, clearer module boundaries, production-ready operator workflows, and robust multi-agent federation.
 
-**Version 1.2.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-datafusion`, Vue `ui/`)
+**Version 1.3.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-datafusion`, `kowalski-mcp-rookery`, `kowalski-mcp-transport`, Vue `ui/`)
 
 > "AI agents are like pets – they're cute, but they make a mess."  
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"

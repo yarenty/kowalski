@@ -1,15 +1,19 @@
-# Kowalski Roadmap & Features (1.2.0+)
+# Kowalski Roadmap & Features (1.3.0+)
 
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"
 
-**Release:** **1.2.0** — see [`CHANGELOG.md`](CHANGELOG.md).  
+**Release:** **1.3.0** — see [`CHANGELOG.md`](CHANGELOG.md).  
 **Per-crate roadmaps:** [`kowalski-core/ROADMAP.md`](kowalski-core/ROADMAP.md), [`kowalski-cli/ROADMAP.md`](kowalski-cli/ROADMAP.md), [`kowalski-mcp-datafusion/ROADMAP.md`](kowalski-mcp-datafusion/ROADMAP.md), [`ui/ROADMAP.md`](ui/ROADMAP.md).
+
+## Shipped in 1.3.0 (2026-06-14)
+
+See [`CHANGELOG.md`](CHANGELOG.md) (**[1.3.0]**). Highlights: **Rookery** horde builder (core + `/api/rookery/*` + Vue tab), **`kowalski-mcp-rookery`** + **`kowalski-mcp-transport`** (stateless Streamable HTTP), Docker MCP gateway, server-owned Rookery sessions (YAML), penguin avatars, server-validated horde operator forms, A2A federation-edge design note (implementation 1.4/1.5).
 
 ## Shipped in 1.2.0 (2026-05-03)
 
 See [`CHANGELOG.md`](CHANGELOG.md) (**[1.2.0]**). Highlights: Knowledge Compiler **`workdir/debug/`** layout without **`derived/`** (`raw`, `reports`, `lint`, `followups`), horde HTTP conventions **`agents_log`** + **`debug/followups/`**, GitHub-aware **`source_bundle`**, **`horde.md`-only** `agent-app`, operator docs and UI smoke guidance.
 
-## Planned: Rookery horde builder (1.3.0)
+## Planned: Rookery horde builder (1.3.0) — **shipped**
 
 Canonical plan: [`PLAN.md`](PLAN.md).
 

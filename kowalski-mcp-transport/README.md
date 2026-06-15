@@ -1,6 +1,6 @@
 # kowalski-mcp-transport
 
-**Version 1.2.0** — reusable **MCP transports** for in-repo Kowalski servers (tool *source 1*): **stdio** and **stateless Streamable HTTP**, sharing one handler.
+**Version 1.3.0** — reusable **MCP transports** for in-repo Kowalski servers (tool *source 1*): **stdio** and **stateless Streamable HTTP**, sharing one handler.
 
 A server implements the [`McpHandler`] trait (turn one JSON-RPC request into an optional reply; `None` for notifications) and picks a transport. No dispatch logic is duplicated across transports.
 

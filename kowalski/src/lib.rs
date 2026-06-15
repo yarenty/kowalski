@@ -18,7 +18,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! kowalski = { version = "1.2.0" }
+//! kowalski = { version = "1.3.0" }
 //! ```
 //!
 //! ```rust,no_run

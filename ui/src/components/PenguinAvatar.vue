@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import {
   PENGUIN_DISPLAY,
   type PenguinDisplayVariant,
@@ -37,12 +37,21 @@ const src = computed(() => penguinAvatarUrl(resolvedId.value));
 const displayPx = computed(() =>
   props.variant ? PENGUIN_DISPLAY[props.variant] : props.size,
 );
+
+const imgSrc = ref(src.value);
+watch(src, (url) => {
+  imgSrc.value = url;
+});
+
+function onImgError() {
+  imgSrc.value = penguinAvatarUrl(null);
+}
 </script>
 
 <template>
   <img
     class="penguin-avatar"
-    :src="src"
+    :src="imgSrc"
     :alt="alt"
     :style="{
       '--penguin-avatar-size': `${displayPx}px`,
@@ -51,6 +60,7 @@ const displayPx = computed(() =>
     }"
     loading="lazy"
     decoding="async"
+    @error="onImgError"
   />
 </template>
 

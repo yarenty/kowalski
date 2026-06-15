@@ -1,5 +1,7 @@
 /** Penguin avatar assets (`ui/src/assets/pinguins/<id>.png`). */
 
+import defaultAvatarUrl from "./assets/pinguins/default.png";
+
 /** Source artwork dimensions (all assets in `assets/pinguins/*.png`). */
 export const PENGUIN_AVATAR_SOURCE_PX = 256;
 
@@ -22,15 +24,21 @@ export const PENGUIN_DISPLAY = {
 
 export type PenguinDisplayVariant = keyof typeof PENGUIN_DISPLAY;
 
-const modules = import.meta.glob<string>("../assets/pinguins/*.png", {
+const modules = import.meta.glob<string>("./assets/pinguins/*.png", {
   eager: true,
   import: "default",
 });
 
-export const PENGUIN_AVATAR_URLS: Record<string, string> = {};
+export const PENGUIN_AVATAR_URLS: Record<string, string> = {
+  default: defaultAvatarUrl,
+};
 for (const path of Object.keys(modules)) {
   const id = path.replace(/.*\/([^/]+)\.png$/, "$1");
-  PENGUIN_AVATAR_URLS[id] = modules[path];
+  const url = modules[path];
+  if (url) PENGUIN_AVATAR_URLS[id] = url;
+}
+if (!PENGUIN_AVATAR_URLS.default) {
+  PENGUIN_AVATAR_URLS.default = defaultAvatarUrl;
 }
 
 export const PENGUIN_AVATAR_IDS = Object.keys(PENGUIN_AVATAR_URLS).sort((a, b) => {
@@ -39,10 +47,11 @@ export const PENGUIN_AVATAR_IDS = Object.keys(PENGUIN_AVATAR_URLS).sort((a, b) =
   return a.localeCompare(b);
 });
 
-/** Resolve avatar id to bundled image URL; unknown ids fall back to `default`. */
+/** Resolve avatar id to bundled image URL; unknown / missing ids fall back to `default.png`. */
 export function penguinAvatarUrl(id: string | null | undefined): string {
-  if (!id?.trim()) return PENGUIN_AVATAR_URLS.default ?? "";
-  return PENGUIN_AVATAR_URLS[id] ?? PENGUIN_AVATAR_URLS.default ?? "";
+  const fallback = PENGUIN_AVATAR_URLS.default || defaultAvatarUrl;
+  if (!id?.trim()) return fallback;
+  return PENGUIN_AVATAR_URLS[id.trim()] ?? fallback;
 }
 
 /** Client-side mirror of `kowalski_core::infer_penguin_avatar` for previews before server round-trip. */
