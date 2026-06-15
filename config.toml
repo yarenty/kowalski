@@ -51,3 +51,12 @@ clean_on_startup = true
 # name = "docker-mcp-github"
 # transport = "stdio"
 # command = ["docker", "mcp", "gateway", "run", "--servers", "github"]
+
+# Rookery MCP (in-repo, stdio) — exposes the horde builder primitives so any MCP client
+# (the Kowalski agent, Claude Desktop, CLI) can validate and "give birth" to hordes.
+# LLM-free: the calling agent drives the interview; this server only validates/parses/writes.
+# Tools: rookery_example_draft, rookery_validate_draft, rookery_parse_draft, rookery_give_birth.
+# [[mcp.servers]]
+# name = "rookery"
+# transport = "stdio"
+# command = ["cargo", "run", "-q", "-p", "kowalski-mcp-rookery", "--", "--output-root", "examples"]

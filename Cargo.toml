@@ -5,6 +5,7 @@ members = [
     "kowalski-core",
     "kowalski-cli",
     "kowalski-mcp-datafusion",
+    "kowalski-mcp-rookery",
 ]
 
 

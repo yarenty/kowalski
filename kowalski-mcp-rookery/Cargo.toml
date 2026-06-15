@@ -1,0 +1,29 @@
+[package]
+name = "kowalski-mcp-rookery"
+version = "1.2.0"
+edition = "2024"
+description = "Standalone MCP (stdio) server: validate and give birth to Kowalski hordes (Rookery) over kowalski-core"
+license = "MIT"
+authors = ["yarenty <yarenty@gmail.com>"]
+repository = "https://github.com/yarenty/kowalski"
+homepage = "https://github.com/yarenty/kowalski"
+readme = "README.md"
+
+[dependencies]
+kowalski-core = { path = "../kowalski-core", version = "1.2.0" }
+clap = { version = "4.5", features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.25.0"
+
+[lib]
+name = "kowalski_mcp_rookery"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kowalski-mcp-rookery"
+path = "src/main.rs"

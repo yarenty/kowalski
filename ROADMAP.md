@@ -22,9 +22,9 @@ Canonical plan: [`PLAN.md`](PLAN.md).
 
 The builder shipped, but the UI absorbed core responsibilities. Pay down before resuming Phase 7–9 (details in [`PLAN.md`](PLAN.md) §1.3.x):
 
-- [ ] **R1** Server owns the Rookery draft — drop the `localStorage` draft round-trip; UI is render + dispatch only.
-- [ ] **R2** Rookery as an **in-repo MCP server** over `kowalski-core::rookery`; `/api/rookery/*` and CLI become thin clients (any MCP client can build hordes).
-- [ ] **R3** **Docker MCP gateway** as one stdio MCP server (`docker mcp gateway run`); enable **GitHub** first, then **Fetch** / **Filesystem**. `tools/internal/*` stay the dependency-light fallback, shadowed by the gateway when present.
+- [x] **R1** Server owns the Rookery draft — dropped the `localStorage` draft round-trip; sessions persist as YAML under `db/rookery/` and reload on startup. UI is render + dispatch only.
+- [x] **R2** Rookery as an **in-repo MCP server** (`kowalski-mcp-rookery`, stdio) over `kowalski-core::rookery`; `/api/rookery/*` and the new server share the same core primitives (any MCP client can build hordes). LLM-free — the calling agent drives the interview.
+- [x] **R3** **Docker MCP gateway** as one stdio MCP server (`docker mcp gateway run`); dynamic mode + `--servers`/`--profile` direct mode. `tools/internal/*` stay the dependency-light fallback, shadowed by the gateway when present.
 
 ## Planned: DAG horde pipelines (1.4.0+)
 
