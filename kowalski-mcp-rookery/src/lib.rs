@@ -14,11 +14,34 @@ use kowalski_core::rookery::{
     HordeBirthSpec, RookeryDraft, minimal_linear_draft, normalize_draft,
     parse_draft_from_assistant, validate_draft, validate_horde_tree, write_horde_tree,
 };
+use kowalski_mcp_transport::McpHandler;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
 /// MCP protocol version reported on `initialize` (matches `kowalski-mcp-datafusion`).
 pub const PROTOCOL_VERSION: &str = "2025-03-26";
+
+/// [`McpHandler`] over the pure [`dispatch`] fn — drives both the stdio and stateless
+/// Streamable HTTP transports from `kowalski-mcp-transport` with the same logic.
+pub struct RookeryHandler {
+    /// Default output root for `rookery_give_birth` when the call omits `output_root`.
+    pub output_root: PathBuf,
+}
+
+impl RookeryHandler {
+    pub fn new(output_root: PathBuf) -> Self {
+        Self { output_root }
+    }
+}
+
+impl McpHandler for RookeryHandler {
+    fn handle(&self, request: Value) -> impl std::future::Future<Output = Option<Value>> + Send {
+        // Dispatch is synchronous (small, local file writes); resolve eagerly and hand back a
+        // ready future so the trait's `Send` future bound is trivially satisfied.
+        let reply = dispatch(&request, &self.output_root);
+        async move { reply }
+    }
+}
 
 /// Dispatch one JSON-RPC request value. Returns `None` for notifications (no reply expected).
 ///

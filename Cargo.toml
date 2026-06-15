@@ -6,6 +6,7 @@ members = [
     "kowalski-cli",
     "kowalski-mcp-datafusion",
     "kowalski-mcp-rookery",
+    "kowalski-mcp-transport",
 ]
 
 

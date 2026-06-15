@@ -1,6 +1,6 @@
 # kowalski-mcp-rookery
 
-**Version 1.2.0** — standalone **MCP** server (**stdio**, newline-delimited JSON-RPC) exposing the **Rookery** horde-builder primitives from `kowalski-core`.
+**Version 1.2.0** — standalone **MCP** server exposing the **Rookery** horde-builder primitives from `kowalski-core`. Runs over **stdio** *or* **stateless Streamable HTTP** (shared [`kowalski-mcp-transport`](../kowalski-mcp-transport/)).
 
 This is an **in-repo MCP server** (tool *source 1* in [`kowalski-core/AGENTS.md`](../kowalski-core/AGENTS.md)). It lets any MCP client — the Kowalski agent, the CLI, or an external client such as Claude Desktop — build hordes ("penguins") without going through the Vue UI or the HTTP `/api/rookery/*` surface.
 
@@ -23,11 +23,13 @@ The server intentionally runs **no LLM**. The *calling* agent conducts the inter
 
 ```bash
 cargo run -p kowalski-mcp-rookery -- --help
-# Default output root for give-birth (override per-call via the tool's `output_root` arg):
-cargo run -p kowalski-mcp-rookery -- --output-root examples
+# stdio (default) — for desktop MCP clients; stdout is the protocol stream, logs go to stderr:
+cargo run -p kowalski-mcp-rookery -- --transport stdio --output-root examples
+# stateless Streamable HTTP — no Mcp-Session-Id, every POST independent:
+cargo run -p kowalski-mcp-rookery -- --transport http --bind 127.0.0.1:8081 --output-root examples
 ```
 
-The process speaks JSON-RPC on stdin/stdout. **Logs go to stderr only** — stdout is the protocol stream and stays clean.
+`--output-root` sets the give-birth default (override per-call via the tool's `output_root` arg).
 
 ### Quick stdio smoke
 
@@ -41,11 +43,22 @@ printf '%s\n' \
 
 ### Wire into Kowalski (`config.toml`)
 
+stdio (subprocess launched by Kowalski):
+
 ```toml
 [[mcp.servers]]
 name = "rookery"
 transport = "stdio"
 command = ["cargo", "run", "-q", "-p", "kowalski-mcp-rookery", "--", "--output-root", "examples"]
+```
+
+or stateless HTTP (run the server separately, then point Kowalski at it):
+
+```toml
+[[mcp.servers]]
+name = "rookery"
+transport = "http"           # or "sse" — both use Streamable HTTP
+url = "http://127.0.0.1:8081/"
 ```
 
 Then: `cargo run -p kowalski-cli -- mcp ping` / `mcp tools`.

@@ -26,7 +26,11 @@ episodic_path = "db/episodic_buffer"
 clean_on_startup = true
 
 # MCP servers (optional) — used by agents and: cargo run -p kowalski-cli -- mcp ping
-# DataFusion MCP (Docker): docker compose -f kowalski-mcp-datafusion/docker-compose.yml up — POST JSON-RPC to server root
+# In-repo MCP servers (kowalski-mcp-datafusion, kowalski-mcp-rookery) run over the shared
+# kowalski-mcp-transport: stdio OR stateless Streamable HTTP (no Mcp-Session-Id; every POST
+# independent, so the server is restartable / horizontally scalable).
+#
+# DataFusion MCP (stateless HTTP; Docker): docker compose -f kowalski-mcp-datafusion/docker-compose.yml up
 # [[mcp.servers]]
 # name = "datafusion"
 # url = "http://127.0.0.1:8080/"
@@ -52,11 +56,19 @@ clean_on_startup = true
 # transport = "stdio"
 # command = ["docker", "mcp", "gateway", "run", "--servers", "github"]
 
-# Rookery MCP (in-repo, stdio) — exposes the horde builder primitives so any MCP client
+# Rookery MCP (in-repo) — exposes the horde builder primitives so any MCP client
 # (the Kowalski agent, Claude Desktop, CLI) can validate and "give birth" to hordes.
 # LLM-free: the calling agent drives the interview; this server only validates/parses/writes.
 # Tools: rookery_example_draft, rookery_validate_draft, rookery_parse_draft, rookery_give_birth.
+#
+# stdio mode (Kowalski launches the subprocess):
 # [[mcp.servers]]
 # name = "rookery"
 # transport = "stdio"
-# command = ["cargo", "run", "-q", "-p", "kowalski-mcp-rookery", "--", "--output-root", "examples"]
+# command = ["cargo", "run", "-q", "-p", "kowalski-mcp-rookery", "--", "--transport", "stdio", "--output-root", "examples"]
+#
+# stateless HTTP mode (run separately: kowalski-mcp-rookery --transport http --bind 127.0.0.1:8081):
+# [[mcp.servers]]
+# name = "rookery"
+# transport = "http"
+# url = "http://127.0.0.1:8081/"

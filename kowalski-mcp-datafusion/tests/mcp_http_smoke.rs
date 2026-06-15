@@ -13,7 +13,7 @@ async fn spawn_server() -> (String, tokio::task::JoinHandle<()>) {
     ctx.register_csv("data", FIXTURE, CsvReadOptions::new())
         .await
         .expect("register_csv");
-    let state = AppState::new(Arc::new(ctx), "data", "smoke-test-session");
+    let state = AppState::new(Arc::new(ctx), "data");
     let app = app_router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await

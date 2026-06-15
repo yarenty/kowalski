@@ -1,6 +1,6 @@
 # kowalski-mcp-datafusion
 
-**Version 1.2.0** — standalone **MCP** server (Streamable HTTP: JSON + SSE) exposing **DataFusion** tools over a registered **CSV** (or similar) table.
+**Version 1.2.0** — standalone **MCP** server (**stateless** Streamable HTTP: JSON + SSE) exposing **DataFusion** tools over a registered **CSV** (or similar) table. HTTP plumbing is the shared [`kowalski-mcp-transport`](../kowalski-mcp-transport/); this crate is just the DataFusion tool dispatch.
 
 ## Horde changes in 1.1.0 (since 1.0.0)
 
@@ -9,7 +9,7 @@
 
 ## Features
 
-- **Streamable HTTP** with `Accept: application/json, text/event-stream`, **`Mcp-Session-Id`**.
+- **Stateless Streamable HTTP** with `Accept: application/json, text/event-stream` — no `Mcp-Session-Id` issued or required (every POST independent).
 - Tools: **`query_sql`**, **`get_schema`**, **`column_statistics`** (see `src/lib.rs`).
 - **Docker**: `Dockerfile` and `docker-compose.yml` at repo paths under this crate.
 

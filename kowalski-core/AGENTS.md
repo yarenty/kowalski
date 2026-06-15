@@ -127,8 +127,9 @@ kowalski/                         # repository root (you are in kowalski-core/)
 ├── kowalski-core/                # This crate: TemplateAgent, tools, memory, MCP, federation
 ├── kowalski-cli/                 # REPL, operators, extension, agent-app
 ├── kowalski/                     # Facade + HTTP server binary
-├── kowalski-mcp-datafusion/      # Optional MCP server (DataFusion, HTTP)
-├── kowalski-mcp-rookery/         # Optional MCP server (Rookery horde builder, stdio)
+├── kowalski-mcp-transport/       # Shared MCP transports (stdio + stateless Streamable HTTP)
+├── kowalski-mcp-datafusion/      # Optional MCP server (DataFusion)
+├── kowalski-mcp-rookery/         # Optional MCP server (Rookery horde builder)
 ├── ui/, examples/, docs/, tools/, resources/   # SQL migrations: `migrations/` within this crate
 ```
 
@@ -141,6 +142,7 @@ Tools and federation types live **in this crate** (`src/tools`, `src/tools/inter
 - [kowalski-core/AGENTS.md](./AGENTS.md) (this crate)
 - [kowalski-cli/AGENTS.md](../kowalski-cli/AGENTS.md)
 - [kowalski/AGENTS.md](../kowalski/AGENTS.md)
+- [kowalski-mcp-transport/AGENTS.md](../kowalski-mcp-transport/AGENTS.md)
 - [kowalski-mcp-datafusion/AGENTS.md](../kowalski-mcp-datafusion/AGENTS.md)
 - [kowalski-mcp-rookery/AGENTS.md](../kowalski-mcp-rookery/AGENTS.md)
 - [ui/AGENTS.md](../ui/AGENTS.md)
@@ -162,7 +164,7 @@ Agents ultimately call **capabilities** that behave like tools. Those capabiliti
 
 | Source | What it is | Examples |
 |--------|------------|----------|
-| **1. In-repo MCP servers** | Separate processes/crates you ship (stdio or HTTP/SSE), registered in config | [`kowalski-mcp-datafusion`](../kowalski-mcp-datafusion/) (HTTP, DataFusion), [`kowalski-mcp-rookery`](../kowalski-mcp-rookery/) (stdio, horde builder over `kowalski-core::rookery`) |
+| **1. In-repo MCP servers** | Separate processes/crates you ship, registered in config. Both transports — **stdio** and **stateless Streamable HTTP** — come from the shared [`kowalski-mcp-transport`](../kowalski-mcp-transport/) (no `Mcp-Session-Id`). | [`kowalski-mcp-datafusion`](../kowalski-mcp-datafusion/) (DataFusion), [`kowalski-mcp-rookery`](../kowalski-mcp-rookery/) (horde builder over `kowalski-core::rookery`) |
 | **2. External MCP (gateway / catalog)** | Third-party or vendor MCP servers the client reaches through a gateway | [Docker MCP Toolkit](https://docs.docker.com/ai/mcp-catalog-and-toolkit/toolkit/) profiles (GitHub, Puppeteer, …), OAuth handled by the gateway |
 
 **Docker MCP gateway (source 2, recommended wiring — PLAN.md §R3):** add **one** stdio server to `[[mcp.servers]]` rather than N individual servers:

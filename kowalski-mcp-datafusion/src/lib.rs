@@ -1,159 +1,85 @@
-//! MCP Streamable HTTP (JSON + SSE) server: DataFusion tools over a registered CSV.
+//! **Stateless** Streamable HTTP (JSON + SSE) MCP server: DataFusion tools over a registered CSV.
+//!
+//! Transport (stdio / stateless HTTP, SSE framing, parse errors) lives in
+//! [`kowalski_mcp_transport`]; this crate only implements the DataFusion tool dispatch via
+//! [`McpHandler`]. No `Mcp-Session-Id` is issued or required — every POST is independent.
 
-use axum::body::Body;
-use axum::extract::State;
-use axum::http::header::{ACCEPT, CONTENT_TYPE};
-use axum::http::{HeaderMap, HeaderValue, Response, StatusCode};
-use axum::routing::post;
-use axum::{Router, response::IntoResponse};
+use axum::Router;
 use datafusion::arrow::datatypes::Schema;
 use datafusion::arrow::util::pretty::pretty_format_batches;
 use datafusion::prelude::*;
+use kowalski_mcp_transport::{McpHandler, http_router};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
-pub const MCP_SESSION_HEADER: &str = "mcp-session-id";
-pub const ACCEPT_STREAMABLE: &str = "application/json, text/event-stream";
+/// `Accept` value clients should send (re-exported from the shared transport).
+pub use kowalski_mcp_transport::ACCEPT_STREAMABLE;
 
+/// MCP protocol version reported on `initialize`.
+pub const PROTOCOL_VERSION: &str = "2025-03-26";
+
+/// DataFusion-backed MCP handler: a registered table plus the session context to query it.
 #[derive(Clone)]
 pub struct AppState {
     pub ctx: Arc<SessionContext>,
     pub table: String,
-    pub session_id: String,
 }
 
 impl AppState {
-    pub fn new(
-        ctx: Arc<SessionContext>,
-        table: impl Into<String>,
-        session_id: impl Into<String>,
-    ) -> Self {
+    pub fn new(ctx: Arc<SessionContext>, table: impl Into<String>) -> Self {
         Self {
             ctx,
             table: table.into(),
-            session_id: session_id.into(),
         }
     }
 }
 
+impl McpHandler for AppState {
+    fn handle(&self, request: Value) -> impl std::future::Future<Output = Option<Value>> + Send {
+        let state = self.clone();
+        async move { dispatch_mcp(&state, request).await }
+    }
+}
+
+/// Build the stateless Streamable HTTP router for this DataFusion table.
 pub fn app_router(state: AppState) -> Router {
-    Router::new().route("/", post(mcp_post)).with_state(state)
+    http_router(Arc::new(state))
 }
 
-/// Streamable HTTP: respond with SSE when the client advertises `text/event-stream`.
-pub fn wants_sse(headers: &HeaderMap) -> bool {
-    headers
-        .get(ACCEPT)
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_lowercase().contains("text/event-stream"))
-        .unwrap_or(false)
-}
-
-pub fn response_for_envelope(
-    headers: &HeaderMap,
-    session_id: &str,
-    envelope: Value,
-) -> Response<Body> {
-    let body_str = match serde_json::to_string(&envelope) {
-        Ok(s) => s,
-        Err(e) => {
-            return Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(Body::from(e.to_string()))
-                .unwrap();
-        }
-    };
-
-    let mut builder = Response::builder().status(StatusCode::OK);
-    if let Ok(v) = HeaderValue::from_str(session_id) {
-        builder = builder.header(MCP_SESSION_HEADER, v);
-    }
-
-    if wants_sse(headers) {
-        let sse = format!("data: {}\n\n", body_str);
-        builder
-            .header(CONTENT_TYPE, "text/event-stream")
-            .body(Body::from(sse))
-            .unwrap()
-    } else {
-        builder
-            .header(CONTENT_TYPE, "application/json")
-            .body(Body::from(body_str))
-            .unwrap()
-    }
-}
-
-async fn mcp_post(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    body: axum::body::Bytes,
-) -> impl IntoResponse {
-    let body_str = String::from_utf8_lossy(&body);
-    let v: Value = match serde_json::from_str(body_str.trim()) {
-        Ok(x) => x,
-        Err(e) => {
-            return response_for_envelope(
-                &headers,
-                &state.session_id,
-                json!({
-                    "jsonrpc": "2.0",
-                    "id": null,
-                    "error": { "code": -32700, "message": format!("parse error: {}", e) }
-                }),
-            );
-        }
-    };
-
-    let method = v["method"].as_str().unwrap_or("");
-    if v.get("id").is_none() && method == "notifications/initialized" {
-        let mut res = Response::builder()
-            .status(StatusCode::ACCEPTED)
-            .body(Body::empty())
-            .unwrap();
-        if let Ok(h) = HeaderValue::from_str(&state.session_id) {
-            res.headers_mut().insert(MCP_SESSION_HEADER, h);
-        }
-        return res;
-    }
-
-    let envelope = dispatch_mcp(&state, v).await;
-    response_for_envelope(&headers, &state.session_id, envelope)
-}
-
-async fn dispatch_mcp(state: &AppState, body: Value) -> Value {
-    let id = body.get("id").cloned().unwrap_or(json!(1));
-    let method = body["method"].as_str().unwrap_or("");
+async fn dispatch_mcp(state: &AppState, body: Value) -> Option<Value> {
+    // JSON-RPC notifications (no `id`, e.g. notifications/initialized) get no reply.
+    let id = body.get("id")?.clone();
+    let method = body.get("method").and_then(|m| m.as_str()).unwrap_or("");
 
     let result = match method {
-        "initialize" => json!({
-            "protocolVersion": "2025-03-26",
+        "initialize" => Ok(json!({
+            "protocolVersion": PROTOCOL_VERSION,
             "serverInfo": {
                 "name": "kowalski-mcp-datafusion",
                 "version": env!("CARGO_PKG_VERSION")
             },
             "capabilities": { "tools": {} }
-        }),
-        "tools/list" => tools_list_json(),
-        "tools/call" => match run_tool_call(state, &body).await {
-            Ok(v) => v,
-            Err(e) => {
-                return json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "error": { "code": -32000, "message": e }
-                });
-            }
-        },
-        _ => {
-            return json!({
+        })),
+        "ping" => Ok(json!({})),
+        "tools/list" => Ok(tools_list_json()),
+        "tools/call" => run_tool_call(state, &body).await,
+        other => {
+            return Some(json!({
                 "jsonrpc": "2.0",
                 "id": id,
-                "error": { "code": -32601, "message": "method not found" }
-            });
+                "error": { "code": -32601, "message": format!("method not found: {other}") }
+            }));
         }
     };
 
-    json!({ "jsonrpc": "2.0", "id": id, "result": result })
+    Some(match result {
+        Ok(v) => json!({ "jsonrpc": "2.0", "id": id, "result": v }),
+        Err(e) => json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "error": { "code": -32000, "message": e }
+        }),
+    })
 }
 
 fn tools_list_json() -> Value {
