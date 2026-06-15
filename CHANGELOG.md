@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file, or at least
 - **DAG horde graph (core, validation only):** optional `[[edges]]` on `horde.md` / `RookeryDraft`; `kowalski_core::horde_graph::resolve_execution_graph()` validates acyclic graphs, pipeline topological order, and returns scheduling layers. Empty/missing `edges` → implicit linear chain (existing hordes unchanged). Orchestrator scheduling (CLI/HTTP) follows in 1.4.0.
 - **DAG orchestrator scheduling:** `agent-app run` and the HTTP horde orchestrator (`kowalski/src/horde.rs`) execute steps via `execution_order()` / `next_ready_step()` from `kowalski-core` (sequential within each ready layer in 1.4.0 MVP). Federation workers resolve `@step:name@` via on-disk outputs. Example: [`examples/dag-demo/`](examples/dag-demo/).
 - **Rookery DAG birth:** `write_horde_tree` emits `[[edges]]` when the draft graph differs from an implicit linear chain; builder prompt documents fork/join. MCP rookery tools accept `edges` in draft JSON.
+- **UI DAG canvas (1.4.0):** **PenguinCanvas** lays out fork/join hordes in topological layers when `draft.edges` is non-empty; **Rookery** shows a read-only edge list; **Horde Run** and **Federation** note DAG scheduling when `/api/hordes` exposes `edges`.
 
 ## [1.3.0] - 2026-06-14
 

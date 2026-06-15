@@ -11,7 +11,7 @@ Vue 3 + Vite + TypeScript single-page app. It is **not** the source of truth for
 Features are **not done** until an operator can complete the primary flows in **`ui/`** against a running **`kowalski`** server:
 
 - **Chat** tab (LLM + optional tools stream).
-- **Rookery** tab (1.3.0): conversational horde builder → **Propose horde** → **PenguinCanvas** + **PenguinEditor** (save penguin) → **Give birth** → **Save horde to disk** (`/api/rookery/*`).
+- **Rookery** tab (1.3.0+): conversational horde builder → **Propose horde** → **PenguinCanvas** (linear track or layered DAG when `edges[]` present) + **PenguinEditor** (save penguin) → **Give birth** → **Save horde to disk** (`/api/rookery/*`).
 - **Horde** tab: catalog → worker lifecycle → **Horde Run** (e.g. Knowledge Compiler delivery).
 - **Federation** tab: registry, worker start/stop, delegate smoke tests.
 
@@ -22,7 +22,8 @@ Backend or `kowalski-core` changes that touch chat, horde, federation, or delive
 - Prefer **`fetch`** and small composables; keep `App.vue` readable—extract new tabs into components if they grow.
 - API helpers live in **`src/api.ts`**; extend `ChatStreamEvent` only when the backend adds event types.
 - **Tool-aware stream**: checkbox binds to `chatToolsStream` and passes `{ toolsStream: true }` into `chatStream()`.
-- **Rookery draft is server-owned** (PLAN.md §R1): `localStorage` (`kowalski.ui.rookery.list.v1`) holds only a thin session list (`id`, `serverSessionId`, `title`, display `turns`, `updatedAt`). The draft/status/pipeline/summary are **not** mirrored client-side — they are hydrated from `GET /api/rookery/sessions/{id}` on select/restore. Do not re-add a client-held draft round-trip to `POST /api/rookery/sessions`.
+- **Rookery draft is server-owned** (PLAN.md §R1): `localStorage` (`kowalski.ui.rookery.list.v1`) holds only a thin session list (`id`, `serverSessionId`, `title`, display `turns`, `updatedAt`). The draft/status/pipeline/summary/`edges` are **not** mirrored client-side — they are hydrated from `GET /api/rookery/sessions/{id}` on select/restore. Do not re-add a client-held draft round-trip to `POST /api/rookery/sessions`.
+- **DAG layout:** `src/hordeGraph.ts` mirrors core layer scheduling for display only; orchestration stays on the server. Linear hordes (empty `edges`) keep the horizontal canvas.
 
 ## Documentation closure (mandatory)
 

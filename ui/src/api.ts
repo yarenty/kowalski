@@ -175,12 +175,15 @@ export type HordeRunFormSpec = {
   inputs: OperatorInputField[];
 };
 
+export type HordeEdge = { from: string; to: string };
+
 export type HordeCatalogItem = {
   id: string;
   display_name: string;
   description: string;
   capability_prefix: string;
   pipeline: string[];
+  edges?: HordeEdge[];
   default_question: string;
   topic: string;
   root_path: string;
@@ -475,6 +478,7 @@ export type RookeryDraft = {
   description: string;
   capability_prefix?: string | null;
   pipeline: string[];
+  edges?: HordeEdge[];
   penguins: RookeryPenguinSpec[];
   default_question?: string | null;
   default_topic?: string | null;

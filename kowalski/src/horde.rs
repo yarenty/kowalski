@@ -116,6 +116,8 @@ pub struct HordeSpec {
     pub description: String,
     pub capability_prefix: String,
     pub pipeline: Vec<String>,
+    /// Explicit `[[edges]]` from manifest (empty = linear horde).
+    pub manifest_edges: Vec<HordeEdge>,
     #[serde(skip)]
     pub execution_graph: ExecutionGraph,
     pub default_question: String,
@@ -272,7 +274,8 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
         display_name: meta.display_name,
         description: meta.description,
         capability_prefix: prefix,
-        pipeline: meta.pipeline,
+        pipeline: meta.pipeline.clone(),
+        manifest_edges: meta.edges.clone(),
         execution_graph,
         default_question: meta
             .default_question
