@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Added
+
+- **One-line install:** [`install.sh`](install.sh) — `curl -fsSL https://raw.githubusercontent.com/yarenty/kowalski/main/install.sh | bash` installs `kowalski-cli` and `kowalski` from crates.io, seeds `~/.config/kowalski/config.toml`, and documents optional MCP / postgres feature flags.
+
 ## [1.3.0] - 2026-06-14
 
 > Workspace and crates **`1.3.0`**: **Rookery** horde builder (HTTP + UI + MCP), server-owned sessions, in-repo MCP transport unification, Docker MCP gateway, penguin avatars, and operator-form validation on the server.

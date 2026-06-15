@@ -79,6 +79,26 @@ kowalski/
 
 ## 🚀 Installation & Setup
 
+### One-line install (crates.io)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yarenty/kowalski/main/install.sh | bash
+```
+
+This installs **`kowalski-cli`** and **`kowalski`** into `~/.cargo/bin` (installs Rust via rustup if needed), seeds `~/.config/kowalski/config.toml` from the repo sample, and prints next steps.
+
+Options via environment variables:
+
+| Variable | Effect |
+|----------|--------|
+| `KOWALSKI_VERSION=1.3.0` | Pin crates.io version |
+| `KOWALSKI_FEATURES=postgres` | `cargo install --features postgres` for server + CLI |
+| `KOWALSKI_INSTALL_MCP=1` | Also install `kowalski-mcp-rookery` and `kowalski-mcp-datafusion` |
+| `KOWALSKI_SKIP_RUSTUP=1` | Fail instead of auto-installing Rust |
+| `KOWALSKI_CONFIG_DIR=~/.config/kowalski` | Where sample `config.toml` is written |
+
+Custom domain: mirror or redirect [`install.sh`](install.sh) at e.g. `https://yarenty.com/kowalski/install.sh`.
+
 ### 1. Prerequisites
 
 - **Rust** (latest stable, [rustup.rs](https://rustup.rs))
