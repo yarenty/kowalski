@@ -41,7 +41,10 @@ pub use federation::{
 };
 pub use graph::{postgres_age_cypher, postgres_graph_status};
 pub use logging::*;
-pub use horde_graph::{resolve_execution_graph, ExecutionGraph, HordeEdge};
+pub use horde_graph::{
+    all_steps_successful, execution_order, next_ready_step, resolve_execution_graph,
+    single_predecessor, ExecutionGraph, HordeEdge,
+};
 pub use markdown_pipeline::{
     maybe_normalize_markdown, parse_app_manifest, parse_stage_agent, render_context_attachments,
     resolve_manifest_path, AppManifestMeta, StageAgentMeta,

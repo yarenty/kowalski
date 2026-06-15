@@ -280,6 +280,58 @@ fn compute_layers(
     Ok(layers)
 }
 
+/// Flatten topological layers into execution order (sequential within each layer, MVP).
+pub fn execution_order(graph: &ExecutionGraph) -> Vec<String> {
+    graph.layers.iter().flatten().cloned().collect()
+}
+
+fn predecessor_map(edges: &[HordeEdge]) -> HashMap<String, Vec<String>> {
+    let mut map: HashMap<String, Vec<String>> = HashMap::new();
+    for e in edges {
+        map.entry(e.to.clone()).or_default().push(e.from.clone());
+    }
+    map
+}
+
+/// Next `pending` step whose inbound edges are all `success` (first in `pipeline` order).
+pub fn next_ready_step(
+    pipeline: &[String],
+    graph: &ExecutionGraph,
+    step_status: &BTreeMap<String, &str>,
+) -> Option<String> {
+    let preds = predecessor_map(&graph.edges);
+    for step in pipeline {
+        if step_status.get(step.as_str()).copied() != Some("pending") {
+            continue;
+        }
+        let prerequisites = preds.get(step).map(|v| v.as_slice()).unwrap_or(&[]);
+        if prerequisites
+            .iter()
+            .all(|p| step_status.get(p.as_str()) == Some(&"success"))
+        {
+            return Some(step.clone());
+        }
+    }
+    None
+}
+
+pub fn all_steps_successful(pipeline: &[String], step_status: &BTreeMap<String, &str>) -> bool {
+    pipeline
+        .iter()
+        .all(|s| step_status.get(s.as_str()) == Some(&"success"))
+}
+
+/// When a step has exactly one inbound edge, return that predecessor (for `@artifact@`).
+pub fn single_predecessor(graph: &ExecutionGraph, step: &str) -> Option<String> {
+    let preds = predecessor_map(&graph.edges);
+    let ps = preds.get(step)?;
+    if ps.len() == 1 {
+        Some(ps[0].clone())
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -386,5 +438,43 @@ mod tests {
         let g = resolve_execution_graph(&pipe, None).unwrap();
         assert!(g.edges.is_empty());
         assert_eq!(g.layers, vec![vec!["only".to_string()]]);
+    }
+
+    #[test]
+    fn next_ready_step_fork_join() {
+        let pipe = pipeline(&["ingest", "branch-a", "branch-b", "join", "lint"]);
+        let edges = vec![
+            edge("ingest", "branch-a"),
+            edge("ingest", "branch-b"),
+            edge("branch-a", "join"),
+            edge("branch-b", "join"),
+            edge("join", "lint"),
+        ];
+        let g = resolve_execution_graph(&pipe, Some(&edges)).unwrap();
+        let mut status = BTreeMap::new();
+        for s in &pipe {
+            status.insert(s.clone(), "pending");
+        }
+        assert_eq!(
+            next_ready_step(&pipe, &g, &status),
+            Some("ingest".into())
+        );
+        status.insert("ingest".into(), "success");
+        assert_eq!(
+            next_ready_step(&pipe, &g, &status),
+            Some("branch-a".into())
+        );
+        status.insert("branch-a".into(), "success");
+        assert_eq!(
+            next_ready_step(&pipe, &g, &status),
+            Some("branch-b".into())
+        );
+        status.insert("branch-b".into(), "success");
+        assert_eq!(next_ready_step(&pipe, &g, &status), Some("join".into()));
+        status.insert("join".into(), "success");
+        assert_eq!(next_ready_step(&pipe, &g, &status), Some("lint".into()));
+        status.insert("lint".into(), "success");
+        assert!(next_ready_step(&pipe, &g, &status).is_none());
+        assert!(all_steps_successful(&pipe, &status));
     }
 }

@@ -32,6 +32,7 @@ mod tests {
     use super::*;
     use crate::markdown_pipeline::{parse_app_manifest, parse_stage_agent, resolve_manifest_path};
     use std::fs;
+    use std::path::PathBuf;
     use tempfile::tempdir;
 
     #[test]
@@ -91,5 +92,26 @@ mod tests {
         let mut draft = minimal_linear_draft();
         draft.id = "../evil".into();
         assert!(validate_draft(&draft).is_err());
+    }
+
+    #[test]
+    fn dag_demo_example_validates() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples/dag-demo");
+        if !root.join("horde.md").is_file() {
+            return;
+        }
+        validate_horde_tree(&root).expect("examples/dag-demo should validate");
+        let manifest = parse_app_manifest(&resolve_manifest_path(&root)).unwrap();
+        let edge_slice = if manifest.edges.is_empty() {
+            None
+        } else {
+            Some(manifest.edges.as_slice())
+        };
+        let graph = crate::resolve_execution_graph(&manifest.pipeline, edge_slice).unwrap();
+        assert_eq!(graph.layers.len(), 4);
+        assert_eq!(graph.layers[0], vec!["ingest".to_string()]);
+        assert_eq!(graph.layers[1].len(), 2);
+        assert_eq!(graph.layers[2], vec!["join".to_string()]);
+        assert_eq!(graph.layers[3], vec!["deliver".to_string()]);
     }
 }

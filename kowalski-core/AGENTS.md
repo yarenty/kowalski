@@ -200,7 +200,7 @@ command = ["docker", "mcp", "gateway", "run"]
 
 **[`rookery`](./src/rookery/):** horde builder — `RookeryDraft`, `validate_draft`, `validate_horde_tree`, `write_horde_tree`. Optional DAG scheduling via **`[[edges]]`** in manifest / draft (see [`horde_graph`](./src/horde_graph.rs)). Builder system prompt: [`../resources/prompts/rookery/builder.md`](../resources/prompts/rookery/builder.md). Fixture: `minimal_linear_draft()`.
 
-**[`horde_graph`](./src/horde_graph.rs):** `HordeEdge`, `resolve_execution_graph()` — validates acyclic graphs, pipeline topological order, and returns scheduling layers. Empty/missing `edges` → implicit chain along `pipeline` order (linear hordes unchanged).
+**[`horde_graph`](./src/horde_graph.rs):** `HordeEdge`, `resolve_execution_graph()` — validates acyclic graphs, pipeline topological order, and returns scheduling layers. **`execution_order`**, **`next_ready_step`**, **`single_predecessor`** drive CLI/HTTP orchestrators. Empty/missing `edges` → implicit chain along `pipeline` order (linear hordes unchanged). Parallel layers run **sequentially per process** in 1.4.0 MVP.
 
 **Horde manifest `[[edges]]` TOML (optional, 1.4.0+):**
 
