@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Added
 
+- **Docker MCP gateway support (1.3.x cleanup, PLAN.md §R3):** Kowalski connects to the [Docker MCP Toolkit](https://docs.docker.com/ai/mcp-catalog-and-toolkit/toolkit/) catalog through **one** stdio MCP server (`command = ["docker", "mcp", "gateway", "run"]`) instead of wiring many individual servers — verified via `kowalski-cli mcp ping`/`mcp tools`. Default (no flags) exposes the gateway's **dynamic** management tools (`mcp-find`, `mcp-exec`, `code-mode`); `--servers <name>` / `--profile <id>` expose a specific server's tools by name (after it is configured in Docker Desktop). `tools/internal/*` remain the dependency-light fallback and are shadowed by the gateway when present. Documented in [`config.toml`](config.toml) and [`kowalski-core/AGENTS.md`](kowalski-core/AGENTS.md).
 - **Rookery (1.3.0, in progress):** `kowalski-core::rookery` — linear draft validation and `write_horde_tree` for born hordes; builder prompt at [`resources/prompts/rookery/builder.md`](resources/prompts/rookery/builder.md). HTTP API on the `kowalski` server: `POST/GET/DELETE /api/rookery/sessions`, `POST .../chat` (optional SSE via `"stream": true`), `POST .../propose`, `POST .../give-birth`. Vue **Rookery** tab: interview chat, pipeline summary, **Give birth**. Default output root: `examples/` (override with `KOWALSKI_ROOKERY_OUTPUT` or `give-birth.output_root`).
 
 ### Changed

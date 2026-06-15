@@ -32,3 +32,22 @@ clean_on_startup = true
 # url = "http://127.0.0.1:8080/"
 # transport = "http"   # or "sse" — both use Streamable HTTP + optional SSE responses
 # headers = { Authorization = "Bearer your-token" }
+
+# Docker MCP gateway (recommended — one stdio connection to the Docker MCP Toolkit catalog).
+# Requires Docker Desktop + MCP Toolkit (`docker mcp version`). Enable/disable individual
+# servers in Docker Desktop; Kowalski connects to all of them through this single entry.
+#
+# Default (no flags) = "dynamic" mode: exposes gateway management tools (mcp-find, mcp-add,
+# mcp-exec, code-mode) so an agent can discover/run catalog tools on demand. Zero config.
+# [[mcp.servers]]
+# name = "docker-mcp"
+# transport = "stdio"
+# command = ["docker", "mcp", "gateway", "run"]
+#
+# Direct mode: expose a specific server's tools by name (the server must be installed and
+# configured — including any secrets/OAuth — in Docker Desktop first; tools appear once its
+# container is ready). Use `--profile <id>` to load a saved profile instead of `--servers`.
+# [[mcp.servers]]
+# name = "docker-mcp-github"
+# transport = "stdio"
+# command = ["docker", "mcp", "gateway", "run", "--servers", "github"]

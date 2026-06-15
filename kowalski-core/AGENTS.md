@@ -162,6 +162,19 @@ Agents ultimately call **capabilities** that behave like tools. Those capabiliti
 |--------|------------|----------|
 | **1. In-repo MCP servers** | Separate processes/crates you ship (stdio or HTTP/SSE), registered in config | [`kowalski-mcp-datafusion`](../kowalski-mcp-datafusion/) |
 | **2. External MCP (gateway / catalog)** | Third-party or vendor MCP servers the client reaches through a gateway | [Docker MCP Toolkit](https://docs.docker.com/ai/mcp-catalog-and-toolkit/toolkit/) profiles (GitHub, Puppeteer, …), OAuth handled by the gateway |
+
+**Docker MCP gateway (source 2, recommended wiring — PLAN.md §R3):** add **one** stdio server to `[[mcp.servers]]` rather than N individual servers:
+
+```toml
+[[mcp.servers]]
+name = "docker-mcp"
+transport = "stdio"
+command = ["docker", "mcp", "gateway", "run"]
+```
+
+- Verified: Kowalski's stdio MCP client (`McpStdioClient`) connects to `docker mcp gateway run` and lists tools (`kowalski-cli mcp ping` → `OK`).
+- **Two modes.** Default (no flags) = **dynamic**: the gateway exposes management tools (`mcp-find`, `mcp-add`, `mcp-exec`, `code-mode`) so an agent discovers/runs catalog tools on demand — zero config, works out of the box. **Direct** (`--servers <name>` / `--profile <id>`): the named server's tools are exposed by name, but only after that server is installed **and configured (secrets/OAuth)** in Docker Desktop and its container is ready — a one-shot `mcp tools` may report 0 tools until then. Enable servers in Docker Desktop (`docker mcp profile server ls`).
+- **`internal` ↔ gateway policy:** `tools/internal/*` (GitHub, web, FS) remain the **dependency-light default / CI path**. When the gateway provides an equivalent (e.g. GitHub, Fetch, Filesystem), it **shadows** the internal tool for that deployment; do not delete the internal fallback.
 | **3. Internal tools** | Small, **in-process** helpers under [`src/tools/internal/`](./src/tools/internal/) — fast defaults, strict scope | [`internal/github`](./src/tools/internal/github.rs) (README API + raw fetch), [`internal/web`](./src/tools/internal/web.rs) (plain HTTP path, to grow), [`internal/file_system`](./src/tools/internal/file_system.rs) (bounded FS, planned) |
 
 **Principles (no shortcuts):**
