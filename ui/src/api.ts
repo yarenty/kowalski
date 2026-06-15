@@ -541,22 +541,12 @@ export function openFederationEventSource(
   return es;
 }
 
-/** Parses `text/event-stream` body: one JSON object per `data:` line. */
-export async function chatStream(
-  message: string,
-  onEvent: (ev: ChatStreamEvent) => void,
-  options?: { toolsStream?: boolean; useMemory?: boolean; conversationId?: string | null },
-): Promise<void> {
-  const res = await fetch(`${base}/api/chat/stream`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      message,
-      ...(options?.toolsStream ? { tools_stream: true } : {}),
-      ...(options?.useMemory !== undefined ? { use_memory: options.useMemory } : {}),
-      ...(options?.conversationId ? { conversation_id: options.conversationId } : {}),
-    }),
-  });
+/**
+ * Pump a `text/event-stream` response body, invoking `onEvent` with the parsed JSON of each
+ * `data:` line. Shared by all request-scoped chat streams (`/api/chat/stream`,
+ * `/api/rookery/.../chat`). Non-JSON keepalive lines are ignored.
+ */
+async function streamSse<T>(res: Response, onEvent: (ev: T) => void): Promise<void> {
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`${res.status} ${res.statusText}: ${text.slice(0, 200)}`);
@@ -579,13 +569,32 @@ export async function chatStream(
         const raw = m[1]?.trim();
         if (!raw) continue;
         try {
-          onEvent(JSON.parse(raw) as ChatStreamEvent);
+          onEvent(JSON.parse(raw) as T);
         } catch {
           /* ignore non-JSON keepalives */
         }
       }
     }
   }
+}
+
+/** SSE from `POST /api/chat/stream`: one JSON `ChatStreamEvent` per `data:` line. */
+export async function chatStream(
+  message: string,
+  onEvent: (ev: ChatStreamEvent) => void,
+  options?: { toolsStream?: boolean; useMemory?: boolean; conversationId?: string | null },
+): Promise<void> {
+  const res = await fetch(`${base}/api/chat/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message,
+      ...(options?.toolsStream ? { tools_stream: true } : {}),
+      ...(options?.useMemory !== undefined ? { use_memory: options.useMemory } : {}),
+      ...(options?.conversationId ? { conversation_id: options.conversationId } : {}),
+    }),
+  });
+  await streamSse<ChatStreamEvent>(res, onEvent);
 }
 
 /** SSE from `POST /api/rookery/sessions/{id}/chat` with `{ stream: true }`. */
@@ -602,33 +611,5 @@ export async function rookeryChatStream(
       body: JSON.stringify({ message, stream: true }),
     },
   );
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${text.slice(0, 200)}`);
-  }
-  const reader = res.body?.getReader();
-  if (!reader) throw new Error("No response body");
-  const dec = new TextDecoder();
-  let buf = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let idx: number;
-    while ((idx = buf.indexOf("\n\n")) >= 0) {
-      const block = buf.slice(0, idx);
-      buf = buf.slice(idx + 2);
-      for (const line of block.split("\n")) {
-        const m = line.match(/^data:\s*(.*)$/);
-        if (!m) continue;
-        const raw = m[1]?.trim();
-        if (!raw) continue;
-        try {
-          onEvent(JSON.parse(raw) as RookeryStreamEvent);
-        } catch {
-          /* ignore */
-        }
-      }
-    }
-  }
+  await streamSse<RookeryStreamEvent>(res, onEvent);
 }
