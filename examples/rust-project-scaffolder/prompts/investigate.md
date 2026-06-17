@@ -1,0 +1,1 @@
+Analyze the project goals and propose a list of recommended Rust crates and external libraries that are suitable for this type of project.

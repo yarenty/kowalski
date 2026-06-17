@@ -1,0 +1,1 @@
+Analyze the user's request to determine the project type, scope, and any initial constraints.

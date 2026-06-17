@@ -1,0 +1,1 @@
+Using the structure and suggested crates, generate the initial boilerplate code for the core functionality of the project.

@@ -1,0 +1,1 @@
+Based on the input from 'ingest', define the optimal directory and file structure for a standard Rust project (src, Cargo.toml, etc.).
