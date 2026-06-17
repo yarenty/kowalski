@@ -1,8 +1,8 @@
-# Kowalski Roadmap & Features (1.3.0+)
+# Kowalski Roadmap & Features (1.4.0+)
 
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"
 
-**Release:** **1.3.0** — see [`CHANGELOG.md`](CHANGELOG.md).  
+**Release:** **1.4.0** on `main` (source merge 2026-06-15) — see [`CHANGELOG.md`](CHANGELOG.md). **crates.io:** still **1.3.0** until **1.5.0** publish.  
 **Per-crate roadmaps:** [`kowalski-core/ROADMAP.md`](kowalski-core/ROADMAP.md), [`kowalski-cli/ROADMAP.md`](kowalski-cli/ROADMAP.md), [`kowalski-mcp-datafusion/ROADMAP.md`](kowalski-mcp-datafusion/ROADMAP.md), [`ui/ROADMAP.md`](ui/ROADMAP.md).
 
 ## Shipped in 1.3.0 (2026-06-14)
@@ -31,9 +31,9 @@ The builder shipped, but the UI absorbed core responsibilities. Pay down before 
 - [x] **R3** **Docker MCP gateway** as one stdio MCP server (`docker mcp gateway run`); dynamic mode + `--servers`/`--profile` direct mode. `tools/internal/*` stay the dependency-light fallback, shadowed by the gateway when present.
 - [x] **Transport** Shared `kowalski-mcp-transport` (stdio + **stateless Streamable HTTP**, no `Mcp-Session-Id`) — adopted by `kowalski-mcp-rookery` (`--transport stdio|http`) and `kowalski-mcp-datafusion` (now sessionless), so every in-repo MCP server is reachable over stateless HTTP.
 
-## Shipped in 1.4.0 (in progress on `feat/dag`)
+## Shipped in 1.4.0 (2026-06-15, source merge)
 
-See [`CHANGELOG.md`](CHANGELOG.md) (**[Unreleased]**). Highlights: **`edges[]` / `[[edges]]`**, graph validation + orchestrator scheduling, Rookery DAG birth, UI fork/join canvas, one-line **`install.sh`**, example **[`examples/coding-assistant/`](examples/coding-assistant/)** (planning-tier DAG).
+See [`CHANGELOG.md`](CHANGELOG.md) (**[1.4.0]**). Highlights: **`edges[]` / `[[edges]]`**, graph validation + orchestrator scheduling, Rookery DAG birth, UI fork/join canvas, **`install.sh`**, [`examples/coding-assistant/`](examples/coding-assistant/), federation worker stage kinds. **Not on crates.io** — next publish **1.5.0**.
 
 ## Planned: DAG horde pipelines (1.4.0) — **shipped (MVP)**
 

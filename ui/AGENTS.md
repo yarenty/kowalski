@@ -1,6 +1,6 @@
 # Kowalski UI — agent notes
 
-**Package**: `kowalski-ui` · **Version**: **1.3.0** (`package.json`)
+**Package**: `kowalski-ui` · **Version**: **1.4.0** (`package.json`)
 
 ## Role
 

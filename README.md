@@ -7,7 +7,9 @@
 > During this transition, some modules, commands, and docs may still evolve quickly.
 > We are focused on stability, clearer module boundaries, production-ready operator workflows, and robust multi-agent federation.
 
-**Version 1.3.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-datafusion`, `kowalski-mcp-rookery`, `kowalski-mcp-transport`, Vue `ui/`)
+**Version 1.4.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-datafusion`, `kowalski-mcp-rookery`, `kowalski-mcp-transport`, Vue `ui/`)
+
+> **Install from git** for 1.4.0 (`cargo build --release`). **`cargo install` from crates.io** is still **1.3.0** until the **1.5.0** publish.
 
 > "AI agents are like pets – they're cute, but they make a mess."  
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"
@@ -91,7 +93,7 @@ Options via environment variables:
 
 | Variable | Effect |
 |----------|--------|
-| `KOWALSKI_VERSION=1.3.0` | Pin crates.io version |
+| `KOWALSKI_VERSION=1.3.0` | Pin crates.io version (latest published; **1.4.0+ build from git** until 1.5 publish) |
 | `KOWALSKI_FEATURES=postgres` | `cargo install --features postgres` for server + CLI |
 | `KOWALSKI_INSTALL_MCP=1` | Also install `kowalski-mcp-rookery` and `kowalski-mcp-datafusion` |
 | `KOWALSKI_SKIP_RUSTUP=1` | Fail instead of auto-installing Rust |

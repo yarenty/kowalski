@@ -55,7 +55,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: Kowalski  
-**Release line**: **1.3.0** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).  
+**Release line**: **1.4.0** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).
 **Purpose**: A Rust-native multi-agent framework: **`kowalski-core`** (agents, LLM, memory, MCP client), **`kowalski-cli`** (REPL + operators, extensions, **`agent-app`**), **`kowalski`** (HTTP **`/api/*`** server), optional **`kowalski-mcp-datafusion`**, Vue **`ui/`**, optional PostgreSQL (**pgvector**, **Apache AGE**).  
 **Core Value Proposition**: Modular, extensible deployment with MCP-first tools and federation-oriented APIs.  
 **Primary Mechanism**: `TemplateAgent` + pluggable tools (built-in + MCP), Ollama/OpenAI-compatible providers.  
@@ -367,7 +367,7 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-**1.3.0** ships **Rookery** (horde builder HTTP + UI + MCP), server-owned sessions, **`kowalski-mcp-transport`** (stateless HTTP for in-repo MCP servers), Docker MCP gateway wiring, penguin avatars, and server-validated horde operator forms — on top of the **1.2.0** Knowledge Compiler / federation stack (see [`CHANGELOG.md`](CHANGELOG.md), [`docs/OVERVIEW_1_1.md`](docs/OVERVIEW_1_1.md)).
+**1.4.0** ships **DAG horde pipelines** (`edges[]`), graph orchestrator scheduling, Rookery/UI DAG canvas, **`install.sh`**, and **[`examples/coding-assistant/`](examples/coding-assistant/)** — on top of **1.3.0** Rookery / MCP / federation (see [`CHANGELOG.md`](CHANGELOG.md)).
 
 ### Roadmap
 See [`ROADMAP.md`](ROADMAP.md) (root and per-crate **`ROADMAP.md`** where present).

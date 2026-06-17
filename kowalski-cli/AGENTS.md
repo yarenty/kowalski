@@ -55,7 +55,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: kowalski-cli  
-**Release**: **1.3.0** (see crate `Cargo.toml`).  
+**Release**: **1.4.0** (see crate `Cargo.toml`).  
 **Purpose**: Command-line interface (REPL + operators). The HTTP server (`kowalski`) for the Vue operator UI exposes `/api/chat`, `/api/chat/stream` (with **`tools_stream`**), MCP, federation, graph status / Cypher (Postgres + AGE).  
 **Core Value Proposition**: Modular, extensible, and distributed architecture supporting standalone and federated deployments with privacy-preserving capabilities.  
 **Primary Mechanism**: Multi-agent orchestration and pluggable tools interfacing with local (Ollama) and remote LLMs.  

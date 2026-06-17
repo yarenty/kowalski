@@ -1,6 +1,6 @@
 # kowalski-mcp-transport — AI agent notes
 
-**Crate**: `kowalski-mcp-transport` · **Version**: **1.3.0**
+**Crate**: `kowalski-mcp-transport` · **Version**: **1.4.0**
 
 ## Scope
 

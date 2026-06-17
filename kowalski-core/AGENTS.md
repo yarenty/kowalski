@@ -55,7 +55,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: kowalski-core  
-**Release**: **1.3.0** (see crate `Cargo.toml`).  
+**Release**: **1.4.0** (see crate `Cargo.toml`).  
 **Purpose**: Core foundational abstractions, conversation logic, agent traits, LLM providers, memory tiers, MCP client/hub, federation types, optional Postgres (pgvector) and graph helpers (AGE Cypher).  
 **Core Value Proposition**: Modular, extensible, and distributed architecture supporting standalone and federated deployments with privacy-preserving capabilities.  
 **Primary Mechanism**: Multi-agent orchestration and pluggable tools interfacing with local (Ollama) and remote LLMs.  

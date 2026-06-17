@@ -2,7 +2,7 @@
 
 > **Local checklist.** Sync with [`task_plan.md`](task_plan.md) phases. Check items here when done; log session work in [`progress.md`](progress.md).
 
-**Current focus:** S5 release 1.4.0 — S4 UI DAG canvas complete
+**Current focus:** merge 1.4.0 to `main` — crates.io publish deferred to 1.5.0
 
 ---
 
@@ -60,14 +60,15 @@
 
 ---
 
-## S5 — Ship 1.4.0
+## S5 — Ship 1.4.0 (merge; publish at 1.5)
 
-- [ ] Bump workspace to **1.4.0** (all crates + `ui/package.json`)
-- [ ] `CHANGELOG.md` — promote `[Unreleased]` → `[1.4.0]`
-- [ ] `ROADMAP.md` — mark DAG items shipped
-- [ ] `cargo test --workspace`, `cargo clippy`, link check, CI
-- [ ] Git tag `v1.4.0` + GitHub release
-- [ ] `./scripts/publish-crates.sh` (all six crates)
+- [x] Bump workspace to **1.4.0** (all crates + `ui/package.json`)
+- [x] `CHANGELOG.md` — promote `[Unreleased]` → `[1.4.0]` + 1.5 `[Unreleased]` stub
+- [x] `ROADMAP.md` — 1.4 shipped; crates.io note
+- [ ] Merge `feat/dag` → `main`
+- [ ] Optional tag `v1.4.0` (source marker only)
+- [ ] `cargo test --workspace`, UI smoke
+- [ ] **Defer** crates.io publish → bundle with **1.5.0** execution tier
 
 ---
 
