@@ -27,3 +27,11 @@ Cargo.lock
 /examples/knowledge-compiler/wiki
 /examples/knowledge-compiler/scratch
 /examples/knowledge-compiler/raw
+
+
+continuity_prompt.md
+findings.md
+progress.md
+task_plan.md
+TODO.md
+PLAN.md
