@@ -226,7 +226,6 @@ Legacy prompt configurations may live under `migrations/legacy_prompts/` when pr
 - **[`examples/knowledge-compiler/README.md`](./examples/knowledge-compiler/README.md)** — Knowledge Compiler horde example
 - [CHANGELOG.md](./CHANGELOG.md)
 - [ROADMAP.md](./ROADMAP.md)
-- **[TODO.md](./TODO.md)** — manual & end-to-end verification (operator checklist)
 - **[`ui/README.md`](./ui/README.md)** — Vue operator UI (dev, build, proxy to `kowalski`)
 - **Archived / historical docs:** [`docs/purgatory/README.md`](./docs/purgatory/README.md)
 - [Each module's README](./kowalski-core/README.md), etc.
