@@ -122,12 +122,12 @@ mod tests {
     }
 
     #[test]
-    fn dag_demo_example_validates() {
-        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples/dag-demo");
+    fn coding_assistant_example_validates() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples/coding-assistant");
         if !root.join("horde.md").is_file() {
             return;
         }
-        validate_horde_tree(&root).expect("examples/dag-demo should validate");
+        validate_horde_tree(&root).expect("examples/coding-assistant should validate");
         let manifest = parse_app_manifest(&resolve_manifest_path(&root)).unwrap();
         let edge_slice = if manifest.edges.is_empty() {
             None
@@ -135,10 +135,12 @@ mod tests {
             Some(manifest.edges.as_slice())
         };
         let graph = crate::resolve_execution_graph(&manifest.pipeline, edge_slice).unwrap();
-        assert_eq!(graph.layers.len(), 4);
         assert_eq!(graph.layers[0], vec!["ingest".to_string()]);
         assert_eq!(graph.layers[1].len(), 2);
-        assert_eq!(graph.layers[2], vec!["join".to_string()]);
-        assert_eq!(graph.layers[3], vec!["deliver".to_string()]);
+        assert!(graph.layers[1].contains(&"warmup".to_string()));
+        assert!(graph.layers[1].contains(&"todo-plan".to_string()));
+        assert_eq!(graph.layers[2], vec!["adjust".to_string()]);
+        assert_eq!(graph.layers[9], vec!["deliver".to_string()]);
+        assert_eq!(graph.layers.len(), 10);
     }
 }

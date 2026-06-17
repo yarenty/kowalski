@@ -31,17 +31,78 @@ The builder shipped, but the UI absorbed core responsibilities. Pay down before 
 - [x] **R3** **Docker MCP gateway** as one stdio MCP server (`docker mcp gateway run`); dynamic mode + `--servers`/`--profile` direct mode. `tools/internal/*` stay the dependency-light fallback, shadowed by the gateway when present.
 - [x] **Transport** Shared `kowalski-mcp-transport` (stdio + **stateless Streamable HTTP**, no `Mcp-Session-Id`) — adopted by `kowalski-mcp-rookery` (`--transport stdio|http`) and `kowalski-mcp-datafusion` (now sessionless), so every in-repo MCP server is reachable over stateless HTTP.
 
-## Planned: DAG horde pipelines (1.4.0+)
+## Shipped in 1.4.0 (in progress on `feat/dag`)
 
-**Not in 1.3.0.** After linear Rookery ships:
+See [`CHANGELOG.md`](CHANGELOG.md) (**[Unreleased]**). Highlights: **`edges[]` / `[[edges]]`**, graph validation + orchestrator scheduling, Rookery DAG birth, UI fork/join canvas, one-line **`install.sh`**, example **[`examples/coding-assistant/`](examples/coding-assistant/)** (planning-tier DAG).
 
-- [ ] Draft/manifest **`edges[]`** (dependencies, parallel branches, join points).
-- [ ] Horde orchestrator schedules by graph, not list order only.
-- [ ] Rookery UI canvas: fork/join; builder may propose branches.
+## Planned: DAG horde pipelines (1.4.0) — **shipped (MVP)**
 
-Existing linear hordes remain valid without migration.
+- [x] Draft/manifest **`edges[]`** (dependencies, parallel branches, join points).
+- [x] Horde orchestrator schedules by graph (`execution_order` / `next_ready_step`).
+- [x] Rookery UI canvas: fork/join + read-only edge list; builder prompt for branches.
+- [x] Example horde: [`examples/coding-assistant/`](examples/coding-assistant/) (replaces minimal `dag-demo` fork/join smoke).
 
-## Planned: A2A at the federation edge (1.4/1.5)
+Existing linear hordes remain valid without migration. **MVP limits:** acyclic graphs only; ready steps run **sequentially** within a layer; federation workers are **markdown-only** (no repo tools).
+
+## Planned: Coding assistant horde — **execution tier** (1.5+)
+
+**Reference app (planning tier, shipped 1.4):** [`examples/coding-assistant/`](examples/coding-assistant/) — operator form (project path + task) → parallel **warmup** / **todo-plan** → **adjust** → fixed dev/test/review chain → `HANDOFF.md`. Validates DAG UX and federation scheduling; **does not** edit the target repo or run tests.
+
+**Goal (1.5+):** Same horde shape, but stages can **read the project tree**, **apply patches**, **run verification**, and **loop** until acceptance criteria pass.
+
+### Architecture (unchanged)
+
+- Thin UI / thick **kowalski-core**; orchestrator-mediated handoff only (no penguin-to-penguin messaging).
+- Optional **MCP** tools per stage (`tool_ids` on born agents); federation worker must gain a tool-enabled execution path (today: `chat_no_tools` only).
+
+### Delivery slices
+
+| Slice | Target | Scope |
+|-------|--------|--------|
+| **CA-1** | 1.5.0 | **Project tree ingest** — walk local project root (respect `.gitignore`, caps), bundle into intake artifact; directory paths in operator form |
+| **CA-2** | 1.5.0 | **Tool-enabled horde stages** — federation worker runs MCP / internal FS tools; `tool_ids` wired from agent frontmatter; sandbox roots = operator project path |
+| **CA-3** | 1.5.x | **Apply + verify stages** — patch writer (unified diff apply or MCP edit), subprocess test runner (`cargo test`, etc.), structured pass/fail artifact |
+| **CA-4** | 1.5.x | **Conditional routing** — orchestrator reads stage artifact (e.g. `status: fail`) and schedules **review → dev** retry without a static pipeline explosion |
+| **CA-5** | 1.6+ | **Dynamic sub-pipeline** — todo-plan spawns N dev steps or loop construct in graph schema (requires CA-4 + schema work) |
+| **CA-6** | 1.5+ | **UI** — project picker, live test output in Horde run feed, retry/approve gates |
+
+### CA-1 — Project tree ingest (core)
+
+- [ ] `source_bundle`: directory walk with max files/bytes and ignore rules
+- [ ] Operator form field type `path` (optional) with server validation
+- [ ] Intake artifact: manifest of files + selected contents for warmup
+
+### CA-2 — Tool-enabled stages (core + CLI)
+
+- [ ] `agent-app worker`: optional `--tools` / honor `tool_ids` from agent spec
+- [ ] Tool sandbox: restrict FS MCP to `project_path` from run record
+- [ ] Chat stream with tool loop (reuse `/api/chat` tool path or in-process TemplateAgent)
+
+### CA-3 — Apply + verify
+
+- [ ] Stage kind `verify` (or extend `process`) — run configured command, capture stdout/stderr into artifact
+- [ ] Stage kind `apply` — apply planned diff with dry-run default
+- [ ] Document operator approval before apply (HTTP gate or UI checkbox)
+
+### CA-4 — Conditional edges
+
+- [ ] Artifact convention: `{ "status": "pass"|"fail", "next": "dev-1"|"summary" }` or frontmatter in markdown
+- [ ] `horde_graph`: optional labeled edges + orchestrator branch selection (design + tests)
+- [ ] Reject cycles unless explicitly marked as **loop** construct
+
+### CA-5 — Dynamic steps (defer)
+
+- [ ] Orchestrator interprets todo artifact and enqueues extra `dev-*` delegates
+- [ ] Or: graph **loop node** with max iterations (design TBD)
+
+### Success criteria (execution tier)
+
+1. Operator points at local Rust repo + task; horde produces applied changes on disk (with approval).
+2. `cargo test` (or configured command) runs in **test-verify**; failure routes to **review → dev** at least once.
+3. Linear + DAG hordes without tools unchanged.
+
+**Related:** [`examples/rust-project-scaffolder/`](examples/rust-project-scaffolder/) (linear greenfield planning); Knowledge Compiler (URL ingest). **Out of scope:** penguin-to-penguin A2A (see federation-edge design doc).
+
 
 **Design-only for now** (see [`docs/DESIGN_A2A_FEDERATION_EDGE.md`](docs/DESIGN_A2A_FEDERATION_EDGE.md)). Penguins inside a horde stay **orchestrator-mediated** (sequential/DAG + artifact handoff); the homegrown ACL (`federation/acl.rs`) stays the **internal** bus. A2A is adopted only as the **external** node↔node skin:
 

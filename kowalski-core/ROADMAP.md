@@ -4,6 +4,7 @@ Crate version **1.3.0** (see `Cargo.toml`). For the whole workspace, see **[`../
 
 ## Near term
 
+- [ ] **Coding assistant execution tier (1.5):** project tree ingest (`source_bundle`), tool-enabled federation stages, conditional edges — see **[`../ROADMAP.md`](../ROADMAP.md)** § *Coding assistant horde — execution tier*.
 - [ ] Broader integration tests (mock LLM / contract tests for tool JSON edge cases).
 - [ ] Optional: additional `LLMProvider` backends as thin adapters only when needed.
 

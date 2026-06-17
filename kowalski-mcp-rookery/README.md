@@ -17,7 +17,7 @@ The server intentionally runs **no LLM**. The *calling* agent conducts the inter
 | `rookery_parse_draft` | `{ text }` | `{ ok, draft }` or `{ ok:false, error }` — parse a fenced JSON/YAML draft block from assistant text |
 | `rookery_give_birth` | `{ draft, output_root?, overwrite? }` | `{ ok, horde_id, horde_root, validate_ok, validate_errors }` — writes `agents/`, `prompts/`, `horde.md`, `README.md`, `AGENTS.md` and validates the tree |
 
-> **1.4.0:** optional **`edges[]`** / `[[edges]]` for DAG fork/join hordes (validated via `kowalski_core::horde_graph`). Linear hordes omit `edges` (implicit chain). See [`examples/dag-demo/`](../examples/dag-demo/).
+> **1.4.0:** optional **`edges[]`** / `[[edges]]` for DAG fork/join hordes (validated via `kowalski_core::horde_graph`). Linear hordes omit `edges` (implicit chain). See [`examples/coding-assistant/`](../examples/coding-assistant/).
 
 ## Run (dev)
 

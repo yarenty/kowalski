@@ -10,13 +10,16 @@ All notable changes to this project will be documented in this file, or at least
 
 - **One-line install:** [`install.sh`](install.sh) — `curl -fsSL https://raw.githubusercontent.com/yarenty/kowalski/main/install.sh | bash` installs `kowalski-cli` and `kowalski` from crates.io, seeds `~/.config/kowalski/config.toml`, and documents optional MCP / postgres feature flags.
 - **DAG horde graph (core, validation only):** optional `[[edges]]` on `horde.md` / `RookeryDraft`; `kowalski_core::horde_graph::resolve_execution_graph()` validates acyclic graphs, pipeline topological order, and returns scheduling layers. Empty/missing `edges` → implicit linear chain (existing hordes unchanged). Orchestrator scheduling (CLI/HTTP) follows in 1.4.0.
-- **DAG orchestrator scheduling:** `agent-app run` and the HTTP horde orchestrator (`kowalski/src/horde.rs`) execute steps via `execution_order()` / `next_ready_step()` from `kowalski-core` (sequential within each ready layer in 1.4.0 MVP). Federation workers resolve `@step:name@` via on-disk outputs. Example: [`examples/dag-demo/`](examples/dag-demo/).
+- **DAG orchestrator scheduling:** `agent-app run` and the HTTP horde orchestrator (`kowalski/src/horde.rs`) execute steps via `execution_order()` / `next_ready_step()` from `kowalski-core` (sequential within each ready layer in 1.4.0 MVP). Federation workers resolve `@step:name@` via on-disk outputs. Example: [`examples/coding-assistant/`](examples/coding-assistant/) (planning-tier coding workflow DAG).
+
+- **Rookery DAG birth:** `write_horde_tree` emits `[[edges]]` when the draft graph differs from an implicit linear chain; builder prompt documents fork/join. MCP rookery tools accept `edges` in draft JSON.
+- **UI DAG canvas (1.4.0):** **PenguinCanvas** layered fork/join layout; Rookery read-only edge list; Horde/Federation DAG scheduling notes.
+- **Example horde [`examples/coding-assistant/`](examples/coding-assistant/):** operator form (project path + task) → parallel warmup + todo-plan → adjust → dev/test/review chain → `HANDOFF.md` (markdown planning only).
+- **Ingest:** directory paths in operator input no longer treated as single files (`source_bundle` skips non-file paths).
 
 ### Fixed
 
-- **Federation workers for custom stage kinds:** `agent-app worker` now runs LLM stages for `process`, `step`, `deliver`, and `final` (fixes `dag-demo` branch/join steps that failed with `unsupported role kind process`).
-- **Rookery DAG birth:** `write_horde_tree` emits `[[edges]]` when the draft graph differs from an implicit linear chain; builder prompt documents fork/join. MCP rookery tools accept `edges` in draft JSON.
-- **UI DAG canvas (1.4.0):** **PenguinCanvas** lays out fork/join hordes in topological layers when `draft.edges` is non-empty; **Rookery** shows a read-only edge list; **Horde Run** and **Federation** note DAG scheduling when `/api/hordes` exposes `edges`.
+- **Federation workers for custom stage kinds:** `agent-app worker` now runs LLM stages for `process`, `step`, `deliver`, and `final`.
 
 ## [1.3.0] - 2026-06-14
 
