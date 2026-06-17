@@ -1,5 +1,6 @@
 //! Minimal linear horde draft for tests and smoke runs.
 
+use crate::horde_graph::HordeEdge;
 use crate::rookery::types::{PenguinSpec, RookeryDraft};
 
 /// Three-step linear horde: ingest → process → deliver (generic LLM + ingest).
@@ -14,6 +15,7 @@ pub fn minimal_linear_draft() -> RookeryDraft {
             "process".into(),
             "deliver".into(),
         ],
+        edges: vec![],
         penguins: vec![
             PenguinSpec {
                 name: "collect".into(),
@@ -59,6 +61,117 @@ pub fn minimal_linear_draft() -> RookeryDraft {
             },
         ],
         default_question: Some("What is the key takeaway?".into()),
+        default_topic: Some("federation".into()),
+        workdir: Some("output".into()),
+        delivery_title: Some("Handoff".into()),
+        delivery_note: None,
+        delivery_root_rel: Some("HANDOFF.md".into()),
+        delivery_summary_note: None,
+        prompt_tip: None,
+    }
+}
+
+fn edge(from: &str, to: &str) -> HordeEdge {
+    HordeEdge {
+        from: from.into(),
+        to: to.into(),
+    }
+}
+
+/// Fork/join horde for DAG birth / validate tests.
+pub fn minimal_dag_draft() -> RookeryDraft {
+    RookeryDraft {
+        id: "rookery-dag-demo".into(),
+        display_name: "Rookery DAG Demo".into(),
+        description: "Fork after ingest, join, then deliver.".into(),
+        capability_prefix: None,
+        pipeline: vec![
+            "ingest".into(),
+            "branch-a".into(),
+            "branch-b".into(),
+            "join".into(),
+            "deliver".into(),
+        ],
+        edges: vec![
+            edge("ingest", "branch-a"),
+            edge("ingest", "branch-b"),
+            edge("branch-a", "join"),
+            edge("branch-b", "join"),
+            edge("join", "deliver"),
+        ],
+        penguins: vec![
+            PenguinSpec {
+                name: "ingest".into(),
+                kind: "ingest".into(),
+                display_name: "Ingest".into(),
+                description: "Capture source.".into(),
+                prompt_body: "Ingest stage.".into(),
+                agent_body: None,
+                output: "debug/raw/".into(),
+                context_paths: vec![],
+                tool_ids: vec![],
+                model_id: None,
+                inputs: vec![],
+                avatar: None,
+            },
+            PenguinSpec {
+                name: "branch-a".into(),
+                kind: "process".into(),
+                display_name: "Branch A".into(),
+                description: "First branch.".into(),
+                prompt_body: "Branch A process.".into(),
+                agent_body: None,
+                output: "debug/stage-branch-a.md".into(),
+                context_paths: vec!["@artifact@".into()],
+                tool_ids: vec![],
+                model_id: None,
+                inputs: vec![],
+                avatar: None,
+            },
+            PenguinSpec {
+                name: "branch-b".into(),
+                kind: "process".into(),
+                display_name: "Branch B".into(),
+                description: "Second branch.".into(),
+                prompt_body: "Branch B process.".into(),
+                agent_body: None,
+                output: "debug/stage-branch-b.md".into(),
+                context_paths: vec!["@artifact@".into()],
+                tool_ids: vec![],
+                model_id: None,
+                inputs: vec![],
+                avatar: None,
+            },
+            PenguinSpec {
+                name: "join".into(),
+                kind: "process".into(),
+                display_name: "Join".into(),
+                description: "Merge branches.".into(),
+                prompt_body: "Join both branches.".into(),
+                agent_body: None,
+                output: "debug/stage-join.md".into(),
+                context_paths: vec![],
+                tool_ids: vec![],
+                model_id: None,
+                inputs: vec![],
+                avatar: None,
+            },
+            PenguinSpec {
+                name: "deliver".into(),
+                kind: "deliver".into(),
+                display_name: "Deliver".into(),
+                description: "Final handoff.".into(),
+                prompt_body: "Deliver handoff.".into(),
+                agent_body: None,
+                output: "HANDOFF.md".into(),
+                context_paths: vec!["@artifact@".into()],
+                tool_ids: vec![],
+                model_id: None,
+                inputs: vec![],
+                avatar: None,
+            },
+        ],
+        default_question: Some("What is the outcome?".into()),
         default_topic: Some("federation".into()),
         workdir: Some("output".into()),
         delivery_title: Some("Handoff".into()),

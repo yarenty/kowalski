@@ -6,7 +6,7 @@ Use this folder for **design articles**, **architecture notes**, and **long-form
 
 | Doc | Purpose |
 |-----|---------|
-| [`OVERVIEW_1_1.md`](./OVERVIEW_1_1.md) | Narrative of the **1.1.0** horde introduction (still accurate background). **Current release:** **1.3.0** — see root [`CHANGELOG.md`](../CHANGELOG.md). |
+| [`OVERVIEW_1_1.md`](./OVERVIEW_1_1.md) | Narrative of the **1.1.0** horde introduction (still accurate background). **Current release:** **1.4.0** on `main` (crates.io **1.3.0** until 1.5 publish) — see root [`CHANGELOG.md`](../CHANGELOG.md). |
 | [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](./DESIGN_MEMORY_AND_DEPENDENCIES.md) | Canonical memory stack rationale (dependency-light defaults, Qdrant as PoC). |
 | [`DESIGN_A2A_FEDERATION_EDGE.md`](./DESIGN_A2A_FEDERATION_EDGE.md) | **A2A at the federation edge** (R4, target 1.4/1.5): Agent Card + Task lifecycle mapped onto ACL; no penguin-to-penguin A2A. |
 | [`../examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md) | First **horde-style app** example (ingest → compile → ask → lint). |

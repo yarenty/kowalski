@@ -1,6 +1,6 @@
 # kowalski-mcp-rookery
 
-**Version 1.3.0** — standalone **MCP** server exposing the **Rookery** horde-builder primitives from `kowalski-core`. Runs over **stdio** *or* **stateless Streamable HTTP** (shared [`kowalski-mcp-transport`](../kowalski-mcp-transport/)).
+**Version 1.4.0** — standalone **MCP** server exposing the **Rookery** horde-builder primitives from `kowalski-core`. Runs over **stdio** *or* **stateless Streamable HTTP** (shared [`kowalski-mcp-transport`](../kowalski-mcp-transport/)).
 
 This is an **in-repo MCP server** (tool *source 1* in [`kowalski-core/AGENTS.md`](../kowalski-core/AGENTS.md)). It lets any MCP client — the Kowalski agent, the CLI, or an external client such as Claude Desktop — build hordes ("penguins") without going through the Vue UI or the HTTP `/api/rookery/*` surface.
 
@@ -17,7 +17,7 @@ The server intentionally runs **no LLM**. The *calling* agent conducts the inter
 | `rookery_parse_draft` | `{ text }` | `{ ok, draft }` or `{ ok:false, error }` — parse a fenced JSON/YAML draft block from assistant text |
 | `rookery_give_birth` | `{ draft, output_root?, overwrite? }` | `{ ok, horde_id, horde_root, validate_ok, validate_errors }` — writes `agents/`, `prompts/`, `horde.md`, `README.md`, `AGENTS.md` and validates the tree |
 
-> Linear pipelines only in 1.3.0 (`pipeline = [...]`). DAG / `edges[]` are 1.4.0+.
+> **1.4.0:** optional **`edges[]`** / `[[edges]]` for DAG fork/join hordes (validated via `kowalski_core::horde_graph`). Linear hordes omit `edges` (implicit chain). See [`examples/coding-assistant/`](../examples/coding-assistant/).
 
 ## Run (dev)
 

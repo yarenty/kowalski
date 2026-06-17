@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import type { RookeryPenguinSpec, RookerySessionStatus } from "../api";
+import type { HordeEdge, RookeryPenguinSpec, RookerySessionStatus } from "../api";
 import PenguinAvatar from "./PenguinAvatar.vue";
 import { inferPenguinAvatarId } from "../penguins";
+import { computeLayers, isDagHorde } from "../hordeGraph";
 
 export type PenguinCard = {
   name: string;
@@ -17,6 +18,7 @@ export type PenguinCard = {
 
 const props = defineProps<{
   pipeline: string[];
+  edges?: HordeEdge[];
   penguins: RookeryPenguinSpec[] | null;
   sessionStatus: RookerySessionStatus;
   selectedName: string | null;
@@ -26,40 +28,60 @@ const emit = defineEmits<{
   (e: "select-penguin", name: string): void;
 }>();
 
-const cards = computed((): PenguinCard[] => {
-  const byName = new Map((props.penguins ?? []).map((p) => [p.name, p]));
-  return props.pipeline.map((name) => {
-    const spec = byName.get(name);
-    if (spec) {
-      const toolIds = spec.tool_ids ?? [];
-      const chip: PenguinCard["chip"] =
-        props.sessionStatus === "proposed" || props.sessionStatus === "born"
-          ? toolIds.length === 0 && spec.kind !== "ingest"
-            ? "missing-tool"
-            : "ready"
-          : "draft";
-      return {
-        name: spec.name,
-        kind: spec.kind,
-        displayName: spec.display_name,
-        description: spec.description,
-        output: spec.output,
-        toolIds,
-        chip,
-        avatar: spec.avatar ?? inferPenguinAvatarId(spec.kind, spec.name),
-      };
-    }
+function buildCard(name: string, spec: RookeryPenguinSpec | undefined): PenguinCard {
+  if (spec) {
+    const toolIds = spec.tool_ids ?? [];
+    const chip: PenguinCard["chip"] =
+      props.sessionStatus === "proposed" || props.sessionStatus === "born"
+        ? toolIds.length === 0 && spec.kind !== "ingest"
+          ? "missing-tool"
+          : "ready"
+        : "draft";
     return {
-      name,
-      kind: name,
-      displayName: name,
-      description: "Defined in conversation; propose to fill details.",
-      output: "",
-      toolIds: [],
-      chip: "draft",
-      avatar: inferPenguinAvatarId("step", name),
+      name: spec.name,
+      kind: spec.kind,
+      displayName: spec.display_name,
+      description: spec.description,
+      output: spec.output,
+      toolIds,
+      chip,
+      avatar: spec.avatar ?? inferPenguinAvatarId(spec.kind, spec.name),
     };
-  });
+  }
+  return {
+    name,
+    kind: name,
+    displayName: name,
+    description: "Defined in conversation; propose to fill details.",
+    output: "",
+    toolIds: [],
+    chip: "draft",
+    avatar: inferPenguinAvatarId("step", name),
+  };
+}
+
+const cardMap = computed((): Map<string, PenguinCard> => {
+  const byName = new Map((props.penguins ?? []).map((p) => [p.name, p]));
+  const map = new Map<string, PenguinCard>();
+  for (const name of props.pipeline) {
+    map.set(name, buildCard(name, byName.get(name)));
+  }
+  return map;
+});
+
+const edgeList = computed((): HordeEdge[] => props.edges ?? []);
+
+const isDag = computed(() => isDagHorde(props.pipeline, edgeList.value));
+
+const layoutRows = computed((): { names: string[]; parallel: boolean }[] => {
+  if (!props.pipeline.length) return [];
+  if (isDag.value) {
+    return computeLayers(props.pipeline, edgeList.value).map((names) => ({
+      names,
+      parallel: names.length > 1,
+    }));
+  }
+  return [{ names: props.pipeline, parallel: false }];
 });
 
 function chipLabel(chip: PenguinCard["chip"]): string {
@@ -67,42 +89,65 @@ function chipLabel(chip: PenguinCard["chip"]): string {
   if (chip === "missing-tool") return "no tools";
   return "draft";
 }
+
+function cardFor(name: string): PenguinCard {
+  return cardMap.value.get(name)!;
+}
 </script>
 
 <template>
-  <div class="penguin-canvas" :class="{ empty: !pipeline.length }">
+  <div class="penguin-canvas" :class="{ empty: !pipeline.length, dag: isDag }">
     <p v-if="!pipeline.length" class="muted placeholder">
       Pipeline appears here after you propose a horde (or when the builder names steps in chat).
     </p>
-    <div v-else class="track" role="list" aria-label="Pipeline penguins">
-      <template v-for="(card, index) in cards" :key="card.name">
-        <button
-          type="button"
-          class="penguin-card"
-          :class="{ selected: selectedName === card.name, [`chip-${card.chip}`]: true }"
-          role="listitem"
-          @click="emit('select-penguin', card.name)"
+    <div
+      v-else
+      :class="isDag ? 'dag-canvas' : 'track'"
+      role="list"
+      :aria-label="isDag ? 'Pipeline penguins (DAG)' : 'Pipeline penguins'"
+    >
+      <template v-for="(row, rowIndex) in layoutRows" :key="rowIndex">
+        <div v-if="isDag && rowIndex > 0" class="layer-down" aria-hidden="true">↓</div>
+        <div
+          class="layout-row"
+          :class="{ 'dag-layer': isDag, parallel: isDag && row.parallel }"
+          role="list"
         >
-          <PenguinAvatar
-            class="card-avatar"
-            :avatar="card.avatar"
-            :kind="card.kind"
-            :name="card.name"
-            variant="card"
-            :alt="card.displayName"
-          />
-          <span class="card-head">
-            <strong class="name">{{ card.displayName }}</strong>
-            <span class="chip">{{ chipLabel(card.chip) }}</span>
-          </span>
-          <span class="kind mono">{{ card.kind }}</span>
-          <span v-if="card.description" class="desc">{{ card.description }}</span>
-          <span v-if="card.output" class="out mono">→ {{ card.output }}</span>
-          <span v-if="card.toolIds.length" class="tools">
-            <span v-for="t in card.toolIds" :key="t" class="tool-chip">{{ t }}</span>
-          </span>
-        </button>
-        <span v-if="index < cards.length - 1" class="arrow" aria-hidden="true">→</span>
+          <span v-if="isDag && row.parallel" class="fork-hint">parallel</span>
+          <template v-for="(name, nameIndex) in row.names" :key="name">
+            <button
+              type="button"
+              class="penguin-card"
+              :class="{ selected: selectedName === name, [`chip-${cardFor(name).chip}`]: true }"
+              role="listitem"
+              @click="emit('select-penguin', name)"
+            >
+              <PenguinAvatar
+                class="card-avatar"
+                :avatar="cardFor(name).avatar"
+                :kind="cardFor(name).kind"
+                :name="cardFor(name).name"
+                variant="card"
+                :alt="cardFor(name).displayName"
+              />
+              <span class="card-head">
+                <strong class="name">{{ cardFor(name).displayName }}</strong>
+                <span class="chip">{{ chipLabel(cardFor(name).chip) }}</span>
+              </span>
+              <span class="kind mono">{{ cardFor(name).kind }}</span>
+              <span v-if="cardFor(name).description" class="desc">{{ cardFor(name).description }}</span>
+              <span v-if="cardFor(name).output" class="out mono">→ {{ cardFor(name).output }}</span>
+              <span v-if="cardFor(name).toolIds.length" class="tools">
+                <span v-for="t in cardFor(name).toolIds" :key="t" class="tool-chip">{{ t }}</span>
+              </span>
+            </button>
+            <span
+              v-if="!isDag && nameIndex < row.names.length - 1"
+              class="arrow"
+              aria-hidden="true"
+            >→</span>
+          </template>
+        </div>
       </template>
     </div>
   </div>
@@ -121,6 +166,9 @@ function chipLabel(chip: PenguinCard["chip"]): string {
   align-items: center;
   justify-content: center;
 }
+.penguin-canvas.dag {
+  min-height: 7rem;
+}
 .placeholder {
   margin: 0;
   font-size: 0.85rem;
@@ -133,6 +181,49 @@ function chipLabel(chip: PenguinCard["chip"]): string {
   gap: 0.35rem;
   overflow-x: auto;
   padding-bottom: 0.25rem;
+}
+.dag-canvas {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.25rem 0;
+}
+.layout-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+.dag-layer {
+  flex-wrap: wrap;
+  justify-content: center;
+  position: relative;
+  padding-top: 0.35rem;
+}
+.dag-layer.parallel {
+  border: 1px dashed #3d4658;
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem 0.55rem;
+  background: #121820;
+}
+.fork-hint {
+  position: absolute;
+  top: -0.45rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  background: #1e2838;
+  color: #8b9ec4;
+}
+.layer-down {
+  color: #5a7ab8;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.1rem 0;
 }
 .penguin-card {
   flex: 0 0 auto;
@@ -176,9 +267,18 @@ function chipLabel(chip: PenguinCard["chip"]): string {
     transform: translateX(0);
   }
 }
-.emoji {
-  font-size: 1.1rem;
-  line-height: 1;
+.dag-canvas .penguin-card {
+  animation-name: slide-in-dag;
+}
+@keyframes slide-in-dag {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 .card-avatar {
   justify-self: start;

@@ -7,9 +7,10 @@
 
 use kowalski_core::MessageBroker;
 use kowalski_core::federation::{AclEnvelope, AclMessage, FederationOrchestrator, MpscBroker};
+use kowalski_core::{all_steps_successful, next_ready_step, resolve_execution_graph, single_predecessor, ExecutionGraph, HordeEdge};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -47,6 +48,8 @@ pub struct HordeMeta {
     #[serde(default)]
     pub capability_prefix: Option<String>,
     pub pipeline: Vec<String>,
+    #[serde(default)]
+    pub edges: Vec<HordeEdge>,
     #[serde(default)]
     pub default_question: Option<String>,
     #[serde(default)]
@@ -113,6 +116,10 @@ pub struct HordeSpec {
     pub description: String,
     pub capability_prefix: String,
     pub pipeline: Vec<String>,
+    /// Explicit `[[edges]]` from manifest (empty = linear horde).
+    pub manifest_edges: Vec<HordeEdge>,
+    #[serde(skip)]
+    pub execution_graph: ExecutionGraph,
     pub default_question: String,
     pub topic: String,
     pub artifacts_root: PathBuf,
@@ -245,6 +252,14 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
     let followup_artifact_dir = workdir.join(FOLLOWUP_ARTIFACT_REL);
     let worker_log_dir = workdir.join(AGENTS_LOG_REL);
 
+    let edge_slice = if meta.edges.is_empty() {
+        None
+    } else {
+        Some(meta.edges.as_slice())
+    };
+    let execution_graph = resolve_execution_graph(&meta.pipeline, edge_slice)
+        .map_err(|e| e.to_string())?;
+
     let run_form = sub_agents
         .iter()
         .find(|a| !a.inputs.is_empty())
@@ -259,7 +274,9 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
         display_name: meta.display_name,
         description: meta.description,
         capability_prefix: prefix,
-        pipeline: meta.pipeline,
+        pipeline: meta.pipeline.clone(),
+        manifest_edges: meta.edges.clone(),
+        execution_graph,
         default_question: meta
             .default_question
             .unwrap_or_else(|| "What changed?".to_string()),
@@ -480,7 +497,26 @@ impl HordeManager {
         payload.to_string()
     }
 
-    /// Start a new horde run: register, emit RunStarted, delegate first step.
+    fn step_status_map(run: &RunRecord) -> BTreeMap<String, &str> {
+        run.steps
+            .iter()
+            .map(|s| (s.step.clone(), s.status.as_str()))
+            .collect()
+    }
+
+    fn artifact_for_step(run: &RunRecord, step: &str) -> Option<String> {
+        run.steps
+            .iter()
+            .find(|s| s.step == step)
+            .and_then(|s| s.artifact.clone())
+    }
+
+    fn previous_artifact_for_step(spec: &HordeSpec, run: &RunRecord, step: &str) -> Option<String> {
+        single_predecessor(&spec.execution_graph, step)
+            .and_then(|pred| Self::artifact_for_step(run, &pred))
+    }
+
+    /// Start a new horde run: register, emit RunStarted, delegate first ready step.
     pub async fn start_run(
         &self,
         horde_id: &str,
@@ -548,12 +584,22 @@ impl HordeManager {
             runs.runs.insert(run_id.clone(), record.clone());
         }
 
-        if let Err(e) = self.delegate_step(&spec, &run_id, 0, None).await {
+        let first_step = {
+            let status = Self::step_status_map(&record);
+            next_ready_step(&spec.pipeline, &spec.execution_graph, &status).ok_or_else(|| {
+                format!("horde {} has no runnable step after RunStarted", horde_id)
+            })?
+        };
+
+        if let Err(e) = self
+            .delegate_step(&spec, &run_id, &first_step, None)
+            .await
+        {
             self.fail_run(
                 &spec,
                 &run_id,
                 &format!("delegate first step failed: {}", e),
-                Some(&spec.pipeline[0]),
+                Some(&first_step),
             )
             .await;
         }
@@ -568,19 +614,14 @@ impl HordeManager {
         &self,
         spec: &HordeSpec,
         run_id: &str,
-        index: usize,
+        step_name: &str,
         previous_artifact: Option<&str>,
     ) -> Result<(), String> {
-        let step_name = spec
-            .pipeline
-            .get(index)
-            .ok_or_else(|| "pipeline index out of range".to_string())?
-            .clone();
         let sub = spec
-            .sub_agent(&step_name)
+            .sub_agent(step_name)
             .ok_or_else(|| format!("missing sub-agent {} in horde {}", step_name, spec.id))?
             .clone();
-        let task_id = self.task_id(&spec.id, run_id, &step_name);
+        let task_id = self.task_id(&spec.id, run_id, step_name);
 
         let instruction;
         let assigned_envelope;
@@ -591,18 +632,22 @@ impl HordeManager {
                 .runs
                 .get_mut(run_id)
                 .ok_or_else(|| format!("run {} no longer tracked", run_id))?;
-            run.current_step_index = index;
-            if let Some(step) = run.steps.get_mut(index) {
+            run.current_step_index = spec
+                .pipeline
+                .iter()
+                .position(|s| s == step_name)
+                .unwrap_or(0);
+            if let Some(step) = run.steps.iter_mut().find(|s| s.step == step_name) {
                 step.status = "delegating".to_string();
                 step.task_id = task_id.clone();
                 step.agent_id = sub.default_agent_id.clone();
                 step.started_at = now_ts();
             }
-            instruction = self.build_instruction(spec, run, &step_name, previous_artifact);
+            instruction = self.build_instruction(spec, run, step_name, previous_artifact);
             let assigned_msg = AclMessage::TaskAssigned {
                 run_id: run_id.to_string(),
                 horde: spec.id.clone(),
-                step: step_name.clone(),
+                step: step_name.to_string(),
                 from: self.orchestrator_id.clone(),
                 to: sub.default_agent_id.clone(),
                 task_id: task_id.clone(),
@@ -659,7 +704,7 @@ impl HordeManager {
             return;
         };
 
-        let next_index;
+        let next_step: Option<String>;
         {
             let mut runs = self.runs.lock().await;
             let Some(run) = runs.runs.get_mut(run_id) else {
@@ -695,12 +740,12 @@ impl HordeManager {
                 "summary": summary,
                 "ts": now_ts(),
             }));
-            next_index = run
-                .steps
-                .iter()
-                .position(|s| s.step == step)
-                .map(|i| i + 1)
-                .unwrap_or(spec.pipeline.len());
+            let status = Self::step_status_map(run);
+            next_step = if all_steps_successful(&spec.pipeline, &status) {
+                None
+            } else {
+                next_ready_step(&spec.pipeline, &spec.execution_graph, &status)
+            };
         }
 
         if !success {
@@ -714,17 +759,38 @@ impl HordeManager {
             return;
         }
 
-        if next_index < spec.pipeline.len() {
-            let prev = artifact.map(ToString::to_string);
+        if let Some(next) = next_step {
+            let prev = {
+                let runs = self.runs.lock().await;
+                runs.runs
+                    .get(run_id)
+                    .and_then(|run| Self::previous_artifact_for_step(&spec, run, &next))
+            };
             if let Err(e) = self
-                .delegate_step(&spec, run_id, next_index, prev.as_deref())
+                .delegate_step(&spec, run_id, &next, prev.as_deref())
                 .await
             {
-                self.fail_run(&spec, run_id, &e, Some(&spec.pipeline[next_index]))
-                    .await;
+                self.fail_run(&spec, run_id, &e, Some(&next)).await;
             }
         } else {
-            self.complete_run(&spec, run_id).await;
+            let all_done = {
+                let runs = self.runs.lock().await;
+                runs.runs
+                    .get(run_id)
+                    .map(|run| all_steps_successful(&spec.pipeline, &Self::step_status_map(run)))
+                    .unwrap_or(false)
+            };
+            if all_done {
+                self.complete_run(&spec, run_id).await;
+            } else {
+                self.fail_run(
+                    &spec,
+                    run_id,
+                    "pipeline stalled: no step ready and run incomplete",
+                    None,
+                )
+                .await;
+            }
         }
     }
 

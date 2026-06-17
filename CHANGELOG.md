@@ -6,6 +6,27 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+> **1.5.0** — coding assistant **execution tier** (project tree ingest, tool-enabled stages, verify/apply, conditional edges). See [`ROADMAP.md`](ROADMAP.md) § *Coding assistant horde — execution tier*.
+
+## [1.4.0] - 2026-06-15
+
+> Workspace and crates **`1.4.0`**: **DAG horde pipelines** (`edges[]`), graph orchestrator scheduling, Rookery DAG birth + UI canvas, **`install.sh`**, example **[`examples/coding-assistant/`](examples/coding-assistant/)**, federation worker fixes for custom stage kinds.
+
+
+### Added
+
+- **One-line install:** [`install.sh`](install.sh) — `curl -fsSL https://raw.githubusercontent.com/yarenty/kowalski/main/install.sh | bash` installs `kowalski-cli` and `kowalski` from crates.io, seeds `~/.config/kowalski/config.toml`, and documents optional MCP / postgres feature flags.
+- **DAG horde graph:** optional `[[edges]]` on `horde.md` / `RookeryDraft`; `kowalski_core::horde_graph::resolve_execution_graph()` validates acyclic graphs, pipeline topological order, and returns scheduling layers. Empty/missing `edges` → implicit linear chain (existing hordes unchanged).
+- **DAG orchestrator scheduling:** `agent-app run` and the HTTP horde orchestrator (`kowalski/src/horde.rs`) execute steps via `execution_order()` / `next_ready_step()` (sequential within each ready layer in MVP). Federation workers resolve `@step:name@` via on-disk outputs.
+- **Rookery DAG birth:** `write_horde_tree` emits `[[edges]]` when the draft graph differs from an implicit linear chain; builder prompt documents fork/join. MCP rookery tools accept `edges` in draft JSON.
+- **UI DAG canvas:** **PenguinCanvas** layered fork/join layout; Rookery read-only edge list; Horde/Federation DAG scheduling notes.
+- **Example horde [`examples/coding-assistant/`](examples/coding-assistant/):** operator form (project path + task) → parallel warmup + todo-plan → adjust → dev/test/review chain → `HANDOFF.md` (markdown planning only).
+
+### Fixed
+
+- **Federation workers for custom stage kinds:** `agent-app worker` now runs LLM stages for `process`, `step`, `deliver`, and `final`.
+- **Ingest:** directory paths in operator input no longer treated as single files (`source_bundle` skips non-file paths).
+
 ## [1.3.0] - 2026-06-14
 
 > Workspace and crates **`1.3.0`**: **Rookery** horde builder (HTTP + UI + MCP), server-owned sessions, in-repo MCP transport unification, Docker MCP gateway, penguin avatars, and operator-form validation on the server.
@@ -113,7 +134,8 @@ All notable changes to this project will be documented in this file, or at least
 - Documented **memory stack rationale**: **Qdrant** was used in an **initial proof of concept** for semantic memory; the **ongoing goal** is a **simple, robust, dependency-light** default with **minimal moving parts**. Canonical write-up: [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md). Linked from root and component `AGENTS.md`, READMEs, memory articles, and rebuild notes.
 - Refreshed **README.md**, **AGENTS.md**, **ROADMAP.md** (root and key sub-crates).
 
-[1.3.0]: https://github.com/yarenty/kowalski/releases/tag/1.3.0
+[1.4.0]: https://github.com/yarenty/kowalski/compare/v1.3.0...v1.4.0
+[1.3.0]: https://github.com/yarenty/kowalski/releases/tag/v1.3.0
 [1.2.0]: https://github.com/yarenty/kowalski/releases/tag/1.2.0
 [1.1.0]: https://github.com/yarenty/kowalski/releases/tag/1.1.0
 [1.0.0]: https://github.com/yarenty/kowalski/releases/tag/1.0.0

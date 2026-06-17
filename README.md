@@ -7,7 +7,9 @@
 > During this transition, some modules, commands, and docs may still evolve quickly.
 > We are focused on stability, clearer module boundaries, production-ready operator workflows, and robust multi-agent federation.
 
-**Version 1.3.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-datafusion`, `kowalski-mcp-rookery`, `kowalski-mcp-transport`, Vue `ui/`)
+**Version 1.4.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-datafusion`, `kowalski-mcp-rookery`, `kowalski-mcp-transport`, Vue `ui/`)
+
+> **Install from git** for 1.4.0 (`cargo build --release`). **`cargo install` from crates.io** is still **1.3.0** until the **1.5.0** publish.
 
 > "AI agents are like pets – they're cute, but they make a mess."  
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"
@@ -78,6 +80,26 @@ kowalski/
 ---
 
 ## 🚀 Installation & Setup
+
+### One-line install (crates.io)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yarenty/kowalski/main/install.sh | bash
+```
+
+This installs **`kowalski-cli`** and **`kowalski`** into `~/.cargo/bin` (installs Rust via rustup if needed), seeds `~/.config/kowalski/config.toml` from the repo sample, and prints next steps.
+
+Options via environment variables:
+
+| Variable | Effect |
+|----------|--------|
+| `KOWALSKI_VERSION=1.3.0` | Pin crates.io version (latest published; **1.4.0+ build from git** until 1.5 publish) |
+| `KOWALSKI_FEATURES=postgres` | `cargo install --features postgres` for server + CLI |
+| `KOWALSKI_INSTALL_MCP=1` | Also install `kowalski-mcp-rookery` and `kowalski-mcp-datafusion` |
+| `KOWALSKI_SKIP_RUSTUP=1` | Fail instead of auto-installing Rust |
+| `KOWALSKI_CONFIG_DIR=~/.config/kowalski` | Where sample `config.toml` is written |
+
+Custom domain: mirror or redirect [`install.sh`](install.sh) at e.g. `https://yarenty.com/kowalski/install.sh`.
 
 ### 1. Prerequisites
 
@@ -204,7 +226,6 @@ Legacy prompt configurations may live under `migrations/legacy_prompts/` when pr
 - **[`examples/knowledge-compiler/README.md`](./examples/knowledge-compiler/README.md)** — Knowledge Compiler horde example
 - [CHANGELOG.md](./CHANGELOG.md)
 - [ROADMAP.md](./ROADMAP.md)
-- **[TODO.md](./TODO.md)** — manual & end-to-end verification (operator checklist)
 - **[`ui/README.md`](./ui/README.md)** — Vue operator UI (dev, build, proxy to `kowalski`)
 - **Archived / historical docs:** [`docs/purgatory/README.md`](./docs/purgatory/README.md)
 - [Each module's README](./kowalski-core/README.md), etc.

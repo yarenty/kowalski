@@ -31,7 +31,7 @@ For structured **subject → predicate → object** edges, the code briefly used
 | **Build** | Native SQLite via `libsqlite3-sys`; Postgres uses the existing **`sqlx`** Postgres driver. |
 | **Historical note** | Episodic storage previously used **RocksDB**; it was replaced to **reduce native dependency surface** and align Tier 2 with **SQL** already in the stack. |
 
-**Direction:** Postgres work continues with **pgvector**, **`episodic_memory`** normalized rows, and **`agent_state`** as needed (see `kowalski-core/migrations/postgres/`, `kowalski-core/src/memory/`, [`TODO.md`](../TODO.md) WP3); Tier 2 `episodic_kv` JSON is the current interchange format for `MemoryUnit` blobs.
+**Direction:** Postgres work continues with **pgvector**, **`episodic_memory`** normalized rows, and **`agent_state`** as needed (see `kowalski-core/migrations/postgres/`, `kowalski-core/src/memory/`); Tier 2 `episodic_kv` JSON is the current interchange format for `MemoryUnit` blobs.
 
 ---
 

@@ -2,7 +2,8 @@
 import { computed, nextTick, ref, watch } from "vue";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
-import type { RookeryDraft, RookeryPenguinSpec, RookerySessionStatus } from "../api";
+import type { HordeEdge, RookeryDraft, RookeryPenguinSpec, RookerySessionStatus } from "../api";
+import { isDagHorde } from "../hordeGraph";
 import PenguinCanvas from "../components/PenguinCanvas.vue";
 import PenguinEditor from "../components/PenguinEditor.vue";
 import PenguinAvatar from "../components/PenguinAvatar.vue";
@@ -85,6 +86,14 @@ const selectedPenguin = computed((): RookeryPenguinSpec | null => {
   return session.draft.penguins.find((p) => p.name === selectedPenguinName.value) ?? null;
 });
 
+const draftEdges = computed((): HordeEdge[] => props.activeSession?.draft?.edges ?? []);
+
+const isDagDraft = computed(
+  () =>
+    !!props.activeSession?.pipeline.length &&
+    isDagHorde(props.activeSession.pipeline, draftEdges.value),
+);
+
 function onSelectPenguin(name: string) {
   selectedPenguinName.value = selectedPenguinName.value === name ? null : name;
 }
@@ -127,7 +136,7 @@ function send() {
     <header class="rookery-head">
       <div>
         <h2>Rookery</h2>
-        <p class="hint">Describe a workflow; propose a linear horde; give birth to markdown on disk.</p>
+        <p class="hint">Describe a workflow; propose a horde (linear or fork/join DAG); give birth to markdown on disk.</p>
       </div>
       <div class="head-actions">
         <button type="button" class="secondary" :disabled="newBusy" @click="emit('new-session')">
@@ -210,11 +219,24 @@ function send() {
         <h3>Proposed pipeline</h3>
         <PenguinCanvas
           :pipeline="activeSession.pipeline"
+          :edges="draftEdges"
           :penguins="activeSession.draft?.penguins ?? null"
           :session-status="activeSession.status"
           :selected-name="selectedPenguinName"
           @select-penguin="onSelectPenguin"
         />
+
+        <div v-if="isDagDraft && draftEdges.length" class="edges-box">
+          <h4>Scheduling edges</h4>
+          <p class="muted small">
+            Fork/join DAG — parallel branches run when all predecessors finish (read-only).
+          </p>
+          <ul class="edge-list">
+            <li v-for="(edge, idx) in draftEdges" :key="idx" class="mono">
+              {{ edge.from }} → {{ edge.to }}
+            </li>
+          </ul>
+        </div>
 
         <PenguinEditor
           v-if="selectedPenguin && activeSession.draft"
@@ -318,6 +340,21 @@ function send() {
   background: #141820;
 }
 .summary-col h3 { margin: 0 0 0.35rem; font-size: 1rem; }
+.edges-box {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid #2a3548;
+  border-radius: 6px;
+  background: #121820;
+}
+.edges-box h4 { margin: 0 0 0.25rem; font-size: 0.85rem; color: #9aa8c0; }
+.edge-list {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.78rem;
+  color: #b8c4d8;
+}
+.edge-list li { margin: 0.15rem 0; }
 .status-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 0; }
 .badge {
   font-size: 0.75rem;

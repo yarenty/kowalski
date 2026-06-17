@@ -2,11 +2,13 @@
 //! Execution rules live in [`kowalski_core::markdown_pipeline`]; this module wires HTTP chat,
 //! federation helpers, and filesystem paths.
 
+use kowalski_core::{
+    execution_order, resolve_execution_graph, single_predecessor, validate_horde_tree,
+};
 use kowalski_core::markdown_pipeline::{
     maybe_normalize_markdown, parse_app_manifest, parse_stage_agent, render_context_attachments,
     resolve_manifest_path, AppManifestMeta, StageAgentMeta,
 };
-use kowalski_core::rookery::validate_horde_tree;
 use kowalski_core::source_bundle::{ingest_assets_markdown, parse_input_assets};
 use chrono::Utc;
 use reqwest::blocking as reqwest_blocking;
@@ -208,6 +210,23 @@ fn load_agent_doc(
     })
 }
 
+fn collect_step_paths(
+    workspace_root: &Path,
+    workdir: &Path,
+) -> Result<BTreeMap<String, PathBuf>, Box<dyn std::error::Error>> {
+    let (_, agents) = load_spec(workspace_root)?;
+    let mut map = BTreeMap::new();
+    for (name, agent) in agents {
+        if let Some(rel) = &agent.meta.output {
+            let p = workdir.join(rel);
+            if p.exists() {
+                map.insert(name, p);
+            }
+        }
+    }
+    Ok(map)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_llm_stage(
     api: &str,
@@ -282,7 +301,16 @@ where
     let mut log = String::new();
     let mut task_outputs: Vec<(String, PathBuf)> = Vec::new();
     let mut artifacts = RunArtifacts::default();
-    let total_steps = main.meta.pipeline.len();
+    let edge_slice = if main.meta.edges.is_empty() {
+        None
+    } else {
+        Some(main.meta.edges.as_slice())
+    };
+    let graph = resolve_execution_graph(&main.meta.pipeline, edge_slice)
+        .map_err(|e| e.to_string())?;
+    let schedule = execution_order(&graph);
+    let total_steps = schedule.len();
+    let last_step = schedule.last().cloned();
     let run_title = main
         .meta
         .display_name
@@ -297,12 +325,12 @@ where
     println!("Task count: {}", total_steps);
 
     let mut step_paths: BTreeMap<String, PathBuf> = BTreeMap::new();
-    let mut prev_path: Option<PathBuf> = None;
 
-    for (idx, step) in main.meta.pipeline.iter().enumerate() {
+    for (idx, step) in schedule.iter().enumerate() {
         let agent = agents
             .get(step)
             .ok_or_else(|| format!("missing step agent: {step}"))?;
+        let prev_path = single_predecessor(&graph, step).and_then(|pred| step_paths.get(&pred).cloned());
         println!(
             "[{}/{}] {} ({})",
             idx + 1,
@@ -337,7 +365,7 @@ where
             )?;
             log.push_str(&format!("- output: {}\n\n", op.display()));
             task_outputs.push((step.clone(), op.clone()));
-            let is_last = idx + 1 == total_steps;
+            let is_last = Some(step.as_str()) == last_step.as_deref();
             if is_last {
                 artifacts.handoff = Some(op.clone());
             } else if agent.meta.kind != "ingest" {
@@ -351,8 +379,7 @@ where
             println!("  -> {}", op.display());
             op
         };
-        step_paths.insert(step.clone(), out_path.clone());
-        prev_path = Some(out_path);
+        step_paths.insert(step.clone(), out_path);
     }
 
     fs::write(&log_file, log)?;
@@ -857,7 +884,26 @@ fn handle_role_delegate(
         "ingest" => execute_ingest(api, topic, agent_id, &instr, &workspace_root, &workdir),
         "compile" => execute_compile(api, topic, agent_id, &instr, &workspace_root, &workdir),
         "ask" => execute_ask(api, topic, agent_id, &instr, &workspace_root, &workdir),
-        "lint" => execute_lint(api, topic, agent_id, &instr, &workspace_root, &workdir),
+        "lint" => execute_llm_step(
+            api,
+            topic,
+            agent_id,
+            &instr,
+            &workspace_root,
+            &workdir,
+            "federation handoff",
+            "handoff output",
+        ),
+        "process" | "step" | "deliver" | "final" => execute_llm_step(
+            api,
+            topic,
+            agent_id,
+            &instr,
+            &workspace_root,
+            &workdir,
+            "federation worker",
+            "stage output",
+        ),
         other => Err(format!("unsupported role kind `{}`", other).into()),
     };
 
@@ -944,7 +990,7 @@ fn execute_compile(
         instr,
         &format!("LLM stage `{}` (federation worker)", instr.step),
     );
-    let step_paths = BTreeMap::new();
+    let step_paths = collect_step_paths(workspace_root, workdir)?;
     let out = run_llm_stage(
         api,
         workspace_root,
@@ -982,7 +1028,7 @@ fn execute_ask(
         instr,
         &format!("LLM stage `{}` (federation): {}", instr.step, q),
     );
-    let step_paths = BTreeMap::new();
+    let step_paths = collect_step_paths(workspace_root, workdir)?;
     let prev = instr.previous_artifact.as_deref().map(Path::new);
     let extra = format!("User question:\n{q}\n");
     let out = run_llm_stage(
@@ -1001,13 +1047,15 @@ fn execute_ask(
     ))
 }
 
-fn execute_lint(
+fn execute_llm_step(
     api: &str,
     topic: &str,
     agent_id: &str,
     instr: &HordeInstruction,
     workspace_root: &Path,
     workdir: &Path,
+    phase_label: &str,
+    summary_prefix: &str,
 ) -> Result<(String, String), Box<dyn std::error::Error>> {
     ensure_dirs(workdir)?;
     let agent = load_agent_doc(workspace_root, &instr.step)?;
@@ -1016,9 +1064,9 @@ fn execute_lint(
         topic,
         agent_id,
         instr,
-        &format!("LLM stage `{}` (federation handoff)", instr.step),
+        &format!("LLM stage `{}` ({})", instr.step, phase_label),
     );
-    let step_paths = BTreeMap::new();
+    let step_paths = collect_step_paths(workspace_root, workdir)?;
     let prev = instr.previous_artifact.as_deref().map(Path::new);
     let out = run_llm_stage(
         api,
@@ -1032,7 +1080,7 @@ fn execute_lint(
     )?;
     Ok((
         out.display().to_string(),
-        format!("handoff output: {}", out.display()),
+        format!("{summary_prefix}: {}", out.display()),
     ))
 }
 

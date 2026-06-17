@@ -1,6 +1,7 @@
 //! **Rookery** — horde builder: validate drafts and write markdown-native horde trees.
 //!
-//! 1.3.0 supports **linear** pipelines only (`horde.md` `pipeline = [...]`). DAG / `edges[]` are 1.4.0+.
+//! 1.3.0 supports **linear** pipelines (`horde.md` `pipeline = [...]`). Optional **`edges[]`**
+//! (DAG scheduling) is validated via [`crate::horde_graph`] (1.4.0+).
 
 mod avatars;
 mod draft_parse;
@@ -13,7 +14,7 @@ mod writer;
 
 pub use avatars::{assign_penguin_avatars, infer_penguin_avatar};
 pub use draft_parse::{extract_json_block, parse_draft_from_assistant};
-pub use fixture::minimal_linear_draft;
+pub use fixture::{minimal_dag_draft, minimal_linear_draft};
 pub use normalize::{
     default_output_for_penguin, normalize_draft, normalize_penguin_output, output_looks_invalid,
     slugify_horde_id,
@@ -31,6 +32,7 @@ mod tests {
     use super::*;
     use crate::markdown_pipeline::{parse_app_manifest, parse_stage_agent, resolve_manifest_path};
     use std::fs;
+    use std::path::PathBuf;
     use tempfile::tempdir;
 
     #[test]
@@ -90,5 +92,55 @@ mod tests {
         let mut draft = minimal_linear_draft();
         draft.id = "../evil".into();
         assert!(validate_draft(&draft).is_err());
+    }
+
+    #[test]
+    fn write_dag_fixture_emits_edges_and_validates() {
+        let dir = tempdir().unwrap();
+        let mut draft = minimal_dag_draft();
+        normalize_draft(&mut draft);
+        validate_draft(&draft).expect("DAG fixture should validate");
+        let spec = HordeBirthSpec::new(draft);
+        let root = write_horde_tree(dir.path(), &spec).unwrap();
+        validate_horde_tree(&root).expect("written DAG tree should validate");
+        let body = fs::read_to_string(root.join("horde.md")).unwrap();
+        assert!(body.contains("[[edges]]"));
+        assert!(body.contains("from = \"ingest\""));
+        let join_agent = fs::read_to_string(root.join("agents/join.md")).unwrap();
+        assert!(join_agent.contains("@step:branch-a@"));
+        assert!(join_agent.contains("@step:branch-b@"));
+    }
+
+    #[test]
+    fn write_linear_fixture_omits_edges() {
+        let dir = tempdir().unwrap();
+        let spec = HordeBirthSpec::new(minimal_linear_draft());
+        let root = write_horde_tree(dir.path(), &spec).unwrap();
+        let body = fs::read_to_string(root.join("horde.md")).unwrap();
+        assert!(!body.contains("[[edges]]"));
+        validate_horde_tree(&root).expect("linear tree should validate");
+    }
+
+    #[test]
+    fn coding_assistant_example_validates() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples/coding-assistant");
+        if !root.join("horde.md").is_file() {
+            return;
+        }
+        validate_horde_tree(&root).expect("examples/coding-assistant should validate");
+        let manifest = parse_app_manifest(&resolve_manifest_path(&root)).unwrap();
+        let edge_slice = if manifest.edges.is_empty() {
+            None
+        } else {
+            Some(manifest.edges.as_slice())
+        };
+        let graph = crate::resolve_execution_graph(&manifest.pipeline, edge_slice).unwrap();
+        assert_eq!(graph.layers[0], vec!["ingest".to_string()]);
+        assert_eq!(graph.layers[1].len(), 2);
+        assert!(graph.layers[1].contains(&"warmup".to_string()));
+        assert!(graph.layers[1].contains(&"todo-plan".to_string()));
+        assert_eq!(graph.layers[2], vec!["adjust".to_string()]);
+        assert_eq!(graph.layers[9], vec!["deliver".to_string()]);
+        assert_eq!(graph.layers.len(), 10);
     }
 }

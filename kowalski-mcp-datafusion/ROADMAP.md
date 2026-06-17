@@ -1,6 +1,6 @@
 # kowalski-mcp-datafusion roadmap
 
-Crate version **1.3.0**. Workspace: **[`../ROADMAP.md`](../ROADMAP.md)**.
+Crate version **1.4.0**. Workspace: **[`../ROADMAP.md`](../ROADMAP.md)**.
 
 ## Near term
 

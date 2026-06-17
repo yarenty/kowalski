@@ -1,6 +1,6 @@
 # kowalski-mcp-rookery — AI agent notes
 
-**Crate**: `kowalski-mcp-rookery` · **Version**: **1.3.0**
+**Crate**: `kowalski-mcp-rookery` · **Version**: **1.4.0**
 
 ## Scope
 

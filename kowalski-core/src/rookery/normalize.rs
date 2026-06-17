@@ -84,9 +84,33 @@ pub fn normalize_draft(draft: &mut RookeryDraft) {
         })
         .collect();
 
+    for edge in &mut draft.edges {
+        edge.from = rename
+            .get(&edge.from)
+            .cloned()
+            .unwrap_or_else(|| slugify_horde_id(&edge.from));
+        edge.to = rename
+            .get(&edge.to)
+            .cloned()
+            .unwrap_or_else(|| slugify_horde_id(&edge.to));
+    }
+
     normalize_delivery_root(draft);
     let pipeline = draft.pipeline.clone();
     let delivery_root = draft.delivery_root_rel.as_deref();
+
+    if let Ok(graph) = crate::resolve_execution_graph(&draft.pipeline, Some(&draft.edges)) {
+        for p in &mut draft.penguins {
+            let preds = crate::inbound_predecessors(&graph.edges, &p.name);
+            if preds.len() >= 2 {
+                p.context_paths = preds
+                    .iter()
+                    .map(|name| format!("@step:{name}@"))
+                    .collect();
+            }
+        }
+    }
+
     for p in &mut draft.penguins {
         let is_first = pipeline.first() == Some(&p.name);
         let is_last = pipeline.last() == Some(&p.name);
@@ -95,6 +119,7 @@ pub fn normalize_draft(draft: &mut RookeryDraft) {
             p.inputs = default_ingest_form_fields();
         }
     }
+
     assign_penguin_avatars(draft);
 }
 
@@ -206,6 +231,7 @@ mod tests {
                 "Structure".into(),
                 "Deliver".into(),
             ],
+            edges: vec![],
             penguins: vec![
                 PenguinSpec {
                     name: "Ingest".into(),

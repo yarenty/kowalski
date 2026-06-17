@@ -10,6 +10,7 @@ import {
 import HordeRunForm from "../components/HordeRunForm.vue";
 import PenguinAvatar from "../components/PenguinAvatar.vue";
 import { inferPenguinAvatarId } from "../penguins";
+import { isDagHorde } from "../hordeGraph";
 const props = defineProps<{ activeThreadId: string | null }>();
 const emit = defineEmits<{
   (e: "new-chat-session"): void;
@@ -48,6 +49,11 @@ const cleanWorkdirBusy = ref(false);
 const runPromotedToHistory = ref(false);
 
 const selectedHorde = computed(() => hordes.value.find((h) => h.id === selectedHordeId.value) ?? null);
+const selectedHordeIsDag = computed(() => {
+  const h = selectedHorde.value;
+  if (!h) return false;
+  return isDagHorde(h.pipeline, h.edges ?? []);
+});
 const selectedHordeWorkers = computed(() => workerProfiles.value.filter((w) => w.horde_id === selectedHordeId.value));
 const activeRunFromHistory = computed(() =>
   runId.value ? runHistory.value.find((r) => r.run_id === runId.value) ?? null : null,
@@ -615,6 +621,10 @@ onUnmounted(() => {
     </p>
     <div v-if="selectedHorde" class="horde-box">
       <p class="muted">{{ selectedHorde.description }}</p>
+      <p v-if="selectedHordeIsDag" class="dag-note muted">
+        <strong>DAG horde.</strong> The orchestrator runs fork/join layers in order; steps sharing a layer run when all
+        upstream steps finish (workers may execute in parallel when ready).
+      </p>
       <p class="muted workdir-row">
         Workdir: <code>{{ selectedHorde.workdir || selectedHorde.root_path }}</code>
         <button type="button" class="inline-btn" @click="openOutputFolder(selectedHorde.workdir || selectedHorde.root_path)">
@@ -777,6 +787,7 @@ onUnmounted(() => {
 .chat-feed { border: 1px solid #2a2e38; border-radius: 8px; background: #141820; padding: 0.6rem; display: grid; gap: 0.45rem; max-height: 55vh; overflow: auto; }
 .followup-feed { max-height: none; overflow: visible; }
 .horde-box { border: 1px solid #2a2e38; border-radius: 8px; background: #161b22; padding: 0.55rem 0.65rem; margin-bottom: 0.55rem; }
+.dag-note { font-size: 0.85rem; margin: 0.35rem 0 0; padding: 0.35rem 0.45rem; border-radius: 6px; background: #1a2230; border: 1px solid #2a3548; }
 .delivery { border: 1px solid #2a2e38; border-radius: 8px; background: #151922; padding: 0.55rem 0.65rem; margin-top: 0.45rem; }
 .followup-composer {
   position: sticky;

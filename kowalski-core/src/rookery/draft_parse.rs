@@ -1,9 +1,10 @@
 //! Parse `RookeryDraft` from builder output (TOML preferred, JSON accepted).
 
 use crate::error::KowalskiError;
+use crate::horde_graph::HordeEdge;
 use crate::rookery::types::{PenguinSpec, RookeryDraft};
 use serde::Deserialize;
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 
 const STRING_FROM_OBJECT_KEYS: &[&str] = &[
     "text",
@@ -31,6 +32,8 @@ struct LenientDraft {
     display_name: Option<String>,
     description: Option<String>,
     pipeline: Option<Vec<LenientPipelineStep>>,
+    #[serde(default)]
+    edges: Vec<HordeEdge>,
     penguins: Option<Vec<LenientPenguin>>,
     steps: Option<Vec<LenientPenguin>>,
     #[serde(default)]
@@ -255,6 +258,7 @@ fn lenient_to_draft(l: LenientDraft) -> Result<RookeryDraft, KowalskiError> {
             .unwrap_or_else(|| "Born from Rookery interview.".into()),
         capability_prefix: l.capability_prefix,
         pipeline,
+        edges: l.edges,
         penguins,
         default_question: l.default_question,
         default_topic: l.default_topic,
@@ -360,6 +364,47 @@ fn coerce_string_array_field(obj: &mut Map<String, Value>, key: &str) {
         })
         .collect();
     obj.insert(key.to_string(), Value::Array(strings));
+}
+
+fn coerce_edges_field(obj: &mut Map<String, Value>) {
+    let Some(edges_val) = obj.get_mut("edges") else {
+        return;
+    };
+    let Value::Array(items) = edges_val else {
+        return;
+    };
+    let mut out = Vec::new();
+    for item in items {
+        match item {
+            Value::Object(edge) => {
+                let from = edge
+                    .get("from")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty());
+                let to = edge
+                    .get("to")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty());
+                if let (Some(from), Some(to)) = (from, to) {
+                    out.push(json!({ "from": from, "to": to }));
+                }
+            }
+            Value::String(s) if s.contains("->") => {
+                let mut parts = s.split("->");
+                if let (Some(from), Some(to)) = (parts.next(), parts.next()) {
+                    let from = from.trim();
+                    let to = to.trim();
+                    if !from.is_empty() && !to.is_empty() {
+                        out.push(json!({ "from": from, "to": to }));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    *edges_val = Value::Array(out);
 }
 
 fn coerce_pipeline_field(obj: &mut Map<String, Value>) {
@@ -517,6 +562,7 @@ fn coerce_draft_value(mut root: Value) -> Value {
     }
     coerce_optional_string_field(obj, "capability_prefix");
     coerce_pipeline_field(obj);
+    coerce_edges_field(obj);
 
     if !obj.contains_key("penguins")
         && let Some(steps) = obj.remove("steps")
@@ -655,6 +701,33 @@ mod tests {
         let d = parse_draft_from_assistant(text).unwrap();
         assert_eq!(d.penguins[0].kind, "ingest");
         assert_eq!(d.penguins[1].kind, "deliver");
+    }
+
+    #[test]
+    fn coerces_edges_from_json() {
+        let text = r#"```json
+{
+  "id": "fork-demo",
+  "display_name": "Fork",
+  "description": "fork join",
+  "pipeline": ["ingest", "branch-a", "branch-b", "join"],
+  "edges": [
+    { "from": "ingest", "to": "branch-a" },
+    { "from": "ingest", "to": "branch-b" },
+    { "from": "branch-a", "to": "join" },
+    { "from": "branch-b", "to": "join" }
+  ],
+  "penguins": [
+    { "name": "ingest", "kind": "ingest", "display_name": "Ingest", "description": "d", "prompt_body": "p", "output": "debug/raw/" },
+    { "name": "branch-a", "kind": "process", "display_name": "A", "description": "d", "prompt_body": "p", "output": "debug/a.md" },
+    { "name": "branch-b", "kind": "process", "display_name": "B", "description": "d", "prompt_body": "p", "output": "debug/b.md" },
+    { "name": "join", "kind": "process", "display_name": "Join", "description": "d", "prompt_body": "p", "output": "debug/join.md" }
+  ]
+}
+```"#;
+        let draft = parse_draft_from_assistant(text).expect("edges coercion");
+        assert_eq!(draft.edges.len(), 4);
+        assert!(draft.penguins.iter().find(|p| p.name == "join").unwrap().context_paths.iter().any(|c| c.contains("branch-a")));
     }
 
     #[test]

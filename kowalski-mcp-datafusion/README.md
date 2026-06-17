@@ -1,6 +1,6 @@
 # kowalski-mcp-datafusion
 
-**Version 1.3.0** — standalone **MCP** server (**stateless** Streamable HTTP: JSON + SSE) exposing **DataFusion** tools over a registered **CSV** (or similar) table. HTTP plumbing is the shared [`kowalski-mcp-transport`](../kowalski-mcp-transport/); this crate is just the DataFusion tool dispatch.
+**Version 1.4.0** — standalone **MCP** server (**stateless** Streamable HTTP: JSON + SSE) exposing **DataFusion** tools over a registered **CSV** (or similar) table. HTTP plumbing is the shared [`kowalski-mcp-transport`](../kowalski-mcp-transport/); this crate is just the DataFusion tool dispatch.
 
 ## Horde changes in 1.1.0 (since 1.0.0)
 

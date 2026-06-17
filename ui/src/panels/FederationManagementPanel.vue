@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { api, type FederationRegistryResponse, type FederationWorkerProfile, type HordeCatalogItem } from "../api";
+import { isDagHorde } from "../hordeGraph";
 
 const emit = defineEmits<{
   (e: "new-chat-session"): void;
@@ -180,7 +181,10 @@ onMounted(() => void refreshAll());
           </span>
         </header>
         <p class="muted">{{ card.horde.description }}</p>
-        <p class="muted">Sub-agents: {{ card.horde.pipeline.join(" → ") }}</p>
+        <p v-if="isDagHorde(card.horde.pipeline, card.horde.edges ?? [])" class="muted">
+          DAG horde · {{ (card.horde.edges ?? []).length }} scheduling edge(s)
+        </p>
+        <p v-else class="muted">Sub-agents: {{ card.horde.pipeline.join(" → ") }}</p>
         <p class="muted workdir-row">
           Workdir: <code>{{ card.horde.workdir || card.horde.root_path }}</code>
           <button type="button" class="inline-btn" @click="openOutputFolder(card.horde.workdir || card.horde.root_path)">

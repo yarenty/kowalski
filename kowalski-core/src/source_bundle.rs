@@ -38,7 +38,7 @@ pub fn parse_source_tokens(input: &str) -> Vec<SourceToken> {
             SourceToken::Url(t.clone())
         } else {
             let p = Path::new(&t);
-            if p.exists() {
+            if p.is_file() {
                 SourceToken::FilePath(t.clone())
             } else {
                 continue;

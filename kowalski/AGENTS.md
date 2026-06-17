@@ -55,7 +55,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: kowalski  
-**Release**: **1.3.0** — thin facade over **`kowalski-core`** with optional **`kowalski-cli`** (`cli` / `full` features).  
+**Release**: **1.4.0** — thin facade over **`kowalski-core`** with optional **`kowalski-cli`** (`cli` / `full` features).  
 **Purpose**: Optional unified dependency entry for apps that want the workspace crates from one package name.  
 **Core Value Proposition**: Modular, extensible, and distributed architecture supporting standalone and federated deployments with privacy-preserving capabilities.  
 **Primary Mechanism**: Multi-agent orchestration and pluggable tools interfacing with local (Ollama) and remote LLMs.  
