@@ -18,6 +18,15 @@ All notable changes to this project will be documented in this file, or at least
   settings field (localStorage, `VITE_API_TOKEN` fallback); CLI workers use the
   `KOWALSKI_API_TOKEN` env var, set automatically for server-spawned workers.
 
+### Added
+
+- **Persisted horde-run store (#37):** new `kowalski_core::db::run_store` — typed
+  `RunStatus`/`StepStatus` state machine, `manifest_snapshot` at run start, per-step
+  `attempt`/`outcome`/artifact, compact JSON events log, and `incomplete_runs()` for restart
+  scans. Zero config: creates `runs.sqlite` under the server state dir (`KOWALSKI_RUN_DB`
+  overrides). Migrations `sqlite/003_horde_runs.sql` + `postgres/005_horde_runs.sql`.
+  Foundation only — orchestrator write-through lands next.
+
 ### Fixed
 
 - **Stage `output` directories:** a trailing-slash `output` (e.g. `debug/summaries/`) crashed

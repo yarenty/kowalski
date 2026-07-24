@@ -12,11 +12,17 @@ use crate::error::KowalskiError;
 use sqlx::postgres::PgPool;
 use sqlx::sqlite::SqlitePool;
 
-fn db_err(e: sqlx::Error) -> KowalskiError {
+pub mod run_store;
+
+/// Embedded SQLite migrator — the single owner of the SQLite schema
+/// (memory subsystem + horde-run store share it).
+pub(crate) static SQLITE_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("migrations/sqlite");
+
+pub(crate) fn db_err(e: sqlx::Error) -> KowalskiError {
     KowalskiError::Configuration(format!("database: {e}"))
 }
 
-fn migrate_err(e: sqlx::migrate::MigrateError) -> KowalskiError {
+pub(crate) fn migrate_err(e: sqlx::migrate::MigrateError) -> KowalskiError {
     KowalskiError::Configuration(format!("migration: {e}"))
 }
 
@@ -27,10 +33,7 @@ fn migrate_err(e: sqlx::migrate::MigrateError) -> KowalskiError {
 pub async fn run_migrations(database_url: &str) -> Result<(), KowalskiError> {
     if database_url.starts_with("sqlite:") || database_url.starts_with("sqlite://") {
         let pool = SqlitePool::connect(database_url).await.map_err(db_err)?;
-        sqlx::migrate!("migrations/sqlite")
-            .run(&pool)
-            .await
-            .map_err(migrate_err)?;
+        SQLITE_MIGRATOR.run(&pool).await.map_err(migrate_err)?;
         pool.close().await;
         return Ok(());
     }

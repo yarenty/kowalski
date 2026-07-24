@@ -15,6 +15,10 @@ pub const API_URL_ENV: &str = "KOWALSKI_API";
 /// exported by the server to every worker it spawns; overrides the server's token file.
 pub const API_TOKEN_ENV: &str = "KOWALSKI_API_TOKEN";
 
+/// Env var overriding the horde-run store database URL (e.g. `sqlite:/path/runs.sqlite`).
+/// Without it the store creates `runs.sqlite` under the server state dir — zero config.
+pub const RUN_DB_ENV: &str = "KOWALSKI_RUN_DB";
+
 /// Core configuration for the Kowalski system
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
