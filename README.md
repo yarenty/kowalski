@@ -147,6 +147,8 @@ Tools and MCP are driven by **`TemplateAgent`** + config, not separate `kowalski
 ./target/release/kowalski-cli run -c config.toml
 
 # HTTP API for the Vue UI (default bind 127.0.0.1:3456)
+# Secure by default: /api/* requires a bearer token generated at first start
+# (printed once, persisted 0600 at <config-dir>/db/api_token). Opt out: --no-auth.
 ./target/release/kowalski -c config.toml
 
 # MCP servers from config: initialize + tools/list
@@ -178,6 +180,14 @@ The web UI lives in **[`ui/`](./ui/)** at the repository root (Vue 3 + Vite). It
 # Terminal 2 — Vite (default http://localhost:5173)
 cd ui && npm install && npm run dev
 ```
+
+**API token:** the server requires a bearer token on `/api/*` (generated at first start;
+token file path is in the server log, default `<config-dir>/db/api_token`). Paste it into
+the **Home tab → API token** field (stored in the browser), or the first-run prompt.
+CORS is an allowlist (Vite dev origins by default; add more with `--cors-origin` or
+`[server] cors_origins` in `config.toml`). `--no-auth` disables both (loud warning; not
+recommended). CLI workers and scripts authenticate via the `KOWALSKI_API_TOKEN` env var —
+server-spawned workers inherit it automatically.
 
 Production build: `cd ui && npm run build` (static assets under `ui/dist/`). More detail: [`ui/README.md`](./ui/README.md) and [`ui/DEPLOY.md`](./ui/DEPLOY.md).
 

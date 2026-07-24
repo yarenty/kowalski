@@ -315,6 +315,22 @@ Track what you tried. Mutate the approach. Learn from failures.
 ### Rule 7: Refactoring is not done until documentation is updated
 A refactor, API move, CLI flag change, or behavior change is **incomplete** until docs match reality in the **same** change (or an immediately stacked PR): update the affected **`AGENTS.md`** and **`README.md`**, root or crate **`CHANGELOG.md`** when the change is user-visible, and **`docs/`** when architecture or operator workflows shift. **Skipping documentation is skipping part of the task.**
 
+### Rule 8: Single source of truth & clear responsibility
+
+Every shared value or behavior has exactly **one owner** — define it once, reference it everywhere:
+
+- **Shared constants** (default addresses/ports, env var names, file locations, magic strings used
+  by more than one crate) live in **`kowalski-core`** (e.g. `kowalski_core::config::DEFAULT_API_BIND`,
+  `API_URL_ENV`, `API_TOKEN_ENV`) — never re-typed as literals in `kowalski`, `kowalski-cli`, or docs
+  examples. If a non-Rust consumer (e.g. `ui/vite.config.ts`) must mirror a value, leave a comment
+  pointing at the owning constant.
+- **Resolution logic** (flag > env > default, token lookup, path resolution) is written as **one
+  function** and every call site goes through it — no per-call-site `unwrap_or("...")` copies.
+- **Cross-process contracts** (what env/args a spawned worker inherits, what headers a client must
+  send) are built in **one helper** per side, not assembled ad hoc at each spawn/call site.
+- Before adding a literal that exists elsewhere, ask: *who owns this value?* Move it to the owner or
+  reference the owner. Duplicated literals that can drift are a bug, not a style choice.
+
 ### The 3-Strike Error Protocol
 
 ```

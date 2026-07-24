@@ -6,6 +6,29 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Security
+
+- **Secure-by-default HTTP API (#36):** `/api/*` now requires a locally generated bearer
+  token (`Authorization: Bearer <token>`, or `?token=` for SSE/WebSocket). The token is
+  generated on first server start, printed once, and persisted with mode 0600 at
+  `<config-dir>/db/api_token`; `/api/health` stays open. Permissive CORS replaced with an
+  origin allowlist (Vite dev UI by default; configure via `--cors-origin` /
+  `[server] cors_origins`). Explicit opt-out: `--no-auth` flag or `[server] no_auth = true`
+  (startup warning; restores permissive CORS). The UI sends the token from a Home-tab
+  settings field (localStorage, `VITE_API_TOKEN` fallback); CLI workers use the
+  `KOWALSKI_API_TOKEN` env var, set automatically for server-spawned workers.
+
+### Fixed
+
+- **Stage `output` directories:** a trailing-slash `output` (e.g. `debug/summaries/`) crashed
+  LLM stages with `No such file or directory`; the stage runner now writes `<dir>/<step>.md`
+  into it (fixes `examples/url-summarizer`).
+- **Workers follow `--bind`:** the server exports its real base URL to spawned workers via the
+  new `KOWALSKI_API` env var instead of workers assuming `127.0.0.1:3456`. The CLI resolves its
+  target as `--api` flag > `KOWALSKI_API` > default. Shared constants now live in one place:
+  `kowalski_core::config::{DEFAULT_API_BIND, API_URL_ENV, API_TOKEN_ENV}` (see new `AGENTS.md`
+  Rule 8: single source of truth).
+
 > Workspace **`1.5.0`** on `feat/coder`: **Coder execution tier** — project tree ingest, tool-enabled federation stages, verify/apply, conditional loops. See [`ROADMAP.md`](ROADMAP.md) § *Coder execution tier*.
 
 ### Added (in progress)

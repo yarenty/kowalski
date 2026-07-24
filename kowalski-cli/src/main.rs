@@ -221,7 +221,7 @@ enum AgentAppCommands {
         /// App dir (`horde.md` + `agents/`). Env `KOWALSKI_AGENT_APP_ROOT`, else dev default `examples/knowledge-compiler`.
         #[clap(short, long)]
         path: Option<String>,
-        /// Kowalski API base URL (default: http://127.0.0.1:3456)
+        /// Kowalski API base URL (default: `KOWALSKI_API` env, else http://127.0.0.1:3456)
         #[clap(long)]
         api: Option<String>,
     },
@@ -234,7 +234,7 @@ enum AgentAppCommands {
         /// Optional question for query phase
         #[clap(short, long)]
         question: Option<String>,
-        /// Kowalski API base URL
+        /// Kowalski API base URL (default: `KOWALSKI_API` env, else http://127.0.0.1:3456)
         #[clap(long)]
         api: Option<String>,
     },
@@ -246,7 +246,7 @@ enum AgentAppCommands {
         /// Directory containing `horde.md` and `agents/*.md` (defaults: env `KOWALSKI_AGENT_APP_ROOT`, else repo `examples/knowledge-compiler` for local dev only).
         #[clap(short, long)]
         path: Option<String>,
-        /// Kowalski API base URL
+        /// Kowalski API base URL (default: `KOWALSKI_API` env, else http://127.0.0.1:3456)
         #[clap(long)]
         api: Option<String>,
         /// Federation topic (default: federation)
@@ -265,7 +265,7 @@ enum AgentAppCommands {
         /// App dir (`horde.md` + `agents/`). Env `KOWALSKI_AGENT_APP_ROOT`, else dev default `examples/knowledge-compiler`.
         #[clap(short, long)]
         path: Option<String>,
-        /// Kowalski API base URL
+        /// Kowalski API base URL (default: `KOWALSKI_API` env, else http://127.0.0.1:3456)
         #[clap(long)]
         api: Option<String>,
         /// Worker agent id

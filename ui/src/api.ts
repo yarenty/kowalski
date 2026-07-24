@@ -1,11 +1,34 @@
 /** Base for API calls. In dev, leave empty so Vite proxies `/api` to `kowalski` (see vite.config.ts). */
 const base = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 
+/** localStorage key for the server API token (server generates it at `db/api_token`). */
+const TOKEN_KEY = "kowalski.api_token";
+
+/** Current API token: saved value first, then dev-time `VITE_API_TOKEN` injection. */
+export function getApiToken(): string {
+  return (
+    localStorage.getItem(TOKEN_KEY) ??
+    ((import.meta.env.VITE_API_TOKEN as string | undefined) ?? "")
+  );
+}
+
+/** Persist (or clear, with "") the API token used on every request. */
+export function setApiToken(token: string): void {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getApiToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function json<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${base}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...authHeaders(),
       ...(init?.headers ?? {}),
     },
   });
@@ -552,7 +575,10 @@ export function openFederationEventSource(
   onMessage: (data: string) => void,
   onError?: () => void,
 ): EventSource {
-  const url = `${base}/api/federation/stream?topic=${encodeURIComponent(topic)}`;
+  // EventSource cannot set headers — the server accepts `?token=` for SSE.
+  const token = getApiToken();
+  const tokenPart = token ? `&token=${encodeURIComponent(token)}` : "";
+  const url = `${base}/api/federation/stream?topic=${encodeURIComponent(topic)}${tokenPart}`;
   const es = new EventSource(url);
   es.onmessage = (ev) => onMessage(ev.data);
   es.onerror = () => onError?.();
@@ -604,7 +630,7 @@ export async function chatStream(
 ): Promise<void> {
   const res = await fetch(`${base}/api/chat/stream`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({
       message,
       ...(options?.toolsStream ? { tools_stream: true } : {}),
@@ -625,7 +651,7 @@ export async function rookeryChatStream(
     `${base}/api/rookery/sessions/${encodeURIComponent(sessionId)}/chat`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({ message, stream: true }),
     },
   );

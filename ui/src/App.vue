@@ -12,7 +12,9 @@ import RookeryPanel, { type RookeryUiSession } from "./panels/RookeryPanel.vue";
 import {
   api,
   chatStream,
+  getApiToken,
   rookeryChatStream,
+  setApiToken,
   type RookerySessionResponse,
   type RookerySessionStatus,
 } from "./api";
@@ -751,6 +753,23 @@ function selectTab(
   }
 }
 
+/** First-run token prompt: `/api/health` is open, everything else needs the bearer token. */
+async function ensureApiToken() {
+  try {
+    await api.agents();
+    return;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!msg.startsWith("401")) return;
+  }
+  const entered = window.prompt(
+    "Kowalski API token required (see the server log for the db/api_token file path — " +
+      "you can also set it later on the Home tab):",
+    getApiToken(),
+  );
+  if (entered?.trim()) setApiToken(entered.trim());
+}
+
 onMounted(async () => {
   try {
     const h = await api.health();
@@ -758,6 +777,7 @@ onMounted(async () => {
   } catch {
     /* keep unknown */
   }
+  await ensureApiToken();
 });
 </script>
 

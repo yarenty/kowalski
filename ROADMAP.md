@@ -12,7 +12,7 @@
 |---------|--------|------|
 | **1.5.0** | **Coder (execution)** | Full working coding horde: project tree ingest, tool-enabled stages, apply/verify, conditional loops |
 | **1.6.0** | **Fresh install** | [`install.sh`](install.sh) onboarding — env checks, Ollama hints, Docker MCP suggestions, minimal tool stack |
-| **1.6.x** | **Obsidian MCP** (intermediate) | Reusable MCP catalog doc; **`kowalski-mcp-obsidian`** (filesystem vault v0); survey existing Obsidian MCPs before building — see [`mcp_intermediate_plan.md`](mcp_intermediate_plan.md) |
+| **1.6.x** | **Obsidian MCP** (intermediate) | Reusable MCP catalog doc; **`kowalski-mcp-obsidian`** (filesystem vault v0); survey existing Obsidian MCPs before building |
 | **1.7.0** | **Support** | Chat tab becomes **Support**: Kowalski-aware helper (install gaps, Rookery + horde intro) |
 | **1.8.0** | **Vision & docs** | Marketing-quality articles; evolution 0.5 → 1.0 → hordes → Rookery; consolidated vision |
 | **1.9.0** | **Trading horde** | Web monitor + scheduled market analysis; buy/sell/wait suggestions (details TBD) |

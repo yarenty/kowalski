@@ -1,5 +1,6 @@
 use clap::Parser;
 
+mod auth;
 mod horde;
 mod http_api;
 mod http_ops;
@@ -13,8 +14,9 @@ mod rookery;
     long_about = "Run the Kowalski HTTP API server used by the UI."
 )]
 struct Cli {
-    /// Listen address (default 127.0.0.1:3456 — matches `ui/vite.config.ts` proxy)
-    #[clap(long, default_value = "127.0.0.1:3456")]
+    /// Listen address (default from `kowalski_core::config::DEFAULT_API_BIND`,
+    /// which `ui/vite.config.ts` proxy and the CLI default mirror)
+    #[clap(long, default_value = kowalski_core::config::DEFAULT_API_BIND)]
     bind: String,
     /// Config TOML path (default ./config.toml)
     #[clap(short, long)]
@@ -28,6 +30,14 @@ struct Cli {
     /// TLS private key (PEM). Must be set together with `--tls-cert`.
     #[clap(long, value_name = "PEM")]
     tls_key: Option<std::path::PathBuf>,
+    /// Disable API bearer-token auth and use permissive CORS (NOT recommended:
+    /// any local process or website can then call `/api/*`).
+    #[clap(long)]
+    no_auth: bool,
+    /// Allowed browser origin for CORS (repeatable). Defaults to the Vite dev UI
+    /// origins. Ignored with `--no-auth` (permissive CORS).
+    #[clap(long = "cors-origin", value_name = "ORIGIN")]
+    cors_origins: Vec<String>,
 }
 
 #[tokio::main]
@@ -46,7 +56,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Err("--tls-cert and --tls-key must be set together (or both omitted)".into());
         }
     };
-    http_api::serve(addr, cli.config, cli.ollama_url, tls).await?;
+    let security = http_api::SecurityOptions {
+        no_auth: cli.no_auth,
+        cors_origins: cli.cors_origins,
+    };
+    http_api::serve(addr, cli.config, cli.ollama_url, tls, security).await?;
 
     Ok(())
 }
