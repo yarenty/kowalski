@@ -156,6 +156,24 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
 ### Service Architecture
 - **`TemplateAgent`** and tools live in **`kowalski-core`**; this crate re-exports **`core`** and optionally **`cli`**.
 - **HTTP server** (`kowalski` binary): **`/api/*`** for UI and automation.
+
+#### API auth & CORS (secure by default, `src/auth.rs`)
+
+- Every `/api/*` request requires **`Authorization: Bearer <token>`** (or **`?token=`** for
+  SSE/WebSocket clients that cannot set headers). **`/api/health`** stays open.
+- The token is resolved at startup: `KOWALSKI_API_TOKEN` env wins; otherwise the server reads
+  (or generates on first start — printed once, persisted **mode 0600**) the file
+  **`<config-dir>/db/api_token`** (beside `db/rookery/`).
+- Server-spawned workers (`/api/federation/workers/start`, `/api/hordes/{id}/workers/start`)
+  inherit the token via the `KOWALSKI_API_TOKEN` env var; the CLI reads the same var for all
+  its `/api/*` calls.
+- **CORS** is an origin **allowlist** (default: Vite dev UI `http://localhost:5173` /
+  `http://127.0.0.1:5173`); configure with repeatable `--cors-origin` or
+  `[server] cors_origins = [...]` in `config.toml`. A non-allowlisted origin gets no
+  `Access-Control-Allow-Origin` header.
+- **Opt-out**: `--no-auth` flag or `[server] no_auth = true` — restores the legacy behavior
+  (no token, permissive CORS) with a loud startup warning. Single-user local tool: one shared
+  token by design (no multi-user auth/roles).
 - **Rookery** (`src/rookery.rs`, 1.3.0): horde builder API — see [`../ROADMAP.md`](../ROADMAP.md) (*Planned: Rookery*). Routes (require `Extension` store + running LLM for chat/propose):
 
 | Method | Path | Notes |

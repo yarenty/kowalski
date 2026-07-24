@@ -152,6 +152,11 @@ There are **no** standalone `kowalski-academic-agent` / `kowalski-web-agent` cra
 ### Service Architecture
 - This crate ships **`kowalski-cli`** operators; **`kowalski`** binary (HTTP) is the **`kowalski`** crate.
 - **`extension`** / **`agent-app`** orchestrate app workflows (e.g. Knowledge Compiler) against **`kowalski`** `/api/*`.
+- **API auth:** the server requires a bearer token on `/api/*` by default. All CLI HTTP calls
+  (`agent_app_ops` `post_json` / `chat_stage` / federation SSE) attach it from the
+  **`KOWALSKI_API_TOKEN`** env var; server-spawned workers inherit it automatically. Operators
+  running workers by hand export it from the server's `db/api_token` file (path logged at
+  server startup).
 
 ### Strict boundaries: CLI and UI are executors only
 

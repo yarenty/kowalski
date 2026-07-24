@@ -266,7 +266,10 @@ pub fn select_next_from_outcome(
         return None;
     }
     matching.sort_by_key(|e| pos.get(&e.to).copied().unwrap_or(usize::MAX));
-    for edge in matching.iter().filter(|e| pos.get(&e.to).copied().unwrap_or(0) > from_pos) {
+    if let Some(edge) = matching
+        .iter()
+        .find(|e| pos.get(&e.to).copied().unwrap_or(0) > from_pos)
+    {
         return Some(edge.to.clone());
     }
     for edge in matching.iter().filter(|e| pos.get(&e.to).copied().unwrap_or(0) <= from_pos) {

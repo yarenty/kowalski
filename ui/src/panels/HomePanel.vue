@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from "vue";
-import { api, type AgentsResponse, type Doctor, type Health, type MemoryStatus, type SessionsResponse } from "../api";
+import { api, getApiToken, setApiToken, type AgentsResponse, type Doctor, type Health, type MemoryStatus, type SessionsResponse } from "../api";
 
 const health = ref<Health | null>(null);
 const healthErr = ref<string | null>(null);
@@ -16,6 +16,19 @@ const memoryErr = ref<string | null>(null);
 const autoRefresh = ref(false);
 const autoRefreshSecs = ref(10);
 let timer: ReturnType<typeof setInterval> | null = null;
+
+const apiToken = ref(getApiToken());
+const tokenSaved = ref(false);
+
+function saveApiToken() {
+  setApiToken(apiToken.value.trim());
+  apiToken.value = getApiToken();
+  tokenSaved.value = true;
+  setTimeout(() => {
+    tokenSaved.value = false;
+  }, 2000);
+  void refreshAll();
+}
 
 function statusLabel(ok: boolean): string {
   return ok ? "OK" : "ERROR";
@@ -123,6 +136,24 @@ onUnmounted(() => {
       <code>bun run dev</code> in <code>ui/</code>.
     </p>
     <p class="row">
+      <label class="muted" for="api-token">API token</label>
+      <input
+        id="api-token"
+        v-model="apiToken"
+        class="inp token"
+        type="password"
+        placeholder="from the server's db/api_token file"
+        autocomplete="off"
+        @keyup.enter="saveApiToken"
+      />
+      <button type="button" @click="saveApiToken">Save</button>
+      <span v-if="tokenSaved" class="muted">saved</span>
+    </p>
+    <p class="hint">
+      The server requires this bearer token on <code>/api/*</code> (generated at first start;
+      the token file path is in the server log). Stored in this browser only.
+    </p>
+    <p class="row">
       <button type="button" class="primary" @click="refreshAll">Refresh all</button>
       <label class="chk">
         <input v-model="autoRefresh" type="checkbox" />
@@ -186,6 +217,7 @@ onUnmounted(() => {
 .chk { display: inline-flex; align-items: center; gap: 0.4rem; color: #b8c0d0; }
 .inp { background: #1a1d26; border: 1px solid #3d4658; color: #e8e8ec; border-radius: 6px; padding: 0.35rem 0.5rem; }
 .inp.tiny { width: 4.5rem; }
+.inp.token { width: 20rem; max-width: 100%; }
 .muted { color: #6a7285; font-size: 0.9rem; }
 .json { background: #1a1d26; border: 1px solid #2a2e38; border-radius: 6px; padding: 0.75rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.45; color: #c8cfdd; }
 .json-scroll { max-height: 18rem; overflow: auto; }

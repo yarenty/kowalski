@@ -1,4 +1,6 @@
-//! JSON HTTP API for the Vue operator UI (CORS-enabled for local dev).
+//! JSON HTTP API for the Vue operator UI.
+//! Secure by default: `/api/*` requires a locally generated bearer token and CORS is an
+//! origin allowlist (see `crate::auth`; opt out with `--no-auth`). `/api/health` stays open.
 //! `/api/chat` and `/api/chat/stream` use one in-process `TemplateAgent` + configured LLM (`[llm]` +
 //! `[ollama].model` — Ollama or OpenAI-compatible API).
 
@@ -32,7 +34,6 @@ use std::sync::Arc;
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 use tokio_stream::wrappers::ReceiverStream;
-use tower_http::cors::CorsLayer;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 
 /// Returns the model to use based on the LLM provider configuration.
@@ -77,9 +78,20 @@ struct ApiState {
     managed_workers: Arc<Mutex<HashMap<String, Child>>>,
     managed_worker_last_exit: Arc<Mutex<HashMap<String, String>>>,
     horde_manager: crate::horde::HordeManager,
+    /// Bearer token required on `/api/*` (`None` only with `--no-auth`); handed to
+    /// spawned workers via `KOWALSKI_API_TOKEN`.
+    api_token: Option<Arc<String>>,
     /// Same DB pool as the LISTEN bridge — used to fan out delegates via `NOTIFY`.
     #[cfg(feature = "postgres")]
     federation_pg_notify: Option<Arc<kowalski_core::PgBroker>>,
+}
+
+/// Auth/CORS knobs from the CLI (`--no-auth`, `--cors-origin`); config `[server]`
+/// values apply when the flags are not set.
+#[derive(Debug, Default, Clone)]
+pub struct SecurityOptions {
+    pub no_auth: bool,
+    pub cors_origins: Vec<String>,
 }
 
 /// Run until SIGINT / process exit. Binds `addr` and serves under `/api/*`.
@@ -89,9 +101,45 @@ pub async fn serve(
     config: Option<String>,
     ollama_url: Option<String>,
     tls: Option<(PathBuf, PathBuf)>,
+    security: SecurityOptions,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let config_path = crate::http_ops::mcp_config_path(config.as_deref());
     let full_config = crate::http_ops::load_kowalski_config_for_serve(&config_path)?;
+
+    let no_auth = security.no_auth || server_config_no_auth(&full_config);
+    let api_token: Option<Arc<String>> = if no_auth {
+        log::warn!(
+            "API auth DISABLED (--no-auth / [server] no_auth): any local process or website can call /api/* — not recommended"
+        );
+        None
+    } else {
+        let state_root = state_config_dir(&config_path)
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("db");
+        let (token, generated, token_path) = crate::auth::resolve_api_token(&state_root)?;
+        if generated {
+            println!(
+                "Generated API token (also persisted at {}):\n  {}",
+                token_path.display(),
+                token
+            );
+        }
+        log::info!(
+            "API auth: bearer token required on /api/* (token file: {}; opt out with --no-auth)",
+            token_path.display()
+        );
+        Some(Arc::new(token))
+    };
+    let cors_origins = if !security.cors_origins.is_empty() {
+        security.cors_origins.clone()
+    } else {
+        server_config_cors_origins(&full_config).unwrap_or_else(|| {
+            crate::auth::DEFAULT_CORS_ORIGINS
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
+        })
+    };
     kowalski_core::db::run_memory_migrations_if_configured(&full_config).await?;
 
     let mut agent = TemplateAgent::new(full_config.clone()).await?;
@@ -214,6 +262,7 @@ pub async fn serve(
         managed_workers: Arc::new(Mutex::new(HashMap::new())),
         managed_worker_last_exit: Arc::new(Mutex::new(HashMap::new())),
         horde_manager,
+        api_token: api_token.clone(),
         #[cfg(feature = "postgres")]
         federation_pg_notify,
     };
@@ -325,8 +374,17 @@ pub async fn serve(
             TraceLayer::new_for_http()
                 .make_span_with(DefaultMakeSpan::new().include_headers(false))
                 .on_response(DefaultOnResponse::new()),
-        )
-        .layer(CorsLayer::permissive());
+        );
+    let app = if let Some(token) = api_token {
+        app.layer(axum::middleware::from_fn(move |req, next| {
+            let token = token.clone();
+            crate::auth::require_token(token, req, next)
+        }))
+    } else {
+        app
+    };
+    // CORS outermost so browser preflights (no Authorization header) never hit the auth check.
+    let app = app.layer(crate::auth::cors_layer(no_auth, &cors_origins));
 
     if let Some((cert, key)) = tls {
         let rustls_config = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key).await?;
@@ -350,6 +408,28 @@ fn federation_postgres_notify_bridge(state: &ApiState) -> bool {
         let _ = state;
         false
     }
+}
+
+fn server_config_no_auth(cfg: &Config) -> bool {
+    cfg.additional
+        .get("server")
+        .and_then(|v| v.as_object())
+        .and_then(|obj| obj.get("no_auth"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+fn server_config_cors_origins(cfg: &Config) -> Option<Vec<String>> {
+    let origins: Vec<String> = cfg
+        .additional
+        .get("server")
+        .and_then(|v| v.as_object())
+        .and_then(|obj| obj.get("cors_origins"))
+        .and_then(|v| v.as_array())?
+        .iter()
+        .filter_map(|v| v.as_str().map(ToString::to_string))
+        .collect();
+    (!origins.is_empty()).then_some(origins)
 }
 
 fn global_horde_clean_on_startup(cfg: &Config) -> Option<bool> {
@@ -1232,6 +1312,9 @@ async fn post_federation_worker_start(
 
     let mut cmd = tokio::process::Command::new(&profile.command);
     cmd.args(profile.args.iter()).current_dir(&profile.cwd);
+    if let Some(token) = state.api_token.as_ref() {
+        cmd.env(crate::auth::TOKEN_ENV, token.as_str());
+    }
     if let Some((out, err)) = worker_log_stdio(&profile.log_dir, &profile.id) {
         cmd.stdout(out).stderr(err);
     } else {
@@ -1850,6 +1933,9 @@ async fn post_horde_worker_start(
             }
             let mut cmd = tokio::process::Command::new(&profile.command);
             cmd.args(profile.args.iter()).current_dir(&profile.cwd);
+            if let Some(token) = state.api_token.as_ref() {
+                cmd.env(crate::auth::TOKEN_ENV, token.as_str());
+            }
             if let Some((out, err)) = worker_log_stdio(&profile.log_dir, &profile.id) {
                 cmd.stdout(out).stderr(err);
             } else {

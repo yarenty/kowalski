@@ -176,8 +176,7 @@ fn chat_stage(
     if let Some(cid) = opts.conversation_id.as_ref().filter(|s| !s.trim().is_empty()) {
         body["conversation_id"] = serde_json::json!(cid);
     }
-    let resp = client
-        .post(&url)
+    let resp = with_bearer(client.post(&url))
         .json(&body)
         .send()
         .map_err(|e| friendly_http_error(api, route, &url, &e))?;
@@ -663,6 +662,22 @@ pub fn run(
     Ok(())
 }
 
+/// Server API token (`KOWALSKI_API_TOKEN`) — set by the operator, or inherited from the
+/// `kowalski` server when it spawns this worker. The server requires it on `/api/*`.
+fn api_token() -> Option<String> {
+    std::env::var("KOWALSKI_API_TOKEN")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+fn with_bearer(rb: reqwest_blocking::RequestBuilder) -> reqwest_blocking::RequestBuilder {
+    match api_token() {
+        Some(token) => rb.bearer_auth(token),
+        None => rb,
+    }
+}
+
 fn post_json(
     api: &str,
     route: &str,
@@ -671,8 +686,7 @@ fn post_json(
     let client = reqwest_blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
         .build()?;
-    let resp = client
-        .post(format!("{}{}", api.trim_end_matches('/'), route))
+    let resp = with_bearer(client.post(format!("{}{}", api.trim_end_matches('/'), route)))
         .json(&payload)
         .send()
         .map_err(|e| {
@@ -753,6 +767,9 @@ fn friendly_http_status_error(
         }
     } else if status_code == 401 || status_code == 403 {
         msg.push_str("\n- Authentication/authorization problem.");
+        msg.push_str(
+            "\n- The server requires a bearer token on /api/* by default: set KOWALSKI_API_TOKEN to the token from the server's `db/api_token` file (path is logged at server startup).",
+        );
     } else {
         msg.push_str("\n- Request rejected by server configuration.");
     }
@@ -847,7 +864,7 @@ pub fn federate_worker(
         api.trim_end_matches('/'),
         topic
     );
-    let resp = client.get(stream_url).send()?;
+    let resp = with_bearer(client.get(stream_url)).send()?;
     if !resp.status().is_success() {
         return Err(format!("stream failed: HTTP {}", resp.status()).into());
     }

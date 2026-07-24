@@ -1,5 +1,6 @@
 use clap::Parser;
 
+mod auth;
 mod horde;
 mod http_api;
 mod http_ops;
@@ -28,6 +29,14 @@ struct Cli {
     /// TLS private key (PEM). Must be set together with `--tls-cert`.
     #[clap(long, value_name = "PEM")]
     tls_key: Option<std::path::PathBuf>,
+    /// Disable API bearer-token auth and use permissive CORS (NOT recommended:
+    /// any local process or website can then call `/api/*`).
+    #[clap(long)]
+    no_auth: bool,
+    /// Allowed browser origin for CORS (repeatable). Defaults to the Vite dev UI
+    /// origins. Ignored with `--no-auth` (permissive CORS).
+    #[clap(long = "cors-origin", value_name = "ORIGIN")]
+    cors_origins: Vec<String>,
 }
 
 #[tokio::main]
@@ -46,7 +55,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Err("--tls-cert and --tls-key must be set together (or both omitted)".into());
         }
     };
-    http_api::serve(addr, cli.config, cli.ollama_url, tls).await?;
+    let security = http_api::SecurityOptions {
+        no_auth: cli.no_auth,
+        cors_origins: cli.cors_origins,
+    };
+    http_api::serve(addr, cli.config, cli.ollama_url, tls, security).await?;
 
     Ok(())
 }

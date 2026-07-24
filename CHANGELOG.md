@@ -6,6 +6,18 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Security
+
+- **Secure-by-default HTTP API (#36):** `/api/*` now requires a locally generated bearer
+  token (`Authorization: Bearer <token>`, or `?token=` for SSE/WebSocket). The token is
+  generated on first server start, printed once, and persisted with mode 0600 at
+  `<config-dir>/db/api_token`; `/api/health` stays open. Permissive CORS replaced with an
+  origin allowlist (Vite dev UI by default; configure via `--cors-origin` /
+  `[server] cors_origins`). Explicit opt-out: `--no-auth` flag or `[server] no_auth = true`
+  (startup warning; restores permissive CORS). The UI sends the token from a Home-tab
+  settings field (localStorage, `VITE_API_TOKEN` fallback); CLI workers use the
+  `KOWALSKI_API_TOKEN` env var, set automatically for server-spawned workers.
+
 > Workspace **`1.5.0`** on `feat/coder`: **Coder execution tier** — project tree ingest, tool-enabled federation stages, verify/apply, conditional loops. See [`ROADMAP.md`](ROADMAP.md) § *Coder execution tier*.
 
 ### Added (in progress)
