@@ -222,8 +222,8 @@ Personas and specialized behaviors are composed via **config + `TemplateAgent` +
 - **No internal task codes**: committed code, docs, CHANGELOG, and ROADMAP describe changes by
   feature name only — never by internal plan/task codes or sequencing notes ("lands next"),
   which are meaningless once the work ships. Public GitHub issue references (`#36`) are fine.
-  Exception: never edit already-applied SQL migration files to strip old codes — sqlx
-  checksums them and any edit breaks existing databases.
+  Editing an already-applied SQL migration file changes its sqlx checksum and breaks existing
+  databases — do it only as a deliberate, announced fresh-start reset (delete existing DB files).
 - **Consistent Style**: Follow established formatting and naming conventions
 
 ### Documentation Standards
