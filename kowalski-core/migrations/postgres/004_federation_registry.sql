@@ -1,4 +1,4 @@
--- Federation agent registry (WP5 persistence). Applied via `sqlx::migrate!` when using Postgres memory URL.
+-- Federation agent registry persistence. Applied via `sqlx::migrate!` when using Postgres memory URL.
 
 CREATE TABLE IF NOT EXISTS federation_registry (
     agent_id TEXT PRIMARY KEY,

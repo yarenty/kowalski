@@ -1,4 +1,4 @@
--- WP3: PostgreSQL — episodic log + agent registry (vector semantic table is a later migration).
+-- PostgreSQL — episodic log + agent registry (vector semantic table is a later migration).
 -- Apply: psql "$DATABASE_URL" -f kowalski-core/migrations/postgres/001_initial_schema.sql
 
 CREATE EXTENSION IF NOT EXISTS vector;

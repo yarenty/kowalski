@@ -1,4 +1,4 @@
--- WP3: SQLite — same logical model as crate `migrations/postgres` (default / simple single-node).
+-- SQLite — same logical model as crate `migrations/postgres` (default / simple single-node).
 -- Vector search can use app-side cosine on BLOBs or sqlite-vec later; semantic tier is in-process for now.
 -- Apply via `kowalski_core::db::run_migrations("sqlite:…")` or sqlx migrate.
 
