@@ -158,6 +158,18 @@ Tools and federation types live **in this crate** (`src/tools`, `src/tools/inter
 - **`TemplateAgent`**, tools, memory, MCP client/hub, and federation primitives are implemented **here**.
 - **HTTP** and CLI binaries live in other crates; this library is the core dependency.
 
+### Horde-run store (`src/db/run_store.rs`)
+
+Persisted run/step state machine for durable horde runs (foundation — orchestrator wiring
+is a separate change). Typed `RunStatus` (`pending|running|awaiting_input|done|error|cancelled`)
+and `StepStatus` (`… delegating … succeeded|failed|skipped`), `manifest_snapshot` captured at
+run start, per-step `attempt`, compact JSON `events` log, and `incomplete_runs()` for restart
+scans. SQLite-backed and zero-config: `RunStore::open_default(state_dir)` creates
+`runs.sqlite` under the server state dir (`KOWALSKI_RUN_DB` env URL overrides —
+name owned by `config::RUN_DB_ENV`, Rule 8). Schema: `migrations/sqlite/003_horde_runs.sql`
+(+ `migrations/postgres/005_horde_runs.sql` parity). The embedded SQLite migrator is shared
+(`db::SQLITE_MIGRATOR`) — memory subsystem and run store use one schema lineage.
+
 ### Tool execution model (three sources, one abstraction)
 
 Agents ultimately call **capabilities** that behave like tools. Those capabilities come from **exactly one of three places** (or a deliberate combination), configured per deployment:
