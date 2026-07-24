@@ -219,6 +219,11 @@ Personas and specialized behaviors are composed via **config + `TemplateAgent` +
 - **English Only**: All comments, documentation, and naming in English
 - **Self-Documenting Code**: Clear naming conventions over extensive comments
 - **No Unnecessary Comments**: Let clear code speak for itself
+- **No internal task codes**: committed code, docs, CHANGELOG, and ROADMAP describe changes by
+  feature name only — never by internal plan/task codes or sequencing notes ("lands next"),
+  which are meaningless once the work ships. Public GitHub issue references (`#36`) are fine.
+  Exception: never edit already-applied SQL migration files to strip old codes — sqlx
+  checksums them and any edit breaks existing databases.
 - **Consistent Style**: Follow established formatting and naming conventions
 
 ### Documentation Standards
