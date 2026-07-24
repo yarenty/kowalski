@@ -1,0 +1,1 @@
+Aggregate all generated summaries from the previous steps and write them sequentially into the final output file, HANDOFF.md.

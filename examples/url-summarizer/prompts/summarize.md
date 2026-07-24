@@ -1,0 +1,1 @@
+For each URL provided in the input, fetch the content and generate a concise summary in Markdown format. Ensure output is structured for easy compilation later.

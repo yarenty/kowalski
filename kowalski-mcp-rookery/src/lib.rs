@@ -14,7 +14,7 @@ use kowalski_core::rookery::{
     HordeBirthSpec, RookeryDraft, minimal_linear_draft, normalize_draft,
     parse_draft_from_assistant, validate_draft, validate_horde_tree, write_horde_tree,
 };
-use kowalski_mcp_transport::McpHandler;
+use kowalski_mcp_base::McpHandler;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 pub const PROTOCOL_VERSION: &str = "2025-03-26";
 
 /// [`McpHandler`] over the pure [`dispatch`] fn — drives both the stdio and stateless
-/// Streamable HTTP transports from `kowalski-mcp-transport` with the same logic.
+/// Streamable HTTP transports from `kowalski-mcp-base` with the same logic.
 pub struct RookeryHandler {
     /// Default output root for `rookery_give_birth` when the call omits `output_root`.
     pub output_root: PathBuf,

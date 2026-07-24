@@ -39,6 +39,18 @@ pub struct LLMConfig {
     /// `http://127.0.0.1:1234/v1` for LM Studio). If unset, the official OpenAI API base is used.
     #[serde(default)]
     pub openai_api_base: Option<String>,
+    /// Model name for the LLM provider. When using `openai` provider, this is the model ID to use.
+    /// For Ollama, this can be left empty to use `ollama.model` as fallback.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Provider to use for embeddings: `llm` (same as chat) or `ollama` (use Ollama's embeddings API).
+    /// Set to `"ollama"` if your OpenAI-compatible API doesn't support embeddings.
+    #[serde(default = "default_embeddings_provider")]
+    pub embeddings_provider: String,
+}
+
+fn default_embeddings_provider() -> String {
+    "llm".to_string()
 }
 
 impl Default for LLMConfig {
@@ -47,6 +59,8 @@ impl Default for LLMConfig {
             provider: "ollama".to_string(),
             openai_api_key: std::env::var("OPENAI_API_KEY").ok(),
             openai_api_base: None,
+            model: None,
+            embeddings_provider: "llm".to_string(),
         }
     }
 }

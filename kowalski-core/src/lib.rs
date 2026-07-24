@@ -6,6 +6,7 @@ pub mod error;
 pub mod federation;
 pub mod graph;
 pub mod horde_graph;
+pub mod horde_stages;
 pub mod llm;
 pub mod source_bundle;
 pub mod logging;
@@ -41,18 +42,25 @@ pub use federation::{
 };
 pub use graph::{postgres_age_cypher, postgres_graph_status};
 pub use logging::*;
+pub use horde_stages::{
+    apply_patches_dry_run, extract_unified_diffs, format_apply_artifact, format_verify_artifact,
+    verify_output_excerpt,
+    parse_stage_status_from_artifact, resolve_verify_cwd, run_verify_command, ApplyDryRunResult,
+    StageStatus, VerifyRunResult, DEFAULT_VERIFY_MAX_OUTPUT_BYTES, DEFAULT_VERIFY_TIMEOUT_SECS,
+};
 pub use horde_graph::{
-    all_steps_successful, execution_order, inbound_predecessors, next_ready_step,
-    resolve_execution_graph, should_persist_edges, single_predecessor, ExecutionGraph,
-    HordeEdge,
+    all_steps_successful, edge_matches_outcome, execution_order, has_conditional_outbound,
+    inbound_predecessors, is_loop_back_edge, is_loop_back_step, loop_edge_key, next_ready_step, next_ready_step_conditional,
+    outbound_edges, resolve_execution_graph, retry_span, select_next_from_outcome,
+    should_persist_edges, single_predecessor, ExecutionGraph, HordeEdge,
 };
 pub use markdown_pipeline::{
     maybe_normalize_markdown, parse_app_manifest, parse_stage_agent, render_context_attachments,
     resolve_manifest_path, AppManifestMeta, StageAgentMeta,
 };
 pub use operator_input::{
-    answers_to_prompt, default_ingest_form_fields, validate_form_answers, HordeRunFormSpec,
-    OperatorInputField,
+    answers_to_prompt, default_ingest_form_fields, operator_answer, parse_operator_answer_block,
+    validate_form_answers, HordeRunFormSpec, OperatorInputField,
 };
 pub use rookery::{
     assign_penguin_avatars, extract_json_block, horde_root_path, infer_penguin_avatar,
@@ -68,5 +76,6 @@ pub use model::ModelManager;
 pub use model::*;
 pub use role::{Audience, Preset, Role, Style};
 pub use tool_chain::*;
+pub use tools::policy::ToolExecutionPolicy;
 pub use tools::ToolCall;
 pub use tools::*;

@@ -55,7 +55,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: kowalski-cli  
-**Release**: **1.4.0** (see crate `Cargo.toml`).  
+**Release**: **1.5.0** (see crate `Cargo.toml`).  
 **Purpose**: Command-line interface (REPL + operators). The HTTP server (`kowalski`) for the Vue operator UI exposes `/api/chat`, `/api/chat/stream` (with **`tools_stream`**), MCP, federation, graph status / Cypher (Postgres + AGE).  
 **Core Value Proposition**: Modular, extensible, and distributed architecture supporting standalone and federated deployments with privacy-preserving capabilities.  
 **Primary Mechanism**: Multi-agent orchestration and pluggable tools interfacing with local (Ollama) and remote LLMs.  
@@ -158,7 +158,7 @@ There are **no** standalone `kowalski-academic-agent` / `kowalski-web-agent` cra
 - **`kowalski-cli`** and **`ui/`** must **not** own reusable domain logic (URL fetch rules, HTML shaping, horde-specific parsers). They **parse argv / render UX** and call **`kowalski`** HTTP APIs or **`kowalski-core`** libraries used by the worker runtime.
 - **No baked-in app types**: `agent-app` resolves the tree only from **`--path`** or env **`KOWALSKI_AGENT_APP_ROOT`**; the dev default `examples/knowledge-compiler` is a **convenience**, not a type system. The manifest is **`app.md`** or legacy **`horde.md`**, plus **`agents/*.md`** (aligned with `kowalski_core::markdown_pipeline` and the server catalog).
 - **Local `agent-app run` workdir**: for the default KC app tree, the CLI uses **`LOCAL_AGENT_APP_WORKDIR`** (`"output"`) under the app root so artifacts match **`horde.md`** `workdir = "output"` (`output/PASTE_ME.md`, `output/debug/`, …).
-- **DAG scheduling (1.4.0):** `agent-app run` calls `kowalski_core::resolve_execution_graph` + `execution_order`; federation workers populate `@step:name@` via `collect_step_paths`. See [`examples/coding-assistant/`](../examples/coding-assistant/).
+- **DAG scheduling (1.5.0):** `agent-app run` calls `kowalski_core::resolve_execution_graph` + `execution_order`; federation workers populate `@step:name@` via `collect_step_paths`. See [`examples/coder/`](../examples/coder/).
 - **Federation worker `--role`:** must match each agent's `kind` in `agents/*.md`. Handlers: `ingest`, `compile`, `ask`, `lint`, plus generic LLM stages for `process`, `step`, `deliver`, and `final` (Rookery-born hordes).
 - **Source capture** for federation ingest lives in **`kowalski_core::source_bundle`** (uses **`tools::internal::{github, web}`**). The CLI only calls it from `agent_app_ops` when executing a worker step — same code the server could call later without duplicating behavior.
 - **Markdown app pipeline** (`app.md` / `horde.md` + `agents/*.md`): each LLM stage loads **`prompt_file`**, **`context_paths`** (workdir-relative paths and/or `@artifact@` / `@step:name@`), writes **`output`** under the workdir, and optionally applies **`normalize_*`** fields via **`kowalski_core::markdown_pipeline`**. There is **no** wiki repair, index rebuild, or Rust-side paste-pack builder — final shape is whatever the last stage’s prompt declares (the KC example uses **`PASTE_ME.md`** as the last stage `output`). The server still surfaces delivery copy from manifest **`delivery_*`** fields and reads the finished handoff into **`run_finished.handoff_markdown`** where applicable.

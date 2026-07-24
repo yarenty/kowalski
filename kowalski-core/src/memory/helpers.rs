@@ -54,12 +54,26 @@ pub async fn create_memory_providers(
 ) -> Result<(MemoryProviderArc, MemoryProviderArc, MemoryProviderArc), KowalskiError> {
     let working_memory = Arc::new(Mutex::new(WorkingMemory::new(100))) as MemoryProviderArc;
 
-    let llm_provider = crate::llm::create_llm_provider(config)?;
+    // Create LLM provider for chat
+    let chat_llm_provider = crate::llm::create_llm_provider(config)?;
+
+    // Create embeddings provider (can be different from chat provider)
+    let embeddings_llm_provider = if config.llm.embeddings_provider == "ollama" {
+        // Use Ollama for embeddings even if OpenAI is used for chat
+        Arc::new(crate::llm::OllamaProvider::new(
+            &config.ollama.host,
+            config.ollama.port,
+        ))
+    } else {
+        // Use the same provider for embeddings as for chat
+        chat_llm_provider.clone()
+    };
+
     let episodic_memory = Arc::new(Mutex::new(
-        EpisodicBuffer::open(&config.memory, llm_provider.clone()).await?,
+        EpisodicBuffer::open(&config.memory, embeddings_llm_provider).await?,
     )) as MemoryProviderArc;
 
-    let semantic_memory = create_semantic_memory(config, llm_provider).await?;
+    let semantic_memory = create_semantic_memory(config, chat_llm_provider).await?;
 
     Ok((working_memory, episodic_memory, semantic_memory))
 }

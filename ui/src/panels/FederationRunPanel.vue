@@ -212,8 +212,41 @@ function processFederationEvent(data: string) {
     const step = String(payload.step ?? "?");
     const artifact = String(payload.artifact ?? "");
     const ok = Boolean(payload.success);
+    const outcome = payload.outcome != null ? String(payload.outcome) : "";
     progressText.value = ok ? `${step} completed` : `${step} failed`;
-    feed("worker", `${step} ${ok ? "completed" : "failed"}${artifact ? ` -> ${artifact}` : ""}`, speakerNameFromStep(step), step);
+    const outcomeNote = outcome ? ` (outcome: ${outcome})` : "";
+    feed(
+      "worker",
+      `${step} ${ok ? "completed" : "failed"}${outcomeNote}${artifact ? ` -> ${artifact}` : ""}`,
+      speakerNameFromStep(step),
+      step,
+    );
+  } else if (kind === "step_routed") {
+    const fromStep = String(payload.from_step ?? "?");
+    const nextStep = String(payload.next_step ?? "?");
+    const outcome = String(payload.outcome ?? "?");
+    const isLoop = Boolean(payload.is_loop_back);
+    const loopCount = payload.loop_count != null ? Number(payload.loop_count) : null;
+    const verifyExcerpt =
+      typeof payload.verify_excerpt === "string" ? payload.verify_excerpt.trim() : "";
+    const branch = isLoop
+      ? `retry loop → \`${nextStep}\`${loopCount != null ? ` (loop ${loopCount})` : ""}`
+      : `branch → \`${nextStep}\``;
+    progressText.value = `${fromStep} ${outcome} → ${nextStep}`;
+    feed(
+      "orchestrator",
+      `${fromStep} outcome **${outcome}**: ${branch}`,
+      "Agent: Boss",
+      fromStep,
+    );
+    if (verifyExcerpt) {
+      feed(
+        "worker",
+        verifyExcerpt,
+        speakerNameFromStep(fromStep),
+        fromStep,
+      );
+    }
   } else if (kind === "run_finished") {
     runResult.value = JSON.stringify(payload, null, 2);
     progressText.value = "finished";

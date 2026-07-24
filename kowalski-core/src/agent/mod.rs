@@ -519,12 +519,24 @@ impl BaseAgent {
         user_input: &str,
         use_memory: bool,
     ) -> Result<String, KowalskiError> {
+        self.chat_with_tools_with_policy(conversation_id, user_input, use_memory, None)
+            .await
+    }
+
+    pub async fn chat_with_tools_with_policy(
+        &mut self,
+        conversation_id: &str,
+        user_input: &str,
+        use_memory: bool,
+        policy: Option<&crate::tools::policy::ToolExecutionPolicy>,
+    ) -> Result<String, KowalskiError> {
         let mut final_response = String::new();
         let mut current_input = user_input.to_string();
         let mut iteration_count = 0;
         const MAX_ITERATIONS: usize = 5;
         let mut last_tool_call: Option<(String, serde_json::Value)> = None;
         let mut tool_parse_hint_sent = false;
+        let quiet = policy.is_some_and(|p| p.quiet);
 
         while iteration_count < MAX_ITERATIONS {
             iteration_count += 1;
@@ -532,14 +544,16 @@ impl BaseAgent {
                 .chat_with_history_with_options(conversation_id, &current_input, None, use_memory)
                 .await?;
 
-            if repl_trace::repl_trace_enabled() {
-                println!("[agent] {}", response_text);
-            } else {
-                println!("{}", response_text);
+            if !quiet {
+                if repl_trace::repl_trace_enabled() {
+                    println!("[agent] {}", response_text);
+                } else {
+                    println!("{}", response_text);
+                }
+                io::stdout()
+                    .flush()
+                    .map_err(|e| KowalskiError::Server(e.to_string()))?;
             }
-            io::stdout()
-                .flush()
-                .map_err(|e| KowalskiError::Server(e.to_string()))?;
 
             let buffer = response_text.clone();
             let tool_calls = crate::utils::json::extract_tool_calls(&buffer);
@@ -554,8 +568,14 @@ impl BaseAgent {
                 }
                 last_tool_call = Some(tool_call_key);
 
+                if !quiet && repl_trace::repl_trace_enabled() {
+                    let params = serde_json::to_string(&tool_call.parameters)
+                        .unwrap_or_else(|_| "{}".to_string());
+                    println!("[tool] {} {}", tool_call.name, params);
+                }
+
                 let tool_result = match self
-                    .execute_tool(&tool_call.name, &tool_call.parameters)
+                    .execute_tool_with_policy(&tool_call.name, &tool_call.parameters, policy)
                     .await
                 {
                     Ok(output) => output.result.to_string(),
@@ -927,18 +947,43 @@ impl BaseAgent {
         tool_name: &str,
         tool_input: &serde_json::Value,
     ) -> Result<ToolOutput, KowalskiError> {
-        let task_type = tool_input
+        self.execute_tool_with_policy(tool_name, tool_input, None)
+            .await
+    }
+
+    pub async fn execute_tool_with_policy(
+        &mut self,
+        tool_name: &str,
+        tool_input: &serde_json::Value,
+        policy: Option<&crate::tools::policy::ToolExecutionPolicy>,
+    ) -> Result<ToolOutput, KowalskiError> {
+        if let Some(p) = policy {
+            p.ensure_tool_allowed(tool_name)?;
+            p.validate_parameters_paths(tool_input)?;
+        }
+        let mut params = tool_input.clone();
+        if let Some(p) = policy
+            && let Some(root) = &p.sandbox_root
+            && let Some(obj) = params.as_object_mut()
+        {
+            obj.insert(
+                "sandbox_root".to_string(),
+                serde_json::Value::String(root.display().to_string()),
+            );
+        }
+
+        let task_type = params
             .get("task")
             .and_then(|v| v.as_str())
             .unwrap_or("default")
             .to_string();
-        let content = tool_input
+        let content = params
             .get("content")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
 
-        let input = crate::tools::ToolInput::new(task_type, content, tool_input.clone());
+        let input = crate::tools::ToolInput::new(task_type, content, params);
 
         self.tool_manager.execute(tool_name, input).await
     }

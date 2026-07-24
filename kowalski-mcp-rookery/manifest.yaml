@@ -1,0 +1,33 @@
+name: kowalski-mcp-rookery
+type: server
+about:
+  title: Rookery horde builder
+  description: Validate, parse, and give birth to Kowalski horde trees (horde.md + agents/) without an LLM in the server.
+  icon: /mcpicons/rookery.svg
+meta:
+  category: kowalski
+  tags: [horde, rookery, agents, markdown]
+endpoint: http://127.0.0.1:8081/
+topology: local-config
+tools:
+  - name: rookery_example_draft
+    description: Return a minimal valid linear Rookery draft (schema teaching aid).
+  - name: rookery_validate_draft
+    description: Normalize and validate a draft; returns ok/errors and normalized draft.
+  - name: rookery_parse_draft
+    description: Parse a draft from assistant text (fenced JSON/YAML block).
+  - name: rookery_give_birth
+    description: Write and validate a horde tree on disk; returns output paths.
+config:
+  parameters:
+    type: object
+    properties:
+      output_root:
+        type: string
+        default: examples
+        ui:
+          label: Default output root
+          hint: Directory used when give_birth omits output_root.
+test_tool:
+  name: rookery_example_draft
+  args: {}

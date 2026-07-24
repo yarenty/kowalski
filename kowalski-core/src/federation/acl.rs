@@ -116,6 +116,23 @@ pub enum AclMessage {
         #[serde(default)]
         artifact: Option<String>,
         summary: String,
+        /// Verify/apply outcome when known (`pass` / `fail`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        outcome: Option<String>,
+    },
+    /// Orchestrator chose the next step after a conditional edge (verify pass/fail, loop retry).
+    StepRouted {
+        run_id: String,
+        horde: String,
+        from_step: String,
+        outcome: String,
+        next_step: String,
+        #[serde(default)]
+        is_loop_back: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        loop_count: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        verify_excerpt: Option<String>,
     },
     /// Horde run lifecycle: orchestrator declares the run completed successfully.
     RunFinished {

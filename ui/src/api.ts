@@ -215,6 +215,7 @@ export type HordeRunStepRecord = {
   status: string;
   artifact?: string | null;
   summary?: string | null;
+  outcome?: string | null;
 };
 
 export type HordeRunRecord = {
@@ -226,6 +227,7 @@ export type HordeRunRecord = {
   status: string;
   steps: HordeRunStepRecord[];
   events: Array<Record<string, unknown>>;
+  loop_counts?: Record<string, number>;
 };
 
 export type OpenPathResponse = {

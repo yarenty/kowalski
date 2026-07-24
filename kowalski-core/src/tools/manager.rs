@@ -151,6 +151,29 @@ impl ToolManager {
 
         serde_json::Value::Array(functions)
     }
+
+    /// JSON schema subset for an allowlist of tool names (horde stage `tool_ids`).
+    pub async fn generate_json_schema_for(&self, allowed: Option<&[String]>) -> serde_json::Value {
+        let full = self.generate_json_schema().await;
+        let Some(list) = allowed.filter(|l| !l.is_empty()) else {
+            return full;
+        };
+        let Some(arr) = full.as_array() else {
+            return full;
+        };
+        let filtered: Vec<_> = arr
+            .iter()
+            .filter(|entry| {
+                entry
+                    .get("function")
+                    .and_then(|f| f.get("name"))
+                    .and_then(|n| n.as_str())
+                    .is_some_and(|name| list.iter().any(|a| a == name))
+            })
+            .cloned()
+            .collect();
+        serde_json::Value::Array(filtered)
+    }
 }
 
 #[cfg(test)]

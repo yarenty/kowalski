@@ -1,3 +1,4 @@
+use crate::agent::Agent;
 use crate::agent::BaseAgent;
 use crate::config::Config;
 use crate::error::KowalskiError;
@@ -55,6 +56,8 @@ impl TemplateAgent {
             }
         }
 
+        base.tool_manager.register(crate::tools::internal::FsTool);
+
         template_config.tool_prompt_appendix =
             Self::build_tool_prompt_appendix(&base.tool_manager).await;
 
@@ -81,6 +84,59 @@ impl TemplateAgent {
                 )
             },
         )
+    }
+
+    async fn build_tool_prompt_appendix_filtered(
+        tool_manager: &crate::tools::manager::ToolManager,
+        allowed: &[String],
+    ) -> String {
+        let schema = tool_manager
+            .generate_json_schema_for(Some(allowed))
+            .await;
+        let empty = schema.as_array().map(|a| a.is_empty()).unwrap_or(true);
+        if empty {
+            return String::new();
+        }
+        serde_json::to_string_pretty(&schema).map_or_else(
+            |_| String::new(),
+            |s| {
+                format!(
+                    "\n\n--- Available tools (stage allowlist) ---\nUse the agent's JSON tool-call format when invoking a tool.\n\n{s}"
+                )
+            },
+        )
+    }
+
+    /// Start (or reuse) a conversation with optional tool allowlist in the system prompt.
+    pub async fn ensure_conversation_with_tools(
+        &mut self,
+        model: &str,
+        conversation_id: &str,
+        allowed_tools: Option<&[String]>,
+    ) -> Result<(), KowalskiError> {
+        if self.get_conversation(conversation_id).is_some() {
+            return Ok(());
+        }
+        let mut system_prompt = self
+            .base
+            .system_prompt
+            .clone()
+            .unwrap_or_else(|| self.config.system_prompt.clone());
+        if system_prompt.trim().is_empty() {
+            system_prompt = "You are a helpful assistant.".to_string();
+        }
+        let appendix = if let Some(list) = allowed_tools.filter(|l| !l.is_empty()) {
+            Self::build_tool_prompt_appendix_filtered(&self.base.tool_manager, list).await
+        } else {
+            self.config.tool_prompt_appendix.clone()
+        };
+        system_prompt.push_str(&appendix);
+        let mut conversation = crate::conversation::Conversation::with_id(model, conversation_id);
+        conversation.add_message("system", &system_prompt);
+        self.base_mut()
+            .conversations
+            .insert(conversation_id.to_string(), conversation);
+        Ok(())
     }
 
     /// Configures the system prompt for the agent
@@ -282,8 +338,19 @@ impl TemplateAgent {
         user_input: &str,
         use_memory: bool,
     ) -> Result<String, KowalskiError> {
+        self.chat_with_tools_with_policy(conversation_id, user_input, use_memory, None)
+            .await
+    }
+
+    pub async fn chat_with_tools_with_policy(
+        &mut self,
+        conversation_id: &str,
+        user_input: &str,
+        use_memory: bool,
+        policy: Option<&crate::tools::policy::ToolExecutionPolicy>,
+    ) -> Result<String, KowalskiError> {
         self.base_mut()
-            .chat_with_tools_with_options(conversation_id, user_input, use_memory)
+            .chat_with_tools_with_policy(conversation_id, user_input, use_memory, policy)
             .await
     }
 

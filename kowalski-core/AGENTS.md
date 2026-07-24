@@ -55,7 +55,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: kowalski-core  
-**Release**: **1.4.0** (see crate `Cargo.toml`).  
+**Release**: **1.5.0** (see crate `Cargo.toml`).  
 **Purpose**: Core foundational abstractions, conversation logic, agent traits, LLM providers, memory tiers, MCP client/hub, federation types, optional Postgres (pgvector) and graph helpers (AGE Cypher).  
 **Core Value Proposition**: Modular, extensible, and distributed architecture supporting standalone and federated deployments with privacy-preserving capabilities.  
 **Primary Mechanism**: Multi-agent orchestration and pluggable tools interfacing with local (Ollama) and remote LLMs.  
@@ -127,7 +127,7 @@ kowalski/                         # repository root (you are in kowalski-core/)
 ├── kowalski-core/                # This crate: TemplateAgent, tools, memory, MCP, federation
 ├── kowalski-cli/                 # REPL, operators, extension, agent-app
 ├── kowalski/                     # Facade + HTTP server binary
-├── kowalski-mcp-transport/       # Shared MCP transports (stdio + stateless Streamable HTTP)
+├── kowalski-mcp-base/            # Shared MCP framework (transport + framing + rmcp serve)
 ├── kowalski-mcp-datafusion/      # Optional MCP server (DataFusion)
 ├── kowalski-mcp-rookery/         # Optional MCP server (Rookery horde builder)
 ├── ui/, examples/, docs/, tools/, resources/   # SQL migrations: `migrations/` within this crate
@@ -142,7 +142,7 @@ Tools and federation types live **in this crate** (`src/tools`, `src/tools/inter
 - [kowalski-core/AGENTS.md](./AGENTS.md) (this crate)
 - [kowalski-cli/AGENTS.md](../kowalski-cli/AGENTS.md)
 - [kowalski/AGENTS.md](../kowalski/AGENTS.md)
-- [kowalski-mcp-transport/AGENTS.md](../kowalski-mcp-transport/AGENTS.md)
+- [kowalski-mcp-base/AGENTS.md](../kowalski-mcp-base/AGENTS.md)
 - [kowalski-mcp-datafusion/AGENTS.md](../kowalski-mcp-datafusion/AGENTS.md)
 - [kowalski-mcp-rookery/AGENTS.md](../kowalski-mcp-rookery/AGENTS.md)
 - [ui/AGENTS.md](../ui/AGENTS.md)
@@ -164,7 +164,7 @@ Agents ultimately call **capabilities** that behave like tools. Those capabiliti
 
 | Source | What it is | Examples |
 |--------|------------|----------|
-| **1. In-repo MCP servers** | Separate processes/crates you ship, registered in config. Both transports — **stdio** and **stateless Streamable HTTP** — come from the shared [`kowalski-mcp-transport`](../kowalski-mcp-transport/) (no `Mcp-Session-Id`). | [`kowalski-mcp-datafusion`](../kowalski-mcp-datafusion/) (DataFusion), [`kowalski-mcp-rookery`](../kowalski-mcp-rookery/) (horde builder over `kowalski-core::rookery`) |
+| **1. In-repo MCP servers** | Separate processes/crates you ship, registered in config. Transport, framing, and rmcp bootstrap live in [`kowalski-mcp-base`](../kowalski-mcp-base/) (stateless HTTP + stdio). | [`kowalski-mcp-datafusion`](../kowalski-mcp-datafusion/) (DataFusion), [`kowalski-mcp-rookery`](../kowalski-mcp-rookery/) (horde builder over `kowalski-core::rookery`) |
 | **2. External MCP (gateway / catalog)** | Third-party or vendor MCP servers the client reaches through a gateway | [Docker MCP Toolkit](https://docs.docker.com/ai/mcp-catalog-and-toolkit/toolkit/) profiles (GitHub, Puppeteer, …), OAuth handled by the gateway |
 
 **Docker MCP gateway (source 2, recommended wiring — PLAN.md §R3):** add **one** stdio server to `[[mcp.servers]]` rather than N individual servers:
@@ -200,9 +200,9 @@ command = ["docker", "mcp", "gateway", "run"]
 
 **[`rookery`](./src/rookery/):** horde builder — `RookeryDraft`, `validate_draft`, `validate_horde_tree`, `write_horde_tree`. Optional DAG scheduling via **`[[edges]]`** in manifest / draft (see [`horde_graph`](./src/horde_graph.rs)). **`write_horde_tree`** emits `[[edges]]` only when the graph differs from an implicit linear chain. Builder system prompt: [`../resources/prompts/rookery/builder.md`](../resources/prompts/rookery/builder.md). Fixtures: `minimal_linear_draft()`, `minimal_dag_draft()`.
 
-**[`horde_graph`](./src/horde_graph.rs):** `HordeEdge`, `resolve_execution_graph()` — validates acyclic graphs, pipeline topological order, and returns scheduling layers. **`execution_order`**, **`next_ready_step`**, **`single_predecessor`** drive CLI/HTTP orchestrators. Empty/missing `edges` → implicit chain along `pipeline` order (linear hordes unchanged). Parallel layers run **sequentially per process** in 1.4.0 MVP.
+**[`horde_graph`](./src/horde_graph.rs):** `HordeEdge`, `resolve_execution_graph()` — validates acyclic graphs, pipeline topological order, and returns scheduling layers. **`execution_order`**, **`next_ready_step`**, **`single_predecessor`** drive CLI/HTTP orchestrators. Empty/missing `edges` → implicit chain along `pipeline` order (linear hordes unchanged). Parallel layers run **sequentially per process** in 1.5.0 MVP.
 
-**Horde manifest `[[edges]]` TOML (optional, 1.4.0+):**
+**Horde manifest `[[edges]]` TOML (optional, 1.5.0+):**
 
 ```toml
 pipeline = ["ingest", "branch-a", "branch-b", "join", "lint"]

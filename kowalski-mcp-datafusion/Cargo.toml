@@ -1,6 +1,6 @@
 [package]
 name = "kowalski-mcp-datafusion"
-version = "1.4.0"
+version = "1.6.0"
 edition = "2024"
 description = "Standalone MCP Streamable HTTP server: DataFusion SQL, schema, and column statistics over CSV"
 license = "MIT"
@@ -11,7 +11,7 @@ repository = "https://github.com/yarenty/kowalski"
 
 [dependencies]
 axum = { workspace = true }
-kowalski-mcp-transport = { path = "../kowalski-mcp-transport", version = "1.4.0" }
+kowalski-mcp-base = { path = "../kowalski-mcp-base", version = "1.6.0" }
 clap = { version = "4.5", features = ["derive"] }
 datafusion = "54"
 serde = { workspace = true, features = ["derive"] }

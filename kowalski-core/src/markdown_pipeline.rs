@@ -49,6 +49,18 @@ pub struct StageAgentMeta {
     /// Section headings (## name) that receive `normalize_fallback` body when synthesized.
     #[serde(default)]
     pub normalize_fallback_sections: Vec<String>,
+    /// Tool names allowed for this stage (empty = no tools / markdown-only).
+    #[serde(default)]
+    pub tool_ids: Vec<String>,
+    /// Shell command for `kind = "verify"` (e.g. `cargo test`).
+    #[serde(default)]
+    pub verify_command: Option<String>,
+    /// Optional working directory relative to operator `project_path`.
+    #[serde(default)]
+    pub verify_cwd: Option<String>,
+    /// `dry-run` (default) or `execute` for `kind = "apply"` (execute requires env gate).
+    #[serde(default)]
+    pub apply_mode: Option<String>,
     /// Pre-run operator form (`[[inputs]]` in frontmatter).
     #[serde(default)]
     pub inputs: Vec<OperatorInputField>,
@@ -273,6 +285,10 @@ mod tests {
             normalize_fallback: Some("SHOULD_NOT_APPEAR".into()),
             normalize_fallback_sections: vec!["TL;DR".into()],
             inputs: vec![],
+            tool_ids: vec![],
+            verify_command: None,
+            verify_cwd: None,
+            apply_mode: None,
         }
     }
 

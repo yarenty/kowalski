@@ -18,7 +18,7 @@ cd "$ROOT"
 
 # Dependency order: each crate's path deps must already be on the index.
 CRATES=(
-  kowalski-mcp-transport
+  kowalski-mcp-base
   kowalski-core
   kowalski-cli
   kowalski-mcp-datafusion
@@ -68,11 +68,11 @@ crate_in_list() {
 }
 
 run_checks() {
-  echo "==> cargo build --workspace"
-  cargo build --workspace
+  echo "==> cargo build (default-members)"
+  cargo build
 
-  echo "==> cargo test -p kowalski-core -p kowalski-cli"
-  cargo test -p kowalski-core -p kowalski-cli
+  echo "==> cargo test -p kowalski-core -p kowalski-cli -p kowalski-mcp-base"
+  cargo test -p kowalski-core -p kowalski-cli -p kowalski-mcp-base
 
   if command -v cargo-deny >/dev/null 2>&1; then
     echo "==> cargo deny check licenses"
@@ -136,8 +136,8 @@ echo "Publish sequence: ${selected[*]}"
 if [[ "$SKIP_CHECKS" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
   run_checks
 elif [[ "$SKIP_CHECKS" -eq 0 ]]; then
-  echo "==> cargo build --workspace (dry-run sanity)"
-  cargo build --workspace
+  echo "==> cargo build (dry-run sanity)"
+  cargo build
 fi
 
 for crate in "${selected[@]}"; do

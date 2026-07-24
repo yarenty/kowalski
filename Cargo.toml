@@ -4,14 +4,16 @@ members = [
     "kowalski",
     "kowalski-core",
     "kowalski-cli",
+    "kowalski-mcp-base",
     "kowalski-mcp-datafusion",
     "kowalski-mcp-rookery",
-    "kowalski-mcp-transport",
 ]
+# Core agent stack only; MCP servers build with `cargo build -p kowalski-mcp-<name>`.
+default-members = ["kowalski", "kowalski-core", "kowalski-cli", "kowalski-mcp-base", "kowalski-mcp-rookery"]
 
 
 [workspace.package]
-version = "1.4.0"
+version = "1.6.0"
 edition = "2024"
 description = "A Rust-based agent for interacting with Ollama models"
 license = "MIT"

@@ -1,19 +1,19 @@
 //! **Stateless** Streamable HTTP (JSON + SSE) MCP server: DataFusion tools over a registered CSV.
 //!
 //! Transport (stdio / stateless HTTP, SSE framing, parse errors) lives in
-//! [`kowalski_mcp_transport`]; this crate only implements the DataFusion tool dispatch via
+//! [`kowalski_mcp_base::transport`]; this crate only implements the DataFusion tool dispatch via
 //! [`McpHandler`]. No `Mcp-Session-Id` is issued or required — every POST is independent.
 
 use axum::Router;
 use datafusion::arrow::datatypes::Schema;
 use datafusion::arrow::util::pretty::pretty_format_batches;
 use datafusion::prelude::*;
-use kowalski_mcp_transport::{McpHandler, http_router};
+use kowalski_mcp_base::{McpHandler, http_router};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
 /// `Accept` value clients should send (re-exported from the shared transport).
-pub use kowalski_mcp_transport::ACCEPT_STREAMABLE;
+pub use kowalski_mcp_base::ACCEPT_STREAMABLE;
 
 /// MCP protocol version reported on `initialize`.
 pub const PROTOCOL_VERSION: &str = "2025-03-26";

@@ -3,6 +3,7 @@ use std::fmt::Display;
 
 pub mod internal;
 pub mod manager;
+pub mod policy;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolParameter {

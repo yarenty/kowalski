@@ -1,0 +1,36 @@
+name: kowalski-mcp-datafusion
+type: server
+about:
+  title: DataFusion SQL
+  description: Run SQL queries, inspect schema, and column statistics over a registered CSV (or similar) table.
+  icon: /mcpicons/datafusion.svg
+meta:
+  category: data
+  tags: [sql, datafusion, csv, analytics]
+endpoint: http://127.0.0.1:8080/
+topology: local-config
+tools:
+  - name: query_sql
+    description: Execute a read-only SQL query against the registered table.
+  - name: get_schema
+    description: Return Arrow/DataFusion schema for the registered table.
+  - name: column_statistics
+    description: Compute min/max/null counts for numeric columns.
+config:
+  parameters:
+    type: object
+    properties:
+      csv_path:
+        type: string
+        ui:
+          label: CSV file path
+          hint: Absolute path to the CSV file on the host running the MCP server.
+      table_name:
+        type: string
+        default: data
+        ui:
+          label: Table name
+          hint: SQL identifier used when registering the CSV in DataFusion.
+test_tool:
+  name: get_schema
+  args: {}

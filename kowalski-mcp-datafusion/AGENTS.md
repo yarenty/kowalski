@@ -1,10 +1,10 @@
 # kowalski-mcp-datafusion — AI agent notes
 
-**Crate**: `kowalski-mcp-datafusion` · **Version**: **1.4.0**
+**Crate**: `kowalski-mcp-datafusion` · **Version**: **1.5.0**
 
 ## Scope
 
-This crate is a **standalone MCP HTTP server** (not the main `kowalski` agent). It implements the DataFusion tool dispatch as an [`McpHandler`] and serves it over the shared [`kowalski-mcp-transport`](../kowalski-mcp-transport/) as **stateless Streamable HTTP** (JSON/SSE, **no `Mcp-Session-Id`**), consistent with `kowalski-core`'s MCP client.
+This crate is a **standalone MCP HTTP server** (not the main `kowalski` agent). It implements the DataFusion tool dispatch as an [`McpHandler`] and serves it over the shared [`kowalski-mcp-base`](../kowalski-mcp-base/) as **stateless Streamable HTTP** (JSON/SSE, **no `Mcp-Session-Id`**), consistent with `kowalski-core`'s MCP client.
 
 ## Before you change code
 
@@ -16,7 +16,7 @@ This crate is a **standalone MCP HTTP server** (not the main `kowalski` agent). 
 
 - Keep **DataFusion** and heavy deps **only** in this crate’s `Cargo.toml` (not the workspace root).
 - Prefer small, testable pure functions for SQL/schema helpers; keep the `McpHandler` dispatch thin.
-- **Transport is shared + stateless.** HTTP/SSE/stdio framing lives in `kowalski-mcp-transport`; don't reimplement it here. The server must stay stateless (no session id).
+- **Transport is shared + stateless.** HTTP/SSE/stdio framing lives in `kowalski-mcp-base`; don't reimplement it here. The server must stay stateless (no session id).
 - **Docker build context = repo root.** The `Dockerfile` `COPY`s each workspace member individually, so when a new member is added to the root `Cargo.toml`, add a matching `COPY` line (cargo loads the whole workspace even for `-p`).
 
 ## Documentation closure (mandatory)

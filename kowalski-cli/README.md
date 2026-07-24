@@ -1,6 +1,6 @@
 # Kowalski CLI
 
-**Crate version 1.4.0** · See [`ROADMAP.md`](./ROADMAP.md) and root [`README.md`](../README.md).
+**Crate version 1.5.0** · See [`ROADMAP.md`](./ROADMAP.md) and root [`README.md`](../README.md).
 
 Command-line interface for Kowalski operators and extension workflows.
 

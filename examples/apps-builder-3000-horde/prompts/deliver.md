@@ -1,0 +1,1 @@
+Confirm that the file at 'debug/src/main.rs' is the generated 'Hello World' application for the requested name. Create a HANDOFF.md summarizing the process and file location.

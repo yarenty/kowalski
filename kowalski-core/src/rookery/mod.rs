@@ -1,7 +1,7 @@
 //! **Rookery** — horde builder: validate drafts and write markdown-native horde trees.
 //!
 //! 1.3.0 supports **linear** pipelines (`horde.md` `pipeline = [...]`). Optional **`edges[]`**
-//! (DAG scheduling) is validated via [`crate::horde_graph`] (1.4.0+).
+//! (DAG scheduling) is validated via [`crate::horde_graph`] (1.5.0+).
 
 mod avatars;
 mod draft_parse;
@@ -122,12 +122,12 @@ mod tests {
     }
 
     #[test]
-    fn coding_assistant_example_validates() {
-        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples/coding-assistant");
+    fn coder_example_validates() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples/coder");
         if !root.join("horde.md").is_file() {
             return;
         }
-        validate_horde_tree(&root).expect("examples/coding-assistant should validate");
+        validate_horde_tree(&root).expect("examples/coder should validate");
         let manifest = parse_app_manifest(&resolve_manifest_path(&root)).unwrap();
         let edge_slice = if manifest.edges.is_empty() {
             None

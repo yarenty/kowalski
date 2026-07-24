@@ -12,7 +12,7 @@ COPY kowalski ./kowalski
 COPY kowalski-core ./kowalski-core
 COPY kowalski-cli ./kowalski-cli
 COPY kowalski-mcp-datafusion ./kowalski-mcp-datafusion
-COPY kowalski-mcp-transport ./kowalski-mcp-transport
+COPY kowalski-mcp-base ./kowalski-mcp-base
 COPY kowalski-mcp-rookery ./kowalski-mcp-rookery
 RUN cargo build -p kowalski-mcp-datafusion --release
 

@@ -1,13 +1,36 @@
-# Kowalski Roadmap & Features (1.4.0+)
+# Kowalski Roadmap & Features (1.5.0+)
 
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"
 
-**Release:** **1.4.0** on `main` (source merge 2026-06-15) — see [`CHANGELOG.md`](CHANGELOG.md). **crates.io:** still **1.3.0** until **1.5.0** publish.  
+**In progress:** **1.5.0 — Coder (execution tier)** on branch `feat/coder` — see [`CHANGELOG.md`](CHANGELOG.md) **[Unreleased]**.  
+**Published:** **1.4.0** on crates.io (DAG pipelines + planning-tier coding horde).  
 **Per-crate roadmaps:** [`kowalski-core/ROADMAP.md`](kowalski-core/ROADMAP.md), [`kowalski-cli/ROADMAP.md`](kowalski-cli/ROADMAP.md), [`kowalski-mcp-datafusion/ROADMAP.md`](kowalski-mcp-datafusion/ROADMAP.md), [`ui/ROADMAP.md`](ui/ROADMAP.md).
+
+## Release train (1.5 → 2.0)
+
+| Version | Theme | Goal |
+|---------|--------|------|
+| **1.5.0** | **Coder (execution)** | Full working coding horde: project tree ingest, tool-enabled stages, apply/verify, conditional loops |
+| **1.6.0** | **Fresh install** | [`install.sh`](install.sh) onboarding — env checks, Ollama hints, Docker MCP suggestions, minimal tool stack |
+| **1.6.x** | **Obsidian MCP** (intermediate) | Reusable MCP catalog doc; **`kowalski-mcp-obsidian`** (filesystem vault v0); survey existing Obsidian MCPs before building — see [`mcp_intermediate_plan.md`](mcp_intermediate_plan.md) |
+| **1.7.0** | **Support** | Chat tab becomes **Support**: Kowalski-aware helper (install gaps, Rookery + horde intro) |
+| **1.8.0** | **Vision & docs** | Marketing-quality articles; evolution 0.5 → 1.0 → hordes → Rookery; consolidated vision |
+| **1.9.0** | **Trading horde** | Web monitor + scheduled market analysis; buy/sell/wait suggestions (details TBD) |
+| **2.0.0** | **Production polish** | Mac + Ubuntu from-scratch installs; pre-built hordes usable out of the box |
+
+## Shipped in 1.4.0 — **DAG + planning Coder** (2026-06-15, published)
+
+See [`CHANGELOG.md`](CHANGELOG.md) (**[1.4.0]**). Highlights:
+
+- **`edges[]` / `[[edges]]`** — DAG validation, orchestrator scheduling, Rookery birth, UI fork/join canvas
+- **Coding horde example** (planning tier) — warmup ∥ todo → adjust → dev/test/review → handoff markdown
+- **`install.sh`**, federation worker stage kinds (`process`, `deliver`, …), directory-safe ingest
+
+**Planning tier only** — markdown artifacts in horde `output/`; no repo edits or test execution on disk.
 
 ## Shipped in 1.3.0 (2026-06-14)
 
-See [`CHANGELOG.md`](CHANGELOG.md) (**[1.3.0]**). Highlights: **Rookery** horde builder (core + `/api/rookery/*` + Vue tab), **`kowalski-mcp-rookery`** + **`kowalski-mcp-transport`** (stateless Streamable HTTP), Docker MCP gateway, server-owned Rookery sessions (YAML), penguin avatars, server-validated horde operator forms, A2A federation-edge design note (implementation 1.4/1.5).
+See [`CHANGELOG.md`](CHANGELOG.md) (**[1.3.0]**). Highlights: **Rookery** horde builder (core + `/api/rookery/*` + Vue tab), **`kowalski-mcp-rookery`** + **`kowalski-mcp-base`** (stateless Streamable HTTP), Docker MCP gateway, server-owned Rookery sessions (YAML), penguin avatars, server-validated horde operator forms, A2A federation-edge design note (implementation 1.4/1.5).
 
 ## Shipped in 1.2.0 (2026-05-03)
 
@@ -29,26 +52,22 @@ The builder shipped, but the UI absorbed core responsibilities. Pay down before 
 - [x] **R1** Server owns the Rookery draft — dropped the `localStorage` draft round-trip; sessions persist as YAML under `db/rookery/` and reload on startup. UI is render + dispatch only.
 - [x] **R2** Rookery as an **in-repo MCP server** (`kowalski-mcp-rookery`, stdio) over `kowalski-core::rookery`; `/api/rookery/*` and the new server share the same core primitives (any MCP client can build hordes). LLM-free — the calling agent drives the interview.
 - [x] **R3** **Docker MCP gateway** as one stdio MCP server (`docker mcp gateway run`); dynamic mode + `--servers`/`--profile` direct mode. `tools/internal/*` stay the dependency-light fallback, shadowed by the gateway when present.
-- [x] **Transport** Shared `kowalski-mcp-transport` (stdio + **stateless Streamable HTTP**, no `Mcp-Session-Id`) — adopted by `kowalski-mcp-rookery` (`--transport stdio|http`) and `kowalski-mcp-datafusion` (now sessionless), so every in-repo MCP server is reachable over stateless HTTP.
+- [x] **Transport** Shared `kowalski-mcp-base` (stdio + **stateless Streamable HTTP**, no `Mcp-Session-Id`) — adopted by `kowalski-mcp-rookery` (`--transport stdio|http`) and `kowalski-mcp-datafusion` (now sessionless), so every in-repo MCP server is reachable over stateless HTTP.
 
-## Shipped in 1.4.0 (2026-06-15, source merge)
-
-See [`CHANGELOG.md`](CHANGELOG.md) (**[1.4.0]**). Highlights: **`edges[]` / `[[edges]]`**, graph validation + orchestrator scheduling, Rookery DAG birth, UI fork/join canvas, **`install.sh`**, [`examples/coding-assistant/`](examples/coding-assistant/), federation worker stage kinds. **Not on crates.io** — next publish **1.5.0**.
-
-## Planned: DAG horde pipelines (1.4.0) — **shipped (MVP)**
+## Planned: DAG horde pipelines — **shipped in 1.4.0**
 
 - [x] Draft/manifest **`edges[]`** (dependencies, parallel branches, join points).
 - [x] Horde orchestrator schedules by graph (`execution_order` / `next_ready_step`).
 - [x] Rookery UI canvas: fork/join + read-only edge list; builder prompt for branches.
-- [x] Example horde: [`examples/coding-assistant/`](examples/coding-assistant/) (replaces minimal `dag-demo` fork/join smoke).
+- [x] Flagship example: [`examples/coder/`](examples/coder/) (rebranded from `coding-assistant` on `feat/coder`).
 
-Existing linear hordes remain valid without migration. **MVP limits:** acyclic graphs only; ready steps run **sequentially** within a layer; federation workers are **markdown-only** (no repo tools).
+Existing linear hordes remain valid without migration. **MVP limits:** acyclic graphs only; ready steps run **sequentially** within a layer until **CA-4** adds conditional loops.
 
-## Planned: Coding assistant horde — **execution tier** (1.5+)
+## In progress: Coder — **execution tier** (1.5.0)
 
-**Reference app (planning tier, shipped 1.4):** [`examples/coding-assistant/`](examples/coding-assistant/) — operator form (project path + task) → parallel **warmup** / **todo-plan** → **adjust** → fixed dev/test/review chain → `HANDOFF.md`. Validates DAG UX and federation scheduling; **does not** edit the target repo or run tests.
+**Reference app:** [`examples/coder/`](examples/coder/) — operator form (project path + task) → parallel **warmup** / **todo-plan** → **adjust** → fixed dev/test/review chain → `HANDOFF.md`.
 
-**Goal (1.5+):** Same horde shape, but stages can **read the project tree**, **apply patches**, **run verification**, and **loop** until acceptance criteria pass.
+**Goal (1.5.0):** Same horde shape, but stages **walk the project tree**, use **tools** (sandboxed to `project_path`), **run verification commands**, and **loop** (review → dev) until acceptance criteria pass.
 
 ### Architecture (unchanged)
 
@@ -59,36 +78,45 @@ Existing linear hordes remain valid without migration. **MVP limits:** acyclic g
 
 | Slice | Target | Scope |
 |-------|--------|--------|
-| **CA-1** | 1.5.0 | **Project tree ingest** — walk local project root (respect `.gitignore`, caps), bundle into intake artifact; directory paths in operator form |
-| **CA-2** | 1.5.0 | **Tool-enabled horde stages** — federation worker runs MCP / internal FS tools; `tool_ids` wired from agent frontmatter; sandbox roots = operator project path |
-| **CA-3** | 1.5.x | **Apply + verify stages** — patch writer (unified diff apply or MCP edit), subprocess test runner (`cargo test`, etc.), structured pass/fail artifact |
-| **CA-4** | 1.5.x | **Conditional routing** — orchestrator reads stage artifact (e.g. `status: fail`) and schedules **review → dev** retry without a static pipeline explosion |
-| **CA-5** | 1.6+ | **Dynamic sub-pipeline** — todo-plan spawns N dev steps or loop construct in graph schema (requires CA-4 + schema work) |
-| **CA-6** | 1.5+ | **UI** — project picker, live test output in Horde run feed, retry/approve gates |
+| **CA-1** | 1.5.0 | **Project tree ingest** — *in progress*
+| **CA-2** | 1.5.0 | **Tool-enabled horde stages**
+| **CA-3** | 1.5.0 | **Apply + verify stages**
+| **CA-4** | 1.5.0 | **Conditional routing / loops**
+| **CA-5** | 1.5.x | **Dynamic sub-pipeline** (partial OK)
+| **CA-6** | 1.5.0 | **UI** (project picker, test output, retry/approve)
 
 ### CA-1 — Project tree ingest (core)
 
-- [ ] `source_bundle`: directory walk with max files/bytes and ignore rules
-- [ ] Operator form field type `path` (optional) with server validation
-- [ ] Intake artifact: manifest of files + selected contents for warmup
+- [x] `source_bundle`: directory walk with max files/bytes and ignore rules
+- [x] Operator form field type `path` with server validation (existing directory)
+- [x] Intake artifact: manifest of files + selected contents for warmup
 
 ### CA-2 — Tool-enabled stages (core + CLI)
 
-- [ ] `agent-app worker`: optional `--tools` / honor `tool_ids` from agent spec
-- [ ] Tool sandbox: restrict FS MCP to `project_path` from run record
-- [ ] Chat stream with tool loop (reuse `/api/chat` tool path or in-process TemplateAgent)
+- [x] Federation worker + `agent-app run`: honor `tool_ids` from agent frontmatter via `POST /api/chat`
+- [x] Built-in **`fs_tool`** registered on `TemplateAgent`; sandbox via `sandbox_root` / operator `project_path`
+- [x] Per-stage conversation ids + filtered tool schema in system prompt
+- [ ] MCP tool names in `tool_ids` (Docker MCP gateway) — manual config; same allowlist path
 
 ### CA-3 — Apply + verify
 
-- [ ] Stage kind `verify` (or extend `process`) — run configured command, capture stdout/stderr into artifact
-- [ ] Stage kind `apply` — apply planned diff with dry-run default
-- [ ] Document operator approval before apply (HTTP gate or UI checkbox)
+- [x] Stage kind **`verify`** — run `verify_command` from agent frontmatter, capture stdout/stderr + YAML `status: pass|fail`
+- [x] Stage kind **`apply`** — dry-run unified diffs from upstream artifact (`patch --dry-run`); **`execute`** only when `apply_mode = "execute"` and `KOWALSKI_HORDE_APPLY=1`
+- [ ] Operator approval UI checkbox (HTTP gate) — env gate for MVP
 
 ### CA-4 — Conditional edges
 
-- [ ] Artifact convention: `{ "status": "pass"|"fail", "next": "dev-1"|"summary" }` or frontmatter in markdown
-- [ ] `horde_graph`: optional labeled edges + orchestrator branch selection (design + tests)
-- [ ] Reject cycles unless explicitly marked as **loop** construct
+- [x] `HordeEdge.when` (`pass` / `fail`) + `max_loops` on loop-back edges
+- [x] Orchestrator routes on verify outcome; resets retry span (`dev-1` → `test-verify`)
+- [x] Coder example: `test-verify` fail → `dev-1` (max 2 loops), pass → `review`
+- [x] UI: show branch taken + loop count in run feed (`StepRouted` event)
+
+### CA-6 — Operator UI (Coder runs)
+
+- [x] `path` field type in Horde Run form (monospace + directory hint)
+- [x] Verify output excerpt in live run feed (`agent_message` + `step_routed`)
+- [x] Branch taken + loop count via `StepRouted` federation event
+- [ ] Apply-stage approval checkbox (HTTP gate; env `KOWALSKI_HORDE_APPLY=1` for MVP)
 
 ### CA-5 — Dynamic steps (defer)
 

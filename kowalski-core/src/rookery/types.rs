@@ -1,4 +1,4 @@
-//! Rookery draft types (linear pipeline in 1.3.0; optional `edges[]` in 1.4.0+).
+//! Rookery draft types (linear pipeline in 1.3.0; optional `edges[]` in 1.5.0+).
 
 use crate::horde_graph::HordeEdge;
 use crate::operator_input::OperatorInputField;

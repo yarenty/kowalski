@@ -4,7 +4,7 @@ Rust workspace crate that re-exports **[`kowalski-core`](../kowalski-core/README
 
 ## Version
 
-**Crate version 1.4.0** (see workspace [`Cargo.toml`](../Cargo.toml)). On crates.io until **1.5.0** publish, depend on **1.3.0** or git.
+**Crate version 1.5.0** (see workspace [`Cargo.toml`](../Cargo.toml)). On crates.io until **1.5.0** publish, depend on **1.3.0** or git.
 
 ## Features
 
@@ -25,10 +25,10 @@ This crate builds the **`kowalski`** executable (**`/api/*`** for the Vue UI and
 
 ```toml
 [dependencies]
-kowalski = "1.3.0"   # crates.io today; 1.4.0+ from git until 1.5 publish
+kowalski = "1.5.0"
 
 # Optional: CLI + Postgres-capable core
-kowalski = { version = "1.3.0", features = ["full"] }
+kowalski = { version = "1.5.0", features = ["full"] }
 ```
 
 ## Example (Rust API)

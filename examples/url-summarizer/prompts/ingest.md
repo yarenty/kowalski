@@ -1,0 +1,1 @@
+Receive and parse the list of URLs provided by the user.

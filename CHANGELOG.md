@@ -6,21 +6,36 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
-> **1.5.0** — coding assistant **execution tier** (project tree ingest, tool-enabled stages, verify/apply, conditional edges). See [`ROADMAP.md`](ROADMAP.md) § *Coding assistant horde — execution tier*.
+> Workspace **`1.5.0`** on `feat/coder`: **Coder execution tier** — project tree ingest, tool-enabled federation stages, verify/apply, conditional loops. See [`ROADMAP.md`](ROADMAP.md) § *Coder execution tier*.
 
-## [1.4.0] - 2026-06-15
+### Added (in progress)
 
-> Workspace and crates **`1.4.0`**: **DAG horde pipelines** (`edges[]`), graph orchestrator scheduling, Rookery DAG birth + UI canvas, **`install.sh`**, example **[`examples/coding-assistant/`](examples/coding-assistant/)**, federation worker fixes for custom stage kinds.
+- **OpenAI-compatible provider model selection:** Added `llm.model` field to `config.toml`. When `llm.provider = "openai"`, the system now uses `llm.model` as the primary model name; falls back to `ollama.model` if `llm.model` is not set. This allows different models for Ollama vs OpenAI-compatible APIs.
+- **HTTP API model determination:** `/api/chat` and `/api/chat/stream` now use `determine_model()` to select the correct model based on provider config.
+- **CLI model determination:** `kowalski-cli chat` and `kowalski-cli run` use the same `determine_model()` logic.
+- **UI accurate provider/model display:** `/api/doctor` endpoint now shows the correct model based on provider config.
 
+### Added (in progress)
+
+- **Project tree ingest (CA-1):** `source_bundle` walks local `project_path` from operator form (ignore `.git`, `target`, `node_modules`, caps on file count/bytes); intake artifact includes manifest + selected file contents for warmup stages.
+- **Operator `path` field type:** server validates that answered paths exist and are directories.
+- **Tool-enabled horde stages (CA-2):** `tool_ids` on `agents/*.md`; federation worker calls `POST /api/chat` with `use_tools`, allowlist, and `sandbox_root` from operator `project_path`. Built-in **`fs_tool`** (`list_dir`, `read_file`, `write_file`, …) registered on the HTTP agent.
+- **Verify / apply stages (CA-3):** `kind = "verify"` runs `verify_command` in `project_path` and writes a artifact with `status: pass|fail`. `kind = "apply"` dry-runs ```diff blocks; execute gated by `KOWALSKI_HORDE_APPLY=1`.
+- **Conditional edges (CA-4):** `[[edges]]` support `when = "pass"|"fail"` and loop-back edges with `max_loops`. Orchestrator and local `agent-app run` route on verify outcome, reset the retry span, and cap loops. Coder example: `test-verify` fail → `dev-1` (max 2), pass → `review`.
+- **MCP framework (M0):** Renamed **`kowalski-mcp-transport` → `kowalski-mcp-base`**; added output framing, credential forwarding, and rmcp `serve` bootstrap. Authoring rules: [`kowalski-mcp-base/MCP_REQUIREMENTS.md`](kowalski-mcp-base/MCP_REQUIREMENTS.md), manifests: [`kowalski-mcp-base/MANIFEST_SPEC.md`](kowalski-mcp-base/MANIFEST_SPEC.md). MCP server crates are optional workspace members (`default-members` = core only). Added `manifest.yaml` to `kowalski-mcp-datafusion` and `kowalski-mcp-rookery`. Removed staging `mcp-base/`.
+
+## [1.4.0] - 2026-06-15 — **DAG pipelines + planning Coder**
+
+> Published on crates.io as **`1.4.0`**: **DAG horde pipelines** (`edges[]`), graph orchestrator scheduling, Rookery DAG birth + UI canvas, **`install.sh`**, coding horde example (planning tier), federation worker fixes for custom stage kinds.
 
 ### Added
 
 - **One-line install:** [`install.sh`](install.sh) — `curl -fsSL https://raw.githubusercontent.com/yarenty/kowalski/main/install.sh | bash` installs `kowalski-cli` and `kowalski` from crates.io, seeds `~/.config/kowalski/config.toml`, and documents optional MCP / postgres feature flags.
 - **DAG horde graph:** optional `[[edges]]` on `horde.md` / `RookeryDraft`; `kowalski_core::horde_graph::resolve_execution_graph()` validates acyclic graphs, pipeline topological order, and returns scheduling layers. Empty/missing `edges` → implicit linear chain (existing hordes unchanged).
-- **DAG orchestrator scheduling:** `agent-app run` and the HTTP horde orchestrator (`kowalski/src/horde.rs`) execute steps via `execution_order()` / `next_ready_step()` (sequential within each ready layer in MVP). Federation workers resolve `@step:name@` via on-disk outputs.
+- **DAG orchestrator scheduling:** `agent-app run` and the HTTP horde orchestrator execute steps via `execution_order()` / `next_ready_step()` (sequential within each ready layer in MVP). Federation workers resolve `@step:name@` via on-disk outputs.
 - **Rookery DAG birth:** `write_horde_tree` emits `[[edges]]` when the draft graph differs from an implicit linear chain; builder prompt documents fork/join. MCP rookery tools accept `edges` in draft JSON.
 - **UI DAG canvas:** **PenguinCanvas** layered fork/join layout; Rookery read-only edge list; Horde/Federation DAG scheduling notes.
-- **Example horde [`examples/coding-assistant/`](examples/coding-assistant/):** operator form (project path + task) → parallel warmup + todo-plan → adjust → dev/test/review chain → `HANDOFF.md` (markdown planning only).
+- **Coding horde example** (planning tier; rebranded to [`examples/coder/`](examples/coder/) on `feat/coder`): operator form (project path + task) → parallel warmup + todo-plan → adjust → dev/test/review chain → handoff markdown (repo edits deferred to **1.5.0**).
 
 ### Fixed
 
@@ -33,8 +48,8 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Added
 
-- **A2A federation-edge design:** [`docs/DESIGN_A2A_FEDERATION_EDGE.md`](docs/DESIGN_A2A_FEDERATION_EDGE.md) — decision + mapping for adopting [A2A](https://a2a-protocol.org/) **only** at the node↔node boundary (Agent Card derived from `AgentRegistry` + horde catalog; A2A Task lifecycle mapped onto existing `AclMessage` variants; transport reused from `kowalski-mcp-transport`). Explicitly **no penguin-to-penguin A2A**; implementation deferred to 1.4/1.5.
-- **Stateless Streamable HTTP for in-repo MCP servers:** new shared crate **`kowalski-mcp-transport`** provides one `McpHandler` trait and two runners — **stdio** and **stateless Streamable HTTP** (no `Mcp-Session-Id` issued or required; every POST independent → restartable / horizontally scalable). Both **`kowalski-mcp-rookery`** (`--transport stdio|http`, `--bind`) and **`kowalski-mcp-datafusion`** now run on it, so every in-repo MCP server is reachable over stateless HTTP. The Kowalski MCP client already tolerates sessionless servers (captures `Mcp-Session-Id` only if present). See [`kowalski-mcp-transport/README.md`](kowalski-mcp-transport/README.md).
+- **A2A federation-edge design:** [`docs/DESIGN_A2A_FEDERATION_EDGE.md`](docs/DESIGN_A2A_FEDERATION_EDGE.md) — decision + mapping for adopting [A2A](https://a2a-protocol.org/) **only** at the node↔node boundary (Agent Card derived from `AgentRegistry` + horde catalog; A2A Task lifecycle mapped onto existing `AclMessage` variants; transport reused from `kowalski-mcp-base`). Explicitly **no penguin-to-penguin A2A**; implementation deferred to 1.4/1.5.
+- **Stateless Streamable HTTP for in-repo MCP servers:** new shared crate **`kowalski-mcp-base`** provides one `McpHandler` trait and two runners — **stdio** and **stateless Streamable HTTP** (no `Mcp-Session-Id` issued or required; every POST independent → restartable / horizontally scalable). Both **`kowalski-mcp-rookery`** (`--transport stdio|http`, `--bind`) and **`kowalski-mcp-datafusion`** now run on it, so every in-repo MCP server is reachable over stateless HTTP. The Kowalski MCP client already tolerates sessionless servers (captures `Mcp-Session-Id` only if present). See [`kowalski-mcp-base/README.md`](kowalski-mcp-base/README.md).
 - **Rookery MCP server:** new in-repo crate **`kowalski-mcp-rookery`** — an MCP server (stdio **or** stateless HTTP) that exposes the horde builder so any MCP client (the Kowalski agent, CLI, or external clients like Claude Desktop) can build hordes, not only the Vue tab. Tools: **`rookery_example_draft`**, **`rookery_validate_draft`**, **`rookery_parse_draft`**, **`rookery_give_birth`** — all delegate to `kowalski_core::rookery` (same primitives as `/api/rookery/*`, no duplicated orchestration). The server is **LLM-free**: the calling agent drives the interview; this server validates/parses/writes. Wire it via `config.toml` and verify with `kowalski-cli mcp ping`/`mcp tools`. See [`kowalski-mcp-rookery/README.md`](kowalski-mcp-rookery/README.md).
 - **Docker MCP gateway support:** Kowalski connects to the [Docker MCP Toolkit](https://docs.docker.com/ai/mcp-catalog-and-toolkit/toolkit/) catalog through **one** stdio MCP server (`command = ["docker", "mcp", "gateway", "run"]`) instead of wiring many individual servers — verified via `kowalski-cli mcp ping`/`mcp tools`. Default (no flags) exposes the gateway's **dynamic** management tools (`mcp-find`, `mcp-exec`, `code-mode`); `--servers <name>` / `--profile <id>` expose a specific server's tools by name (after it is configured in Docker Desktop). `tools/internal/*` remain the dependency-light fallback and are shadowed by the gateway when present. Documented in [`config.toml`](config.toml) and [`kowalski-core/AGENTS.md`](kowalski-core/AGENTS.md).
 - **Rookery horde builder:** `kowalski-core::rookery` — linear draft validation and `write_horde_tree` for born hordes; builder prompt at [`resources/prompts/rookery/builder.md`](resources/prompts/rookery/builder.md). HTTP API on the `kowalski` server: `POST/GET/DELETE /api/rookery/sessions`, `POST .../chat` (optional SSE via `"stream": true`), `POST .../propose`, `POST .../give-birth`. Vue **Rookery** tab: interview chat, pipeline summary, **Give birth**. Default output root: `examples/` (override with `KOWALSKI_ROOKERY_OUTPUT` or `give-birth.output_root`).
@@ -44,7 +59,7 @@ All notable changes to this project will be documented in this file, or at least
 
 - **Horde operator forms are server-validated (thin UI / thick core):** `POST /api/hordes/{id}/run` now accepts a structured `form_answers` map; the **server** validates it against the horde's `run_form` (required / `url` / `choice` rules via `kowalski_core::validate_form_answers`, 400 on error) and builds the operator-input prompt block via `kowalski_core::answers_to_prompt`. The Vue **Horde Run** form no longer hand-assembles that block or enforces field rules client-side — it sends the raw answers.
 - **UI:** the duplicated SSE line-pump in `ui/src/api.ts` is extracted into one `streamSse<T>()` helper shared by `chatStream` and `rookeryChatStream`.
-- **`kowalski-mcp-datafusion` is now stateless:** it no longer generates or echoes an `Mcp-Session-Id` (the per-process `uuid` session was removed), and its HTTP/SSE plumbing moved to `kowalski-mcp-transport`. `AppState::new(ctx, table)` drops the former `session_id` argument. Tools and wire shapes are unchanged.
+- **`kowalski-mcp-datafusion` is now stateless:** it no longer generates or echoes an `Mcp-Session-Id` (the per-process `uuid` session was removed), and its HTTP/SSE plumbing moved to `kowalski-mcp-base`. `AppState::new(ctx, table)` drops the former `session_id` argument. Tools and wire shapes are unchanged.
 - **Rookery — server-owned draft:** the `kowalski` server now **persists each Rookery session** (status, draft, summary, chat transcript) as one **YAML** file under `db/rookery/` (override `KOWALSKI_ROOKERY_STATE`) and **reloads them on startup**, so sessions survive a restart without the browser re-POSTing the draft. New `GET /api/rookery/sessions` lists server-owned sessions. The Vue **Rookery** tab now keeps only a thin session-id list in `localStorage` and hydrates draft/status via `GET /api/rookery/sessions/{id}`; the legacy `POST` restore body is still accepted but no longer used by `ui/`.
 - **Rookery:** per-penguin editor (`PenguinEditor.vue`), `PATCH /api/rookery/sessions/{id}/penguins/{name}`, `POST .../save-horde` to flush draft edits to disk after give birth; session recovery on server restart.
 - **Rookery:** `normalize_draft` slugifies LLM-produced horde/penguin ids (e.g. `Ingest` → `ingest`, `rust_project_scaffolder_1.0` → `rust-project-scaffolder-1-0`) before validation; builder prompt documents kebab-case id rules. `parse_draft_from_assistant` coerces common LLM JSON mistakes (objects instead of strings for `description`/`output`, object entries in `pipeline`).
@@ -134,7 +149,7 @@ All notable changes to this project will be documented in this file, or at least
 - Documented **memory stack rationale**: **Qdrant** was used in an **initial proof of concept** for semantic memory; the **ongoing goal** is a **simple, robust, dependency-light** default with **minimal moving parts**. Canonical write-up: [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md). Linked from root and component `AGENTS.md`, READMEs, memory articles, and rebuild notes.
 - Refreshed **README.md**, **AGENTS.md**, **ROADMAP.md** (root and key sub-crates).
 
-[1.4.0]: https://github.com/yarenty/kowalski/compare/v1.3.0...v1.4.0
+[1.5.0]: https://github.com/yarenty/kowalski/compare/v1.3.0...v1.5.0
 [1.3.0]: https://github.com/yarenty/kowalski/releases/tag/v1.3.0
 [1.2.0]: https://github.com/yarenty/kowalski/releases/tag/1.2.0
 [1.1.0]: https://github.com/yarenty/kowalski/releases/tag/1.1.0

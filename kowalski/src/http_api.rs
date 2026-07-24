@@ -35,6 +35,22 @@ use tokio_stream::wrappers::ReceiverStream;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 
+/// Returns the model to use based on the LLM provider configuration.
+/// Priority order:
+/// 1. llm.model (if set and provider is openai)
+/// 2. ollama.model (fallback for both providers)
+fn determine_model(config: &Config) -> String {
+    // If using openai provider and llm.model is set, use that
+    if config.llm.provider == "openai" {
+        if let Some(ref model) = config.llm.model {
+            return model.clone();
+        }
+    }
+    
+    // Fallback to ollama.model for both providers
+    config.ollama.model.clone()
+}
+
 #[derive(Serialize)]
 struct MemoryStatus {
     backend: String,
@@ -79,8 +95,8 @@ pub async fn serve(
     kowalski_core::db::run_memory_migrations_if_configured(&full_config).await?;
 
     let mut agent = TemplateAgent::new(full_config.clone()).await?;
-    let conv_id = agent.start_conversation(&full_config.ollama.model);
-    let model = full_config.ollama.model.clone();
+    let model = determine_model(&full_config);
+    let conv_id = agent.start_conversation(&model);
 
     let federation_broker = Arc::new(MpscBroker::new());
     let federation_registry = Arc::new(AgentRegistry::new());
@@ -511,6 +527,12 @@ struct ChatBody {
     /// When false, bypass tool loop and generate plain assistant text.
     #[serde(default = "default_true")]
     use_tools: bool,
+    /// Restrict tool loop to these registered tool names (horde stage `tool_ids`).
+    #[serde(default)]
+    tool_ids: Option<Vec<String>>,
+    /// Restrict filesystem tool paths to this directory (operator `project_path`).
+    #[serde(default)]
+    sandbox_root: Option<String>,
     /// When true, `POST /api/chat/stream` runs the tool loop and streams **only** the first LLM turn after a tool result (final answer); earlier turns are non-streamed like `POST /api/chat`.
     #[serde(default)]
     tools_stream: bool,
@@ -693,10 +715,17 @@ async fn post_chat(
             guard.conv_id = cid.clone();
             cid.clone()
         } else {
-            return Err((
-                StatusCode::NOT_FOUND,
-                format!("conversation not found: {}", cid),
-            ));
+            guard
+                .agent
+                .ensure_conversation_with_tools(
+                    &state.model,
+                    cid,
+                    body.tool_ids.as_deref(),
+                )
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            guard.conv_id = cid.clone();
+            cid.clone()
         }
     } else {
         guard.conv_id.clone()
@@ -713,12 +742,31 @@ async fn post_chat(
         body.use_memory,
         conv_id
     );
-    // Honor `use_memory` on the plain path: `Agent::chat_with_history` hardcodes memory on for
-    // `TemplateAgent`; horde workers send `use_memory: false` (see `kowalski-cli` `chat_no_tools`).
-    let reply = if body.use_tools {
+    let tool_ids = body.tool_ids.clone().filter(|v| !v.is_empty());
+    let use_tools = body.use_tools;
+    let policy = if use_tools {
+        Some(kowalski_core::tools::policy::ToolExecutionPolicy {
+            allowed_tools: tool_ids,
+            sandbox_root: body
+                .sandbox_root
+                .as_ref()
+                .filter(|s| !s.trim().is_empty())
+                .map(std::path::PathBuf::from),
+            quiet: true,
+        })
+    } else {
+        None
+    };
+    // Honor `use_memory` on the plain path: horde workers send `use_memory: false`.
+    let reply = if use_tools {
         guard
             .agent
-            .chat_with_tools_with_options(&conv_id, body.message.trim(), body.use_memory)
+            .chat_with_tools_with_policy(
+                &conv_id,
+                body.message.trim(),
+                body.use_memory,
+                policy.as_ref(),
+            )
             .await
     } else {
         guard

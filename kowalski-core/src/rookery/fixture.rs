@@ -75,6 +75,8 @@ fn edge(from: &str, to: &str) -> HordeEdge {
     HordeEdge {
         from: from.into(),
         to: to.into(),
+        when: None,
+        max_loops: None,
     }
 }
 

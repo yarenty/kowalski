@@ -38,6 +38,14 @@ impl Conversation {
         }
     }
 
+    pub fn with_id(model: &str, id: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            model: model.to_string(),
+            messages: Vec::new(),
+        }
+    }
+
     pub fn add_message(&mut self, role: &str, content: &str) {
         self.messages.push(Message {
             role: role.to_string(),

@@ -48,6 +48,15 @@ pub fn validate_form_answers(
             "url" if !v.starts_with("http://") && !v.starts_with("https://") => {
                 errs.push(format!("`{}` must be a valid URL", field.label));
             }
+            "path" => {
+                let p = std::path::Path::new(v);
+                if !p.is_dir() {
+                    errs.push(format!(
+                        "`{}` must be an existing directory (got: {})",
+                        field.label, v
+                    ));
+                }
+            }
             "choice" if !field.options.is_empty() && !field.options.iter().any(|o| o == v) => {
                 errs.push(format!(
                     "`{}` must be one of: {}",
@@ -82,6 +91,58 @@ pub fn answers_to_prompt(form: &HordeRunFormSpec, answers: &BTreeMap<String, Str
         }
     }
     lines.join("\n\n")
+}
+
+/// Parse `**Label:** value` lines from an operator prompt block built by [`answers_to_prompt`].
+///
+/// Keys are field labels; values may span multiple lines until the next `**Label:**` line.
+pub fn parse_operator_answer_block(source: &str) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    let mut current_label: Option<String> = None;
+    let mut current_value = String::new();
+
+    let flush = |label: &mut Option<String>, value: &mut String, map: &mut BTreeMap<String, String>| {
+        if let Some(l) = label.take() {
+            let trimmed = value.trim().to_string();
+            if !trimmed.is_empty() {
+                map.insert(l, trimmed);
+            }
+            value.clear();
+        }
+    };
+
+    for line in source.lines() {
+        if line.starts_with("**")
+            && let Some(idx) = line.find(":**")
+        {
+            flush(&mut current_label, &mut current_value, &mut out);
+            let label = line[2..idx].trim().to_string();
+            let value = line[idx + 3..].trim();
+            current_label = Some(label);
+            if !value.is_empty() {
+                current_value.push_str(value);
+            }
+            continue;
+        }
+        if current_label.is_some() {
+            if !current_value.is_empty() {
+                current_value.push('\n');
+            }
+            current_value.push_str(line);
+        }
+    }
+    flush(&mut current_label, &mut current_value, &mut out);
+    out
+}
+
+/// Find an operator answer by field id (exact label match or label containing the id).
+pub fn operator_answer<'a>(answers: &'a BTreeMap<String, String>, field_id: &str) -> Option<&'a str> {
+    answers.get(field_id).map(|s| s.as_str()).or_else(|| {
+        answers
+            .iter()
+            .find(|(label, _)| label.eq_ignore_ascii_case(field_id) || label.contains(field_id))
+            .map(|(_, v)| v.as_str())
+    })
 }
 
 #[cfg(test)]
@@ -159,6 +220,36 @@ mod tests {
         let prompt = answers_to_prompt(&form, &a);
         // `crate_focus` has default "cli" and is unanswered → default is emitted.
         assert!(prompt.contains("**Primary project shape:** cli"));
+    }
+
+    #[test]
+    fn path_field_requires_directory() {
+        let form = HordeRunFormSpec {
+            step: "ingest".into(),
+            display_name: None,
+            inputs: vec![OperatorInputField {
+                id: "project_path".into(),
+                field_type: "path".into(),
+                label: "Project path".into(),
+                required: true,
+                placeholder: None,
+                options: vec![],
+                default: None,
+            }],
+        };
+        let a = answers(&[("project_path", "/no/such/dir")]);
+        assert!(validate_form_answers(&form, &a).is_err());
+    }
+
+    #[test]
+    fn parse_operator_block_multiline() {
+        let block = "# Operator input\n\n**Task specification:** line one\nline two\n\n**Project path:** /tmp\n";
+        let m = parse_operator_answer_block(block);
+        assert_eq!(
+            m.get("Task specification").map(String::as_str),
+            Some("line one\nline two")
+        );
+        assert_eq!(m.get("Project path").map(String::as_str), Some("/tmp"));
     }
 }
 

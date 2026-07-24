@@ -283,7 +283,7 @@ fn render_horde_md(draft: &RookeryDraft) -> String {
     if should_persist_edges(&draft.pipeline, &draft.edges) {
         out.push_str(
             "DAG pipeline (`pipeline` is a topological order; `[[edges]]` define scheduling deps). \
-Parallel branches run sequentially per process in 1.4.0 MVP.\n\n```\n",
+Parallel branches run sequentially per process in 1.5.0 MVP.\n\n```\n",
         );
     } else {
         out.push_str("Linear pipeline:\n\n```\n");

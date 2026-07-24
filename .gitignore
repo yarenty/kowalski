@@ -23,6 +23,12 @@ Cargo.lock
 # Knowledge Compiler example — horde + local `agent-app run` use workdir `output/` (see horde.md).
 /examples/knowledge-compiler/output/
 
+# Example hordes with local run workdirs (same convention)
+/examples/apps-builder-3000-horde/output/
+/examples/url-summarizer/output/
+
+.DS_Store
+
 # Legacy top-level (older CLI); not written anymore — safe to delete if present.
 /examples/knowledge-compiler/wiki
 /examples/knowledge-compiler/scratch
@@ -35,3 +41,6 @@ progress.md
 task_plan.md
 TODO.md
 PLAN.md
+
+# Private multi-task planning (exec-task / sync-plan ledgers) — never committed
+/plans/

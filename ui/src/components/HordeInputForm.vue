@@ -87,6 +87,18 @@ defineExpose({ missingRequired, answers });
       </select>
 
       <input
+        v-else-if="field.type === 'path'"
+        :value="answers[field.id] ?? ''"
+        type="text"
+        :placeholder="field.placeholder ?? '/path/to/project'"
+        :disabled="disabled"
+        class="inp mono-path"
+        spellcheck="false"
+        autocomplete="off"
+        @input="setField(field.id, ($event.target as HTMLInputElement).value)"
+      />
+
+      <input
         v-else
         :value="answers[field.id] ?? ''"
         :type="field.type === 'url' ? 'url' : 'text'"
@@ -95,6 +107,9 @@ defineExpose({ missingRequired, answers });
         class="inp"
         @input="setField(field.id, ($event.target as HTMLInputElement).value)"
       />
+      <p v-if="field.type === 'path'" class="muted small path-hint">
+        Absolute path to an existing directory on the machine running the server (repo root).
+      </p>
     </label>
   </div>
 </template>
@@ -125,4 +140,6 @@ defineExpose({ missingRequired, answers });
   font: inherit;
 }
 .mono { font-family: ui-monospace, monospace; }
+.mono-path { font-family: ui-monospace, monospace; font-size: 0.88rem; }
+.path-hint { margin: 0.15rem 0 0; }
 </style>

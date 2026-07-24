@@ -73,7 +73,7 @@ Delegation safety already exists: `check_delegate_depth` enforces `DEFAULT_MAX_D
 ## 3. Transport reuse
 
 A2A is **JSON-RPC 2.0 over HTTP + SSE for streaming** — the *exact* shape of the
-[`kowalski-mcp-transport`](../kowalski-mcp-transport/) stateless Streamable HTTP server we just built
+[`kowalski-mcp-base`](../kowalski-mcp-base/) stateless Streamable HTTP server we just built
 (JSON or `text/event-stream`, notifications → `202`). The A2A edge endpoint should reuse that
 transport (an `A2aHandler: McpHandler`-style dispatcher) rather than introduce a second HTTP stack.
 This keeps one wire-handling code path and one stateless-HTTP discipline across MCP **and** A2A.
@@ -113,6 +113,6 @@ auth; A2A "input-required" interactive turns (depends on Phase 8 runtime forms).
   edge; ACL remains the internal bus. Same separation we use for MCP (see
   [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](./DESIGN_MEMORY_AND_DEPENDENCIES.md) philosophy: minimize
   moving parts, keep optional things optional).
-- **No new transport stack:** reuses `kowalski-mcp-transport`.
+- **No new transport stack:** reuses `kowalski-mcp-base`.
 - **No orchestration rewrite:** the adapter translates to existing `AclMessage`; horde execution is
   untouched.

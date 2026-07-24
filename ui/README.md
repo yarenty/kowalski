@@ -1,6 +1,6 @@
 # Kowalski UI (Vue 3 + Vite)
 
-**Version 1.4.0** · Operator-facing web shell for Kowalski, calling **`kowalski`** under `/api/*`.
+**Version 1.5.0** · Operator-facing web shell for Kowalski, calling **`kowalski`** under `/api/*`.
 
 Features: health, MCP ping, **Chat** (`POST /api/chat`, SSE **`POST /api/chat/stream`** with optional **Tool-aware stream** / `tools_stream`), federation, graph extension status. See [`ROADMAP.md`](./ROADMAP.md).
 
@@ -69,7 +69,7 @@ Use this after any change to **`kowalski`**, **`kowalski-core`**, or **`ui/`** t
 | 3 | **Federation** | Scroll to **Knowledge Sucking Swarm** (Knowledge Compiler horde) → **Start All** | Workers move toward ready; no permanent red error. If workers never become ready, start matching `agent-app worker … --role …` processes from [`examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md). |
 | 4 | **Horde** | **Knowledge Sucking Swarm**: URL + question form → **Run Horde**. **Rust Project Scaffolder** (`examples/rust-project-scaffolder`): operator form (project name, goals, crate shape) then **Run Horde** | Stream shows pipeline steps or explicit failure. Scaffolder ingest needs valid `output` paths (auto-repaired on birth/repair). |
 | 5 | **Rookery** (1.3.0+) | **New session** → describe a 3-step workflow → **Propose horde** → **Give birth** | Summary + pipeline on the right (horizontal track, or layered **DAG** canvas when `edges[]` is present); birth shows path under `examples/<id>/`. Run `cargo run -p kowalski-cli -- agent-app validate --path examples/<id>` to confirm. Requires live LLM for chat/propose. |
-| 5b | **Rookery / Horde** (DAG, optional) | Restart server; select **Coding assistant (planning)** in **Horde** | Canvas shows fork/join layers; operator form (project path + task); **Start All** workers then run. |
+| 5b | **Horde — Coder** | Restart server; select **Coder (planning tier)** → **Start All** → run | DAG canvas; project path + task form; `HANDOFF.md` under `examples/coder/output/`. |
 | 6 | **Federation** (optional extra) | Lower on the same panel: **Refresh registry** if you use raw delegate / `kc.run` smoke | Registry JSON loads; see [`examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md) for legacy worker commands. |
 
 

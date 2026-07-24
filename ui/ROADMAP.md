@@ -1,6 +1,6 @@
 # Kowalski UI roadmap
 
-**Package version 1.4.0** (`package.json`). Depends on **`kowalski`** for `/api/*`.
+**Package version 1.5.0** (`package.json`). Depends on **`kowalski`** for `/api/*`.
 
 ## Near term
 

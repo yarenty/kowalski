@@ -232,9 +232,18 @@ pub async fn doctor_json(ollama_base: Option<String>, config: Option<&Config>) -
     let base = ollama_base.unwrap_or_else(|| "http://127.0.0.1:11434".to_string());
     let ollama = probe_ollama_tags(&base).await;
     let c = config.cloned().unwrap_or_default();
+    
+    // Determine the correct model based on provider
+    let model = if c.llm.provider == "openai" {
+        // Priority: llm.model if set, otherwise ollama.model
+        c.llm.model.clone().unwrap_or_else(|| c.ollama.model.clone())
+    } else {
+        c.ollama.model.clone()
+    };
+    
     let llm = LlmDoctorJson {
         provider: c.llm.provider.clone(),
-        model: c.ollama.model.clone(),
+        model,
         openai_api_base: c.llm.openai_api_base.clone(),
     };
     let operator = DoctorOperatorJson {

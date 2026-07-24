@@ -1,10 +1,10 @@
 # kowalski-mcp-rookery — AI agent notes
 
-**Crate**: `kowalski-mcp-rookery` · **Version**: **1.4.0**
+**Crate**: `kowalski-mcp-rookery` · **Version**: **1.5.0**
 
 ## Scope
 
-Standalone **MCP server** that exposes the **Rookery** horde-builder primitives, over **stdio** or **stateless Streamable HTTP** (`--transport stdio|http`, shared [`../kowalski-mcp-transport`](../kowalski-mcp-transport/)). It is an **in-repo MCP server** (tool *source 1* per [`../kowalski-core/AGENTS.md`](../kowalski-core/AGENTS.md), *Tool execution model*) and the **R2 reposition** in [`../ROADMAP.md`](../ROADMAP.md): the builder is callable from CLI / external agents, not only the Vue tab.
+Standalone **MCP server** that exposes the **Rookery** horde-builder primitives, over **stdio** or **stateless Streamable HTTP** (`--transport stdio|http`, shared [`../kowalski-mcp-base`](../kowalski-mcp-base/)). It is an **in-repo MCP server** (tool *source 1* per [`../kowalski-core/AGENTS.md`](../kowalski-core/AGENTS.md), *Tool execution model*) and the **R2 reposition** in [`../ROADMAP.md`](../ROADMAP.md): the builder is callable from CLI / external agents, not only the Vue tab.
 
 ## Hard rules
 
@@ -12,7 +12,7 @@ Standalone **MCP server** that exposes the **Rookery** horde-builder primitives,
 - **No duplicated orchestration.** Every tool delegates to `kowalski_core::rookery` (`validate_draft`, `normalize_draft`, `parse_draft_from_assistant`, `write_horde_tree`, `validate_horde_tree`, `minimal_linear_draft`). The HTTP `/api/rookery/*` give-birth path calls the **same** core functions — keep it that way (R2.3).
 - **stdout is the protocol stream** (stdio mode). Logs go to **stderr** only (`env_logger`). Never `println!` diagnostics.
 - **Notifications get no reply.** JSON-RPC messages without an `id` (e.g. `notifications/initialized`) must not produce a response (`dispatch` returns `None`).
-- **Transport is shared + stateless.** stdio and HTTP both run the same `RookeryHandler` (`dispatch`) via `kowalski-mcp-transport`. The HTTP transport is **stateless** (no `Mcp-Session-Id`). Don't fork transport logic here — extend the transport crate.
+- **Transport is shared + stateless.** stdio and HTTP both run the same `RookeryHandler` (`dispatch`) via `kowalski-mcp-base`. The HTTP transport is **stateless** (no `Mcp-Session-Id`). Don't fork transport logic here — extend the transport crate.
 
 ## Before you change code
 

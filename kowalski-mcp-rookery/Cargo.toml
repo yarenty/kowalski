@@ -1,6 +1,6 @@
 [package]
 name = "kowalski-mcp-rookery"
-version = "1.4.0"
+version = "1.6.0"
 edition = "2024"
 description = "Standalone MCP (stdio) server: validate and give birth to Kowalski hordes (Rookery) over kowalski-core"
 license = "MIT"
@@ -10,8 +10,8 @@ homepage = "https://github.com/yarenty/kowalski"
 readme = "README.md"
 
 [dependencies]
-kowalski-core = { path = "../kowalski-core", version = "1.4.0" }
-kowalski-mcp-transport = { path = "../kowalski-mcp-transport", version = "1.4.0" }
+kowalski-core = { path = "../kowalski-core", version = "1.5.0" }
+kowalski-mcp-base = { path = "../kowalski-mcp-base", version = "1.6.0" }
 clap = { version = "4.5", features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

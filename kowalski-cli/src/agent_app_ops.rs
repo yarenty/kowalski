@@ -3,13 +3,22 @@
 //! federation helpers, and filesystem paths.
 
 use kowalski_core::{
-    execution_order, resolve_execution_graph, single_predecessor, validate_horde_tree,
+    has_conditional_outbound, is_loop_back_step, loop_edge_key,
+    next_ready_step_conditional, parse_stage_status_from_artifact, resolve_execution_graph,
+    retry_span, select_next_from_outcome, single_predecessor, StageStatus, validate_horde_tree,
 };
 use kowalski_core::markdown_pipeline::{
     maybe_normalize_markdown, parse_app_manifest, parse_stage_agent, render_context_attachments,
     resolve_manifest_path, AppManifestMeta, StageAgentMeta,
 };
-use kowalski_core::source_bundle::{ingest_assets_markdown, parse_input_assets};
+use kowalski_core::source_bundle::{
+    extract_project_path_from_source, ingest_assets_markdown, parse_input_assets,
+};
+use kowalski_core::{
+    apply_patches_dry_run, format_apply_artifact, format_verify_artifact, resolve_verify_cwd,
+    run_verify_command, DEFAULT_VERIFY_MAX_OUTPUT_BYTES, DEFAULT_VERIFY_TIMEOUT_SECS,
+};
+use std::time::Duration;
 use chrono::Utc;
 use reqwest::blocking as reqwest_blocking;
 use std::collections::BTreeMap;
@@ -134,19 +143,42 @@ pub fn validate(path: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn chat_no_tools(api: &str, prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
+#[derive(Debug, Clone, Default)]
+struct StageChatOptions {
+    use_tools: bool,
+    tool_ids: Vec<String>,
+    project_path: Option<String>,
+    conversation_id: Option<String>,
+}
+
+fn chat_stage(
+    api: &str,
+    prompt: &str,
+    opts: &StageChatOptions,
+) -> Result<String, Box<dyn std::error::Error>> {
     let client = reqwest_blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_secs(300))
         .build()?;
     let route = "/api/chat";
     let url = format!("{}{}", api.trim_end_matches('/'), route);
+    let use_tools = opts.use_tools && !opts.tool_ids.is_empty();
+    let mut body = serde_json::json!({
+        "message": prompt,
+        "use_memory": false,
+        "use_tools": use_tools,
+    });
+    if use_tools {
+        body["tool_ids"] = serde_json::json!(opts.tool_ids);
+        if let Some(root) = opts.project_path.as_ref().filter(|s| !s.trim().is_empty()) {
+            body["sandbox_root"] = serde_json::json!(root);
+        }
+    }
+    if let Some(cid) = opts.conversation_id.as_ref().filter(|s| !s.trim().is_empty()) {
+        body["conversation_id"] = serde_json::json!(cid);
+    }
     let resp = client
-        .post(format!("{}/api/chat", api.trim_end_matches('/')))
-        .json(&serde_json::json!({
-            "message": prompt,
-            "use_memory": false,
-            "use_tools": false
-        }))
+        .post(&url)
+        .json(&body)
         .send()
         .map_err(|e| friendly_http_error(api, route, &url, &e))?;
     let status = resp.status();
@@ -237,6 +269,7 @@ fn run_llm_stage(
     extra_user_block: &str,
     step_paths: &BTreeMap<String, PathBuf>,
     previous_artifact: Option<&Path>,
+    chat_opts: &StageChatOptions,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let rel = agent
         .meta
@@ -267,10 +300,125 @@ fn run_llm_stage(
     } else {
         format!("{prompt}\n\n{extra_user_block}\n\n{ctx}")
     };
-    let reply = chat_no_tools(api, &msg)?;
+    let reply = chat_stage(api, &msg, chat_opts)?;
     let reply = maybe_normalize_markdown(&agent.meta, &reply);
     fs::write(&out_path, reply)?;
     Ok(out_path)
+}
+
+fn resolve_stage_project_path(
+    project_path: Option<String>,
+    source: Option<&str>,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    if let Some(p) = project_path {
+        let path = PathBuf::from(p.trim());
+        if path.is_dir() {
+            return Ok(path);
+        }
+    }
+    if let Some(s) = source {
+        if let Some(p) = extract_project_path_from_source(s) {
+            return Ok(p);
+        }
+    }
+    Err("verify/apply: missing operator project_path (set on ingest form)".into())
+}
+
+fn run_verify_stage(
+    _workspace_root: &Path,
+    workdir: &Path,
+    agent: &AgentDoc<StageAgentMeta>,
+    step: &str,
+    project_path: Option<String>,
+    source: Option<&str>,
+    _previous_artifact: Option<&Path>,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    ensure_dirs(workdir)?;
+    let command = agent
+        .meta
+        .verify_command
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| format!("verify stage `{step}` missing `verify_command` in {}", agent.path.display()))?;
+    let project = resolve_stage_project_path(project_path, source)?;
+    let cwd = resolve_verify_cwd(&project, agent.meta.verify_cwd.as_deref())
+        .map_err(|e| e.to_string())?;
+    let rel = agent
+        .meta
+        .output
+        .as_deref()
+        .ok_or_else(|| format!("verify stage `{step}` missing `output`"))?;
+    let out_path = workdir.join(rel);
+    if let Some(parent) = out_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let result = run_verify_command(
+        command,
+        &cwd,
+        DEFAULT_VERIFY_MAX_OUTPUT_BYTES,
+        Duration::from_secs(DEFAULT_VERIFY_TIMEOUT_SECS),
+    );
+    let doc = format_verify_artifact(&result);
+    fs::write(&out_path, doc)?;
+    Ok(out_path)
+}
+
+fn run_apply_stage(
+    _workspace_root: &Path,
+    workdir: &Path,
+    agent: &AgentDoc<StageAgentMeta>,
+    step: &str,
+    project_path: Option<String>,
+    source: Option<&str>,
+    previous_artifact: Option<&Path>,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    ensure_dirs(workdir)?;
+    let prev = previous_artifact
+        .ok_or("apply: missing previous_artifact from orchestrator")?;
+    let prev_body = fs::read_to_string(prev)?;
+    let project = resolve_stage_project_path(project_path, source)?;
+    let mode = agent
+        .meta
+        .apply_mode
+        .as_deref()
+        .unwrap_or("dry-run");
+    let execute = mode.eq_ignore_ascii_case("execute")
+        && std::env::var("KOWALSKI_HORDE_APPLY")
+            .ok()
+            .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let dry = apply_patches_dry_run(&project, &prev_body);
+    let rel = agent
+        .meta
+        .output
+        .as_deref()
+        .ok_or_else(|| format!("apply stage `{step}` missing `output`"))?;
+    let out_path = workdir.join(rel);
+    if let Some(parent) = out_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let doc = format_apply_artifact(mode, &dry, execute);
+    fs::write(&out_path, doc)?;
+    Ok(out_path)
+}
+
+fn stage_chat_options(
+    agent: &StageAgentMeta,
+    project_path: Option<String>,
+    run_id: Option<&str>,
+    step: &str,
+    instr_tool_ids: &[String],
+) -> StageChatOptions {
+    let tool_ids = if agent.tool_ids.is_empty() {
+        instr_tool_ids.to_vec()
+    } else {
+        agent.tool_ids.clone()
+    };
+    StageChatOptions {
+        use_tools: !tool_ids.is_empty(),
+        tool_ids,
+        project_path,
+        conversation_id: run_id.map(|r| format!("horde-{r}-{step}")),
+    }
 }
 
 fn run_with_progress<F>(
@@ -308,9 +456,7 @@ where
     };
     let graph = resolve_execution_graph(&main.meta.pipeline, edge_slice)
         .map_err(|e| e.to_string())?;
-    let schedule = execution_order(&graph);
-    let total_steps = schedule.len();
-    let last_step = schedule.last().cloned();
+    let last_step = main.meta.pipeline.last().cloned();
     let run_title = main
         .meta
         .display_name
@@ -322,19 +468,45 @@ where
         run_title, main.meta.id, source, q
     ));
     println!("Starting staged app: {} ({})", run_title, main.meta.id);
-    println!("Task count: {}", total_steps);
 
     let mut step_paths: BTreeMap<String, PathBuf> = BTreeMap::new();
+    let mut step_status: BTreeMap<String, String> = main
+        .meta
+        .pipeline
+        .iter()
+        .map(|s| (s.clone(), "pending".to_string()))
+        .collect();
+    let mut step_outcome: BTreeMap<String, StageStatus> = BTreeMap::new();
+    let mut loop_counts: BTreeMap<String, u32> = BTreeMap::new();
+    let project_path = kowalski_core::source_bundle::extract_project_path_from_source(source)
+        .map(|p| p.display().to_string());
+    let run_id = run_stamp.to_string();
+    let max_steps = main.meta.pipeline.len().saturating_mul(4).max(1);
+    let mut steps_run = 0usize;
 
-    for (idx, step) in schedule.iter().enumerate() {
+    while steps_run < max_steps {
+        let status_view: BTreeMap<String, &str> = step_status
+            .iter()
+            .map(|(k, v)| (k.clone(), v.as_str()))
+            .collect();
+        let step = match next_ready_step_conditional(
+            &main.meta.pipeline,
+            &graph,
+            &status_view,
+            &step_outcome,
+        ) {
+            Some(s) => s,
+            None => break,
+        };
+        steps_run += 1;
         let agent = agents
-            .get(step)
+            .get(&step)
             .ok_or_else(|| format!("missing step agent: {step}"))?;
-        let prev_path = single_predecessor(&graph, step).and_then(|pred| step_paths.get(&pred).cloned());
+        let prev_path =
+            single_predecessor(&graph, &step).and_then(|pred| step_paths.get(&pred).cloned());
         println!(
-            "[{}/{}] {} ({})",
-            idx + 1,
-            total_steps,
+            "[{}] {} ({})",
+            steps_run,
             step,
             agent.meta.kind
         );
@@ -344,24 +516,62 @@ where
             let p = ingest_assets_markdown(&work_debug(&work), source)?;
             log.push_str(&format!("- output: {}\n\n", p.display()));
             task_outputs.push((step.clone(), p.clone()));
-            on_step(step, agent.meta.kind.as_str(), p.as_path());
+            on_step(&step, agent.meta.kind.as_str(), p.as_path());
             println!("  -> {}", p.display());
             p
+        } else if agent.meta.kind == "verify" {
+            let op = run_verify_stage(
+                &root,
+                &work,
+                agent,
+                &step,
+                project_path.clone(),
+                Some(source),
+                prev_path.as_deref(),
+            )?;
+            log.push_str(&format!("- output: {}\n\n", op.display()));
+            task_outputs.push((step.clone(), op.clone()));
+            on_step(&step, agent.meta.kind.as_str(), op.as_path());
+            println!("  -> {}", op.display());
+            op
+        } else if agent.meta.kind == "apply" {
+            let op = run_apply_stage(
+                &root,
+                &work,
+                agent,
+                &step,
+                project_path.clone(),
+                Some(source),
+                prev_path.as_deref(),
+            )?;
+            log.push_str(&format!("- output: {}\n\n", op.display()));
+            task_outputs.push((step.clone(), op.clone()));
+            on_step(&step, agent.meta.kind.as_str(), op.as_path());
+            println!("  -> {}", op.display());
+            op
         } else {
             let extra = if agent.meta.kind == "ask" {
                 format!("User question:\n{q}\n")
             } else {
                 String::new()
             };
+            let chat_opts = stage_chat_options(
+                &agent.meta,
+                project_path.clone(),
+                Some(&run_id),
+                &step,
+                &[],
+            );
             let op = run_llm_stage(
                 api,
                 &root,
                 &work,
                 agent,
-                step,
+                &step,
                 &extra,
                 &step_paths,
                 prev_path.as_deref(),
+                &chat_opts,
             )?;
             log.push_str(&format!("- output: {}\n\n", op.display()));
             task_outputs.push((step.clone(), op.clone()));
@@ -375,11 +585,51 @@ where
                     artifacts.report = Some(op.clone());
                 }
             }
-            on_step(step, agent.meta.kind.as_str(), op.as_path());
+            on_step(&step, agent.meta.kind.as_str(), op.as_path());
             println!("  -> {}", op.display());
             op
         };
+
+        step_status.insert(step.clone(), "success".to_string());
+        let outcome = if agent.meta.kind == "verify" || agent.meta.kind == "apply" {
+            fs::read_to_string(&out_path)
+                .ok()
+                .and_then(|b| parse_stage_status_from_artifact(&b))
+                .unwrap_or(StageStatus::Fail)
+        } else {
+            StageStatus::Pass
+        };
+        step_outcome.insert(step.clone(), outcome);
         step_paths.insert(step.clone(), out_path);
+
+        if has_conditional_outbound(&graph.edges, &step) {
+            if let Some(next) = select_next_from_outcome(
+                &main.meta.pipeline,
+                &graph.edges,
+                &step,
+                outcome,
+                &loop_counts,
+            ) {
+                if is_loop_back_step(&main.meta.pipeline, &step, &next) {
+                    let key = loop_edge_key(&step, &next);
+                    let count = {
+                        let c = loop_counts.entry(key).or_insert(0);
+                        *c += 1;
+                        *c
+                    };
+                    for s in retry_span(&main.meta.pipeline, &next, &step) {
+                        step_status.insert(s.clone(), "pending".to_string());
+                        step_outcome.remove(&s);
+                        step_paths.remove(&s);
+                    }
+                    log.push_str(&format!(
+                        "- loop retry → `{}` (count {})\n\n",
+                        next,
+                        count
+                    ));
+                }
+            }
+        }
     }
 
     fs::write(&log_file, log)?;
@@ -712,6 +962,19 @@ fn parse_horde_instruction(instruction: &str) -> Option<HordeInstruction> {
             .get("workdir")
             .and_then(|x| x.as_str())
             .map(ToString::to_string),
+        project_path: v
+            .get("project_path")
+            .and_then(|x| x.as_str())
+            .map(ToString::to_string),
+        tool_ids: v
+            .get("tool_ids")
+            .and_then(|x| x.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|x| x.as_str().map(ToString::to_string))
+                    .collect()
+            })
+            .unwrap_or_default(),
     })
 }
 
@@ -726,6 +989,8 @@ struct HordeInstruction {
     previous_artifact: Option<String>,
     horde_root: Option<String>,
     workdir: Option<String>,
+    project_path: Option<String>,
+    tool_ids: Vec<String>,
 }
 
 fn publish_acl(api: &str, topic: &str, sender: &str, payload: serde_json::Value) {
@@ -791,6 +1056,7 @@ fn publish_task_finished(
     success: bool,
     artifact: Option<&str>,
     summary: &str,
+    outcome: Option<&str>,
 ) {
     publish_acl(
         api,
@@ -805,6 +1071,7 @@ fn publish_task_finished(
             "success": success,
             "artifact": artifact,
             "summary": summary,
+            "outcome": outcome,
         }),
     );
 }
@@ -855,7 +1122,7 @@ fn handle_role_delegate(
             "rejected: agent role `{}` does not match instruction kind `{}`",
             role_kind, instr.kind
         );
-        publish_task_finished(api, topic, agent_id, &instr, false, None, &summary);
+        publish_task_finished(api, topic, agent_id, &instr, false, None, &summary, None);
         publish_task_result(api, topic, agent_id, task_id, &summary, false);
         return;
     }
@@ -894,6 +1161,8 @@ fn handle_role_delegate(
             "federation handoff",
             "handoff output",
         ),
+        "verify" => execute_verify(api, topic, agent_id, &instr, &workspace_root, &workdir),
+        "apply" => execute_apply(api, topic, agent_id, &instr, &workspace_root, &workdir),
         "process" | "step" | "deliver" | "final" => execute_llm_step(
             api,
             topic,
@@ -909,6 +1178,14 @@ fn handle_role_delegate(
 
     match result {
         Ok((artifact, summary)) => {
+            let outcome = if role_kind == "verify" {
+                summary
+                    .strip_prefix("verify `")
+                    .and_then(|s| s.split('`').next())
+                    .map(str::to_string)
+            } else {
+                None
+            };
             publish_task_finished(
                 api,
                 topic,
@@ -917,6 +1194,7 @@ fn handle_role_delegate(
                 true,
                 Some(&artifact),
                 &summary,
+                outcome.as_deref(),
             );
             publish_task_result(
                 api,
@@ -929,7 +1207,7 @@ fn handle_role_delegate(
         }
         Err(e) => {
             let summary = format!("{} step failed: {}", role_kind, e);
-            publish_task_finished(api, topic, agent_id, &instr, false, None, &summary);
+            publish_task_finished(api, topic, agent_id, &instr, false, None, &summary, None);
             publish_task_result(api, topic, agent_id, task_id, &summary, false);
         }
     }
@@ -952,13 +1230,17 @@ fn execute_ingest(
         .ok_or("ingest: missing `source` in horde instruction")?;
     ensure_dirs(workdir)?;
     let source_list = parse_input_assets(source);
+    let project_note = kowalski_core::source_bundle::extract_project_path_from_source(source)
+        .map(|p| format!("; project tree from {}", p.display()))
+        .unwrap_or_default();
     let path = ingest_assets_markdown(&work_debug(workdir), source)?;
     Ok((
         path.display().to_string(),
         format!(
-            "Captured {} source(s) into raw collection: {}",
+            "Captured {} source token(s) into raw collection: {}{}",
             source_list.len(),
-            path.display()
+            path.display(),
+            project_note
         ),
     ))
 }
@@ -991,6 +1273,13 @@ fn execute_compile(
         &format!("LLM stage `{}` (federation worker)", instr.step),
     );
     let step_paths = collect_step_paths(workspace_root, workdir)?;
+    let chat_opts = stage_chat_options(
+        &agent.meta,
+        instr.project_path.clone(),
+        Some(&instr.run_id),
+        &instr.step,
+        &instr.tool_ids,
+    );
     let out = run_llm_stage(
         api,
         workspace_root,
@@ -1000,6 +1289,7 @@ fn execute_compile(
         "",
         &step_paths,
         prev,
+        &chat_opts,
     )?;
     Ok((
         out.display().to_string(),
@@ -1031,6 +1321,13 @@ fn execute_ask(
     let step_paths = collect_step_paths(workspace_root, workdir)?;
     let prev = instr.previous_artifact.as_deref().map(Path::new);
     let extra = format!("User question:\n{q}\n");
+    let chat_opts = stage_chat_options(
+        &agent.meta,
+        instr.project_path.clone(),
+        Some(&instr.run_id),
+        &instr.step,
+        &instr.tool_ids,
+    );
     let out = run_llm_stage(
         api,
         workspace_root,
@@ -1040,10 +1337,91 @@ fn execute_ask(
         &extra,
         &step_paths,
         prev,
+        &chat_opts,
     )?;
     Ok((
         out.display().to_string(),
         format!("stage output: {}", out.display()),
+    ))
+}
+
+fn execute_verify(
+    api: &str,
+    topic: &str,
+    agent_id: &str,
+    instr: &HordeInstruction,
+    workspace_root: &Path,
+    workdir: &Path,
+) -> Result<(String, String), Box<dyn std::error::Error>> {
+    publish_agent_message(
+        api,
+        topic,
+        agent_id,
+        instr,
+        &format!("Verify stage `{}` (run command)", instr.step),
+    );
+    let agent = load_agent_doc(workspace_root, &instr.step)?;
+    let out = run_verify_stage(
+        workspace_root,
+        workdir,
+        &agent,
+        &instr.step,
+        instr.project_path.clone(),
+        instr.source.as_deref(),
+        instr.previous_artifact.as_deref().map(Path::new),
+    )?;
+    let body = fs::read_to_string(&out).unwrap_or_default();
+    let status = kowalski_core::parse_stage_status_from_artifact(&body)
+        .map(|s| s.as_str())
+        .unwrap_or("unknown");
+    let excerpt = kowalski_core::verify_output_excerpt(&body, 1_200);
+    if !excerpt.trim().is_empty() {
+        publish_agent_message(
+            api,
+            topic,
+            agent_id,
+            instr,
+            &format!("Verify output ({status}):\n\n{excerpt}"),
+        );
+    }
+    Ok((
+        out.display().to_string(),
+        format!("verify `{status}`: {}", out.display()),
+    ))
+}
+
+fn execute_apply(
+    api: &str,
+    topic: &str,
+    agent_id: &str,
+    instr: &HordeInstruction,
+    workspace_root: &Path,
+    workdir: &Path,
+) -> Result<(String, String), Box<dyn std::error::Error>> {
+    publish_agent_message(
+        api,
+        topic,
+        agent_id,
+        instr,
+        &format!("Apply stage `{}` (patch dry-run)", instr.step),
+    );
+    let agent = load_agent_doc(workspace_root, &instr.step)?;
+    let prev = instr
+        .previous_artifact
+        .as_deref()
+        .ok_or("apply: missing previous_artifact")?;
+    let out = run_apply_stage(
+        workspace_root,
+        workdir,
+        &agent,
+        &instr.step,
+        instr.project_path.clone(),
+        instr.source.as_deref(),
+        Some(Path::new(prev)),
+    )?;
+    Ok((
+        out.display().to_string(),
+        format!("apply artifact: {}", out.display()),
     ))
 }
 
@@ -1068,6 +1446,13 @@ fn execute_llm_step(
     );
     let step_paths = collect_step_paths(workspace_root, workdir)?;
     let prev = instr.previous_artifact.as_deref().map(Path::new);
+    let chat_opts = stage_chat_options(
+        &agent.meta,
+        instr.project_path.clone(),
+        Some(&instr.run_id),
+        &instr.step,
+        &instr.tool_ids,
+    );
     let out = run_llm_stage(
         api,
         workspace_root,
@@ -1077,6 +1462,7 @@ fn execute_llm_step(
         "",
         &step_paths,
         prev,
+        &chat_opts,
     )?;
     Ok((
         out.display().to_string(),

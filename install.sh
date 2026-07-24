@@ -7,7 +7,7 @@
 #   curl -fsSL https://yarenty.com/kowalski/install.sh | bash
 #
 # Environment:
-#   KOWALSKI_VERSION=1.3.0     Pin crates.io version (published line; 1.4.0+ from git until 1.5 publish)
+#   KOWALSKI_VERSION=1.5.0     Pin crates.io version (default: latest on registry)
 #   KOWALSKI_FEATURES=postgres   Enable postgres feature on kowalski + kowalski-cli
 #   KOWALSKI_INSTALL_MCP=1       Also install kowalski-mcp-rookery (+ datafusion; slow)
 #   KOWALSKI_SKIP_RUSTUP=1       Do not auto-install Rust when missing

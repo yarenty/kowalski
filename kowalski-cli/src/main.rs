@@ -12,6 +12,22 @@ use tokio::sync::RwLock;
 
 use kowalski_core::memory::consolidation::{Consolidator, MemoryWeaver};
 
+/// Returns the model to use based on the LLM provider configuration.
+/// Priority order:
+/// 1. llm.model (if set and provider is openai)
+/// 2. ollama.model (fallback for both providers)
+fn determine_model(config: &Config) -> String {
+    // If using openai provider and llm.model is set, use that
+    if config.llm.provider == "openai" {
+        if let Some(ref model) = config.llm.model {
+            return model.clone();
+        }
+    }
+    
+    // Fallback to ollama.model for both providers
+    config.ollama.model.clone()
+}
+
 #[derive(Parser, Debug)]
 #[clap(
     author,
@@ -534,12 +550,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .get_config(&agent)
                         .await
                         .unwrap_or_else(Config::default);
-                    let conv_id = agent_ref.start_conversation(&config.ollama.model);
+                    let model = determine_model(&config);
+                    let conv_id = agent_ref.start_conversation(&model);
                     println!(
                         "Chat session started with agent '{}'. Type /bye to end chat.",
                         agent
                     );
-                    println!("Model in use: {}", config.ollama.model);
+                    println!("Model in use: {}", model);
                     // Print registered tools
                     let tools = agent_ref.list_tools().await;
                     if !tools.is_empty() {
@@ -711,20 +728,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         Some(Commands::Consolidate { delete }) => {
             let config = Config::default();
-            let ollama_model = &config.ollama.model;
+            let model = determine_model(&config);
 
-            // Create LLM provider for consolidation
+            // Create the appropriate LLM provider for consolidation
             let llm_provider: std::sync::Arc<dyn kowalski_core::llm::LLMProvider> =
-                std::sync::Arc::new(kowalski_core::llm::OllamaProvider::new(
-                    &config.ollama.host,
-                    config.ollama.port,
-                ));
+                if config.llm.provider == "openai" {
+                    let api_key = config.llm.openai_api_key.clone().unwrap_or_default();
+                    let base = config.llm.openai_api_base.as_deref();
+                    std::sync::Arc::new(kowalski_core::llm::OpenAIProvider::new(&api_key, base))
+                } else {
+                    std::sync::Arc::new(kowalski_core::llm::OllamaProvider::new(
+                        &config.ollama.host,
+                        config.ollama.port,
+                    ))
+                };
 
             kowalski_core::db::run_memory_migrations_if_configured(&config).await?;
 
-            let mut weaver = Consolidator::new(&config.memory, llm_provider, ollama_model).await?;
+            let mut weaver = Consolidator::new(&config.memory, llm_provider, &model).await?;
             weaver.run(delete).await?;
-            println!("Memory consolidation complete.");
+            println!("Memory consolidation complete. Model: {}", model);
         }
         None => {
             // Enter REPL mode if no subcommand is provided
@@ -914,12 +937,13 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
                                 .get_config(name)
                                 .await
                                 .unwrap_or_else(Config::default);
-                            let conv_id = agent_ref.start_conversation(&config.ollama.model);
+                            let model = determine_model(&config);
+                            let conv_id = agent_ref.start_conversation(&model);
                             info!(
                                 "Chat session started with agent '{}'. Type /bye to end chat.",
                                 name
                             );
-                            info!("[DEBUG] Model in use: {}", config.ollama.model);
+                            info!("[DEBUG] Model in use: {}", model);
                             // Print registered tools
                             let tools = agent_ref.list_tools().await;
                             if !tools.is_empty() {

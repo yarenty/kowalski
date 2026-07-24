@@ -1,0 +1,1 @@
+Write the complete 'Hello World' program in Rust, using the provided application name as the project/module identifier. The output must be placed in src/main.rs.

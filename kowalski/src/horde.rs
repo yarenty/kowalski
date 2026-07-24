@@ -7,7 +7,12 @@
 
 use kowalski_core::MessageBroker;
 use kowalski_core::federation::{AclEnvelope, AclMessage, FederationOrchestrator, MpscBroker};
-use kowalski_core::{all_steps_successful, next_ready_step, resolve_execution_graph, single_predecessor, ExecutionGraph, HordeEdge};
+use kowalski_core::{
+    all_steps_successful, has_conditional_outbound, is_loop_back_step, loop_edge_key,
+    next_ready_step_conditional, parse_stage_status_from_artifact, resolve_execution_graph,
+    retry_span, select_next_from_outcome, single_predecessor, verify_output_excerpt, StageStatus,
+    ExecutionGraph, HordeEdge,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::{BTreeMap, HashMap};
@@ -93,6 +98,8 @@ pub struct SubAgentMeta {
     pub inputs: Vec<kowalski_core::OperatorInputField>,
     #[serde(default)]
     pub avatar: Option<String>,
+    #[serde(default)]
+    pub tool_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -107,6 +114,7 @@ pub struct SubAgentSpec {
     pub output: Option<String>,
     pub inputs: Vec<kowalski_core::OperatorInputField>,
     pub avatar: Option<String>,
+    pub tool_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -226,6 +234,7 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
                 output: raw.output,
                 inputs: raw.inputs,
                 avatar,
+                tool_ids: raw.tool_ids,
             },
         );
     }
@@ -391,6 +400,9 @@ pub struct RunStepRecord {
     pub summary: Option<String>,
     pub started_at: String,
     pub finished_at: Option<String>,
+    /// `pass` / `fail` from verify-style artifact frontmatter (when applicable).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -406,6 +418,8 @@ pub struct RunRecord {
     pub current_step_index: usize,
     pub steps: Vec<RunStepRecord>,
     pub events: Vec<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub loop_counts: BTreeMap<String, u32>,
 }
 
 /// Active runs by run_id, used both to advance the pipeline on TaskFinished and
@@ -483,6 +497,15 @@ impl HordeManager {
             .sub_agent(step)
             .map(|s| s.kind.clone())
             .unwrap_or_else(|| step.to_string());
+        let tool_ids = spec
+            .sub_agent(step)
+            .map(|s| s.tool_ids.clone())
+            .unwrap_or_default();
+        let project_path = run
+            .source
+            .as_deref()
+            .and_then(kowalski_core::source_bundle::extract_project_path_from_source)
+            .map(|p| p.display().to_string());
         let payload = json!({
             "horde": spec.id,
             "run_id": run.run_id,
@@ -493,6 +516,8 @@ impl HordeManager {
             "previous_artifact": previous_artifact,
             "horde_root": spec.root_path.display().to_string(),
             "workdir": spec.workdir.display().to_string(),
+            "project_path": project_path,
+            "tool_ids": tool_ids,
         });
         payload.to_string()
     }
@@ -562,9 +587,11 @@ impl HordeManager {
                     summary: None,
                     started_at: started_at.clone(),
                     finished_at: None,
+                    outcome: None,
                 })
                 .collect(),
             events: Vec::new(),
+            loop_counts: BTreeMap::new(),
         };
 
         let started_msg = AclMessage::RunStarted {
@@ -586,7 +613,13 @@ impl HordeManager {
 
         let first_step = {
             let status = Self::step_status_map(&record);
-            next_ready_step(&spec.pipeline, &spec.execution_graph, &status).ok_or_else(|| {
+            next_ready_step_conditional(
+                &spec.pipeline,
+                &spec.execution_graph,
+                &status,
+                &BTreeMap::new(),
+            )
+            .ok_or_else(|| {
                 format!("horde {} has no runnable step after RunStarted", horde_id)
             })?
         };
@@ -704,8 +737,28 @@ impl HordeManager {
             return;
         };
 
-        let next_step: Option<String>;
-        {
+        if !success {
+            let mut runs = self.runs.lock().await;
+            if let Some(run) = runs.runs.get_mut(run_id) {
+                if let Some(step_record) = run.steps.iter_mut().find(|s| s.step == step) {
+                    step_record.status = "failed".into();
+                    step_record.summary = Some(summary.to_string());
+                    step_record.finished_at = Some(now_ts());
+                    step_record.outcome = Some(StageStatus::Fail.as_str().to_string());
+                }
+            }
+            drop(runs);
+            self.fail_run(
+                &spec,
+                run_id,
+                &format!("step {} failed: {}", step, summary),
+                Some(step),
+            )
+            .await;
+            return;
+        }
+
+        let (next_step, route_error, route_notice) = {
             let mut runs = self.runs.lock().await;
             let Some(run) = runs.runs.get_mut(run_id) else {
                 return;
@@ -722,40 +775,101 @@ impl HordeManager {
             if already_finalized {
                 return;
             }
+
+            let outcome = Self::step_outcome_for(&spec, step, artifact, true);
             if let Some(step_record) = run.steps.iter_mut().find(|s| s.step == step) {
-                step_record.status = if success {
-                    "success".into()
-                } else {
-                    "failed".into()
-                };
+                step_record.status = "success".into();
                 step_record.artifact = artifact.map(ToString::to_string);
                 step_record.summary = Some(summary.to_string());
                 step_record.finished_at = Some(now_ts());
+                step_record.outcome = Some(outcome.as_str().to_string());
             }
             run.events.push(json!({
                 "kind": "task_finished",
                 "step": step,
-                "success": success,
+                "success": true,
+                "outcome": outcome.as_str(),
                 "artifact": artifact,
                 "summary": summary,
                 "ts": now_ts(),
             }));
-            let status = Self::step_status_map(run);
-            next_step = if all_steps_successful(&spec.pipeline, &status) {
-                None
-            } else {
-                next_ready_step(&spec.pipeline, &spec.execution_graph, &status)
-            };
-        }
 
-        if !success {
-            self.fail_run(
+            let mut route_notice = None;
+            let (next_step, route_error) = if has_conditional_outbound(&spec.execution_graph.edges, step) {
+                match select_next_from_outcome(
+                    &spec.pipeline,
+                    &spec.execution_graph.edges,
+                    step,
+                    outcome,
+                    &run.loop_counts,
+                ) {
+                    Some(next) => {
+                        let is_back = is_loop_back_step(&spec.pipeline, step, &next);
+                        let loop_count = if is_back {
+                            let key = loop_edge_key(step, &next);
+                            *run.loop_counts.entry(key.clone()).or_insert(0) += 1;
+                            for s in retry_span(&spec.pipeline, &next, step) {
+                                if let Some(rec) = run.steps.iter_mut().find(|r| r.step == s) {
+                                    rec.status = "pending".into();
+                                    rec.artifact = None;
+                                    rec.summary = None;
+                                    rec.finished_at = None;
+                                    rec.outcome = None;
+                                }
+                            }
+                            run.loop_counts.get(&key).copied()
+                        } else {
+                            None
+                        };
+                        let verify_excerpt = Self::verify_excerpt_for_step(
+                            &spec,
+                            step,
+                            artifact,
+                        );
+                        route_notice = Some((next.clone(), outcome, is_back, loop_count, verify_excerpt));
+                        (Some(next), None)
+                    }
+                    None => (
+                        None,
+                        Some(format!(
+                            "no route for step `{step}` outcome `{}` (check `when` / `max_loops`)",
+                            outcome.as_str()
+                        )),
+                    ),
+                }
+            } else if all_steps_successful(&spec.pipeline, &Self::step_status_map(run)) {
+                (None, None)
+            } else {
+                let outcomes = Self::step_outcome_map(&spec, run);
+                (
+                    next_ready_step_conditional(
+                        &spec.pipeline,
+                        &spec.execution_graph,
+                        &Self::step_status_map(run),
+                        &outcomes,
+                    ),
+                    None,
+                )
+            };
+            (next_step, route_error, route_notice)
+        };
+
+        if let Some((next, outcome, is_back, loop_count, verify_excerpt)) = route_notice {
+            self.publish_step_routed(
                 &spec,
                 run_id,
-                &format!("step {} failed: {}", step, summary),
-                Some(step),
+                step,
+                outcome,
+                &next,
+                is_back,
+                loop_count,
+                verify_excerpt.as_deref(),
             )
             .await;
+        }
+
+        if let Some(err) = route_error {
+            self.fail_run(&spec, run_id, &err, Some(step)).await;
             return;
         }
 
@@ -792,6 +906,102 @@ impl HordeManager {
                 .await;
             }
         }
+    }
+
+    fn read_artifact_text(spec: &HordeSpec, artifact: &str) -> Option<String> {
+        let p = PathBuf::from(artifact);
+        if p.is_file() {
+            return std::fs::read_to_string(p).ok();
+        }
+        std::fs::read_to_string(spec.workdir.join(artifact)).ok()
+    }
+
+    fn verify_excerpt_for_step(
+        spec: &HordeSpec,
+        step: &str,
+        artifact: Option<&str>,
+    ) -> Option<String> {
+        let kind = spec.sub_agent(step).map(|s| s.kind.as_str()).unwrap_or("");
+        if kind != "verify" {
+            return None;
+        }
+        let body = artifact.and_then(|a| Self::read_artifact_text(spec, a))?;
+        Some(verify_output_excerpt(&body, 1_200))
+    }
+
+    async fn publish_step_routed(
+        &self,
+        spec: &HordeSpec,
+        run_id: &str,
+        from_step: &str,
+        outcome: StageStatus,
+        next_step: &str,
+        is_loop_back: bool,
+        loop_count: Option<u32>,
+        verify_excerpt: Option<&str>,
+    ) {
+        let msg = AclMessage::StepRouted {
+            run_id: run_id.to_string(),
+            horde: spec.id.clone(),
+            from_step: from_step.to_string(),
+            outcome: outcome.as_str().to_string(),
+            next_step: next_step.to_string(),
+            is_loop_back,
+            loop_count,
+            verify_excerpt: verify_excerpt.map(ToString::to_string),
+        };
+        let env = self.build_envelope(&spec.topic, msg);
+        {
+            let mut runs = self.runs.lock().await;
+            if let Some(run) = runs.runs.get_mut(run_id) {
+                run.events.push(envelope_summary(&env));
+            }
+        }
+        self.publish(&env).await;
+    }
+
+    fn step_outcome_for(
+        spec: &HordeSpec,
+        step: &str,
+        artifact: Option<&str>,
+        worker_success: bool,
+    ) -> StageStatus {
+        if !worker_success {
+            return StageStatus::Fail;
+        }
+        let kind = spec
+            .sub_agent(step)
+            .map(|s| s.kind.as_str())
+            .unwrap_or("");
+        if matches!(kind, "verify" | "apply") {
+            if let Some(path) = artifact {
+                if let Some(body) = Self::read_artifact_text(spec, path) {
+                    return parse_stage_status_from_artifact(&body).unwrap_or(StageStatus::Fail);
+                }
+            }
+            return StageStatus::Fail;
+        }
+        StageStatus::Pass
+    }
+
+    fn step_outcome_map(spec: &HordeSpec, run: &RunRecord) -> BTreeMap<String, StageStatus> {
+        let mut map = BTreeMap::new();
+        for s in &run.steps {
+            if s.status != "success" {
+                continue;
+            }
+            if let Some(ref o) = s.outcome {
+                if let Some(parsed) = StageStatus::parse(o) {
+                    map.insert(s.step.clone(), parsed);
+                    continue;
+                }
+            }
+            map.insert(
+                s.step.clone(),
+                Self::step_outcome_for(spec, &s.step, s.artifact.as_deref(), true),
+            );
+        }
+        map
     }
 
     async fn complete_run(&self, spec: &HordeSpec, run_id: &str) {
@@ -932,6 +1142,7 @@ async fn handle_envelope(manager: &HordeManager, env: AclEnvelope) {
             success,
             artifact,
             summary,
+            ..
         } => {
             manager
                 .handle_task_finished(run_id, step, *success, artifact.as_deref(), summary)
@@ -939,7 +1150,8 @@ async fn handle_envelope(manager: &HordeManager, env: AclEnvelope) {
         }
         AclMessage::AgentMessage { run_id, .. }
         | AclMessage::TaskStarted { run_id, .. }
-        | AclMessage::TaskAssigned { run_id, .. } => {
+        | AclMessage::TaskAssigned { run_id, .. }
+        | AclMessage::StepRouted { run_id, .. } => {
             manager.record_event(run_id, &env.payload).await;
         }
         AclMessage::TaskResult {
