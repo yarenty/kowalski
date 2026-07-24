@@ -1,6 +1,20 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Single source of truth for how kowalski processes find the HTTP API server.
+/// The server binds here by default (`kowalski --bind`); the CLI targets
+/// `http://<DEFAULT_API_BIND>` unless overridden; `ui/vite.config.ts` proxies to the
+/// same address (keep it in sync — TypeScript cannot import this constant).
+pub const DEFAULT_API_BIND: &str = "127.0.0.1:3456";
+
+/// Env var carrying the server base URL (e.g. `http://127.0.0.1:3456`). Read by the CLI
+/// (`--api` flag wins over it); exported by the server to every worker it spawns.
+pub const API_URL_ENV: &str = "KOWALSKI_API";
+
+/// Env var carrying the API bearer token. Read by the CLI on every `/api/*` call;
+/// exported by the server to every worker it spawns; overrides the server's token file.
+pub const API_TOKEN_ENV: &str = "KOWALSKI_API_TOKEN";
+
 /// Core configuration for the Kowalski system
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]

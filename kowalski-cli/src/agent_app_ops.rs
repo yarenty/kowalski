@@ -275,10 +275,18 @@ fn run_llm_stage(
         .output
         .as_deref()
         .ok_or_else(|| format!("stage `{step}` missing `output` in {}", agent.path.display()))?;
-    let out_path = workdir.join(rel);
-    if let Some(parent) = out_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
+    // A trailing-slash `output` declares a directory: write `<dir>/<step>.md` inside it.
+    let out_path = if rel.ends_with('/') {
+        let dir = workdir.join(rel);
+        fs::create_dir_all(&dir)?;
+        dir.join(format!("{step}.md"))
+    } else {
+        let path = workdir.join(rel);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        path
+    };
     let prompt_path = app_root.join(
         agent
             .meta
@@ -434,7 +442,8 @@ where
     let root = app_root(path);
     let work = local_agent_app_workdir(&root);
     let (main, agents) = load_spec(&root)?;
-    let api = api_url.unwrap_or("http://127.0.0.1:3456");
+    let api = api_base(api_url);
+    let api = api.as_str();
     ensure_dirs(&work)?;
     let q = question
         .map(ToString::to_string)
@@ -662,10 +671,29 @@ pub fn run(
     Ok(())
 }
 
+/// Single source of truth for the server base URL: explicit `--api` flag, else the
+/// `KOWALSKI_API` env var (exported by the server to spawned workers), else
+/// `http://<DEFAULT_API_BIND>`. Every CLI `/api/*` call site resolves through here.
+fn api_base(api_url: Option<&str>) -> String {
+    if let Some(flag) = api_url {
+        let flag = flag.trim();
+        if !flag.is_empty() {
+            return flag.to_string();
+        }
+    }
+    if let Ok(env) = std::env::var(kowalski_core::config::API_URL_ENV) {
+        let env = env.trim().to_string();
+        if !env.is_empty() {
+            return env;
+        }
+    }
+    format!("http://{}", kowalski_core::config::DEFAULT_API_BIND)
+}
+
 /// Server API token (`KOWALSKI_API_TOKEN`) — set by the operator, or inherited from the
 /// `kowalski` server when it spawns this worker. The server requires it on `/api/*`.
 fn api_token() -> Option<String> {
-    std::env::var("KOWALSKI_API_TOKEN")
+    std::env::var(kowalski_core::config::API_TOKEN_ENV)
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
@@ -802,7 +830,8 @@ pub fn federate_delegate(
     source: &str,
     question: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let api = api_url.unwrap_or("http://127.0.0.1:3456");
+    let api = api_base(api_url);
+    let api = api.as_str();
     let task_id = format!("kc-{}", Utc::now().timestamp());
     let instruction = format!(
         "kc.run:{}|{}",
@@ -827,7 +856,8 @@ pub fn federate_worker(
     role: Option<&str>,
     capability_override: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let api = api_url.unwrap_or("http://127.0.0.1:3456");
+    let api = api_base(api_url);
+    let api = api.as_str();
     let root = app_root(path);
     let topic = topic.unwrap_or("federation");
 
@@ -1565,7 +1595,8 @@ pub fn proof_check(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = app_root(path);
     let work = local_agent_app_workdir(&root);
-    let api = api_url.unwrap_or("http://127.0.0.1:3456");
+    let api = api_base(api_url);
+    let api = api.as_str();
     let agent_id = agent_id.unwrap_or("kc-worker-1");
     let capability = capability.unwrap_or("kc.run");
     let source = source.unwrap_or("https://example.com/article");

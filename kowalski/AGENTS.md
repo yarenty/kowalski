@@ -165,8 +165,10 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
   (or generates on first start — printed once, persisted **mode 0600**) the file
   **`<config-dir>/db/api_token`** (beside `db/rookery/`).
 - Server-spawned workers (`/api/federation/workers/start`, `/api/hordes/{id}/workers/start`)
-  inherit the token via the `KOWALSKI_API_TOKEN` env var; the CLI reads the same var for all
-  its `/api/*` calls.
+  inherit both `KOWALSKI_API_TOKEN` (bearer token) and `KOWALSKI_API` (this server's real base
+  URL, so workers follow a non-default `--bind`) via `export_worker_env` — one helper defines
+  the whole worker contract. Env names + default bind are owned by `kowalski_core::config`
+  (`API_TOKEN_ENV`, `API_URL_ENV`, `DEFAULT_API_BIND`) — root `AGENTS.md` Rule 8.
 - **CORS** is an origin **allowlist** (default: Vite dev UI `http://localhost:5173` /
   `http://127.0.0.1:5173`); configure with repeatable `--cors-origin` or
   `[server] cors_origins = [...]` in `config.toml`. A non-allowlisted origin gets no

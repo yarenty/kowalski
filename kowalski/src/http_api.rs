@@ -78,6 +78,9 @@ struct ApiState {
     managed_workers: Arc<Mutex<HashMap<String, Child>>>,
     managed_worker_last_exit: Arc<Mutex<HashMap<String, String>>>,
     horde_manager: crate::horde::HordeManager,
+    /// This server's own base URL (from `--bind` + TLS scheme) — passed to spawned
+    /// workers as `--api` so they call back to the right address.
+    api_url: String,
     /// Bearer token required on `/api/*` (`None` only with `--no-auth`); handed to
     /// spawned workers via `KOWALSKI_API_TOKEN`.
     api_token: Option<Arc<String>>,
@@ -262,6 +265,7 @@ pub async fn serve(
         managed_workers: Arc::new(Mutex::new(HashMap::new())),
         managed_worker_last_exit: Arc::new(Mutex::new(HashMap::new())),
         horde_manager,
+        api_url: format!("{}://{}", scheme, addr),
         api_token: api_token.clone(),
         #[cfg(feature = "postgres")]
         federation_pg_notify,
@@ -1175,6 +1179,15 @@ fn worker_profiles(state: &ApiState) -> Vec<WorkerProfile> {
     out
 }
 
+/// Single place defining what a spawned worker inherits to reach this server:
+/// its base URL (`KOWALSKI_API`) and the bearer token (`KOWALSKI_API_TOKEN`).
+fn export_worker_env(cmd: &mut tokio::process::Command, state: &ApiState) {
+    cmd.env(kowalski_core::config::API_URL_ENV, &state.api_url);
+    if let Some(token) = state.api_token.as_ref() {
+        cmd.env(crate::auth::TOKEN_ENV, token.as_str());
+    }
+}
+
 fn worker_log_stdio(
     log_dir: &str,
     profile_id: &str,
@@ -1312,9 +1325,7 @@ async fn post_federation_worker_start(
 
     let mut cmd = tokio::process::Command::new(&profile.command);
     cmd.args(profile.args.iter()).current_dir(&profile.cwd);
-    if let Some(token) = state.api_token.as_ref() {
-        cmd.env(crate::auth::TOKEN_ENV, token.as_str());
-    }
+    export_worker_env(&mut cmd, &state);
     if let Some((out, err)) = worker_log_stdio(&profile.log_dir, &profile.id) {
         cmd.stdout(out).stderr(err);
     } else {
@@ -1933,9 +1944,7 @@ async fn post_horde_worker_start(
             }
             let mut cmd = tokio::process::Command::new(&profile.command);
             cmd.args(profile.args.iter()).current_dir(&profile.cwd);
-            if let Some(token) = state.api_token.as_ref() {
-                cmd.env(crate::auth::TOKEN_ENV, token.as_str());
-            }
+            export_worker_env(&mut cmd, &state);
             if let Some((out, err)) = worker_log_stdio(&profile.log_dir, &profile.id) {
                 cmd.stdout(out).stderr(err);
             } else {

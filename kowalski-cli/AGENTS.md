@@ -157,6 +157,10 @@ There are **no** standalone `kowalski-academic-agent` / `kowalski-web-agent` cra
   **`KOWALSKI_API_TOKEN`** env var; server-spawned workers inherit it automatically. Operators
   running workers by hand export it from the server's `db/api_token` file (path logged at
   server startup).
+- **API target resolution (one function):** every call site resolves the server URL through
+  `api_base()` — `--api` flag > **`KOWALSKI_API`** env (exported by the server to spawned
+  workers) > `http://<DEFAULT_API_BIND>`. Constants owned by `kowalski_core::config`; never
+  hardcode `127.0.0.1:3456` in this crate (root `AGENTS.md` Rule 8).
 
 ### Strict boundaries: CLI and UI are executors only
 

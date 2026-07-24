@@ -14,8 +14,9 @@ mod rookery;
     long_about = "Run the Kowalski HTTP API server used by the UI."
 )]
 struct Cli {
-    /// Listen address (default 127.0.0.1:3456 — matches `ui/vite.config.ts` proxy)
-    #[clap(long, default_value = "127.0.0.1:3456")]
+    /// Listen address (default from `kowalski_core::config::DEFAULT_API_BIND`,
+    /// which `ui/vite.config.ts` proxy and the CLI default mirror)
+    #[clap(long, default_value = kowalski_core::config::DEFAULT_API_BIND)]
     bind: String,
     /// Config TOML path (default ./config.toml)
     #[clap(short, long)]

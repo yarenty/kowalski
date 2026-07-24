@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 
 /// Env var that overrides the persisted token (also how spawned workers receive it).
-pub const TOKEN_ENV: &str = "KOWALSKI_API_TOKEN";
+/// Name owned by `kowalski_core::config` so server and CLI stay in sync.
+pub const TOKEN_ENV: &str = kowalski_core::config::API_TOKEN_ENV;
 /// Token file name under the server state dir (`<config-dir>/db/`, beside `db/rookery/`).
 const TOKEN_FILE_NAME: &str = "api_token";
 /// Routes reachable without a token (liveness only).
