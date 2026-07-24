@@ -157,25 +157,47 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
 - **`TemplateAgent`** and tools live in **`kowalski-core`**; this crate re-exports **`core`** and optionally **`cli`**.
 - **HTTP server** (`kowalski` binary): **`/api/*`** for UI and automation.
 
-#### API auth & CORS (secure by default, `src/auth.rs`)
+#### API auth & CORS (optional, off by default — `src/auth.rs`)
 
-- Every `/api/*` request requires **`Authorization: Bearer <token>`** (or **`?token=`** for
-  SSE/WebSocket clients that cannot set headers). **`/api/health`** stays open.
+- **Default: auth off, permissive CORS** (single-user local tool — zero setup). Enable with
+  the **`--auth`** flag, **`[server] auth = true`** in `config.toml`, or by setting a
+  non-empty **`KOWALSKI_API_TOKEN`** env var (an explicit token implies you want auth).
+- With auth **enabled**, every `/api/*` request requires **`Authorization: Bearer <token>`**
+  (or **`?token=`** for SSE/WebSocket clients that cannot set headers). **`/api/health`**
+  always stays open.
 - The token is resolved at startup: `KOWALSKI_API_TOKEN` env wins; otherwise the server reads
   (or generates on first start — printed once, persisted **mode 0600**) the file
   **`<config-dir>/db/api_token`** (beside `db/rookery/`).
 - Server-spawned workers (`/api/federation/workers/start`, `/api/hordes/{id}/workers/start`)
-  inherit both `KOWALSKI_API_TOKEN` (bearer token) and `KOWALSKI_API` (this server's real base
-  URL, so workers follow a non-default `--bind`) via `export_worker_env` — one helper defines
-  the whole worker contract. Env names + default bind are owned by `kowalski_core::config`
-  (`API_TOKEN_ENV`, `API_URL_ENV`, `DEFAULT_API_BIND`) — root `AGENTS.md` Rule 8.
-- **CORS** is an origin **allowlist** (default: Vite dev UI `http://localhost:5173` /
-  `http://127.0.0.1:5173`); configure with repeatable `--cors-origin` or
-  `[server] cors_origins = [...]` in `config.toml`. A non-allowlisted origin gets no
-  `Access-Control-Allow-Origin` header.
-- **Opt-out**: `--no-auth` flag or `[server] no_auth = true` — restores the legacy behavior
-  (no token, permissive CORS) with a loud startup warning. Single-user local tool: one shared
-  token by design (no multi-user auth/roles).
+  inherit both `KOWALSKI_API_TOKEN` (bearer token, when auth is on) and `KOWALSKI_API` (this
+  server's real base URL, so workers follow a non-default `--bind`) via `export_worker_env` —
+  one helper defines the whole worker contract. Env names + default bind are owned by
+  `kowalski_core::config` (`API_TOKEN_ENV`, `API_URL_ENV`, `DEFAULT_API_BIND`) — root
+  `AGENTS.md` Rule 8.
+- With auth enabled, **CORS** becomes an origin **allowlist** (default: Vite dev UI
+  `http://localhost:5173` / `http://127.0.0.1:5173`); configure with repeatable
+  `--cors-origin` or `[server] cors_origins = [...]` in `config.toml`. A non-allowlisted
+  origin gets no `Access-Control-Allow-Origin` header. One shared token by design (no
+  multi-user auth/roles).
+#### Horde run persistence (`src/horde.rs`)
+
+- The orchestrator **writes through** every run/step transition to the persisted run store
+  (`kowalski_core::db::run_store::RunStore`, SQLite `runs.sqlite` under `<config-dir>/db/`,
+  `KOWALSKI_RUN_DB` override): run created (with a **manifest snapshot** of the loaded
+  `HordeSpec`), step delegating/succeeded/failed, per-step `attempt`, loop counts, run
+  done/error, and the event feed. The in-memory `RunRegistry` is a cache for the active-run
+  hot path; **the DB is the system of record**.
+- `RunRecord.status` / `RunStepRecord.status` are the typed store enums
+  (`RunStatus` / `StepStatus`). `/api` responses keep the historical wire vocabulary via
+  `api_run_status` / `api_step_status` in `src/horde.rs` (`done`→`completed`,
+  `error`→`failed`, `succeeded`→`success`) — that mapping is also the readiness vocabulary
+  fed to the horde graph. Change it in one place only (root `AGENTS.md` Rule 8).
+- Run reads go to the store: `GET /api/hordes/{id}/runs` is paged (`?limit=` ≤ 500,
+  `?offset=`, newest first) and returns runs from before a restart; run detail and
+  follow-up chat use `HordeManager::persisted_run`. A run interrupted by a restart stays
+  visible as `running` with its completed steps recorded (auto-resume is a separate,
+  planned feature; `RunStore::incomplete_runs()` is the restart-scan hook).
+
 - **Rookery** (`src/rookery.rs`, 1.3.0): horde builder API — see [`../ROADMAP.md`](../ROADMAP.md) (*Planned: Rookery*). Routes (require `Extension` store + running LLM for chat/propose):
 
 | Method | Path | Notes |

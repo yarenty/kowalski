@@ -47,7 +47,7 @@ cargo run -p kowalski -- -c config.toml
 
 This binds **`127.0.0.1:3456`** and serves JSON under `/api` (`/api/health`, `/api/doctor`, `/api/mcp/servers`, `POST /api/mcp/ping`, **`POST /api/chat`**, **`POST /api/chat/stream`** (body may include **`tools_stream`: true**), **`POST /api/chat/reset`**). With **`kowalski --features postgres`** and a Postgres memory URL, graph routes may include **`POST /api/graph/cypher`** (Apache AGE on the server). Use `-c` / `--ollama-url` as needed (see `kowalski --help`).
 
-**API token (default-on auth):** everything under `/api/*` except `/api/health` requires a bearer token generated at first server start (printed once; persisted at `<config-dir>/db/api_token`, path in the server log). In the UI, paste it into **Home tab → API token** (stored in this browser's `localStorage`) or answer the first-run prompt; for dev you can also set `VITE_API_TOKEN`. Server `--no-auth` disables auth (not recommended).
+**API token (only when the server runs with auth enabled):** auth is **off by default** — no token needed. If the server was started with `--auth` (or `[server] auth = true` / `KOWALSKI_API_TOKEN` set), everything under `/api/*` except `/api/health` requires a bearer token generated at first server start (printed once; persisted at `<config-dir>/db/api_token`, path in the server log). In the UI, paste it into **Home tab → API token** (stored in this browser's `localStorage`) or answer the first-run prompt; for dev you can also set `VITE_API_TOKEN`.
 
 ## API proxy
 
@@ -66,7 +66,7 @@ Use this after any change to **`kowalski`**, **`kowalski-core`**, or **`ui/`** t
 
 | # | Sidebar tab | What to do | Pass criteria |
 |---|-------------|------------|-----------------|
-| 1 | **Home** | Open once; paste the server's API token into **API token** → **Save** (first run only) | No blank crash; after saving the token, **Refresh all** shows agents/sessions instead of 401 errors. |
+| 1 | **Home** | Open once. Only if the server runs with `--auth`: paste its API token into **API token** → **Save** (first run only) | No blank crash; **Refresh all** shows agents/sessions (no 401 errors). |
 | 2 | **Chat** | Send one short message | **Optional** if `[llm]` / Ollama is configured: you get a normal reply or a **clear** error in the thread (not a silent hang). Skip if you have no LLM. |
 | 3 | **Federation** | Scroll to **Knowledge Sucking Swarm** (Knowledge Compiler horde) → **Start All** | Workers move toward ready; no permanent red error. If workers never become ready, start matching `agent-app worker … --role …` processes from [`examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md). |
 | 4 | **Horde** | **Knowledge Sucking Swarm**: URL + question form → **Run Horde**. **Rust Project Scaffolder** (`examples/rust-project-scaffolder`): operator form (project name, goals, crate shape) then **Run Horde** | Stream shows pipeline steps or explicit failure. Scaffolder ingest needs valid `output` paths (auto-repaired on birth/repair). |

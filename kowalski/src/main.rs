@@ -30,12 +30,13 @@ struct Cli {
     /// TLS private key (PEM). Must be set together with `--tls-cert`.
     #[clap(long, value_name = "PEM")]
     tls_key: Option<std::path::PathBuf>,
-    /// Disable API bearer-token auth and use permissive CORS (NOT recommended:
-    /// any local process or website can then call `/api/*`).
+    /// Enable API bearer-token auth + CORS origin allowlist. Off by default
+    /// (single-user local tool). Also enabled by `[server] auth = true` in the
+    /// config or a non-empty `KOWALSKI_API_TOKEN` env var.
     #[clap(long)]
-    no_auth: bool,
+    auth: bool,
     /// Allowed browser origin for CORS (repeatable). Defaults to the Vite dev UI
-    /// origins. Ignored with `--no-auth` (permissive CORS).
+    /// origins. Only used with auth enabled (otherwise CORS is permissive).
     #[clap(long = "cors-origin", value_name = "ORIGIN")]
     cors_origins: Vec<String>,
 }
@@ -57,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
     let security = http_api::SecurityOptions {
-        no_auth: cli.no_auth,
+        auth: cli.auth,
         cors_origins: cli.cors_origins,
     };
     http_api::serve(addr, cli.config, cli.ollama_url, tls, security).await?;

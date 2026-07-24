@@ -1,11 +1,20 @@
-//! Horde catalog, in-memory run state, and server-side orchestrator task.
+//! Horde catalog, durable run state, and server-side orchestrator task.
 //!
 //! A *horde* is a markdown-defined multi-agent workflow with one worker per sub-agent.
 //! The orchestrator subscribes to the federation broker, advances the run pipeline as each
 //! sub-agent's worker reports a [`crate::core::AclMessage::TaskFinished`], and emits
 //! lifecycle events (`RunStarted`, `TaskAssigned`, `AgentMessage`, `RunFinished`, `RunFailed`).
+//!
+//! Run state is written through to the persisted run store
+//! ([`kowalski_core::db::run_store::RunStore`]) on every transition — run created (with a
+//! manifest snapshot of the loaded [`HordeSpec`]), step delegating/succeeded/failed, loop
+//! counts, run done/error — so runs survive a server restart. The in-memory
+//! [`RunRegistry`] is a cache for the active-run hot path; `/api` reads go to the store.
 
 use kowalski_core::MessageBroker;
+use kowalski_core::db::run_store::{
+    NewRun, PersistedRun, RunStatus, RunStore, StepStatus, StepUpdate,
+};
 use kowalski_core::federation::{AclEnvelope, AclMessage, FederationOrchestrator, MpscBroker};
 use kowalski_core::{
     all_steps_successful, has_conditional_outbound, is_loop_back_step, loop_edge_key,
@@ -390,12 +399,44 @@ pub fn discover_hordes(roots: &[PathBuf]) -> Vec<HordeSpec> {
     out
 }
 
+/// API wire vocabulary for run statuses. The store speaks the canonical enum
+/// names (`done` / `error`); `/api/*` responses and the UI keep the historical
+/// `completed` / `failed` strings — this function is the single owner of that mapping.
+pub fn api_run_status(status: RunStatus) -> &'static str {
+    match status {
+        RunStatus::Done => "completed",
+        RunStatus::Error => "failed",
+        other => other.as_str(),
+    }
+}
+
+/// API wire vocabulary for step statuses (`success` instead of the store's
+/// `succeeded`). Also the readiness vocabulary consumed by the horde graph
+/// (`next_ready_step_conditional` matches on `pending` / `success`).
+pub fn api_step_status(status: StepStatus) -> &'static str {
+    match status {
+        StepStatus::Succeeded => "success",
+        other => other.as_str(),
+    }
+}
+
+fn serialize_run_status<S: serde::Serializer>(s: &RunStatus, ser: S) -> Result<S::Ok, S::Error> {
+    ser.serialize_str(api_run_status(*s))
+}
+
+fn serialize_step_status<S: serde::Serializer>(s: &StepStatus, ser: S) -> Result<S::Ok, S::Error> {
+    ser.serialize_str(api_step_status(*s))
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct RunStepRecord {
     pub step: String,
     pub agent_id: String,
     pub task_id: String,
-    pub status: String,
+    #[serde(serialize_with = "serialize_step_status")]
+    pub status: StepStatus,
+    /// 1-based execution attempt; loop-backs re-run the step as a new attempt.
+    pub attempt: u32,
     pub artifact: Option<String>,
     pub summary: Option<String>,
     pub started_at: String,
@@ -412,7 +453,8 @@ pub struct RunRecord {
     pub prompt: String,
     pub source: Option<String>,
     pub question: String,
-    pub status: String,
+    #[serde(serialize_with = "serialize_run_status")]
+    pub status: RunStatus,
     pub started_at: String,
     pub finished_at: Option<String>,
     pub current_step_index: usize,
@@ -420,6 +462,63 @@ pub struct RunRecord {
     pub events: Vec<serde_json::Value>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub loop_counts: BTreeMap<String, u32>,
+}
+
+impl RunRecord {
+    /// Rebuild an API-shaped record from a store row. Steps are ordered by the
+    /// pipeline captured in the run's manifest snapshot (store order is by
+    /// `started_at`, which interleaves pending rows).
+    pub fn from_persisted(p: PersistedRun) -> Self {
+        let pipeline: Vec<String> = p
+            .manifest_snapshot
+            .as_ref()
+            .and_then(|m| m.get("pipeline"))
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+        let mut steps: Vec<RunStepRecord> = p
+            .steps
+            .iter()
+            .map(|s| RunStepRecord {
+                step: s.step.clone(),
+                agent_id: s.agent_id.clone(),
+                task_id: s.task_id.clone(),
+                status: s.status,
+                attempt: s.attempt.max(1) as u32,
+                artifact: s.artifact.clone(),
+                summary: s.summary.clone(),
+                started_at: s.started_at.clone().unwrap_or_else(|| p.started_at.clone()),
+                finished_at: s.finished_at.clone(),
+                outcome: s.outcome.clone(),
+            })
+            .collect();
+        if !pipeline.is_empty() {
+            steps.sort_by_key(|s| {
+                pipeline
+                    .iter()
+                    .position(|name| name == &s.step)
+                    .unwrap_or(usize::MAX)
+            });
+        }
+        let current_step_index = p
+            .current_step
+            .as_deref()
+            .and_then(|c| steps.iter().position(|s| s.step == c))
+            .unwrap_or(0);
+        Self {
+            run_id: p.run_id,
+            horde_id: p.horde_id,
+            prompt: p.prompt,
+            source: p.source,
+            question: p.question,
+            status: p.status,
+            started_at: p.started_at,
+            finished_at: p.finished_at,
+            current_step_index,
+            steps,
+            events: p.events,
+            loop_counts: p.loop_counts,
+        }
+    }
 }
 
 /// Active runs by run_id, used both to advance the pipeline on TaskFinished and
@@ -438,6 +537,9 @@ pub struct HordeManager {
     pub broker: Arc<MpscBroker>,
     pub federation: Arc<FederationOrchestrator>,
     pub orchestrator_id: String,
+    /// System of record for runs: every state transition writes through to the
+    /// store; the in-memory registry is a cache for the active-run hot path.
+    pub store: RunStore,
 }
 
 impl HordeManager {
@@ -445,6 +547,7 @@ impl HordeManager {
         specs: Vec<HordeSpec>,
         broker: Arc<MpscBroker>,
         federation: Arc<FederationOrchestrator>,
+        store: RunStore,
     ) -> Self {
         Self {
             specs: Arc::new(specs),
@@ -452,6 +555,47 @@ impl HordeManager {
             broker,
             federation,
             orchestrator_id: federation_orchestrator_id(),
+            store,
+        }
+    }
+
+    async fn persist_step(&self, run_id: &str, step: &RunStepRecord) {
+        let update = StepUpdate {
+            step: step.step.clone(),
+            agent_id: step.agent_id.clone(),
+            task_id: step.task_id.clone(),
+            status: step.status,
+            attempt: step.attempt as i64,
+            outcome: step.outcome.clone(),
+            artifact: step.artifact.clone(),
+            summary: step.summary.clone(),
+        };
+        if let Err(e) = self.store.upsert_step(run_id, &update).await {
+            log::warn!("run store: step write failed run={run_id} step={}: {e}", step.step);
+        }
+    }
+
+    async fn persist_run_status(&self, run_id: &str, status: RunStatus, result: Option<&str>) {
+        if let Err(e) = self.store.update_run_status(run_id, status, result).await {
+            log::warn!("run store: status write failed run={run_id}: {e}");
+        }
+    }
+
+    async fn persist_current_step(&self, run_id: &str, step: Option<&str>) {
+        if let Err(e) = self.store.set_current_step(run_id, step).await {
+            log::warn!("run store: current-step write failed run={run_id}: {e}");
+        }
+    }
+
+    async fn persist_loop_counts(&self, run_id: &str, loop_counts: &BTreeMap<String, u32>) {
+        if let Err(e) = self.store.set_loop_counts(run_id, loop_counts).await {
+            log::warn!("run store: loop-counts write failed run={run_id}: {e}");
+        }
+    }
+
+    async fn persist_event(&self, run_id: &str, event: &serde_json::Value) {
+        if let Err(e) = self.store.record_event(run_id, event).await {
+            log::warn!("run store: event write failed run={run_id}: {e}");
         }
     }
 
@@ -525,7 +669,7 @@ impl HordeManager {
     fn step_status_map(run: &RunRecord) -> BTreeMap<String, &str> {
         run.steps
             .iter()
-            .map(|s| (s.step.clone(), s.status.as_str()))
+            .map(|s| (s.step.clone(), api_step_status(s.status)))
             .collect()
     }
 
@@ -568,7 +712,7 @@ impl HordeManager {
             prompt: prompt.to_string(),
             source: source.map(ToString::to_string),
             question: q.clone(),
-            status: "running".to_string(),
+            status: RunStatus::Running,
             started_at: started_at.clone(),
             finished_at: None,
             current_step_index: 0,
@@ -582,7 +726,8 @@ impl HordeManager {
                         .map(|x| x.default_agent_id.clone())
                         .unwrap_or_default(),
                     task_id: self.task_id(&spec.id, &run_id, s),
-                    status: "pending".to_string(),
+                    status: StepStatus::Pending,
+                    attempt: 1,
                     artifact: None,
                     summary: None,
                     started_at: started_at.clone(),
@@ -594,6 +739,22 @@ impl HordeManager {
             loop_counts: BTreeMap::new(),
         };
 
+        self.store
+            .create_run(&NewRun {
+                run_id: run_id.clone(),
+                horde_id: spec.id.clone(),
+                prompt: prompt.to_string(),
+                source: source.map(ToString::to_string),
+                question: q.clone(),
+                manifest_snapshot: serde_json::to_value(&spec).ok(),
+            })
+            .await
+            .map_err(|e| format!("run store: create run failed: {e}"))?;
+        for step in &record.steps {
+            self.persist_step(&run_id, step).await;
+        }
+        self.persist_run_status(&run_id, RunStatus::Running, None).await;
+
         let started_msg = AclMessage::RunStarted {
             run_id: run_id.clone(),
             horde: spec.id.clone(),
@@ -604,6 +765,7 @@ impl HordeManager {
         };
         let env = self.build_envelope(&spec.topic, started_msg);
         record.events.push(envelope_summary(&env));
+        self.persist_event(&run_id, &envelope_summary(&env)).await;
         self.publish(&env).await;
 
         {
@@ -670,11 +832,13 @@ impl HordeManager {
                 .iter()
                 .position(|s| s == step_name)
                 .unwrap_or(0);
+            let mut delegating_step = None;
             if let Some(step) = run.steps.iter_mut().find(|s| s.step == step_name) {
-                step.status = "delegating".to_string();
+                step.status = StepStatus::Delegating;
                 step.task_id = task_id.clone();
                 step.agent_id = sub.default_agent_id.clone();
                 step.started_at = now_ts();
+                delegating_step = Some(step.clone());
             }
             instruction = self.build_instruction(spec, run, step_name, previous_artifact);
             let assigned_msg = AclMessage::TaskAssigned {
@@ -689,6 +853,12 @@ impl HordeManager {
             assigned_envelope = self.build_envelope(&spec.topic, assigned_msg);
             run.events.push(envelope_summary(&assigned_envelope));
             run_for_log = run.clone();
+            self.persist_current_step(run_id, Some(step_name)).await;
+            if let Some(step) = delegating_step {
+                self.persist_step(run_id, &step).await;
+            }
+            self.persist_event(run_id, &envelope_summary(&assigned_envelope))
+                .await;
         }
         self.publish(&assigned_envelope).await;
         log::info!(
@@ -741,10 +911,12 @@ impl HordeManager {
             let mut runs = self.runs.lock().await;
             if let Some(run) = runs.runs.get_mut(run_id) {
                 if let Some(step_record) = run.steps.iter_mut().find(|s| s.step == step) {
-                    step_record.status = "failed".into();
+                    step_record.status = StepStatus::Failed;
                     step_record.summary = Some(summary.to_string());
                     step_record.finished_at = Some(now_ts());
                     step_record.outcome = Some(StageStatus::Fail.as_str().to_string());
+                    let failed_step = step_record.clone();
+                    self.persist_step(run_id, &failed_step).await;
                 }
             }
             drop(runs);
@@ -763,14 +935,14 @@ impl HordeManager {
             let Some(run) = runs.runs.get_mut(run_id) else {
                 return;
             };
-            if matches!(run.status.as_str(), "completed" | "failed") {
+            if !run.status.is_incomplete() {
                 return;
             }
             let already_finalized = run
                 .steps
                 .iter()
                 .find(|s| s.step == step)
-                .map(|s| matches!(s.status.as_str(), "success" | "failed"))
+                .map(|s| matches!(s.status, StepStatus::Succeeded | StepStatus::Failed))
                 .unwrap_or(false);
             if already_finalized {
                 return;
@@ -778,13 +950,15 @@ impl HordeManager {
 
             let outcome = Self::step_outcome_for(&spec, step, artifact, true);
             if let Some(step_record) = run.steps.iter_mut().find(|s| s.step == step) {
-                step_record.status = "success".into();
+                step_record.status = StepStatus::Succeeded;
                 step_record.artifact = artifact.map(ToString::to_string);
                 step_record.summary = Some(summary.to_string());
                 step_record.finished_at = Some(now_ts());
                 step_record.outcome = Some(outcome.as_str().to_string());
+                let finished_step = step_record.clone();
+                self.persist_step(run_id, &finished_step).await;
             }
-            run.events.push(json!({
+            let finished_event = json!({
                 "kind": "task_finished",
                 "step": step,
                 "success": true,
@@ -792,7 +966,9 @@ impl HordeManager {
                 "artifact": artifact,
                 "summary": summary,
                 "ts": now_ts(),
-            }));
+            });
+            self.persist_event(run_id, &finished_event).await;
+            run.events.push(finished_event);
 
             let mut route_notice = None;
             let (next_step, route_error) = if has_conditional_outbound(&spec.execution_graph.edges, step) {
@@ -808,14 +984,21 @@ impl HordeManager {
                         let loop_count = if is_back {
                             let key = loop_edge_key(step, &next);
                             *run.loop_counts.entry(key.clone()).or_insert(0) += 1;
+                            let mut reset_steps = Vec::new();
                             for s in retry_span(&spec.pipeline, &next, step) {
                                 if let Some(rec) = run.steps.iter_mut().find(|r| r.step == s) {
-                                    rec.status = "pending".into();
+                                    rec.status = StepStatus::Pending;
+                                    rec.attempt += 1;
                                     rec.artifact = None;
                                     rec.summary = None;
                                     rec.finished_at = None;
                                     rec.outcome = None;
+                                    reset_steps.push(rec.clone());
                                 }
+                            }
+                            self.persist_loop_counts(run_id, &run.loop_counts).await;
+                            for rec in &reset_steps {
+                                self.persist_step(run_id, rec).await;
                             }
                             run.loop_counts.get(&key).copied()
                         } else {
@@ -955,6 +1138,7 @@ impl HordeManager {
             let mut runs = self.runs.lock().await;
             if let Some(run) = runs.runs.get_mut(run_id) {
                 run.events.push(envelope_summary(&env));
+                self.persist_event(run_id, &envelope_summary(&env)).await;
             }
         }
         self.publish(&env).await;
@@ -987,7 +1171,7 @@ impl HordeManager {
     fn step_outcome_map(spec: &HordeSpec, run: &RunRecord) -> BTreeMap<String, StageStatus> {
         let mut map = BTreeMap::new();
         for s in &run.steps {
-            if s.status != "success" {
+            if s.status != StepStatus::Succeeded {
                 continue;
             }
             if let Some(ref o) = s.outcome {
@@ -1010,8 +1194,9 @@ impl HordeManager {
             let Some(run) = runs.runs.get_mut(run_id) else {
                 return;
             };
-            run.status = "completed".into();
+            run.status = RunStatus::Done;
             run.finished_at = Some(now_ts());
+            self.persist_run_status(run_id, RunStatus::Done, None).await;
             run.steps
                 .iter()
                 .filter_map(|s| s.artifact.clone().map(|a| (s.step.clone(), a)))
@@ -1049,6 +1234,7 @@ impl HordeManager {
             let mut runs = self.runs.lock().await;
             if let Some(run) = runs.runs.get_mut(run_id) {
                 run.events.push(envelope_summary(&env));
+                self.persist_event(run_id, &envelope_summary(&env)).await;
             }
         }
         self.publish(&env).await;
@@ -1058,14 +1244,18 @@ impl HordeManager {
         {
             let mut runs = self.runs.lock().await;
             if let Some(run) = runs.runs.get_mut(run_id) {
-                run.status = "failed".into();
+                run.status = RunStatus::Error;
                 run.finished_at = Some(now_ts());
-                run.events.push(json!({
+                let failed_event = json!({
                     "kind": "run_failed",
                     "reason": reason,
                     "step": step,
                     "ts": now_ts(),
-                }));
+                });
+                self.persist_run_status(run_id, RunStatus::Error, Some(reason))
+                    .await;
+                self.persist_event(run_id, &failed_event).await;
+                run.events.push(failed_event);
             }
         }
         let env = self.build_envelope(
@@ -1084,21 +1274,45 @@ impl HordeManager {
     pub async fn record_event(&self, run_id: &str, event: &AclMessage) {
         let mut runs = self.runs.lock().await;
         if let Some(run) = runs.runs.get_mut(run_id) {
-            run.events
-                .push(serde_json::to_value(event).unwrap_or(json!({})));
+            let value = serde_json::to_value(event).unwrap_or(json!({}));
+            self.persist_event(run_id, &value).await;
+            run.events.push(value);
         }
     }
 
-    pub async fn snapshot(&self, run_id: &str) -> Option<RunRecord> {
-        let runs = self.runs.lock().await;
-        runs.runs.get(run_id).cloned()
+    /// One run from the store (survives restarts), API-shaped.
+    pub async fn persisted_run(&self, run_id: &str) -> Result<Option<RunRecord>, String> {
+        let run = self
+            .store
+            .get_run(run_id)
+            .await
+            .map_err(|e| format!("run store: {e}"))?;
+        Ok(run.map(RunRecord::from_persisted))
     }
 
-    pub async fn list_runs(&self) -> Vec<RunRecord> {
-        let runs = self.runs.lock().await;
-        let mut out: Vec<RunRecord> = runs.runs.values().cloned().collect();
-        out.sort_by(|a, b| b.started_at.cmp(&a.started_at));
-        out
+    /// One page of a horde's runs from the store, newest first, steps included.
+    pub async fn persisted_runs(
+        &self,
+        horde_id: &str,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<RunRecord>, String> {
+        let page = self
+            .store
+            .list_runs(Some(horde_id), limit, offset)
+            .await
+            .map_err(|e| format!("run store: {e}"))?;
+        let mut out = Vec::with_capacity(page.len());
+        for run in page {
+            let full = self
+                .store
+                .get_run(&run.run_id)
+                .await
+                .map_err(|e| format!("run store: {e}"))?
+                .unwrap_or(run);
+            out.push(RunRecord::from_persisted(full));
+        }
+        Ok(out)
     }
 }
 
@@ -1216,4 +1430,294 @@ pub fn default_horde_roots(config_dir: Option<&Path>) -> Vec<PathBuf> {
     let mut seen = std::collections::HashSet::new();
     roots.retain(|p| seen.insert(p.clone()));
     roots
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kowalski_core::federation::{AgentRecord, AgentRegistry};
+
+    fn sub(name: &str) -> SubAgentSpec {
+        SubAgentSpec {
+            name: name.into(),
+            kind: "process".into(),
+            capability: format!("test.{name}"),
+            default_agent_id: format!("agent-{name}"),
+            display_name: name.into(),
+            description: String::new(),
+            prompt_file: None,
+            output: None,
+            inputs: Vec::new(),
+            avatar: None,
+            tool_ids: Vec::new(),
+        }
+    }
+
+    fn test_spec(dir: &Path) -> HordeSpec {
+        let pipeline = vec!["a".to_string(), "b".to_string()];
+        let execution_graph = resolve_execution_graph(&pipeline, None).unwrap();
+        HordeSpec {
+            id: "test-horde".into(),
+            display_name: "Test Horde".into(),
+            description: String::new(),
+            capability_prefix: "test".into(),
+            pipeline,
+            manifest_edges: Vec::new(),
+            execution_graph,
+            default_question: "default question".into(),
+            topic: "test.topic".into(),
+            artifacts_root: dir.join("artifacts"),
+            workdir: dir.join("work"),
+            config_on_startup: false,
+            delivery_title: String::new(),
+            delivery_note: String::new(),
+            delivery_root_rel: String::new(),
+            delivery_summary_note: String::new(),
+            prompt_tip: String::new(),
+            root_path: dir.to_path_buf(),
+            sub_agents: vec![sub("a"), sub("b")],
+            followup_artifact_dir: dir.join("follow"),
+            worker_log_dir: dir.join("logs"),
+            run_form: None,
+        }
+    }
+
+    async fn test_manager(dir: &Path, with_worker: bool) -> HordeManager {
+        let broker = Arc::new(MpscBroker::new());
+        let registry = Arc::new(AgentRegistry::new());
+        if with_worker {
+            registry
+                .register(AgentRecord {
+                    id: "w1".into(),
+                    capabilities: vec!["test.a".into(), "test.b".into()],
+                })
+                .unwrap();
+        }
+        let federation = Arc::new(FederationOrchestrator::new(registry, broker.clone()));
+        let store = RunStore::open("sqlite::memory:").await.unwrap();
+        HordeManager::new(vec![test_spec(dir)], broker, federation, store)
+    }
+
+    fn step<'a>(run: &'a PersistedRun, name: &str) -> &'a kowalski_core::db::run_store::PersistedRunStep {
+        run.steps
+            .iter()
+            .find(|s| s.step == name)
+            .unwrap_or_else(|| panic!("step {name} missing from store"))
+    }
+
+    #[tokio::test]
+    async fn start_run_writes_run_and_step_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = test_manager(dir.path(), true).await;
+
+        let record = manager
+            .start_run("test-horde", "do the thing", None, Some("q?"))
+            .await
+            .unwrap();
+        assert_eq!(record.status, RunStatus::Running);
+
+        let persisted = manager.store.get_run(&record.run_id).await.unwrap().unwrap();
+        assert_eq!(persisted.status, RunStatus::Running);
+        assert_eq!(persisted.question, "q?");
+        assert_eq!(persisted.current_step.as_deref(), Some("a"));
+        let snapshot = persisted
+            .manifest_snapshot
+            .as_ref()
+            .expect("manifest snapshot stored");
+        assert_eq!(snapshot["pipeline"], serde_json::json!(["a", "b"]));
+        assert_eq!(step(&persisted, "a").status, StepStatus::Delegating);
+        assert_eq!(step(&persisted, "b").status, StepStatus::Pending);
+    }
+
+    #[tokio::test]
+    async fn task_finished_walk_writes_every_transition() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = test_manager(dir.path(), true).await;
+        let record = manager
+            .start_run("test-horde", "walk", None, None)
+            .await
+            .unwrap();
+        let run_id = record.run_id;
+
+        manager
+            .handle_task_finished(&run_id, "a", true, Some("out/a.md"), "a done")
+            .await;
+        let mid = manager.store.get_run(&run_id).await.unwrap().unwrap();
+        assert_eq!(mid.status, RunStatus::Running, "mid-run row stays running");
+        assert_eq!(step(&mid, "a").status, StepStatus::Succeeded);
+        assert_eq!(step(&mid, "a").artifact.as_deref(), Some("out/a.md"));
+        assert_eq!(step(&mid, "b").status, StepStatus::Delegating);
+        assert_eq!(mid.current_step.as_deref(), Some("b"));
+
+        manager
+            .handle_task_finished(&run_id, "b", true, None, "b done")
+            .await;
+        let done = manager.store.get_run(&run_id).await.unwrap().unwrap();
+        assert_eq!(done.status, RunStatus::Done);
+        assert!(done.finished_at.is_some());
+        assert_eq!(step(&done, "b").status, StepStatus::Succeeded);
+        assert!(step(&done, "b").finished_at.is_some());
+        assert!(
+            done.events
+                .iter()
+                .any(|e| e.get("kind").and_then(|k| k.as_str()) == Some("task_finished")),
+            "task_finished events recorded in store"
+        );
+
+        let api = RunRecord::from_persisted(done);
+        assert_eq!(api.steps.iter().map(|s| s.step.as_str()).collect::<Vec<_>>(), ["a", "b"]);
+        assert_eq!(serde_json::to_value(&api).unwrap()["status"], "completed");
+    }
+
+    #[tokio::test]
+    async fn failed_step_marks_run_error_in_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = test_manager(dir.path(), true).await;
+        let record = manager
+            .start_run("test-horde", "fail walk", None, None)
+            .await
+            .unwrap();
+        let run_id = record.run_id;
+
+        manager
+            .handle_task_finished(&run_id, "a", false, None, "worker exploded")
+            .await;
+        let persisted = manager.store.get_run(&run_id).await.unwrap().unwrap();
+        assert_eq!(persisted.status, RunStatus::Error);
+        assert!(persisted.finished_at.is_some());
+        assert!(persisted.result.as_deref().unwrap_or("").contains("worker exploded"));
+        assert_eq!(step(&persisted, "a").status, StepStatus::Failed);
+        assert_eq!(
+            serde_json::to_value(RunRecord::from_persisted(persisted)).unwrap()["status"],
+            "failed"
+        );
+    }
+
+    #[tokio::test]
+    async fn start_run_without_worker_persists_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = test_manager(dir.path(), false).await;
+        let record = manager
+            .start_run("test-horde", "no workers", None, None)
+            .await
+            .unwrap();
+        let persisted = manager.store.get_run(&record.run_id).await.unwrap().unwrap();
+        assert_eq!(persisted.status, RunStatus::Error);
+        assert!(
+            persisted
+                .result
+                .as_deref()
+                .unwrap_or("")
+                .contains("no worker registered")
+        );
+    }
+
+    fn write_fixture_horde(root: &Path) {
+        std::fs::create_dir_all(root.join("agents")).unwrap();
+        std::fs::write(
+            root.join("horde.md"),
+            "---\nid = \"it-horde\"\ndisplay_name = \"IT Horde\"\ndescription = \"integration fixture\"\npipeline = [\"a\", \"b\"]\n---\n# IT Horde\n",
+        )
+        .unwrap();
+        for (name, cap) in [("a", "test.a"), ("b", "test.b")] {
+            std::fs::write(
+                root.join("agents").join(format!("{name}.md")),
+                format!("---\nname = \"{name}\"\nkind = \"process\"\ncapability = \"{cap}\"\n---\n"),
+            )
+            .unwrap();
+        }
+    }
+
+    async fn manager_with_store(spec: HordeSpec, store: RunStore) -> HordeManager {
+        let broker = Arc::new(MpscBroker::new());
+        let registry = Arc::new(AgentRegistry::new());
+        registry
+            .register(AgentRecord {
+                id: "w1".into(),
+                capabilities: vec!["test.a".into(), "test.b".into()],
+            })
+            .unwrap();
+        let federation = Arc::new(FederationOrchestrator::new(registry, broker.clone()));
+        HordeManager::new(vec![spec], broker, federation, store)
+    }
+
+    /// Integration: a real horde (loaded via `load_horde`) run against a tempdir
+    /// file DB; reopening the store simulates a server restart mid-run.
+    #[tokio::test]
+    async fn file_db_survives_restart_with_mid_run_visible() {
+        let dir = tempfile::tempdir().unwrap();
+        write_fixture_horde(dir.path());
+        let spec = load_horde(dir.path()).unwrap();
+        let horde_id = spec.id.clone();
+        let db_url = format!("sqlite:{}", dir.path().join("runs.sqlite").display());
+
+        let (completed_id, interrupted_id) = {
+            let store = RunStore::open(&db_url).await.unwrap();
+            let manager = manager_with_store(spec.clone(), store).await;
+            let done = manager
+                .start_run(&horde_id, "full run", None, None)
+                .await
+                .unwrap();
+            manager
+                .handle_task_finished(&done.run_id, "a", true, Some("out/a.md"), "ok")
+                .await;
+            manager
+                .handle_task_finished(&done.run_id, "b", true, None, "ok")
+                .await;
+            let mid = manager
+                .start_run(&horde_id, "interrupted run", None, None)
+                .await
+                .unwrap();
+            manager
+                .handle_task_finished(&mid.run_id, "a", true, None, "ok")
+                .await;
+            (done.run_id, mid.run_id)
+        };
+
+        let store = RunStore::open(&db_url).await.unwrap();
+        let manager = manager_with_store(spec, store).await;
+
+        let history = manager.persisted_runs(&horde_id, 50, 0).await.unwrap();
+        let ids: Vec<&str> = history.iter().map(|r| r.run_id.as_str()).collect();
+        assert!(ids.contains(&completed_id.as_str()), "pre-restart run listed");
+        assert!(ids.contains(&interrupted_id.as_str()), "interrupted run listed");
+
+        let completed = manager.persisted_run(&completed_id).await.unwrap().unwrap();
+        assert_eq!(completed.status, RunStatus::Done);
+        assert!(
+            completed
+                .steps
+                .iter()
+                .all(|s| s.status == StepStatus::Succeeded)
+        );
+
+        let interrupted = manager
+            .persisted_run(&interrupted_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            interrupted.status,
+            RunStatus::Running,
+            "interrupted run visible as running"
+        );
+        assert_eq!(interrupted.steps[0].step, "a");
+        assert_eq!(interrupted.steps[0].status, StepStatus::Succeeded);
+        assert_eq!(interrupted.steps[1].step, "b");
+        assert_eq!(interrupted.steps[1].status, StepStatus::Delegating);
+
+        let incomplete = manager.store.incomplete_runs().await.unwrap();
+        assert_eq!(incomplete.len(), 1);
+        assert_eq!(incomplete[0].run_id, interrupted_id);
+    }
+
+    #[test]
+    fn api_status_vocabulary_stays_legacy() {
+        assert_eq!(api_run_status(RunStatus::Done), "completed");
+        assert_eq!(api_run_status(RunStatus::Error), "failed");
+        assert_eq!(api_run_status(RunStatus::Running), "running");
+        assert_eq!(api_step_status(StepStatus::Succeeded), "success");
+        assert_eq!(api_step_status(StepStatus::Pending), "pending");
+        assert_eq!(api_step_status(StepStatus::Delegating), "delegating");
+    }
 }
