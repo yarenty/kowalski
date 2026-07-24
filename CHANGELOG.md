@@ -25,7 +25,7 @@ All notable changes to this project will be documented in this file, or at least
   `attempt`/`outcome`/artifact, compact JSON events log, and `incomplete_runs()` for restart
   scans. Zero config: creates `runs.sqlite` under the server state dir (`KOWALSKI_RUN_DB`
   overrides). Migrations `sqlite/003_horde_runs.sql` + `postgres/005_horde_runs.sql`.
-  Foundation only — orchestrator write-through lands next.
+
 
 ### Fixed
 
@@ -49,12 +49,12 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Added (in progress)
 
-- **Project tree ingest (CA-1):** `source_bundle` walks local `project_path` from operator form (ignore `.git`, `target`, `node_modules`, caps on file count/bytes); intake artifact includes manifest + selected file contents for warmup stages.
+- **Project tree ingest:** `source_bundle` walks local `project_path` from operator form (ignore `.git`, `target`, `node_modules`, caps on file count/bytes); intake artifact includes manifest + selected file contents for warmup stages.
 - **Operator `path` field type:** server validates that answered paths exist and are directories.
-- **Tool-enabled horde stages (CA-2):** `tool_ids` on `agents/*.md`; federation worker calls `POST /api/chat` with `use_tools`, allowlist, and `sandbox_root` from operator `project_path`. Built-in **`fs_tool`** (`list_dir`, `read_file`, `write_file`, …) registered on the HTTP agent.
-- **Verify / apply stages (CA-3):** `kind = "verify"` runs `verify_command` in `project_path` and writes a artifact with `status: pass|fail`. `kind = "apply"` dry-runs ```diff blocks; execute gated by `KOWALSKI_HORDE_APPLY=1`.
-- **Conditional edges (CA-4):** `[[edges]]` support `when = "pass"|"fail"` and loop-back edges with `max_loops`. Orchestrator and local `agent-app run` route on verify outcome, reset the retry span, and cap loops. Coder example: `test-verify` fail → `dev-1` (max 2), pass → `review`.
-- **MCP framework (M0):** Renamed **`kowalski-mcp-transport` → `kowalski-mcp-base`**; added output framing, credential forwarding, and rmcp `serve` bootstrap. Authoring rules: [`kowalski-mcp-base/MCP_REQUIREMENTS.md`](kowalski-mcp-base/MCP_REQUIREMENTS.md), manifests: [`kowalski-mcp-base/MANIFEST_SPEC.md`](kowalski-mcp-base/MANIFEST_SPEC.md). MCP server crates are optional workspace members (`default-members` = core only). Added `manifest.yaml` to `kowalski-mcp-datafusion` and `kowalski-mcp-rookery`. Removed staging `mcp-base/`.
+- **Tool-enabled horde stages:** `tool_ids` on `agents/*.md`; federation worker calls `POST /api/chat` with `use_tools`, allowlist, and `sandbox_root` from operator `project_path`. Built-in **`fs_tool`** (`list_dir`, `read_file`, `write_file`, …) registered on the HTTP agent.
+- **Verify / apply stages:** `kind = "verify"` runs `verify_command` in `project_path` and writes a artifact with `status: pass|fail`. `kind = "apply"` dry-runs ```diff blocks; execute gated by `KOWALSKI_HORDE_APPLY=1`.
+- **Conditional edges:** `[[edges]]` support `when = "pass"|"fail"` and loop-back edges with `max_loops`. Orchestrator and local `agent-app run` route on verify outcome, reset the retry span, and cap loops. Coder example: `test-verify` fail → `dev-1` (max 2), pass → `review`.
+- **MCP framework:** Renamed **`kowalski-mcp-transport` → `kowalski-mcp-base`**; added output framing, credential forwarding, and rmcp `serve` bootstrap. Authoring rules: [`kowalski-mcp-base/MCP_REQUIREMENTS.md`](kowalski-mcp-base/MCP_REQUIREMENTS.md), manifests: [`kowalski-mcp-base/MANIFEST_SPEC.md`](kowalski-mcp-base/MANIFEST_SPEC.md). MCP server crates are optional workspace members (`default-members` = core only). Added `manifest.yaml` to `kowalski-mcp-datafusion` and `kowalski-mcp-rookery`. Removed staging `mcp-base/`.
 
 ## [1.4.0] - 2026-06-15 — **DAG pipelines + planning Coder**
 

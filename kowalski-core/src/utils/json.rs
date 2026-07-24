@@ -17,7 +17,7 @@ pub fn strip_markdown_code_fences(s: &str) -> String {
 }
 
 /// True if the model output still looks like it tried to emit a tool JSON object but we could not parse any [`ToolCall`].
-/// Used to send one self-correction hint in the ReAct loop (WP4).
+/// Used to send one self-correction hint in the ReAct loop.
 pub fn looks_like_tool_json_attempt(s: &str) -> bool {
     if !extract_tool_calls(s).is_empty() {
         return false;

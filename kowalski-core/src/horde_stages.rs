@@ -173,7 +173,7 @@ pub fn verify_status(result: &VerifyRunResult) -> StageStatus {
     }
 }
 
-/// Markdown artifact with YAML frontmatter (`status`, `exit_code`, …) for downstream routing (CA-4).
+/// Markdown artifact with YAML frontmatter (`status`, `exit_code`, …) for downstream routing.
 pub fn format_verify_artifact(result: &VerifyRunResult) -> String {
     let status = verify_status(result);
     let exit_display = result

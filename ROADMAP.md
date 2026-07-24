@@ -61,7 +61,7 @@ The builder shipped, but the UI absorbed core responsibilities. Pay down before 
 - [x] Rookery UI canvas: fork/join + read-only edge list; builder prompt for branches.
 - [x] Flagship example: [`examples/coder/`](examples/coder/) (rebranded from `coding-assistant` on `feat/coder`).
 
-Existing linear hordes remain valid without migration. **MVP limits:** acyclic graphs only; ready steps run **sequentially** within a layer until **CA-4** adds conditional loops.
+Existing linear hordes remain valid without migration. **MVP limits:** acyclic graphs only; ready steps run **sequentially** within a layer until conditional routing adds loops (below).
 
 ## In progress: Coder — **execution tier** (1.5.0)
 
@@ -76,49 +76,49 @@ Existing linear hordes remain valid without migration. **MVP limits:** acyclic g
 
 ### Delivery slices
 
-| Slice | Target | Scope |
-|-------|--------|--------|
-| **CA-1** | 1.5.0 | **Project tree ingest** — *in progress*
-| **CA-2** | 1.5.0 | **Tool-enabled horde stages**
-| **CA-3** | 1.5.0 | **Apply + verify stages**
-| **CA-4** | 1.5.0 | **Conditional routing / loops**
-| **CA-5** | 1.5.x | **Dynamic sub-pipeline** (partial OK)
-| **CA-6** | 1.5.0 | **UI** (project picker, test output, retry/approve)
+| Target | Scope |
+|--------|--------|
+| 1.5.0 | **Project tree ingest** — *in progress*
+| 1.5.0 | **Tool-enabled horde stages**
+| 1.5.0 | **Apply + verify stages**
+| 1.5.0 | **Conditional routing / loops**
+| 1.5.x | **Dynamic sub-pipeline** (partial OK)
+| 1.5.0 | **UI** (project picker, test output, retry/approve)
 
-### CA-1 — Project tree ingest (core)
+### Project tree ingest (core)
 
 - [x] `source_bundle`: directory walk with max files/bytes and ignore rules
 - [x] Operator form field type `path` with server validation (existing directory)
 - [x] Intake artifact: manifest of files + selected contents for warmup
 
-### CA-2 — Tool-enabled stages (core + CLI)
+### Tool-enabled stages (core + CLI)
 
 - [x] Federation worker + `agent-app run`: honor `tool_ids` from agent frontmatter via `POST /api/chat`
 - [x] Built-in **`fs_tool`** registered on `TemplateAgent`; sandbox via `sandbox_root` / operator `project_path`
 - [x] Per-stage conversation ids + filtered tool schema in system prompt
 - [ ] MCP tool names in `tool_ids` (Docker MCP gateway) — manual config; same allowlist path
 
-### CA-3 — Apply + verify
+### Apply + verify
 
 - [x] Stage kind **`verify`** — run `verify_command` from agent frontmatter, capture stdout/stderr + YAML `status: pass|fail`
 - [x] Stage kind **`apply`** — dry-run unified diffs from upstream artifact (`patch --dry-run`); **`execute`** only when `apply_mode = "execute"` and `KOWALSKI_HORDE_APPLY=1`
 - [ ] Operator approval UI checkbox (HTTP gate) — env gate for MVP
 
-### CA-4 — Conditional edges
+### Conditional edges
 
 - [x] `HordeEdge.when` (`pass` / `fail`) + `max_loops` on loop-back edges
 - [x] Orchestrator routes on verify outcome; resets retry span (`dev-1` → `test-verify`)
 - [x] Coder example: `test-verify` fail → `dev-1` (max 2 loops), pass → `review`
 - [x] UI: show branch taken + loop count in run feed (`StepRouted` event)
 
-### CA-6 — Operator UI (Coder runs)
+### Operator UI (Coder runs)
 
 - [x] `path` field type in Horde Run form (monospace + directory hint)
 - [x] Verify output excerpt in live run feed (`agent_message` + `step_routed`)
 - [x] Branch taken + loop count via `StepRouted` federation event
 - [ ] Apply-stage approval checkbox (HTTP gate; env `KOWALSKI_HORDE_APPLY=1` for MVP)
 
-### CA-5 — Dynamic steps (defer)
+### Dynamic steps (defer)
 
 - [ ] Orchestrator interprets todo artifact and enqueues extra `dev-*` delegates
 - [ ] Or: graph **loop node** with max iterations (design TBD)
