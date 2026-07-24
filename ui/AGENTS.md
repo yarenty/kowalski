@@ -21,7 +21,7 @@ Backend or `kowalski-core` changes that touch chat, horde, federation, or delive
 
 - Prefer **`fetch`** and small composables; keep `App.vue` readable—extract new tabs into components if they grow.
 - API helpers live in **`src/api.ts`**; extend `ChatStreamEvent` only when the backend adds event types.
-- **API token (secure-by-default server):** `src/api.ts` sends `Authorization: Bearer <token>`
+- **API token (only for servers started with `--auth` — auth is off by default):** `src/api.ts` sends `Authorization: Bearer <token>`
   on every call (`?token=` on `EventSource` URLs, which cannot set headers). The token comes
   from `localStorage` (`kowalski.api_token`, set via **Home tab → API token** or the first-run
   prompt in `App.vue`) with a `VITE_API_TOKEN` env fallback for dev. New fetch paths must go

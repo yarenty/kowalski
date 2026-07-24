@@ -8,15 +8,16 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Security
 
-- **Secure-by-default HTTP API (#36):** `/api/*` now requires a locally generated bearer
-  token (`Authorization: Bearer <token>`, or `?token=` for SSE/WebSocket). The token is
-  generated on first server start, printed once, and persisted with mode 0600 at
-  `<config-dir>/db/api_token`; `/api/health` stays open. Permissive CORS replaced with an
-  origin allowlist (Vite dev UI by default; configure via `--cors-origin` /
-  `[server] cors_origins`). Explicit opt-out: `--no-auth` flag or `[server] no_auth = true`
-  (startup warning; restores permissive CORS). The UI sends the token from a Home-tab
-  settings field (localStorage, `VITE_API_TOKEN` fallback); CLI workers use the
-  `KOWALSKI_API_TOKEN` env var, set automatically for server-spawned workers.
+- **Optional HTTP API auth (#36):** the server can require a locally generated bearer
+  token on `/api/*` (`Authorization: Bearer <token>`, or `?token=` for SSE/WebSocket).
+  **Off by default** — this is a single-user local tool; enable with the `--auth` flag,
+  `[server] auth = true` in `config.toml`, or by setting `KOWALSKI_API_TOKEN`. When
+  enabled: the token is generated on first server start, printed once, and persisted with
+  mode 0600 at `<config-dir>/db/api_token`; `/api/health` stays open; permissive CORS is
+  replaced with an origin allowlist (Vite dev UI by default; configure via `--cors-origin`
+  / `[server] cors_origins`). The UI sends the token from a Home-tab settings field
+  (localStorage, `VITE_API_TOKEN` fallback); CLI workers use the `KOWALSKI_API_TOKEN` env
+  var, set automatically for server-spawned workers.
 
 ### Added
 
@@ -25,6 +26,16 @@ All notable changes to this project will be documented in this file, or at least
   `attempt`/`outcome`/artifact, compact JSON events log, and `incomplete_runs()` for restart
   scans. Zero config: creates `runs.sqlite` under the server state dir (`KOWALSKI_RUN_DB`
   overrides). Migrations `sqlite/003_horde_runs.sql` + `postgres/005_horde_runs.sql`.
+- **Orchestrator write-through (#38):** the horde orchestrator now persists every run and
+  step transition to the run store — run created (with a manifest snapshot of the loaded
+  horde spec), step delegating/succeeded/failed, loop counts and per-step attempts, run
+  done/error, plus the full event feed — so completed runs survive a server restart and a
+  run interrupted mid-flight stays visible (status `running`, completed steps recorded).
+  `RunRecord`/`RunStepRecord` statuses are now typed enums; `/api` responses keep the
+  historical wire vocabulary (`completed`/`failed`/`success`). Run listing
+  (`GET /api/hordes/{id}/runs`) reads from the store and is paged (`?limit=` up to 500,
+  `?offset=`); run detail and follow-up chat also work for runs from before a restart.
+  The in-memory registry remains as the active-run cache.
 
 
 ### Fixed

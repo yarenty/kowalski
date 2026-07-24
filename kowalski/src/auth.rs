@@ -1,6 +1,7 @@
-//! Secure-by-default access control for the HTTP API: a locally generated bearer token
+//! Optional access control for the HTTP API: a locally generated bearer token
 //! required on every `/api/*` request (health stays open) plus a strict CORS allowlist.
-//! Opt out explicitly with `--no-auth` / `[server] no_auth = true`.
+//! **Off by default** (single-user local tool); enable with `--auth`,
+//! `[server] auth = true`, or a non-empty `KOWALSKI_API_TOKEN` env var.
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
@@ -104,10 +105,10 @@ fn constant_time_eq(a: &str, b: &str) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
-/// Strict allowlist CORS when auth is on; the legacy permissive layer only with `--no-auth`.
+/// Strict allowlist CORS when auth is on; the permissive layer otherwise (the default).
 /// Origins that fail to parse as header values are skipped (a refused origin gets no ACAO header).
-pub fn cors_layer(no_auth: bool, origins: &[String]) -> CorsLayer {
-    if no_auth {
+pub fn cors_layer(permissive: bool, origins: &[String]) -> CorsLayer {
+    if permissive {
         return CorsLayer::permissive();
     }
     let list: Vec<axum::http::HeaderValue> = origins

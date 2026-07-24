@@ -1,6 +1,7 @@
 //! JSON HTTP API for the Vue operator UI.
-//! Secure by default: `/api/*` requires a locally generated bearer token and CORS is an
-//! origin allowlist (see `crate::auth`; opt out with `--no-auth`). `/api/health` stays open.
+//! Auth is optional and **off by default**; with `--auth` / `[server] auth = true` /
+//! `KOWALSKI_API_TOKEN` set, `/api/*` requires a locally generated bearer token and CORS
+//! becomes an origin allowlist (see `crate::auth`). `/api/health` always stays open.
 //! `/api/chat` and `/api/chat/stream` use one in-process `TemplateAgent` + configured LLM (`[llm]` +
 //! `[ollama].model` — Ollama or OpenAI-compatible API).
 
@@ -81,7 +82,7 @@ struct ApiState {
     /// This server's own base URL (from `--bind` + TLS scheme) — passed to spawned
     /// workers as `--api` so they call back to the right address.
     api_url: String,
-    /// Bearer token required on `/api/*` (`None` only with `--no-auth`); handed to
+    /// Bearer token required on `/api/*` (`None` when auth is off — the default); handed to
     /// spawned workers via `KOWALSKI_API_TOKEN`.
     api_token: Option<Arc<String>>,
     /// Same DB pool as the LISTEN bridge — used to fan out delegates via `NOTIFY`.
@@ -89,11 +90,11 @@ struct ApiState {
     federation_pg_notify: Option<Arc<kowalski_core::PgBroker>>,
 }
 
-/// Auth/CORS knobs from the CLI (`--no-auth`, `--cors-origin`); config `[server]`
+/// Auth/CORS knobs from the CLI (`--auth`, `--cors-origin`); config `[server]`
 /// values apply when the flags are not set.
 #[derive(Debug, Default, Clone)]
 pub struct SecurityOptions {
-    pub no_auth: bool,
+    pub auth: bool,
     pub cors_origins: Vec<String>,
 }
 
@@ -109,13 +110,12 @@ pub async fn serve(
     let config_path = crate::http_ops::mcp_config_path(config.as_deref());
     let full_config = crate::http_ops::load_kowalski_config_for_serve(&config_path)?;
 
-    let no_auth = security.no_auth || server_config_no_auth(&full_config);
-    let api_token: Option<Arc<String>> = if no_auth {
-        log::warn!(
-            "API auth DISABLED (--no-auth / [server] no_auth): any local process or website can call /api/* — not recommended"
-        );
-        None
-    } else {
+    let auth_enabled = security.auth
+        || server_config_auth(&full_config)
+        || std::env::var(crate::auth::TOKEN_ENV)
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false);
+    let api_token: Option<Arc<String>> = if auth_enabled {
         let state_root = state_config_dir(&config_path)
             .unwrap_or_else(|| PathBuf::from("."))
             .join("db");
@@ -128,10 +128,15 @@ pub async fn serve(
             );
         }
         log::info!(
-            "API auth: bearer token required on /api/* (token file: {}; opt out with --no-auth)",
+            "API auth: bearer token required on /api/* (token file: {})",
             token_path.display()
         );
         Some(Arc::new(token))
+    } else {
+        log::info!(
+            "API auth off (default, single-user local mode) — enable with --auth or [server] auth = true"
+        );
+        None
     };
     let cors_origins = if !security.cors_origins.is_empty() {
         security.cors_origins.clone()
@@ -226,8 +231,20 @@ pub async fn serve(
         horde_specs.len(),
         horde_specs.iter().map(|s| &s.id).collect::<Vec<_>>()
     );
-    let horde_manager =
-        crate::horde::HordeManager::new(horde_specs, federation_broker.clone(), federation.clone());
+    let run_store = {
+        let state_root = state_config_dir(&config_path)
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("db");
+        kowalski_core::db::run_store::RunStore::open_default(&state_root)
+            .await
+            .map_err(|e| format!("run store: {e}"))?
+    };
+    let horde_manager = crate::horde::HordeManager::new(
+        horde_specs,
+        federation_broker.clone(),
+        federation.clone(),
+        run_store,
+    );
     let global_clean_on_startup = global_horde_clean_on_startup(&full_config);
     for spec in horde_manager.specs.iter() {
         let effective_clean_on_startup = global_clean_on_startup.unwrap_or(spec.config_on_startup);
@@ -388,7 +405,7 @@ pub async fn serve(
         app
     };
     // CORS outermost so browser preflights (no Authorization header) never hit the auth check.
-    let app = app.layer(crate::auth::cors_layer(no_auth, &cors_origins));
+    let app = app.layer(crate::auth::cors_layer(!auth_enabled, &cors_origins));
 
     if let Some((cert, key)) = tls {
         let rustls_config = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key).await?;
@@ -414,11 +431,11 @@ fn federation_postgres_notify_bridge(state: &ApiState) -> bool {
     }
 }
 
-fn server_config_no_auth(cfg: &Config) -> bool {
+fn server_config_auth(cfg: &Config) -> bool {
     cfg.additional
         .get("server")
         .and_then(|v| v.as_object())
-        .and_then(|obj| obj.get("no_auth"))
+        .and_then(|obj| obj.get("auth"))
         .and_then(|v| v.as_bool())
         .unwrap_or(false)
 }
@@ -2170,8 +2187,9 @@ async fn post_horde_followup(
         .clone();
     let run = state
         .horde_manager
-        .snapshot(&body.run_id)
+        .persisted_run(&body.run_id)
         .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
@@ -2274,18 +2292,32 @@ async fn post_horde_followup(
     })))
 }
 
+#[derive(Deserialize)]
+struct RunListQuery {
+    #[serde(default)]
+    limit: Option<i64>,
+    #[serde(default)]
+    offset: Option<i64>,
+}
+
 async fn get_horde_runs(
     State(state): State<ApiState>,
     AxumPath(horde_id): AxumPath<String>,
-) -> Json<serde_json::Value> {
-    let runs: Vec<crate::horde::RunRecord> = state
+    Query(query): Query<RunListQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let limit = query.limit.unwrap_or(50).clamp(1, 500);
+    let offset = query.offset.unwrap_or(0).max(0);
+    let runs = state
         .horde_manager
-        .list_runs()
+        .persisted_runs(&horde_id, limit, offset)
         .await
-        .into_iter()
-        .filter(|r| r.horde_id == horde_id)
-        .collect();
-    Json(json!({ "horde_id": horde_id, "runs": runs }))
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(json!({
+        "horde_id": horde_id,
+        "runs": runs,
+        "limit": limit,
+        "offset": offset,
+    })))
 }
 
 async fn get_horde_run_detail(
@@ -2294,8 +2326,9 @@ async fn get_horde_run_detail(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let snap = state
         .horde_manager
-        .snapshot(&run_id)
+        .persisted_run(&run_id)
         .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, format!("run {} not found", run_id)))?;
     if snap.horde_id != horde_id {
         return Err((
