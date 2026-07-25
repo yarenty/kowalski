@@ -527,19 +527,19 @@ async function runHordeWithPayload(payload: {
   }
   const sources = extractUrls(prompt);
   runErr.value = null;
-  if (!selectedHordeWorkers.value.length) {
-    runErr.value = "No workers loaded for selected horde.";
-    return;
-  }
-  progressText.value = "ensuring workers are ready";
-  const ready = await ensureSelectedHordeReady();
-  if (!ready) {
-    const missing = selectedHordeWorkers.value
-      .filter((w) => !isWorkerReady(w))
-      .map((w) => w.step || w.agent_id)
-      .join(", ");
-    runErr.value = `Some sub-agents are still unavailable: ${missing || "unknown"}.`;
-    return;
+  // Steps with an in-process handler (verify/apply/ingest) need no worker; a horde
+  // may legitimately list zero worker profiles.
+  if (selectedHordeWorkers.value.length) {
+    progressText.value = "ensuring workers are ready";
+    const ready = await ensureSelectedHordeReady();
+    if (!ready) {
+      const missing = selectedHordeWorkers.value
+        .filter((w) => !isWorkerReady(w))
+        .map((w) => w.step || w.agent_id)
+        .join(", ");
+      runErr.value = `Some sub-agents are still unavailable: ${missing || "unknown"}.`;
+      return;
+    }
   }
   runResult.value = null;
   followupMsgs.value = [];
@@ -586,10 +586,12 @@ async function resumeInterruptedRun(run: { run_id: string; prompt: string }) {
   runErr.value = null;
   progressText.value = "ensuring workers are ready";
   try {
-    const ready = await ensureSelectedHordeReady();
-    if (!ready) {
-      runErr.value = "Sub-agent workers are not ready — start them in Federation Management, then resume again.";
-      return;
+    if (selectedHordeWorkers.value.length) {
+      const ready = await ensureSelectedHordeReady();
+      if (!ready) {
+        runErr.value = "Sub-agent workers are not ready — start them in Federation Management, then resume again.";
+        return;
+      }
     }
     resetDraftState();
     runBusy.value = true;

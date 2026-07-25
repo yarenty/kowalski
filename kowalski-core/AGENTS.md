@@ -174,6 +174,34 @@ name owned by `config::RUN_DB_ENV`, Rule 8). Schema: `migrations/sqlite/003_hord
 migrator is shared (`db::SQLITE_MIGRATOR`) — memory subsystem and run store use one schema
 lineage.
 
+### Step handlers (`src/horde_step.rs`)
+
+In-process execution for horde step kinds: `StepHandler` trait (`kind()` +
+`async execute(&StepContext) -> StepOutcome`), `StepHandlerRegistry` (kind → handler,
+built at server startup), and built-in deterministic handlers wrapping `horde_stages.rs`
+and `source_bundle.rs`: **`verify`** (shell command in the operator project, markdown
+artifact with `status:` frontmatter), **`apply`** (patch dry-run / env-gated execute of
+```diff blocks), **`ingest`** (source capture under `workdir/debug/`). `StepOutcome`
+reuses `StageStatus` (`pass`/`fail`) so conditional edges route unchanged. `StepContext`
+carries run/step ids, the step's spec slice (`StepSpec`), workdir/horde root, prior
+artifact, an event sink (published as `AgentMessage` by the orchestrator), LLM/tool
+handles (unused by deterministic kinds), and a `CancellationToken` slot.
+
+**Adding a step kind is one trait impl + one registry line:**
+
+```rust
+struct MyHandler;
+#[async_trait]
+impl StepHandler for MyHandler {
+    fn kind(&self) -> &'static str { "my-kind" }
+    async fn execute(&self, ctx: &StepContext<'_>) -> Result<StepOutcome, StepError> { /* … */ }
+}
+registry.register(Arc::new(MyHandler));
+```
+
+Kinds not in the registry are delegated to federation workers as before (mixed mode);
+the orchestrator side lives in the `kowalski` crate.
+
 ### Tool execution model (three sources, one abstraction)
 
 Agents ultimately call **capabilities** that behave like tools. Those capabilities come from **exactly one of three places** (or a deliberate combination), configured per deployment:

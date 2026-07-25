@@ -72,6 +72,9 @@ kowalski/
   steps keep their artifacts, the in-flight step is retried, conditional-loop counts stay
   intact. Interrupted runs surface in the UI ("Interrupted runs" banner) and via
   `GET /api/hordes/{id}/runs?status=resumable` / `POST /api/hordes/{id}/runs/{run_id}/resume`.
+- **In-process step execution**: deterministic step kinds (`verify`, `apply`, `ingest`)
+  run inside the server via the `StepHandler` registry — no worker process; LLM kinds use
+  federation workers in the same run (mixed mode).
 - Build with **`--features postgres`** for SQL memory + pgvector bindings and **`POST /api/graph/cypher`** (Apache AGE) on `serve`.
 
 ### **kowalski-mcp-datafusion**

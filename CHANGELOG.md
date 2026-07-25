@@ -21,6 +21,21 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Added
 
+- **In-process step execution — `StepHandler` trait + registry (#40):** deterministic
+  horde step kinds (`verify`, `apply`, `ingest`) now execute inside the server process
+  instead of spawned federation workers: same artifacts, same pass/fail routing on
+  conditional edges, no worker process (they disappear from worker profiles / Start All).
+  LLM kinds keep the worker path in the same run (mixed mode); a horde whose steps are
+  all deterministic runs with zero workers. New `kowalski_core::horde_step` module —
+  adding a step kind is one `StepHandler` impl plus one registry line (see
+  `kowalski-core/AGENTS.md`). Agent frontmatter `verify_command` / `verify_cwd` /
+  `apply_mode` are now part of the server-side horde spec and the run's manifest
+  snapshot.
+- **Fixed:** artifact chaining for steps that are also loop-back retry targets (e.g.
+  `verify --fail--> dev`): the previous-artifact lookup now ignores loop-back edges
+  (`single_forward_predecessor`), so such steps receive their real upstream artifact —
+  previously they got none and LLM stages using `@artifact@` failed mid-DAG. Fixed in
+  both the server orchestrator and the local `agent-app run` runner.
 - **Resume interrupted horde runs (#39):** your agents survive a reboot. On startup the
   server scans the run store for incomplete runs: interrupted runs are surfaced as
   resumable (`GET /api/hordes/{id}/runs?status=resumable`, `resumable` flag on run

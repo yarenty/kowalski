@@ -5,7 +5,7 @@
 use kowalski_core::{
     has_conditional_outbound, is_loop_back_step, loop_edge_key,
     next_ready_step_conditional, parse_stage_status_from_artifact, resolve_execution_graph,
-    retry_span, select_next_from_outcome, single_predecessor, StageStatus, validate_horde_tree,
+    retry_span, select_next_from_outcome, single_forward_predecessor, StageStatus, validate_horde_tree,
 };
 use kowalski_core::markdown_pipeline::{
     maybe_normalize_markdown, parse_app_manifest, parse_stage_agent, render_context_attachments,
@@ -510,8 +510,8 @@ where
         let agent = agents
             .get(&step)
             .ok_or_else(|| format!("missing step agent: {step}"))?;
-        let prev_path =
-            single_predecessor(&graph, &step).and_then(|pred| step_paths.get(&pred).cloned());
+        let prev_path = single_forward_predecessor(&main.meta.pipeline, &graph, &step)
+            .and_then(|pred| step_paths.get(&pred).cloned());
         println!(
             "[{}] {} ({})",
             steps_run,
