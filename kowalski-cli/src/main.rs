@@ -12,21 +12,7 @@ use tokio::sync::RwLock;
 
 use kowalski_core::memory::consolidation::{Consolidator, MemoryWeaver};
 
-/// Returns the model to use based on the LLM provider configuration.
-/// Priority order:
-/// 1. llm.model (if set and provider is openai)
-/// 2. ollama.model (fallback for both providers)
-fn determine_model(config: &Config) -> String {
-    // If using openai provider and llm.model is set, use that
-    if config.llm.provider == "openai" {
-        if let Some(ref model) = config.llm.model {
-            return model.clone();
-        }
-    }
-    
-    // Fallback to ollama.model for both providers
-    config.ollama.model.clone()
-}
+use kowalski_core::config::default_model as determine_model;
 
 #[derive(Parser, Debug)]
 #[clap(
@@ -259,6 +245,13 @@ enum AgentAppCommands {
         /// Override the registered capability; default derives from `--role` or from legacy whole-run mode.
         #[clap(long)]
         capability: Option<String>,
+    },
+    /// Execute one process-isolated horde step and exit: reads a JSON request on stdin,
+    /// emits JSON event lines on stdout (spawned by the server for `isolation = "process"` steps).
+    ExecStep {
+        /// Config TOML resolving the LLM provider/model for LLM step kinds (default: config.toml)
+        #[clap(long)]
+        config: Option<String>,
     },
     /// Print reproducible end-to-end federation proof-run checklist
     Proof {
@@ -700,6 +693,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Err(e) = out {
                     return Err(e.into());
                 }
+            }
+            AgentAppCommands::ExecStep { config } => {
+                kowalski_cli::agent_app_ops::exec_step(config.as_deref()).await?;
             }
             AgentAppCommands::Proof {
                 path,

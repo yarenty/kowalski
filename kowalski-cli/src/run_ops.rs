@@ -1,26 +1,11 @@
 //! `kowalski-cli run` — interactive orchestrator REPL (chat + federation hints).
 
 use kowalski_core::agent::Agent;
-use kowalski_core::config::Config;
 use kowalski_core::template::agent::TemplateAgent;
 use rustyline::DefaultEditor;
 use std::io::{self, Write};
 
-/// Returns the model to use based on the LLM provider configuration.
-/// Priority order:
-/// 1. llm.model (if set and provider is openai)
-/// 2. ollama.model (fallback for both providers)
-fn determine_model(config: &Config) -> String {
-    // If using openai provider and llm.model is set, use that
-    if config.llm.provider == "openai" {
-        if let Some(ref model) = config.llm.model {
-            return model.clone();
-        }
-    }
-    
-    // Fallback to ollama.model for both providers
-    config.ollama.model.clone()
-}
+use kowalski_core::config::default_model as determine_model;
 
 /// Multi-line aware REPL: loads config, one `TemplateAgent`, then `chat_with_tools` per input.
 pub async fn run_orchestrator(config_path: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {

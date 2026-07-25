@@ -11,13 +11,17 @@ use kowalski_core::markdown_pipeline::{
     maybe_normalize_markdown, parse_app_manifest, parse_stage_agent, render_context_attachments,
     resolve_manifest_path, AppManifestMeta, StageAgentMeta,
 };
-use kowalski_core::source_bundle::{
-    extract_project_path_from_source, ingest_assets_markdown, parse_input_assets,
-};
+use kowalski_core::source_bundle::{extract_project_path_from_source, ingest_assets_markdown};
 use kowalski_core::{
     apply_patches_dry_run, format_apply_artifact, format_verify_artifact, resolve_verify_cwd,
     run_verify_command, DEFAULT_VERIFY_MAX_OUTPUT_BYTES, DEFAULT_VERIFY_TIMEOUT_SECS,
 };
+use kowalski_core::{
+    execute_isolated_request, IsolatedStepEvent, IsolatedStepRequest, IsolatedStepResponse,
+    LlmStepHandler, StepEventSink, StepHandlerRegistry, StepSpec, LLM_STEP_KINDS,
+};
+use kowalski_core::template::agent::TemplateAgent;
+use std::sync::Arc;
 use std::time::Duration;
 use chrono::Utc;
 use reqwest::blocking as reqwest_blocking;
@@ -227,35 +231,6 @@ fn ensure_dirs(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
         fs::create_dir_all(b.join(rel))?;
     }
     Ok(())
-}
-
-fn load_agent_doc(
-    workspace_root: &Path,
-    step: &str,
-) -> Result<AgentDoc<StageAgentMeta>, Box<dyn std::error::Error>> {
-    let path = workspace_root.join("agents").join(format!("{step}.md"));
-    let sm = parse_stage_agent(&path).map_err(|e| e.to_string())?;
-    Ok(AgentDoc {
-        meta: sm,
-        path,
-    })
-}
-
-fn collect_step_paths(
-    workspace_root: &Path,
-    workdir: &Path,
-) -> Result<BTreeMap<String, PathBuf>, Box<dyn std::error::Error>> {
-    let (_, agents) = load_spec(workspace_root)?;
-    let mut map = BTreeMap::new();
-    for (name, agent) in agents {
-        if let Some(rel) = &agent.meta.output {
-            let p = workdir.join(rel);
-            if p.exists() {
-                map.insert(name, p);
-            }
-        }
-    }
-    Ok(map)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -848,6 +823,74 @@ pub fn federate_delegate(
     Ok(())
 }
 
+/// Build the same [`StepHandlerRegistry`] the server uses for one step kind:
+/// deterministic handlers always; the LLM handlers only when `kind` needs them
+/// (loads the CLI config and talks to the provider directly — an isolated
+/// executor never calls the server API).
+async fn isolated_step_registry(
+    kind: &str,
+    config_path: Option<&str>,
+) -> Result<StepHandlerRegistry, Box<dyn std::error::Error>> {
+    let mut registry = StepHandlerRegistry::with_builtin_deterministic();
+    if LLM_STEP_KINDS.contains(&kind) {
+        let path = crate::ops::mcp_config_path(config_path);
+        let cfg = crate::ops::load_kowalski_config_for_serve(&path)?;
+        kowalski_core::db::run_memory_migrations_if_configured(&cfg).await?;
+        let model = kowalski_core::config::default_model(&cfg);
+        let agent = TemplateAgent::new(cfg).await?;
+        let agent = Arc::new(tokio::sync::Mutex::new(agent));
+        LlmStepHandler::register_all(&mut registry, agent, &model);
+    }
+    Ok(registry)
+}
+
+/// Write one [`IsolatedStepEvent`] protocol line to stdout (flushed — the
+/// parent consumes the stream live).
+fn emit_isolated_event(event: &IsolatedStepEvent) -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Write;
+    let mut out = std::io::stdout().lock();
+    serde_json::to_writer(&mut out, event)?;
+    out.write_all(b"\n")?;
+    out.flush()?;
+    Ok(())
+}
+
+/// Sink turning handler feed messages into `message` protocol lines.
+struct StdoutEventSink;
+
+#[async_trait::async_trait]
+impl StepEventSink for StdoutEventSink {
+    async fn message(&self, text: &str) {
+        let _ = emit_isolated_event(&IsolatedStepEvent::Message {
+            text: text.to_string(),
+        });
+    }
+}
+
+/// One-shot process-isolated step executor (`agent-app exec-step`), spawned by
+/// the server for steps with `isolation = "process"`: reads one
+/// [`IsolatedStepRequest`] JSON document from stdin, executes it through the
+/// same step handlers the server runs in-process, streams
+/// [`IsolatedStepEvent`] lines on stdout, and exits. Diagnostics (including
+/// the pid the parent logs as isolation evidence) go to stderr.
+pub async fn exec_step(config_path: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Read;
+    let mut input = String::new();
+    std::io::stdin().read_to_string(&mut input)?;
+    let request: IsolatedStepRequest = serde_json::from_str(input.trim())
+        .map_err(|e| format!("exec-step: invalid IsolatedStepRequest on stdin: {e}"))?;
+    eprintln!(
+        "exec-step pid={} run={} step={} kind={}",
+        std::process::id(),
+        request.run_id,
+        request.step.name,
+        request.step.kind
+    );
+    let registry = isolated_step_registry(&request.step.kind, config_path).await?;
+    let response = execute_isolated_request(&request, &registry, &StdoutEventSink).await;
+    emit_isolated_event(&IsolatedStepEvent::Outcome(response))
+}
+
 pub fn federate_worker(
     path: Option<&str>,
     api_url: Option<&str>,
@@ -868,6 +911,16 @@ pub fn federate_worker(
         vec![format!("kc.{}", r)]
     } else {
         vec!["knowledge-compiler".to_string(), "kc.run".to_string()]
+    };
+
+    // Role workers execute steps through the same StepHandler registry the
+    // server uses in-process; LLM kinds talk to the configured provider
+    // directly (no `/api/chat` loopback), so the worker needs no server-side
+    // chat access at all.
+    let runtime = tokio::runtime::Runtime::new()?;
+    let registry = match role.as_deref() {
+        Some(kind) => Some(runtime.block_on(isolated_step_registry(kind, None))?),
+        None => None,
     };
 
     let reg = serde_json::json!({
@@ -938,6 +991,9 @@ pub fn federate_worker(
             .to_string();
 
         if let Some(role_kind) = role.as_deref() {
+            let registry = registry
+                .as_ref()
+                .expect("step handler registry built for role workers");
             handle_role_delegate(
                 api,
                 topic,
@@ -946,6 +1002,8 @@ pub fn federate_worker(
                 &root,
                 &task_id,
                 &instruction,
+                &runtime,
+                registry,
             );
         } else {
             handle_legacy_run_delegate(api, topic, agent_id, &root, &task_id, &instruction);
@@ -1073,28 +1131,6 @@ fn publish_task_started(
     );
 }
 
-fn publish_agent_message(
-    api: &str,
-    topic: &str,
-    sender: &str,
-    instr: &HordeInstruction,
-    text: &str,
-) {
-    publish_acl(
-        api,
-        topic,
-        sender,
-        serde_json::json!({
-            "kind": "agent_message",
-            "run_id": instr.run_id,
-            "horde": instr.horde,
-            "from": sender,
-            "step": instr.step,
-            "text": text,
-        }),
-    );
-}
-
 fn publish_task_finished(
     api: &str,
     topic: &str,
@@ -1145,6 +1181,70 @@ fn publish_task_result(
     );
 }
 
+/// `StepSpec` for a worker-executed step, hydrated from the local
+/// `agents/<step>.md` frontmatter (the delegation instruction carries run
+/// context, not the stage spec — same fields the orchestrator snapshots).
+fn step_spec_from_agent_doc(
+    workspace_root: &Path,
+    step: &str,
+    kind: &str,
+    instr_tool_ids: &[String],
+) -> StepSpec {
+    let meta =
+        parse_stage_agent(&workspace_root.join("agents").join(format!("{step}.md"))).ok();
+    let meta_tool_ids = meta
+        .as_ref()
+        .map(|m| m.tool_ids.clone())
+        .unwrap_or_default();
+    StepSpec {
+        name: step.to_string(),
+        kind: kind.to_string(),
+        output: meta.as_ref().and_then(|m| m.output.clone()),
+        verify_command: meta.as_ref().and_then(|m| m.verify_command.clone()),
+        verify_cwd: meta.as_ref().and_then(|m| m.verify_cwd.clone()),
+        apply_mode: meta.as_ref().and_then(|m| m.apply_mode.clone()),
+        tool_ids: if meta_tool_ids.is_empty() {
+            instr_tool_ids.to_vec()
+        } else {
+            meta_tool_ids
+        },
+    }
+}
+
+/// Feed sink for the SSE worker: republishes handler progress messages as
+/// federation `agent_message`s over the (bearer-authenticated) HTTP API.
+struct WorkerEventSink {
+    api: String,
+    topic: String,
+    sender: String,
+    run_id: String,
+    horde: String,
+    step: String,
+}
+
+#[async_trait::async_trait]
+impl StepEventSink for WorkerEventSink {
+    async fn message(&self, text: &str) {
+        let (api, topic, sender) = (self.api.clone(), self.topic.clone(), self.sender.clone());
+        let payload = serde_json::json!({
+            "kind": "agent_message",
+            "run_id": self.run_id,
+            "horde": self.horde,
+            "from": self.sender,
+            "step": self.step,
+            "text": text,
+        });
+        // publish_acl uses the blocking HTTP client — hop off the async runtime.
+        let _ = tokio::task::spawn_blocking(move || publish_acl(&api, &topic, &sender, payload))
+            .await;
+    }
+}
+
+/// Thin client of the shared step handlers: parse the horde instruction into
+/// an [`IsolatedStepRequest`], execute it through the same registry the server
+/// runs in-process (kind + context in, outcome out — no divergent logic), and
+/// publish the federation envelopes for the result.
+#[allow(clippy::too_many_arguments)]
 fn handle_role_delegate(
     api: &str,
     topic: &str,
@@ -1153,6 +1253,8 @@ fn handle_role_delegate(
     fallback_root: &Path,
     task_id: &str,
     instruction: &str,
+    runtime: &tokio::runtime::Runtime,
+    registry: &StepHandlerRegistry,
 ) {
     let Some(instr) = parse_horde_instruction(instruction) else {
         let summary = format!(
@@ -1194,328 +1296,76 @@ fn handle_role_delegate(
         &format!("{} agent starting", role_kind),
     );
 
-    let result = match role_kind {
-        "ingest" => execute_ingest(api, topic, agent_id, &instr, &workspace_root, &workdir),
-        "compile" => execute_compile(api, topic, agent_id, &instr, &workspace_root, &workdir),
-        "ask" => execute_ask(api, topic, agent_id, &instr, &workspace_root, &workdir),
-        "lint" => execute_llm_step(
-            api,
-            topic,
-            agent_id,
-            &instr,
-            &workspace_root,
-            &workdir,
-            "federation handoff",
-            "handoff output",
-        ),
-        "verify" => execute_verify(api, topic, agent_id, &instr, &workspace_root, &workdir),
-        "apply" => execute_apply(api, topic, agent_id, &instr, &workspace_root, &workdir),
-        "process" | "step" | "deliver" | "final" => execute_llm_step(
-            api,
-            topic,
-            agent_id,
-            &instr,
-            &workspace_root,
-            &workdir,
-            "federation worker",
-            "stage output",
-        ),
-        other => Err(format!("unsupported role kind `{}`", other).into()),
+    if let Err(e) = ensure_dirs(&workdir) {
+        let summary = format!("{} step failed: {}", role_kind, e);
+        publish_task_finished(api, topic, agent_id, &instr, false, None, &summary, None);
+        publish_task_result(api, topic, agent_id, task_id, &summary, false);
+        return;
+    }
+
+    let request = IsolatedStepRequest {
+        run_id: instr.run_id.clone(),
+        horde_id: instr.horde.clone(),
+        step: step_spec_from_agent_doc(&workspace_root, &instr.step, role_kind, &instr.tool_ids),
+        workdir: workdir.clone(),
+        horde_root: workspace_root.clone(),
+        source: instr.source.clone(),
+        question: instr
+            .question
+            .clone()
+            .unwrap_or_else(|| "What changed in the latest source?".to_string()),
+        project_path: instr.project_path.as_deref().map(PathBuf::from),
+        previous_artifact: instr.previous_artifact.as_deref().map(PathBuf::from),
     };
+    let sink = WorkerEventSink {
+        api: api.to_string(),
+        topic: topic.to_string(),
+        sender: agent_id.to_string(),
+        run_id: instr.run_id.clone(),
+        horde: instr.horde.clone(),
+        step: instr.step.clone(),
+    };
+    let response: IsolatedStepResponse =
+        runtime.block_on(execute_isolated_request(&request, registry, &sink));
 
-    match result {
-        Ok((artifact, summary)) => {
-            let outcome = if role_kind == "verify" {
-                summary
-                    .strip_prefix("verify `")
-                    .and_then(|s| s.split('`').next())
-                    .map(str::to_string)
-            } else {
-                None
-            };
-            publish_task_finished(
-                api,
-                topic,
-                agent_id,
-                &instr,
-                true,
-                Some(&artifact),
-                &summary,
-                outcome.as_deref(),
-            );
-            publish_task_result(
-                api,
-                topic,
-                agent_id,
-                task_id,
-                &format!("artifact={}; {}", artifact, summary),
-                true,
-            );
-        }
-        Err(e) => {
-            let summary = format!("{} step failed: {}", role_kind, e);
-            publish_task_finished(api, topic, agent_id, &instr, false, None, &summary, None);
-            publish_task_result(api, topic, agent_id, task_id, &summary, false);
-        }
-    }
-}
-
-fn execute_ingest(
-    api: &str,
-    topic: &str,
-    agent_id: &str,
-    instr: &HordeInstruction,
-    _workspace_root: &Path,
-    workdir: &Path,
-) -> Result<(String, String), Box<dyn std::error::Error>> {
-    let _ = api;
-    let _ = topic;
-    let _ = agent_id;
-    let source = instr
-        .source
-        .as_deref()
-        .ok_or("ingest: missing `source` in horde instruction")?;
-    ensure_dirs(workdir)?;
-    let source_list = parse_input_assets(source);
-    let project_note = kowalski_core::source_bundle::extract_project_path_from_source(source)
-        .map(|p| format!("; project tree from {}", p.display()))
-        .unwrap_or_default();
-    let path = ingest_assets_markdown(&work_debug(workdir), source)?;
-    Ok((
-        path.display().to_string(),
-        format!(
-            "Captured {} source token(s) into raw collection: {}{}",
-            source_list.len(),
-            path.display(),
-            project_note
-        ),
-    ))
-}
-
-fn execute_compile(
-    api: &str,
-    topic: &str,
-    agent_id: &str,
-    instr: &HordeInstruction,
-    workspace_root: &Path,
-    workdir: &Path,
-) -> Result<(String, String), Box<dyn std::error::Error>> {
-    ensure_dirs(workdir)?;
-    let agent = load_agent_doc(workspace_root, &instr.step)?;
-    let raw_dir = work_debug(workdir).join("raw");
-    let prev_owned = instr
-        .previous_artifact
-        .as_ref()
-        .map(PathBuf::from)
-        .or_else(|| latest_md_in(&raw_dir));
-    let prev = prev_owned.as_deref();
-    if prev.is_none() {
-        return Err("compile: no input artifact available (run ingest first)".into());
-    }
-    publish_agent_message(
-        api,
-        topic,
-        agent_id,
-        instr,
-        &format!("LLM stage `{}` (federation worker)", instr.step),
-    );
-    let step_paths = collect_step_paths(workspace_root, workdir)?;
-    let chat_opts = stage_chat_options(
-        &agent.meta,
-        instr.project_path.clone(),
-        Some(&instr.run_id),
-        &instr.step,
-        &instr.tool_ids,
-    );
-    let out = run_llm_stage(
-        api,
-        workspace_root,
-        workdir,
-        &agent,
-        &instr.step,
-        "",
-        &step_paths,
-        prev,
-        &chat_opts,
-    )?;
-    Ok((
-        out.display().to_string(),
-        format!("stage output: {}", out.display()),
-    ))
-}
-
-fn execute_ask(
-    api: &str,
-    topic: &str,
-    agent_id: &str,
-    instr: &HordeInstruction,
-    workspace_root: &Path,
-    workdir: &Path,
-) -> Result<(String, String), Box<dyn std::error::Error>> {
-    ensure_dirs(workdir)?;
-    let agent = load_agent_doc(workspace_root, &instr.step)?;
-    let q = instr
-        .question
-        .clone()
-        .unwrap_or_else(|| "What changed in the latest source?".to_string());
-    publish_agent_message(
-        api,
-        topic,
-        agent_id,
-        instr,
-        &format!("LLM stage `{}` (federation): {}", instr.step, q),
-    );
-    let step_paths = collect_step_paths(workspace_root, workdir)?;
-    let prev = instr.previous_artifact.as_deref().map(Path::new);
-    let extra = format!("User question:\n{q}\n");
-    let chat_opts = stage_chat_options(
-        &agent.meta,
-        instr.project_path.clone(),
-        Some(&instr.run_id),
-        &instr.step,
-        &instr.tool_ids,
-    );
-    let out = run_llm_stage(
-        api,
-        workspace_root,
-        workdir,
-        &agent,
-        &instr.step,
-        &extra,
-        &step_paths,
-        prev,
-        &chat_opts,
-    )?;
-    Ok((
-        out.display().to_string(),
-        format!("stage output: {}", out.display()),
-    ))
-}
-
-fn execute_verify(
-    api: &str,
-    topic: &str,
-    agent_id: &str,
-    instr: &HordeInstruction,
-    workspace_root: &Path,
-    workdir: &Path,
-) -> Result<(String, String), Box<dyn std::error::Error>> {
-    publish_agent_message(
-        api,
-        topic,
-        agent_id,
-        instr,
-        &format!("Verify stage `{}` (run command)", instr.step),
-    );
-    let agent = load_agent_doc(workspace_root, &instr.step)?;
-    let out = run_verify_stage(
-        workspace_root,
-        workdir,
-        &agent,
-        &instr.step,
-        instr.project_path.clone(),
-        instr.source.as_deref(),
-        instr.previous_artifact.as_deref().map(Path::new),
-    )?;
-    let body = fs::read_to_string(&out).unwrap_or_default();
-    let status = kowalski_core::parse_stage_status_from_artifact(&body)
-        .map(|s| s.as_str())
-        .unwrap_or("unknown");
-    let excerpt = kowalski_core::verify_output_excerpt(&body, 1_200);
-    if !excerpt.trim().is_empty() {
-        publish_agent_message(
+    if response.success {
+        publish_task_finished(
             api,
             topic,
             agent_id,
-            instr,
-            &format!("Verify output ({status}):\n\n{excerpt}"),
+            &instr,
+            true,
+            response.artifact.as_deref(),
+            &response.summary,
+            response.outcome.as_deref(),
         );
+        publish_task_result(
+            api,
+            topic,
+            agent_id,
+            task_id,
+            &format!(
+                "artifact={}; {}",
+                response.artifact.as_deref().unwrap_or(""),
+                response.summary
+            ),
+            true,
+        );
+    } else {
+        publish_task_finished(
+            api,
+            topic,
+            agent_id,
+            &instr,
+            false,
+            None,
+            &response.summary,
+            None,
+        );
+        publish_task_result(api, topic, agent_id, task_id, &response.summary, false);
     }
-    Ok((
-        out.display().to_string(),
-        format!("verify `{status}`: {}", out.display()),
-    ))
 }
 
-fn execute_apply(
-    api: &str,
-    topic: &str,
-    agent_id: &str,
-    instr: &HordeInstruction,
-    workspace_root: &Path,
-    workdir: &Path,
-) -> Result<(String, String), Box<dyn std::error::Error>> {
-    publish_agent_message(
-        api,
-        topic,
-        agent_id,
-        instr,
-        &format!("Apply stage `{}` (patch dry-run)", instr.step),
-    );
-    let agent = load_agent_doc(workspace_root, &instr.step)?;
-    let prev = instr
-        .previous_artifact
-        .as_deref()
-        .ok_or("apply: missing previous_artifact")?;
-    let out = run_apply_stage(
-        workspace_root,
-        workdir,
-        &agent,
-        &instr.step,
-        instr.project_path.clone(),
-        instr.source.as_deref(),
-        Some(Path::new(prev)),
-    )?;
-    Ok((
-        out.display().to_string(),
-        format!("apply artifact: {}", out.display()),
-    ))
-}
-
-fn execute_llm_step(
-    api: &str,
-    topic: &str,
-    agent_id: &str,
-    instr: &HordeInstruction,
-    workspace_root: &Path,
-    workdir: &Path,
-    phase_label: &str,
-    summary_prefix: &str,
-) -> Result<(String, String), Box<dyn std::error::Error>> {
-    ensure_dirs(workdir)?;
-    let agent = load_agent_doc(workspace_root, &instr.step)?;
-    publish_agent_message(
-        api,
-        topic,
-        agent_id,
-        instr,
-        &format!("LLM stage `{}` ({})", instr.step, phase_label),
-    );
-    let step_paths = collect_step_paths(workspace_root, workdir)?;
-    let prev = instr.previous_artifact.as_deref().map(Path::new);
-    let chat_opts = stage_chat_options(
-        &agent.meta,
-        instr.project_path.clone(),
-        Some(&instr.run_id),
-        &instr.step,
-        &instr.tool_ids,
-    );
-    let out = run_llm_stage(
-        api,
-        workspace_root,
-        workdir,
-        &agent,
-        &instr.step,
-        "",
-        &step_paths,
-        prev,
-        &chat_opts,
-    )?;
-    Ok((
-        out.display().to_string(),
-        format!("{summary_prefix}: {}", out.display()),
-    ))
-}
 
 fn handle_legacy_run_delegate(
     api: &str,

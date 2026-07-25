@@ -27,6 +27,7 @@ use crate::source_bundle::{
 };
 use crate::tools::manager::ToolManager;
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -41,9 +42,20 @@ pub const APPLY_EXECUTE_ENV: &str = "KOWALSKI_HORDE_APPLY";
 
 pub type StepError = KowalskiError;
 
+/// Default step isolation: the handler runs as a Tokio task inside the caller.
+pub const ISOLATION_IN_PROCESS: &str = "in_process";
+/// Opt-in step isolation: the handler runs in a spawned child process
+/// (`agent-app exec-step`), talking the [`IsolatedStepEvent`] line protocol.
+pub const ISOLATION_PROCESS: &str = "process";
+
+/// Whether `value` is a recognized `isolation` frontmatter value.
+pub fn is_valid_isolation(value: &str) -> bool {
+    value == ISOLATION_IN_PROCESS || value == ISOLATION_PROCESS
+}
+
 /// The slice of a sub-agent's spec a step handler needs (captured in the run's
 /// manifest snapshot; the orchestrator builds it per delegation).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct StepSpec {
     pub name: String,
     pub kind: String,
@@ -195,6 +207,112 @@ impl StepHandlerRegistry {
         let mut kinds: Vec<_> = self.handlers.keys().copied().collect();
         kinds.sort_unstable();
         kinds
+    }
+}
+
+/// Wire request for one process-isolated step execution: everything a child
+/// process (`agent-app exec-step`) needs to rebuild a [`StepContext`] and run
+/// the same handler the orchestrator would have run in-process. Sent as one
+/// JSON line on the child's stdin.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IsolatedStepRequest {
+    pub run_id: String,
+    pub horde_id: String,
+    pub step: StepSpec,
+    pub workdir: PathBuf,
+    pub horde_root: PathBuf,
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub question: String,
+    #[serde(default)]
+    pub project_path: Option<PathBuf>,
+    #[serde(default)]
+    pub previous_artifact: Option<PathBuf>,
+}
+
+/// Terminal result of one isolated step: the same fields the orchestrator
+/// feeds into a `TaskFinished` envelope, so both execution paths advance runs
+/// identically.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IsolatedStepResponse {
+    pub success: bool,
+    #[serde(default)]
+    pub artifact: Option<String>,
+    pub summary: String,
+    /// [`StageStatus`] vocabulary (`pass`/`fail`) when the handler completed.
+    #[serde(default)]
+    pub outcome: Option<String>,
+}
+
+/// Line protocol on the child's stdout: zero or more `message` events (feed
+/// progress, republished by the parent) followed by exactly one `outcome`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "event", rename_all = "snake_case")]
+pub enum IsolatedStepEvent {
+    Message { text: String },
+    Outcome(IsolatedStepResponse),
+}
+
+/// Execute one [`IsolatedStepRequest`] against `registry` — the shared entry
+/// point for every out-of-process executor (`exec-step` child, SSE federation
+/// worker), so their semantics can never drift from the in-process path.
+/// Errors are folded into a failure response (the caller reports, not unwinds).
+pub async fn execute_isolated_request(
+    req: &IsolatedStepRequest,
+    registry: &StepHandlerRegistry,
+    events: &dyn StepEventSink,
+) -> IsolatedStepResponse {
+    let Some(handler) = registry.get(&req.step.kind) else {
+        return IsolatedStepResponse {
+            success: false,
+            artifact: None,
+            summary: format!("no step handler for kind `{}`", req.step.kind),
+            outcome: None,
+        };
+    };
+    let project_path = req
+        .project_path
+        .clone()
+        .filter(|p| p.is_dir())
+        .or_else(|| {
+            req.source
+                .as_deref()
+                .and_then(extract_project_path_from_source)
+        });
+    let cancel = CancellationToken::new();
+    let ctx = StepContext {
+        run_id: &req.run_id,
+        horde_id: &req.horde_id,
+        step: &req.step,
+        workdir: &req.workdir,
+        horde_root: &req.horde_root,
+        source: req.source.as_deref(),
+        question: &req.question,
+        project_path,
+        previous_artifact: req.previous_artifact.as_deref(),
+        events,
+        llm: None,
+        tools: None,
+        cancel: &cancel,
+    };
+    match handler.execute(&ctx).await {
+        Ok(StepOutcome::Completed {
+            artifact,
+            status,
+            summary,
+        }) => IsolatedStepResponse {
+            success: true,
+            artifact: artifact.map(|p| p.display().to_string()),
+            summary,
+            outcome: Some(status.as_str().to_string()),
+        },
+        Err(e) => IsolatedStepResponse {
+            success: false,
+            artifact: None,
+            summary: format!("{} step failed: {}", req.step.kind, e),
+            outcome: None,
+        },
     }
 }
 
@@ -743,6 +861,65 @@ mod tests {
         assert!(
             build_llm_stage_request(root.path(), &workdir, &no_output, "dev", "", None).is_err()
         );
+    }
+
+    #[test]
+    fn isolated_event_line_protocol_roundtrip() {
+        assert!(is_valid_isolation(ISOLATION_IN_PROCESS));
+        assert!(is_valid_isolation(ISOLATION_PROCESS));
+        assert!(!is_valid_isolation("container"));
+
+        let msg = IsolatedStepEvent::Message { text: "hi".into() };
+        let line = serde_json::to_string(&msg).unwrap();
+        assert_eq!(line, r#"{"event":"message","text":"hi"}"#);
+
+        let outcome = IsolatedStepEvent::Outcome(IsolatedStepResponse {
+            success: true,
+            artifact: Some("debug/verify.md".into()),
+            summary: "ok".into(),
+            outcome: Some("pass".into()),
+        });
+        let line = serde_json::to_string(&outcome).unwrap();
+        let back: IsolatedStepEvent = serde_json::from_str(&line).unwrap();
+        match back {
+            IsolatedStepEvent::Outcome(r) => {
+                assert!(r.success);
+                assert_eq!(r.outcome.as_deref(), Some("pass"));
+            }
+            other => panic!("expected outcome, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn isolated_request_runs_shared_verify_handler() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let registry = StepHandlerRegistry::with_builtin_deterministic();
+        let mut step = spec("verify", "test-verify");
+        step.verify_command = Some("true".into());
+        let req = IsolatedStepRequest {
+            run_id: "run-iso".into(),
+            horde_id: "test-horde".into(),
+            step,
+            workdir: dir.path().to_path_buf(),
+            horde_root: dir.path().to_path_buf(),
+            source: None,
+            question: String::new(),
+            project_path: Some(project.path().to_path_buf()),
+            previous_artifact: None,
+        };
+        let resp = execute_isolated_request(&req, &registry, &NullEventSink).await;
+        assert!(resp.success, "summary: {}", resp.summary);
+        assert_eq!(resp.outcome.as_deref(), Some("pass"));
+        let artifact = PathBuf::from(resp.artifact.unwrap());
+        assert!(artifact.is_file(), "same artifact as the in-process path");
+
+        // Unknown kind folds into a failure response, never an unwind.
+        let mut bad = req.clone();
+        bad.step.kind = "nope".into();
+        let resp = execute_isolated_request(&bad, &registry, &NullEventSink).await;
+        assert!(!resp.success);
+        assert!(resp.summary.contains("no step handler"));
     }
 
     #[tokio::test]

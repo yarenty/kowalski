@@ -77,6 +77,12 @@ kowalski/
   server via the `StepHandler` registry: zero worker processes, per-step timeouts
   (`[horde] step_timeout_secs`), and run cancellation
   (`POST /api/hordes/{id}/runs/{run_id}/cancel` / the UI **Cancel run** button).
+- **Opt-in process isolation**: a step with `isolation = "process"` in its `agents/*.md`
+  frontmatter runs in a spawned one-shot child (`kowalski-cli agent-app exec-step`)
+  through the same handlers — for third-party hordes you don't fully trust. The server
+  owns the child per step (spawn → execute → reap); cancellation and timeouts kill it,
+  and the child never talks to the server API. See
+  [`kowalski/AGENTS.md`](./kowalski/AGENTS.md) for the trust model.
 - Build with **`--features postgres`** for SQL memory + pgvector bindings and **`POST /api/graph/cypher`** (Apache AGE) on `serve`.
 
 ### **kowalski-mcp-datafusion**
