@@ -248,10 +248,41 @@ pub async fn serve(
     if let Some(cap) = horde_config_resume_max_attempts(&full_config) {
         horde_manager.resume_max_attempts = cap;
     }
+    if let Some(secs) = horde_config_step_timeout_secs(&full_config) {
+        horde_manager.step_timeout = std::time::Duration::from_secs(secs);
+    }
+    // LLM step kinds run in-process by default: a dedicated horde agent (its own
+    // conversations; interactive chat keeps its own agent) shared by all LLM
+    // step handlers. Worker spawn remains available as the future isolation mode.
+    {
+        let horde_agent = TemplateAgent::new(full_config.clone()).await?;
+        let horde_agent = Arc::new(Mutex::new(horde_agent));
+        let mut registry =
+            kowalski_core::StepHandlerRegistry::with_builtin_deterministic();
+        kowalski_core::LlmStepHandler::register_all(&mut registry, horde_agent, &model);
+        horde_manager.step_handlers = Arc::new(registry);
+    }
     let horde_manager = horde_manager;
     let global_clean_on_startup = global_horde_clean_on_startup(&full_config);
+    // Hordes with interrupted runs pending resume keep their workdir: cleaning
+    // would destroy completed steps' artifacts and break `@step:` context
+    // attachments after resume.
+    let hordes_with_incomplete_runs: std::collections::HashSet<String> = horde_manager
+        .store
+        .incomplete_runs()
+        .await
+        .map(|runs| runs.into_iter().map(|r| r.horde_id).collect())
+        .unwrap_or_default();
     for spec in horde_manager.specs.iter() {
-        let effective_clean_on_startup = global_clean_on_startup.unwrap_or(spec.config_on_startup);
+        let mut effective_clean_on_startup =
+            global_clean_on_startup.unwrap_or(spec.config_on_startup);
+        if effective_clean_on_startup && hordes_with_incomplete_runs.contains(&spec.id) {
+            log::info!(
+                "horde {}: skipping workdir clean — interrupted run(s) pending resume",
+                spec.id
+            );
+            effective_clean_on_startup = false;
+        }
         if let Err(e) =
             crate::horde::prepare_workdir_on_startup_with_policy(spec, effective_clean_on_startup)
         {
@@ -354,6 +385,10 @@ pub async fn serve(
         .route(
             "/api/hordes/{horde_id}/runs/{run_id}/resume",
             post(post_horde_run_resume),
+        )
+        .route(
+            "/api/hordes/{horde_id}/runs/{run_id}/cancel",
+            post(post_horde_run_cancel),
         )
         .route("/api/federation/register", post(post_federation_register))
         .route(
@@ -485,6 +520,17 @@ fn horde_config_resume_max_attempts(cfg: &Config) -> Option<u32> {
         .and_then(|obj| obj.get("resume_max_attempts"))
         .and_then(|v| v.as_u64())
         .map(|v| v.min(u32::MAX as u64) as u32)
+}
+
+/// `[horde] step_timeout_secs` in `config.toml` — wall-clock limit per in-process
+/// step (default [`crate::horde::DEFAULT_STEP_TIMEOUT_SECS`]).
+fn horde_config_step_timeout_secs(cfg: &Config) -> Option<u64> {
+    cfg.additional
+        .get("horde")
+        .and_then(|v| v.as_object())
+        .and_then(|obj| obj.get("step_timeout_secs"))
+        .and_then(|v| v.as_u64())
+        .filter(|v| *v > 0)
 }
 
 async fn get_health(State(state): State<ApiState>) -> Json<serde_json::Value> {
@@ -2362,6 +2408,41 @@ async fn get_horde_runs(
         "runs": runs,
         "limit": limit,
         "offset": offset,
+    })))
+}
+
+#[derive(Deserialize, Default)]
+struct RunCancelBody {
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+async fn post_horde_run_cancel(
+    State(state): State<ApiState>,
+    AxumPath((horde_id, run_id)): AxumPath<(String, String)>,
+    body: Option<Json<RunCancelBody>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let snap = state
+        .horde_manager
+        .persisted_run(&run_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("run {} not found", run_id)))?;
+    if snap.horde_id != horde_id {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("run {} belongs to horde {}", run_id, snap.horde_id),
+        ));
+    }
+    let reason = body.and_then(|Json(b)| b.reason);
+    let record = state
+        .horde_manager
+        .cancel_run(&run_id, reason.as_deref())
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    Ok(Json(json!({
+        "ok": true,
+        "run": record,
     })))
 }
 
