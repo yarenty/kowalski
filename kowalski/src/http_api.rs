@@ -239,12 +239,16 @@ pub async fn serve(
             .await
             .map_err(|e| format!("run store: {e}"))?
     };
-    let horde_manager = crate::horde::HordeManager::new(
+    let mut horde_manager = crate::horde::HordeManager::new(
         horde_specs,
         federation_broker.clone(),
         federation.clone(),
         run_store,
     );
+    if let Some(cap) = horde_config_resume_max_attempts(&full_config) {
+        horde_manager.resume_max_attempts = cap;
+    }
+    let horde_manager = horde_manager;
     let global_clean_on_startup = global_horde_clean_on_startup(&full_config);
     for spec in horde_manager.specs.iter() {
         let effective_clean_on_startup = global_clean_on_startup.unwrap_or(spec.config_on_startup);
@@ -268,6 +272,12 @@ pub async fn serve(
         }
     }
     crate::horde::spawn_orchestrator_loop(horde_manager.clone());
+    // Reconcile runs interrupted by the previous shutdown ("agents survive a
+    // reboot"): auto-resume non-operator runs, surface the rest as resumable.
+    {
+        let manager = horde_manager.clone();
+        tokio::spawn(async move { manager.resume_scan().await });
+    }
 
     let rookery = crate::rookery::new_rookery_store(&full_config, &config_path).await?;
 
@@ -340,6 +350,10 @@ pub async fn serve(
         .route(
             "/api/hordes/{horde_id}/runs/{run_id}",
             get(get_horde_run_detail),
+        )
+        .route(
+            "/api/hordes/{horde_id}/runs/{run_id}/resume",
+            post(post_horde_run_resume),
         )
         .route("/api/federation/register", post(post_federation_register))
         .route(
@@ -459,6 +473,18 @@ fn global_horde_clean_on_startup(cfg: &Config) -> Option<bool> {
         .and_then(|v| v.as_object())
         .and_then(|obj| obj.get("clean_on_startup"))
         .and_then(|v| v.as_bool())
+}
+
+/// `[horde] resume_max_attempts` in `config.toml` — cap on resume attempts per
+/// run before the orchestrator errors it out (default
+/// [`crate::horde::DEFAULT_RESUME_MAX_ATTEMPTS`]).
+fn horde_config_resume_max_attempts(cfg: &Config) -> Option<u32> {
+    cfg.additional
+        .get("horde")
+        .and_then(|v| v.as_object())
+        .and_then(|obj| obj.get("resume_max_attempts"))
+        .and_then(|v| v.as_u64())
+        .map(|v| v.min(u32::MAX as u64) as u32)
 }
 
 async fn get_health(State(state): State<ApiState>) -> Json<serde_json::Value> {
@@ -1741,6 +1767,10 @@ struct HordeRunBody {
     /// not pre-render the block or enforce field rules.
     #[serde(default)]
     form_answers: Option<std::collections::BTreeMap<String, String>>,
+    /// How the run was started; defaults to `operator` (UI or manual API call).
+    /// Non-operator origins (e.g. `trigger`) are auto-resumed after a restart.
+    #[serde(default)]
+    origin: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -2161,6 +2191,10 @@ async fn post_horde_run(
             &prompt,
             source_extracted.as_deref(),
             inferred_question.as_deref(),
+            body.origin
+                .as_deref()
+                .filter(|o| !o.trim().is_empty())
+                .unwrap_or(kowalski_core::db::run_store::RUN_ORIGIN_OPERATOR),
         )
         .await
         .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
@@ -2298,6 +2332,10 @@ struct RunListQuery {
     limit: Option<i64>,
     #[serde(default)]
     offset: Option<i64>,
+    /// `?status=resumable` narrows the page to interrupted / awaiting-input
+    /// runs that no live orchestrator task owns.
+    #[serde(default)]
+    status: Option<String>,
 }
 
 async fn get_horde_runs(
@@ -2307,16 +2345,46 @@ async fn get_horde_runs(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let limit = query.limit.unwrap_or(50).clamp(1, 500);
     let offset = query.offset.unwrap_or(0).max(0);
-    let runs = state
+    let mut runs = state
         .horde_manager
         .persisted_runs(&horde_id, limit, offset)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    if query.status.as_deref() == Some("resumable") {
+        runs.retain(|r| r.resumable);
+    }
     Ok(Json(json!({
         "horde_id": horde_id,
         "runs": runs,
         "limit": limit,
         "offset": offset,
+    })))
+}
+
+async fn post_horde_run_resume(
+    State(state): State<ApiState>,
+    AxumPath((horde_id, run_id)): AxumPath<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let snap = state
+        .horde_manager
+        .persisted_run(&run_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("run {} not found", run_id)))?;
+    if snap.horde_id != horde_id {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("run {} belongs to horde {}", run_id, snap.horde_id),
+        ));
+    }
+    let record = state
+        .horde_manager
+        .resume_run(&run_id)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    Ok(Json(json!({
+        "ok": true,
+        "run": record,
     })))
 }
 

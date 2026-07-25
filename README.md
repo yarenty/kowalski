@@ -67,6 +67,11 @@ kowalski/
 
 ### **kowalski**
 - The HTTP API server binary: `kowalski` (HTTP JSON API on `127.0.0.1:3456` by default).
+- **Durable horde runs**: every run/step transition is persisted (SQLite `runs.sqlite`
+  under the server state dir), and runs interrupted by a restart **resume** — completed
+  steps keep their artifacts, the in-flight step is retried, conditional-loop counts stay
+  intact. Interrupted runs surface in the UI ("Interrupted runs" banner) and via
+  `GET /api/hordes/{id}/runs?status=resumable` / `POST /api/hordes/{id}/runs/{run_id}/resume`.
 - Build with **`--features postgres`** for SQL memory + pgvector bindings and **`POST /api/graph/cypher`** (Apache AGE) on `serve`.
 
 ### **kowalski-mcp-datafusion**

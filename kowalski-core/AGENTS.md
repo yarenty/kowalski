@@ -160,15 +160,19 @@ Tools and federation types live **in this crate** (`src/tools`, `src/tools/inter
 
 ### Horde-run store (`src/db/run_store.rs`)
 
-Persisted run/step state machine for durable horde runs (foundation — orchestrator wiring
-is a separate change). Typed `RunStatus` (`pending|running|awaiting_input|done|error|cancelled`)
+Persisted run/step state machine for durable horde runs (the orchestrator in the
+`kowalski` crate writes through it and resumes interrupted runs on startup). Typed
+`RunStatus` (`pending|running|awaiting_input|done|error|cancelled`)
 and `StepStatus` (`… delegating … succeeded|failed|skipped`), `manifest_snapshot` captured at
 run start, per-step `attempt`, compact JSON `events` log, and `incomplete_runs()` for restart
-scans. SQLite-backed and zero-config: `RunStore::open_default(state_dir)` creates
+scans. Resume support: `origin` (`RUN_ORIGIN_OPERATOR` default; non-operator origins may
+auto-resume) and `resume_count` with atomic `increment_resume_count()` (attempt-cap guard
+rail). SQLite-backed and zero-config: `RunStore::open_default(state_dir)` creates
 `runs.sqlite` under the server state dir (`KOWALSKI_RUN_DB` env URL overrides —
 name owned by `config::RUN_DB_ENV`, Rule 8). Schema: `migrations/sqlite/003_horde_runs.sql`
-(+ `migrations/postgres/005_horde_runs.sql` parity). The embedded SQLite migrator is shared
-(`db::SQLITE_MIGRATOR`) — memory subsystem and run store use one schema lineage.
++ `004_run_resume.sql` (+ `migrations/postgres/005`/`006` parity). The embedded SQLite
+migrator is shared (`db::SQLITE_MIGRATOR`) — memory subsystem and run store use one schema
+lineage.
 
 ### Tool execution model (three sources, one abstraction)
 

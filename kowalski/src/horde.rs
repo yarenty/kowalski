@@ -13,7 +13,7 @@
 
 use kowalski_core::MessageBroker;
 use kowalski_core::db::run_store::{
-    NewRun, PersistedRun, RunStatus, RunStore, StepStatus, StepUpdate,
+    NewRun, PersistedRun, RUN_ORIGIN_OPERATOR, RunStatus, RunStore, StepStatus, StepUpdate,
 };
 use kowalski_core::federation::{AclEnvelope, AclMessage, FederationOrchestrator, MpscBroker};
 use kowalski_core::{
@@ -32,6 +32,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 
 const DEFAULT_TOPIC: &str = "federation";
+/// Default cap on resume attempts per run; a run whose resumes keep failing goes
+/// to `error` with a reason instead of looping forever. Override with
+/// `[horde] resume_max_attempts` in `config.toml`.
+pub const DEFAULT_RESUME_MAX_ATTEMPTS: u32 = 2;
 /// Relative path under `workdir` for managed federation worker stdout/stderr logs (HTTP server convention).
 pub const AGENTS_LOG_REL: &str = "agents_log";
 /// Relative path under `workdir` for follow-up chat markdown from `POST .../followup` (HTTP server convention).
@@ -462,6 +466,14 @@ pub struct RunRecord {
     pub events: Vec<serde_json::Value>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub loop_counts: BTreeMap<String, u32>,
+    /// How the run was started (`operator` for UI/API operators; non-operator
+    /// origins such as `trigger` are auto-resumed on server startup).
+    pub origin: String,
+    /// Resume attempts spent so far (capped; see [`DEFAULT_RESUME_MAX_ATTEMPTS`]).
+    pub resume_count: u32,
+    /// True when the run is incomplete in the store but no live orchestrator
+    /// task owns it (interrupted by a restart, or awaiting operator input).
+    pub resumable: bool,
 }
 
 impl RunRecord {
@@ -517,6 +529,9 @@ impl RunRecord {
             steps,
             events: p.events,
             loop_counts: p.loop_counts,
+            origin: p.origin,
+            resume_count: p.resume_count.max(0) as u32,
+            resumable: false,
         }
     }
 }
@@ -540,6 +555,9 @@ pub struct HordeManager {
     /// System of record for runs: every state transition writes through to the
     /// store; the in-memory registry is a cache for the active-run hot path.
     pub store: RunStore,
+    /// Cap on resume attempts per run before it is errored out
+    /// ([`DEFAULT_RESUME_MAX_ATTEMPTS`]; `[horde] resume_max_attempts` in config).
+    pub resume_max_attempts: u32,
 }
 
 impl HordeManager {
@@ -556,6 +574,7 @@ impl HordeManager {
             federation,
             orchestrator_id: federation_orchestrator_id(),
             store,
+            resume_max_attempts: DEFAULT_RESUME_MAX_ATTEMPTS,
         }
     }
 
@@ -686,12 +705,15 @@ impl HordeManager {
     }
 
     /// Start a new horde run: register, emit RunStarted, delegate first ready step.
+    /// `origin` is [`RUN_ORIGIN_OPERATOR`] for UI/API operators; non-operator
+    /// origins (e.g. `trigger`) are auto-resumed if a restart interrupts them.
     pub async fn start_run(
         &self,
         horde_id: &str,
         prompt: &str,
         source: Option<&str>,
         question: Option<&str>,
+        origin: &str,
     ) -> Result<RunRecord, String> {
         let spec = self
             .find(horde_id)
@@ -737,6 +759,9 @@ impl HordeManager {
                 .collect(),
             events: Vec::new(),
             loop_counts: BTreeMap::new(),
+            origin: origin.to_string(),
+            resume_count: 0,
+            resumable: false,
         };
 
         self.store
@@ -747,6 +772,7 @@ impl HordeManager {
                 source: source.map(ToString::to_string),
                 question: q.clone(),
                 manifest_snapshot: serde_json::to_value(&spec).ok(),
+                origin: origin.to_string(),
             })
             .await
             .map_err(|e| format!("run store: create run failed: {e}"))?;
@@ -1287,7 +1313,11 @@ impl HordeManager {
             .get_run(run_id)
             .await
             .map_err(|e| format!("run store: {e}"))?;
-        Ok(run.map(RunRecord::from_persisted))
+        let mut record = run.map(RunRecord::from_persisted);
+        if let Some(r) = record.as_mut() {
+            r.resumable = self.is_resumable(r).await;
+        }
+        Ok(record)
     }
 
     /// One page of a horde's runs from the store, newest first, steps included.
@@ -1310,9 +1340,292 @@ impl HordeManager {
                 .await
                 .map_err(|e| format!("run store: {e}"))?
                 .unwrap_or(run);
-            out.push(RunRecord::from_persisted(full));
+            let mut record = RunRecord::from_persisted(full);
+            record.resumable = self.is_resumable(&record).await;
+            out.push(record);
         }
         Ok(out)
+    }
+
+    /// A run is resumable when the store says it never reached a terminal state
+    /// and no orchestrator task in this process owns it (interrupted by a
+    /// restart, or parked awaiting operator input).
+    async fn is_resumable(&self, record: &RunRecord) -> bool {
+        if !record.status.is_incomplete() {
+            return false;
+        }
+        let runs = self.runs.lock().await;
+        !runs.runs.contains_key(&record.run_id)
+    }
+
+    /// Execution graph for resume-point computation, rebuilt from the manifest
+    /// snapshot captured at run start (falls back to the live spec when the
+    /// snapshot is missing or unparseable).
+    fn snapshot_execution(
+        spec: &HordeSpec,
+        snapshot: Option<&serde_json::Value>,
+    ) -> (Vec<String>, ExecutionGraph) {
+        if let Some(snap) = snapshot
+            && let Some(pipeline) = snap
+                .get("pipeline")
+                .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
+            && !pipeline.is_empty()
+        {
+            let edges: Vec<HordeEdge> = snap
+                .get("manifest_edges")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default();
+            let edge_slice = (!edges.is_empty()).then_some(edges.as_slice());
+            if let Ok(graph) = resolve_execution_graph(&pipeline, edge_slice) {
+                return (pipeline, graph);
+            }
+        }
+        (spec.pipeline.clone(), spec.execution_graph.clone())
+    }
+
+    /// Resume one interrupted run: mark the step that was in flight when the
+    /// server died as a failed attempt, recompute the next ready step from the
+    /// snapshot graph + persisted step outcomes (loop counts intact), and
+    /// re-delegate it. Artifacts of completed steps are never regenerated.
+    /// A failed resume leaves the run resumable until the attempt cap is spent,
+    /// then the run goes to `error` with a reason.
+    pub async fn resume_run(&self, run_id: &str) -> Result<RunRecord, String> {
+        let persisted = self
+            .store
+            .get_run(run_id)
+            .await
+            .map_err(|e| format!("run store: {e}"))?
+            .ok_or_else(|| format!("run {run_id} not found"))?;
+        if !persisted.status.is_incomplete() {
+            return Err(format!(
+                "run {run_id} is {}, not resumable",
+                api_run_status(persisted.status)
+            ));
+        }
+        {
+            let runs = self.runs.lock().await;
+            if runs.runs.contains_key(run_id) {
+                return Err(format!("run {run_id} is already active"));
+            }
+        }
+        let spec = self
+            .find(&persisted.horde_id)
+            .ok_or_else(|| {
+                format!(
+                    "horde {} for run {run_id} is no longer in the catalog",
+                    persisted.horde_id
+                )
+            })?
+            .clone();
+
+        if persisted.resume_count >= self.resume_max_attempts as i64 {
+            let reason = format!(
+                "resume attempts exhausted ({} of {})",
+                persisted.resume_count, self.resume_max_attempts
+            );
+            self.mark_unresumable(&spec, run_id, &reason).await;
+            return Err(reason);
+        }
+        let attempt_no = self
+            .store
+            .increment_resume_count(run_id)
+            .await
+            .map_err(|e| format!("run store: {e}"))?;
+
+        let (pipeline, graph) = Self::snapshot_execution(&spec, persisted.manifest_snapshot.as_ref());
+        let mut record = RunRecord::from_persisted(persisted);
+        record.status = RunStatus::Running;
+        record.finished_at = None;
+        record.resume_count = attempt_no.max(0) as u32;
+
+        // The interrupted in-flight step counts as a failed attempt: back to
+        // pending with attempt+1, so the readiness scan below re-delegates it.
+        let mut reset_steps = Vec::new();
+        for s in record.steps.iter_mut() {
+            if matches!(s.status, StepStatus::Delegating | StepStatus::Running) {
+                s.status = StepStatus::Pending;
+                s.attempt += 1;
+                s.artifact = None;
+                s.summary = None;
+                s.finished_at = None;
+                s.outcome = None;
+                reset_steps.push(s.clone());
+            }
+        }
+        for s in &reset_steps {
+            self.persist_step(run_id, s).await;
+        }
+        self.persist_run_status(run_id, RunStatus::Running, None).await;
+
+        let next = {
+            let status = Self::step_status_map(&record);
+            let outcomes = Self::step_outcome_map(&spec, &record);
+            next_ready_step_conditional(&pipeline, &graph, &status, &outcomes)
+        };
+
+        {
+            let mut runs = self.runs.lock().await;
+            runs.runs.insert(run_id.to_string(), record.clone());
+        }
+
+        let Some(next) = next else {
+            if all_steps_successful(&pipeline, &Self::step_status_map(&record)) {
+                // The crash landed between the last step finishing and run completion.
+                self.complete_run(&spec, run_id).await;
+                return self
+                    .persisted_run(run_id)
+                    .await?
+                    .ok_or_else(|| "run vanished after resume".to_string());
+            }
+            let reason =
+                "resume found no runnable step (check `when` / `max_loops`)".to_string();
+            self.resume_attempt_failed(&spec, run_id, attempt_no, &reason).await;
+            return Err(reason);
+        };
+
+        let resumed_event = json!({
+            "kind": "run_resumed",
+            "step": next,
+            "resume_attempt": attempt_no,
+            "ts": now_ts(),
+        });
+        self.persist_event(run_id, &resumed_event).await;
+        {
+            let mut runs = self.runs.lock().await;
+            if let Some(run) = runs.runs.get_mut(run_id) {
+                run.events.push(resumed_event);
+            }
+        }
+        // Feed marker; recorded once via the orchestrator loop's own subscription.
+        let marker = self.build_envelope(
+            &spec.topic,
+            AclMessage::AgentMessage {
+                run_id: run_id.to_string(),
+                horde: spec.id.clone(),
+                from: self.orchestrator_id.clone(),
+                step: None,
+                text: format!(
+                    "run resumed (attempt {attempt_no}): continuing from step `{next}`"
+                ),
+            },
+        );
+        self.publish(&marker).await;
+
+        let prev = {
+            let runs = self.runs.lock().await;
+            runs.runs
+                .get(run_id)
+                .and_then(|run| Self::previous_artifact_for_step(&spec, run, &next))
+        };
+        if let Err(e) = self.delegate_step(&spec, run_id, &next, prev.as_deref()).await {
+            self.resume_attempt_failed(&spec, run_id, attempt_no, &e).await;
+            return Err(e);
+        }
+        let runs = self.runs.lock().await;
+        runs.runs
+            .get(run_id)
+            .cloned()
+            .ok_or_else(|| "run vanished after resume".to_string())
+    }
+
+    /// A resume attempt failed before the run got moving again. Below the cap
+    /// the run leaves the active registry and stays resumable; at the cap it
+    /// goes to `error` with the reason.
+    async fn resume_attempt_failed(
+        &self,
+        spec: &HordeSpec,
+        run_id: &str,
+        attempts: i64,
+        reason: &str,
+    ) {
+        let failed_event = json!({
+            "kind": "resume_failed",
+            "reason": reason,
+            "resume_attempt": attempts,
+            "ts": now_ts(),
+        });
+        self.persist_event(run_id, &failed_event).await;
+        if attempts >= self.resume_max_attempts as i64 {
+            self.fail_run(
+                spec,
+                run_id,
+                &format!("resume failed {attempts} time(s), giving up: {reason}"),
+                None,
+            )
+            .await;
+            return;
+        }
+        let mut runs = self.runs.lock().await;
+        runs.runs.remove(run_id);
+    }
+
+    /// Error out a run that can no longer be resumed (attempt cap exhausted).
+    /// Unlike [`Self::fail_run`] this does not require a registry entry.
+    async fn mark_unresumable(&self, spec: &HordeSpec, run_id: &str, reason: &str) {
+        self.persist_run_status(run_id, RunStatus::Error, Some(reason)).await;
+        let failed_event = json!({
+            "kind": "run_failed",
+            "reason": reason,
+            "ts": now_ts(),
+        });
+        self.persist_event(run_id, &failed_event).await;
+        let env = self.build_envelope(
+            &spec.topic,
+            AclMessage::RunFailed {
+                run_id: run_id.to_string(),
+                horde: spec.id.clone(),
+                reason: reason.to_string(),
+                step: None,
+            },
+        );
+        self.publish(&env).await;
+    }
+
+    /// Startup reconciliation of interrupted runs. Classifies every incomplete
+    /// run in the store: `awaiting_input` runs are durable by construction and
+    /// stay resumable on demand; interrupted operator runs are surfaced as
+    /// resumable; non-operator runs (e.g. future trigger-fired ones) are
+    /// auto-resumed.
+    pub async fn resume_scan(&self) {
+        let incomplete = match self.store.incomplete_runs().await {
+            Ok(runs) => runs,
+            Err(e) => {
+                log::warn!("resume scan: incomplete_runs failed: {e}");
+                return;
+            }
+        };
+        for run in incomplete {
+            let run_id = run.run_id.clone();
+            {
+                let runs = self.runs.lock().await;
+                if runs.runs.contains_key(&run_id) {
+                    continue;
+                }
+            }
+            if run.status == RunStatus::AwaitingInput {
+                log::info!("resume scan: run {run_id} awaiting input — resumable on demand");
+                continue;
+            }
+            let interrupted_event = json!({ "kind": "run_interrupted", "ts": now_ts() });
+            self.persist_event(&run_id, &interrupted_event).await;
+            if run.origin == RUN_ORIGIN_OPERATOR {
+                log::info!(
+                    "resume scan: run {run_id} (horde {}) interrupted — resume via POST /api/hordes/{}/runs/{run_id}/resume",
+                    run.horde_id,
+                    run.horde_id
+                );
+                continue;
+            }
+            match self.resume_run(&run_id).await {
+                Ok(_) => log::info!(
+                    "resume scan: auto-resumed run {run_id} (origin {})",
+                    run.origin
+                ),
+                Err(e) => {
+                    log::warn!("resume scan: auto-resume of run {run_id} failed: {e}")
+                }
+            }
+        }
     }
 }
 
@@ -1511,7 +1824,7 @@ mod tests {
         let manager = test_manager(dir.path(), true).await;
 
         let record = manager
-            .start_run("test-horde", "do the thing", None, Some("q?"))
+            .start_run("test-horde", "do the thing", None, Some("q?"), RUN_ORIGIN_OPERATOR)
             .await
             .unwrap();
         assert_eq!(record.status, RunStatus::Running);
@@ -1534,7 +1847,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let manager = test_manager(dir.path(), true).await;
         let record = manager
-            .start_run("test-horde", "walk", None, None)
+            .start_run("test-horde", "walk", None, None, RUN_ORIGIN_OPERATOR)
             .await
             .unwrap();
         let run_id = record.run_id;
@@ -1574,7 +1887,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let manager = test_manager(dir.path(), true).await;
         let record = manager
-            .start_run("test-horde", "fail walk", None, None)
+            .start_run("test-horde", "fail walk", None, None, RUN_ORIGIN_OPERATOR)
             .await
             .unwrap();
         let run_id = record.run_id;
@@ -1598,7 +1911,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let manager = test_manager(dir.path(), false).await;
         let record = manager
-            .start_run("test-horde", "no workers", None, None)
+            .start_run("test-horde", "no workers", None, None, RUN_ORIGIN_OPERATOR)
             .await
             .unwrap();
         let persisted = manager.store.get_run(&record.run_id).await.unwrap().unwrap();
@@ -1655,7 +1968,7 @@ mod tests {
             let store = RunStore::open(&db_url).await.unwrap();
             let manager = manager_with_store(spec.clone(), store).await;
             let done = manager
-                .start_run(&horde_id, "full run", None, None)
+                .start_run(&horde_id, "full run", None, None, RUN_ORIGIN_OPERATOR)
                 .await
                 .unwrap();
             manager
@@ -1665,7 +1978,7 @@ mod tests {
                 .handle_task_finished(&done.run_id, "b", true, None, "ok")
                 .await;
             let mid = manager
-                .start_run(&horde_id, "interrupted run", None, None)
+                .start_run(&horde_id, "interrupted run", None, None, RUN_ORIGIN_OPERATOR)
                 .await
                 .unwrap();
             manager
@@ -1709,6 +2022,378 @@ mod tests {
         let incomplete = manager.store.incomplete_runs().await.unwrap();
         assert_eq!(incomplete.len(), 1);
         assert_eq!(incomplete[0].run_id, interrupted_id);
+    }
+
+    /// DAG fixture with a conditional loop: gen -> verify, verify --pass--> apply,
+    /// verify --fail--> gen (max_loops 2). `verify` reads pass/fail from its artifact.
+    fn loop_spec(dir: &Path) -> HordeSpec {
+        let mut spec = test_spec(dir);
+        spec.pipeline = vec!["gen".into(), "verify".into(), "apply".into()];
+        spec.sub_agents = vec![sub("gen"), sub("verify"), sub("apply")];
+        spec.sub_agents[1].kind = "verify".into();
+        let edges = vec![
+            HordeEdge { from: "gen".into(), to: "verify".into(), when: None, max_loops: None },
+            HordeEdge {
+                from: "verify".into(),
+                to: "apply".into(),
+                when: Some("pass".into()),
+                max_loops: None,
+            },
+            HordeEdge {
+                from: "verify".into(),
+                to: "gen".into(),
+                when: Some("fail".into()),
+                max_loops: Some(2),
+            },
+        ];
+        spec.manifest_edges = edges.clone();
+        spec.execution_graph = resolve_execution_graph(&spec.pipeline, Some(&edges)).unwrap();
+        spec
+    }
+
+    fn write_verify_artifact(dir: &Path, name: &str, status: &str) -> String {
+        let p = dir.join(name);
+        std::fs::write(&p, format!("---\nstatus: {status}\n---\nverify report\n")).unwrap();
+        p.display().to_string()
+    }
+
+    async fn loop_manager(dir: &Path, store: RunStore) -> HordeManager {
+        let broker = Arc::new(MpscBroker::new());
+        let registry = Arc::new(AgentRegistry::new());
+        registry
+            .register(AgentRecord {
+                id: "w1".into(),
+                capabilities: vec!["test.gen".into(), "test.verify".into(), "test.apply".into()],
+            })
+            .unwrap();
+        let federation = Arc::new(FederationOrchestrator::new(registry, broker.clone()));
+        HordeManager::new(vec![loop_spec(dir)], broker, federation, store)
+    }
+
+    /// Insert an interrupted run directly at the store level (simulates a run
+    /// whose server died while `current` was in flight).
+    async fn seed_interrupted_run(
+        store: &RunStore,
+        run_id: &str,
+        origin: &str,
+        status: RunStatus,
+        done_steps: &[(&str, &str)],
+        in_flight: Option<&str>,
+        pending: &[&str],
+    ) {
+        store
+            .create_run(&NewRun {
+                run_id: run_id.into(),
+                horde_id: "test-horde".into(),
+                prompt: "seeded".into(),
+                source: None,
+                question: "q?".into(),
+                manifest_snapshot: Some(serde_json::json!({
+                    "pipeline": ["a", "b"],
+                    "manifest_edges": [],
+                })),
+                origin: origin.into(),
+            })
+            .await
+            .unwrap();
+        for (name, artifact) in done_steps {
+            store
+                .upsert_step(
+                    run_id,
+                    &StepUpdate {
+                        step: (*name).into(),
+                        agent_id: format!("agent-{name}"),
+                        task_id: format!("test-horde::{run_id}::{name}"),
+                        status: StepStatus::Succeeded,
+                        attempt: 1,
+                        outcome: Some("pass".into()),
+                        artifact: Some((*artifact).into()),
+                        summary: Some("ok".into()),
+                    },
+                )
+                .await
+                .unwrap();
+        }
+        if let Some(name) = in_flight {
+            store
+                .upsert_step(
+                    run_id,
+                    &StepUpdate {
+                        step: name.into(),
+                        agent_id: format!("agent-{name}"),
+                        task_id: format!("test-horde::{run_id}::{name}"),
+                        status: StepStatus::Delegating,
+                        attempt: 1,
+                        outcome: None,
+                        artifact: None,
+                        summary: None,
+                    },
+                )
+                .await
+                .unwrap();
+        }
+        for name in pending {
+            store
+                .upsert_step(
+                    run_id,
+                    &StepUpdate {
+                        step: (*name).into(),
+                        agent_id: format!("agent-{name}"),
+                        task_id: format!("test-horde::{run_id}::{name}"),
+                        status: StepStatus::Pending,
+                        attempt: 1,
+                        outcome: None,
+                        artifact: None,
+                        summary: None,
+                    },
+                )
+                .await
+                .unwrap();
+        }
+        store.update_run_status(run_id, status, None).await.unwrap();
+    }
+
+    /// Kill/restart around a linear horde: the resumed run re-delegates the
+    /// interrupted step as a new attempt and never regenerates the completed
+    /// step's artifact.
+    #[tokio::test]
+    async fn resume_redelegates_interrupted_step_and_keeps_artifacts() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_url = format!("sqlite:{}", dir.path().join("runs.sqlite").display());
+
+        let run_id = {
+            let store = RunStore::open(&db_url).await.unwrap();
+            let manager = test_manager(dir.path(), true).await;
+            let manager =
+                HordeManager::new(vec![test_spec(dir.path())], manager.broker.clone(), manager.federation.clone(), store);
+            let record = manager
+                .start_run("test-horde", "kill me", None, None, RUN_ORIGIN_OPERATOR)
+                .await
+                .unwrap();
+            manager
+                .handle_task_finished(&record.run_id, "a", true, Some("out/a.md"), "ok")
+                .await;
+            record.run_id
+            // manager dropped here = server killed while step b was in flight
+        };
+
+        let store = RunStore::open(&db_url).await.unwrap();
+        let manager = manager_with_store(test_spec(dir.path()), store).await;
+        let resumed = manager.resume_run(&run_id).await.unwrap();
+        assert_eq!(resumed.status, RunStatus::Running);
+        assert_eq!(resumed.resume_count, 1);
+
+        let persisted = manager.store.get_run(&run_id).await.unwrap().unwrap();
+        assert_eq!(persisted.resume_count, 1);
+        let a = step(&persisted, "a");
+        assert_eq!(a.status, StepStatus::Succeeded, "completed step untouched");
+        assert_eq!(a.artifact.as_deref(), Some("out/a.md"), "artifact not regenerated");
+        assert_eq!(a.attempt, 1);
+        let b = step(&persisted, "b");
+        assert_eq!(b.status, StepStatus::Delegating, "interrupted step re-delegated");
+        assert_eq!(b.attempt, 2, "interrupted attempt counted as failed");
+        assert!(
+            persisted
+                .events
+                .iter()
+                .any(|e| e.get("kind").and_then(|k| k.as_str()) == Some("run_resumed")),
+            "resume marker recorded in the run feed"
+        );
+
+        // Resumed run completes through the normal advance path.
+        manager
+            .handle_task_finished(&run_id, "b", true, None, "ok")
+            .await;
+        let done = manager.store.get_run(&run_id).await.unwrap().unwrap();
+        assert_eq!(done.status, RunStatus::Done);
+    }
+
+    /// Startup scan: non-operator runs auto-resume; operator runs are only
+    /// surfaced as resumable (with the interruption recorded in the feed).
+    #[tokio::test]
+    async fn resume_scan_auto_resumes_trigger_and_surfaces_operator_runs() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = RunStore::open("sqlite::memory:").await.unwrap();
+        seed_interrupted_run(&store, "run-op", RUN_ORIGIN_OPERATOR, RunStatus::Running, &[("a", "out/a.md")], Some("b"), &[])
+            .await;
+        seed_interrupted_run(&store, "run-trig", "trigger", RunStatus::Running, &[("a", "out/a.md")], Some("b"), &[])
+            .await;
+        let manager = manager_with_store(test_spec(dir.path()), store).await;
+
+        manager.resume_scan().await;
+
+        let trig = manager.store.get_run("run-trig").await.unwrap().unwrap();
+        assert_eq!(trig.resume_count, 1, "trigger run auto-resumed");
+        assert_eq!(step(&trig, "b").status, StepStatus::Delegating);
+        assert_eq!(step(&trig, "b").attempt, 2);
+
+        let op = manager.store.get_run("run-op").await.unwrap().unwrap();
+        assert_eq!(op.resume_count, 0, "operator run left for on-demand resume");
+        assert_eq!(step(&op, "b").status, StepStatus::Delegating, "store state untouched");
+        assert!(
+            op.events
+                .iter()
+                .any(|e| e.get("kind").and_then(|k| k.as_str()) == Some("run_interrupted")),
+            "interruption recorded"
+        );
+
+        let listed = manager.persisted_runs("test-horde", 50, 0).await.unwrap();
+        let op_listed = listed.iter().find(|r| r.run_id == "run-op").unwrap();
+        assert!(op_listed.resumable, "operator run listed as resumable");
+        let trig_listed = listed.iter().find(|r| r.run_id == "run-trig").unwrap();
+        assert!(!trig_listed.resumable, "auto-resumed run is active again");
+    }
+
+    /// Guard rail: a run whose resumes keep failing (no worker registered) goes
+    /// to `error` with a clear reason once the attempt cap is spent.
+    #[tokio::test]
+    async fn resume_cap_exhausted_errors_run_with_reason() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = RunStore::open("sqlite::memory:").await.unwrap();
+        seed_interrupted_run(&store, "run-1", RUN_ORIGIN_OPERATOR, RunStatus::Running, &[], Some("a"), &["b"])
+            .await;
+        // No worker registered → every delegation fails.
+        let broker = Arc::new(MpscBroker::new());
+        let registry = Arc::new(AgentRegistry::new());
+        let federation = Arc::new(FederationOrchestrator::new(registry, broker.clone()));
+        let manager = HordeManager::new(vec![test_spec(dir.path())], broker, federation, store);
+        assert_eq!(manager.resume_max_attempts, DEFAULT_RESUME_MAX_ATTEMPTS);
+
+        let first = manager.resume_run("run-1").await;
+        assert!(first.is_err(), "no worker → resume fails");
+        let after_first = manager.store.get_run("run-1").await.unwrap().unwrap();
+        assert_eq!(after_first.resume_count, 1);
+        assert_eq!(after_first.status, RunStatus::Running, "still resumable below the cap");
+
+        let second = manager.resume_run("run-1").await;
+        assert!(second.is_err());
+        let after_second = manager.store.get_run("run-1").await.unwrap().unwrap();
+        assert_eq!(after_second.resume_count, 2);
+        assert_eq!(after_second.status, RunStatus::Error, "cap spent → error");
+        assert!(
+            after_second.result.as_deref().unwrap_or("").contains("resume failed"),
+            "reason recorded: {:?}",
+            after_second.result
+        );
+
+        let third = manager.resume_run("run-1").await;
+        assert!(third.unwrap_err().contains("not resumable"));
+    }
+
+    /// Awaiting-input runs are durable by construction: the scan leaves them
+    /// alone, the API lists them as resumable, and resume delegates on demand.
+    #[tokio::test]
+    async fn awaiting_input_run_is_resumable_on_demand() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = RunStore::open("sqlite::memory:").await.unwrap();
+        seed_interrupted_run(&store, "run-wait", RUN_ORIGIN_OPERATOR, RunStatus::AwaitingInput, &[], None, &["a", "b"])
+            .await;
+        let manager = manager_with_store(test_spec(dir.path()), store).await;
+
+        manager.resume_scan().await;
+        let after_scan = manager.store.get_run("run-wait").await.unwrap().unwrap();
+        assert_eq!(after_scan.status, RunStatus::AwaitingInput, "scan leaves awaiting runs parked");
+        assert_eq!(after_scan.resume_count, 0);
+
+        let listed = manager.persisted_runs("test-horde", 50, 0).await.unwrap();
+        assert!(listed.iter().find(|r| r.run_id == "run-wait").unwrap().resumable);
+
+        let resumed = manager.resume_run("run-wait").await.unwrap();
+        assert_eq!(resumed.status, RunStatus::Running);
+        let persisted = manager.store.get_run("run-wait").await.unwrap().unwrap();
+        assert_eq!(persisted.status, RunStatus::Running);
+        assert_eq!(step(&persisted, "a").status, StepStatus::Delegating);
+    }
+
+    /// Crash between the last step finishing and run completion: resume closes
+    /// the run out instead of re-delegating anything.
+    #[tokio::test]
+    async fn resume_completes_run_when_all_steps_succeeded() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = RunStore::open("sqlite::memory:").await.unwrap();
+        seed_interrupted_run(
+            &store,
+            "run-done",
+            RUN_ORIGIN_OPERATOR,
+            RunStatus::Running,
+            &[("a", "out/a.md"), ("b", "out/b.md")],
+            None,
+            &[],
+        )
+        .await;
+        let manager = manager_with_store(test_spec(dir.path()), store).await;
+
+        let resumed = manager.resume_run("run-done").await.unwrap();
+        assert_eq!(resumed.status, RunStatus::Done);
+        let persisted = manager.store.get_run("run-done").await.unwrap().unwrap();
+        assert_eq!(persisted.status, RunStatus::Done);
+        assert!(persisted.finished_at.is_some());
+    }
+
+    /// Kill/restart mid-loop in a conditional DAG: loop counts survive, the
+    /// completed generator attempt is not re-run, and no extra loop iteration
+    /// is spent.
+    #[tokio::test]
+    async fn resume_mid_loop_keeps_loop_counts_intact() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_url = format!("sqlite:{}", dir.path().join("runs.sqlite").display());
+        let fail_artifact = write_verify_artifact(dir.path(), "verify-fail.md", "fail");
+
+        let run_id = {
+            let store = RunStore::open(&db_url).await.unwrap();
+            let manager = loop_manager(dir.path(), store).await;
+            let record = manager
+                .start_run("test-horde", "loop then die", None, None, RUN_ORIGIN_OPERATOR)
+                .await
+                .unwrap();
+            // Iteration 1: gen ok, verify says fail → loop back resets gen+verify.
+            manager
+                .handle_task_finished(&record.run_id, "gen", true, Some("out/gen-1.md"), "ok")
+                .await;
+            manager
+                .handle_task_finished(&record.run_id, "verify", true, Some(&fail_artifact), "checked")
+                .await;
+            // Iteration 2: gen ok again; server dies while verify is in flight.
+            manager
+                .handle_task_finished(&record.run_id, "gen", true, Some("out/gen-2.md"), "ok")
+                .await;
+            let mid = manager.store.get_run(&record.run_id).await.unwrap().unwrap();
+            assert_eq!(mid.loop_counts.get("verify->gen"), Some(&1));
+            assert_eq!(step(&mid, "verify").status, StepStatus::Delegating);
+            record.run_id
+        };
+
+        let store = RunStore::open(&db_url).await.unwrap();
+        let manager = loop_manager(dir.path(), store).await;
+        let resumed = manager.resume_run(&run_id).await.unwrap();
+        assert_eq!(resumed.status, RunStatus::Running);
+
+        let persisted = manager.store.get_run(&run_id).await.unwrap().unwrap();
+        assert_eq!(
+            persisted.loop_counts.get("verify->gen"),
+            Some(&1),
+            "loop counts intact — no extra iteration granted"
+        );
+        let gen_step = step(&persisted, "gen");
+        assert_eq!(gen_step.status, StepStatus::Succeeded, "second gen attempt not re-run");
+        assert_eq!(gen_step.artifact.as_deref(), Some("out/gen-2.md"));
+        assert_eq!(gen_step.attempt, 2, "attempt counter reflects the loop, not the resume");
+        let verify = step(&persisted, "verify");
+        assert_eq!(verify.status, StepStatus::Delegating, "resume re-delegated verify");
+        assert_eq!(verify.attempt, 3, "loop attempt + interrupted attempt");
+        assert_eq!(step(&persisted, "apply").status, StepStatus::Pending);
+
+        // Verify passes this time → the loop routes forward and the run completes.
+        let pass_artifact = write_verify_artifact(dir.path(), "verify-pass.md", "pass");
+        manager
+            .handle_task_finished(&run_id, "verify", true, Some(&pass_artifact), "checked")
+            .await;
+        manager
+            .handle_task_finished(&run_id, "apply", true, Some("out/apply.md"), "ok")
+            .await;
+        let done = manager.store.get_run(&run_id).await.unwrap().unwrap();
+        assert_eq!(done.status, RunStatus::Done);
+        assert_eq!(done.loop_counts.get("verify->gen"), Some(&1));
     }
 
     #[test]
