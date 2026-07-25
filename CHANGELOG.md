@@ -21,6 +21,21 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Added
 
+- **In-process LLM steps, per-step timeouts, run cancellation (#41):** horde runs no
+  longer spawn any worker processes by default. LLM step kinds (`process`/`step`/
+  `deliver`/`final`, `compile`, `ask`, `lint`) execute inside the server via
+  `LlmStepHandler` — prompt assembly plus a direct call into a dedicated horde
+  `TemplateAgent` (tool allowlists and sandbox policy preserved) instead of the old
+  CLI-worker HTTP self-loopback through `/api/chat`. Every in-process step runs under a
+  wall-clock timeout (`[horde] step_timeout_secs`, default 600); a timed-out or failed
+  step now routes over a matching `fail` edge when the DAG has one (loop retries), and
+  only fails the run otherwise. New `POST /api/hordes/{id}/runs/{run_id}/cancel`:
+  cooperative cancellation stops the in-flight step, skips the remaining steps, and
+  persists the run as `cancelled` (new `run_cancelled` event + `RunCancelled` federation
+  message); the UI gains a **Cancel run** button. Startup now skips a horde's
+  `clean_on_startup` workdir clean while it has interrupted runs pending resume, so
+  resumed runs keep their completed artifacts. Worker execution stays in the CLI as the
+  future opt-in isolation mode.
 - **In-process step execution — `StepHandler` trait + registry (#40):** deterministic
   horde step kinds (`verify`, `apply`, `ingest`) now execute inside the server process
   instead of spawned federation workers: same artifacts, same pass/fail routing on

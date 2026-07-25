@@ -50,8 +50,9 @@ pub use horde_stages::{
     StageStatus, VerifyRunResult, DEFAULT_VERIFY_MAX_OUTPUT_BYTES, DEFAULT_VERIFY_TIMEOUT_SECS,
 };
 pub use horde_step::{
-    ApplyStepHandler, IngestStepHandler, NullEventSink, StepContext, StepError, StepEventSink,
-    StepHandler, StepHandlerRegistry, StepOutcome, StepSpec, VerifyStepHandler,
+    ApplyStepHandler, IngestStepHandler, LlmStepHandler, NullEventSink, StepContext, StepError,
+    StepEventSink, StepHandler, StepHandlerRegistry, StepOutcome, StepSpec, VerifyStepHandler,
+    LLM_STEP_KINDS,
 };
 pub use horde_graph::{
     all_steps_successful, edge_matches_outcome, execution_order, has_conditional_outbound,

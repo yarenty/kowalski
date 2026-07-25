@@ -199,8 +199,13 @@ impl StepHandler for MyHandler {
 registry.register(Arc::new(MyHandler));
 ```
 
-Kinds not in the registry are delegated to federation workers as before (mixed mode);
-the orchestrator side lives in the `kowalski` crate.
+**`LlmStepHandler`** covers the LLM kinds (`LLM_STEP_KINDS`: `process`/`step`/`deliver`/
+`final`, `compile`, `ask`, `lint`): prompt assembly (`build_llm_stage_request` — prompt
+file + `@artifact@`/`@step:` context attachments + operator question for `ask`), then a
+direct call into a shared `TemplateAgent` (tool allowlist + sandbox policy preserved,
+memory off) — no HTTP self-loopback, no worker process. Kinds not in the registry are
+delegated to federation workers (the future opt-in isolation mode); the orchestrator
+side (timeouts, cancellation, TaskFinished feedback) lives in the `kowalski` crate.
 
 ### Tool execution model (three sources, one abstraction)
 

@@ -270,6 +270,12 @@ function processFederationEvent(data: string) {
     runBusy.value = false;
     clearRunWatchdog();
     void loadRunHistory();
+  } else if (kind === "run_cancelled") {
+    progressText.value = "cancelled";
+    feed("system", `run cancelled${payload.reason ? `: ${String(payload.reason)}` : ""}`, "System");
+    runBusy.value = false;
+    clearRunWatchdog();
+    void loadRunHistory();
   }
 }
 
@@ -580,6 +586,20 @@ async function runHordeWithPayload(payload: {
   }
 }
 
+const cancelBusy = ref(false);
+async function cancelActiveRun() {
+  if (!selectedHordeId.value || !runId.value || cancelBusy.value) return;
+  cancelBusy.value = true;
+  try {
+    await api.hordeRunCancel(selectedHordeId.value, runId.value);
+    // The run_cancelled feed event flips runBusy and refreshes history.
+  } catch (e) {
+    runErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    cancelBusy.value = false;
+  }
+}
+
 async function resumeInterruptedRun(run: { run_id: string; prompt: string }) {
   if (!selectedHordeId.value || resumeBusyId.value) return;
   resumeBusyId.value = run.run_id;
@@ -750,6 +770,16 @@ onUnmounted(() => {
         <span class="core"></span>
       </div>
       <p class="muted thinking processing-inline-text">{{ processingLabel }}</p>
+      <button
+        v-if="runBusy && runId"
+        type="button"
+        class="inline-btn cancel-btn"
+        :disabled="cancelBusy"
+        title="Cancel this run: the in-flight step stops, remaining steps are skipped"
+        @click="cancelActiveRun"
+      >
+        {{ cancelBusy ? "Cancelling…" : "Cancel run" }}
+      </button>
     </div>
     <p v-if="runId" class="muted">Run ID: {{ runId }}</p>
 
@@ -996,4 +1026,5 @@ button.primary { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
   font-size: 0.78rem;
   margin-right: 0;
 }
+.cancel-btn { border-color: #8a4b3b; color: #e0a184; }
 </style>

@@ -361,6 +361,213 @@ impl StepHandler for IngestStepHandler {
     }
 }
 
+/// Step kinds executed by [`LlmStepHandler`] (the historical worker `role_kind`s
+/// that resolve to an LLM stage).
+pub const LLM_STEP_KINDS: &[&str] = &[
+    "process", "step", "deliver", "final", "compile", "ask", "lint",
+];
+
+/// Newest `*.md` in `dir` (compile-stage fallback input when the orchestrator
+/// passed no previous artifact).
+fn latest_md_in(dir: &Path) -> Option<PathBuf> {
+    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(|e| e.ok().map(|x| x.path()))
+        .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("md"))
+        .collect();
+    files.sort();
+    files.pop()
+}
+
+/// Prompt + artifact-path assembly for one LLM stage (pure port of the worker's
+/// `run_llm_stage` pre-chat phase; separated so it can be exercised without a
+/// live provider).
+pub fn build_llm_stage_request(
+    horde_root: &Path,
+    workdir: &Path,
+    meta: &crate::markdown_pipeline::StageAgentMeta,
+    step: &str,
+    extra_user_block: &str,
+    previous_artifact: Option<&Path>,
+) -> Result<(PathBuf, String), StepError> {
+    let rel = meta.output.as_deref().ok_or_else(|| {
+        KowalskiError::Validation(format!("stage `{step}` missing `output`"))
+    })?;
+    // A trailing-slash `output` declares a directory: write `<dir>/<step>.md` inside it.
+    let out_path = if rel.ends_with('/') {
+        let dir = workdir.join(rel);
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| KowalskiError::Validation(format!("create {}: {e}", dir.display())))?;
+        dir.join(format!("{step}.md"))
+    } else {
+        let path = workdir.join(rel);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                KowalskiError::Validation(format!("create {}: {e}", parent.display()))
+            })?;
+        }
+        path
+    };
+    let prompt_path = horde_root.join(meta.prompt_file.as_deref().unwrap_or("prompts/stage.md"));
+    let prompt = std::fs::read_to_string(&prompt_path).unwrap_or_default();
+
+    // Outputs already produced by other stages of this horde (for `@step:` tokens).
+    let mut step_paths = std::collections::BTreeMap::new();
+    if let Ok(agents) = crate::markdown_pipeline::load_stage_agents(&horde_root.join("agents")) {
+        for (name, agent) in agents {
+            if let Some(rel) = &agent.output {
+                let p = workdir.join(rel);
+                if p.exists() {
+                    step_paths.insert(name, p);
+                }
+            }
+        }
+    }
+    let ctx = crate::markdown_pipeline::render_context_attachments(
+        workdir,
+        &meta.context_paths,
+        &step_paths,
+        previous_artifact,
+    )?;
+    let message = if extra_user_block.trim().is_empty() {
+        format!("{prompt}\n\n{ctx}")
+    } else {
+        format!("{prompt}\n\n{extra_user_block}\n\n{ctx}")
+    };
+    Ok((out_path, message))
+}
+
+/// LLM stage kinds executed in-process: prompt assembly + a direct call into
+/// the shared [`TemplateAgent`] (provider + ToolManager) — no HTTP self-loopback,
+/// no worker process. One instance per kind; all instances share the agent.
+pub struct LlmStepHandler {
+    kind: &'static str,
+    agent: Arc<tokio::sync::Mutex<crate::template::agent::TemplateAgent>>,
+    model: String,
+}
+
+impl LlmStepHandler {
+    pub fn new(
+        kind: &'static str,
+        agent: Arc<tokio::sync::Mutex<crate::template::agent::TemplateAgent>>,
+        model: impl Into<String>,
+    ) -> Self {
+        Self {
+            kind,
+            agent,
+            model: model.into(),
+        }
+    }
+
+    /// Register one [`LlmStepHandler`] per LLM step kind, all sharing `agent`.
+    pub fn register_all(
+        registry: &mut StepHandlerRegistry,
+        agent: Arc<tokio::sync::Mutex<crate::template::agent::TemplateAgent>>,
+        model: &str,
+    ) {
+        for kind in LLM_STEP_KINDS {
+            registry.register(Arc::new(Self::new(kind, agent.clone(), model)));
+        }
+    }
+}
+
+#[async_trait]
+impl StepHandler for LlmStepHandler {
+    fn kind(&self) -> &'static str {
+        self.kind
+    }
+
+    async fn execute(&self, ctx: &StepContext<'_>) -> Result<StepOutcome, StepError> {
+        ctx.check_cancelled()?;
+        let step = &ctx.step.name;
+        let meta = crate::markdown_pipeline::parse_stage_agent(
+            &ctx.horde_root.join("agents").join(format!("{step}.md")),
+        )?;
+        ctx.events
+            .message(&format!("LLM stage `{step}` (in-process)"))
+            .await;
+
+        // Compile keeps its fallback input: the newest raw capture under the workdir.
+        let prev_owned;
+        let previous_artifact = if self.kind == "compile" {
+            prev_owned = ctx
+                .previous_artifact
+                .map(Path::to_path_buf)
+                .or_else(|| latest_md_in(&ctx.workdir.join(WORKDIR_DEBUG_DIR).join("raw")));
+            if prev_owned.is_none() {
+                return Err(KowalskiError::Validation(
+                    "compile: no input artifact available (run ingest first)".into(),
+                ));
+            }
+            prev_owned.as_deref()
+        } else {
+            ctx.previous_artifact
+        };
+        let extra = if self.kind == "ask" {
+            format!("User question:\n{}\n", ctx.question)
+        } else {
+            String::new()
+        };
+        let (out_path, message) = build_llm_stage_request(
+            ctx.horde_root,
+            ctx.workdir,
+            &meta,
+            step,
+            &extra,
+            previous_artifact,
+        )?;
+
+        let tool_ids: Vec<String> = if meta.tool_ids.is_empty() {
+            ctx.step.tool_ids.clone()
+        } else {
+            meta.tool_ids.clone()
+        };
+        let use_tools = !tool_ids.is_empty();
+        let conversation_id = format!("horde-{}-{}", ctx.run_id, step);
+
+        ctx.check_cancelled()?;
+        let reply = {
+            let mut agent = self.agent.lock().await;
+            agent
+                .ensure_conversation_with_tools(
+                    &self.model,
+                    &conversation_id,
+                    use_tools.then_some(tool_ids.as_slice()),
+                )
+                .await?;
+            if use_tools {
+                let policy = crate::tools::policy::ToolExecutionPolicy {
+                    allowed_tools: Some(tool_ids.clone()),
+                    sandbox_root: ctx.project_path.clone(),
+                    quiet: true,
+                };
+                agent
+                    .chat_with_tools_with_policy(&conversation_id, &message, false, Some(&policy))
+                    .await?
+            } else {
+                agent
+                    .base_mut()
+                    .chat_with_history_with_options(&conversation_id, &message, None, false)
+                    .await?
+            }
+        };
+        let reply = crate::markdown_pipeline::maybe_normalize_markdown(&meta, &reply);
+        std::fs::write(&out_path, reply).map_err(|e| {
+            KowalskiError::Validation(format!("write stage artifact {}: {e}", out_path.display()))
+        })?;
+        let summary_prefix = if self.kind == "lint" {
+            "handoff output"
+        } else {
+            "stage output"
+        };
+        Ok(StepOutcome::Completed {
+            summary: format!("{summary_prefix}: {}", out_path.display()),
+            artifact: Some(out_path),
+            status: StageStatus::Pass,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -485,6 +692,57 @@ mod tests {
         assert!(artifact.starts_with(dir.path().join(WORKDIR_DEBUG_DIR)));
         assert!(artifact.is_file());
         assert!(summary.contains("source token(s)"));
+    }
+
+    #[test]
+    fn llm_stage_request_assembles_prompt_and_artifact_paths() {
+        let root = tempfile::tempdir().unwrap();
+        let workdir = root.path().join("workdir");
+        std::fs::create_dir_all(root.path().join("prompts")).unwrap();
+        std::fs::create_dir_all(root.path().join("agents")).unwrap();
+        std::fs::create_dir_all(&workdir).unwrap();
+        std::fs::write(root.path().join("prompts/dev.md"), "You are the dev stage.").unwrap();
+        let prev = workdir.join("plan.md");
+        std::fs::write(&prev, "the plan body").unwrap();
+
+        let meta = crate::markdown_pipeline::StageAgentMeta {
+            name: "dev".into(),
+            kind: "process".into(),
+            prompt_file: Some("prompts/dev.md".into()),
+            output: Some("debug/reports/".into()),
+            context_paths: vec!["@artifact@".into()],
+            normalize_doc_title: None,
+            normalize_sections: Vec::new(),
+            normalize_fallback: None,
+            normalize_fallback_sections: Vec::new(),
+            tool_ids: Vec::new(),
+            verify_command: None,
+            verify_cwd: None,
+            apply_mode: None,
+            inputs: Vec::new(),
+        };
+        let (out_path, message) = build_llm_stage_request(
+            root.path(),
+            &workdir,
+            &meta,
+            "dev",
+            "User question:\nwhy?\n",
+            Some(&prev),
+        )
+        .unwrap();
+        // Trailing-slash output → directory + `<step>.md`.
+        assert_eq!(out_path, workdir.join("debug/reports/").join("dev.md"));
+        assert!(out_path.parent().unwrap().is_dir(), "artifact dir created");
+        assert!(message.starts_with("You are the dev stage."));
+        assert!(message.contains("User question:\nwhy?"));
+        assert!(message.contains("the plan body"), "@artifact@ attachment rendered");
+
+        // Missing `output` is a hard error.
+        let mut no_output = meta.clone();
+        no_output.output = None;
+        assert!(
+            build_llm_stage_request(root.path(), &workdir, &no_output, "dev", "", None).is_err()
+        );
     }
 
     #[tokio::test]

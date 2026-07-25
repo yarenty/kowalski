@@ -73,6 +73,7 @@ Use this after any change to **`kowalski`**, **`kowalski-core`**, or **`ui/`** t
 | 5 | **Rookery** (1.3.0+) | **New session** → describe a 3-step workflow → **Propose horde** → **Give birth** | Summary + pipeline on the right (horizontal track, or layered **DAG** canvas when `edges[]` is present); birth shows path under `examples/<id>/`. Run `cargo run -p kowalski-cli -- agent-app validate --path examples/<id>` to confirm. Requires live LLM for chat/propose. |
 | 5b | **Horde — Coder** | Restart server; select **Coder (planning tier)** → **Start All** → run | DAG canvas; project path + task form; `HANDOFF.md` under `examples/coder/output/`. |
 | 5c | **Horde — resume** | Kill the server mid-run; restart; reselect the horde | **Interrupted runs** banner lists the run (status + resume attempts); **Resume** continues from the next ready step (completed steps keep artifacts) and the feed shows a "run resumed" marker. |
+| 5d | **Horde — cancel** | Start a run; click **Cancel run** next to the progress spinner | Feed shows "run cancelled"; run history lists the run as `cancelled`; remaining steps are skipped. No worker processes are involved — steps run in-process. |
 | 6 | **Federation** (optional extra) | Lower on the same panel: **Refresh registry** if you use raw delegate / `kc.run` smoke | Registry JSON loads; see [`examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md) for legacy worker commands. |
 
 

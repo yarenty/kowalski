@@ -154,6 +154,14 @@ pub enum AclMessage {
         #[serde(default)]
         step: Option<String>,
     },
+    /// Horde run lifecycle: run cancelled by an operator (in-flight step
+    /// cancelled, remaining steps skipped).
+    RunCancelled {
+        run_id: String,
+        horde: String,
+        #[serde(default)]
+        reason: Option<String>,
+    },
 }
 
 /// Reject [`AclMessage::TaskDelegate`] when `delegation_depth` exceeds the effective max.

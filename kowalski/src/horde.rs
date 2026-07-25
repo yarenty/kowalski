@@ -38,6 +38,9 @@ const DEFAULT_TOPIC: &str = "federation";
 /// to `error` with a reason instead of looping forever. Override with
 /// `[horde] resume_max_attempts` in `config.toml`.
 pub const DEFAULT_RESUME_MAX_ATTEMPTS: u32 = 2;
+/// Default wall-clock limit per in-process step execution (matches the verify
+/// stage's internal command timeout). Override with `[horde] step_timeout_secs`.
+pub const DEFAULT_STEP_TIMEOUT_SECS: u64 = 600;
 /// Relative path under `workdir` for managed federation worker stdout/stderr logs (HTTP server convention).
 pub const AGENTS_LOG_REL: &str = "agents_log";
 /// Relative path under `workdir` for follow-up chat markdown from `POST .../followup` (HTTP server convention).
@@ -593,6 +596,13 @@ pub struct HordeManager {
     /// Step kinds executed in-process (no federation worker); kinds not in the
     /// registry are delegated to workers as before (mixed mode).
     pub step_handlers: Arc<StepHandlerRegistry>,
+    /// Wall-clock limit per in-process step ([`DEFAULT_STEP_TIMEOUT_SECS`];
+    /// `[horde] step_timeout_secs` in config). Timeout fails the step, which
+    /// routes per the graph (fail edge if present).
+    pub step_timeout: std::time::Duration,
+    /// Live cancellation tokens by run_id (created on first in-process
+    /// delegation; cancelled + removed by [`Self::cancel_run`] / terminal states).
+    pub cancel_tokens: Arc<Mutex<HashMap<String, tokio_util::sync::CancellationToken>>>,
 }
 
 impl HordeManager {
@@ -611,7 +621,22 @@ impl HordeManager {
             store,
             resume_max_attempts: DEFAULT_RESUME_MAX_ATTEMPTS,
             step_handlers: Arc::new(StepHandlerRegistry::with_builtin_deterministic()),
+            step_timeout: std::time::Duration::from_secs(DEFAULT_STEP_TIMEOUT_SECS),
+            cancel_tokens: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    /// Token used to cooperatively cancel all in-process steps of `run_id`.
+    async fn cancel_token_for(&self, run_id: &str) -> tokio_util::sync::CancellationToken {
+        let mut tokens = self.cancel_tokens.lock().await;
+        tokens
+            .entry(run_id.to_string())
+            .or_default()
+            .clone()
+    }
+
+    async fn drop_cancel_token(&self, run_id: &str) {
+        self.cancel_tokens.lock().await.remove(run_id);
     }
 
     async fn persist_step(&self, run_id: &str, step: &RunStepRecord) {
@@ -988,7 +1013,9 @@ impl HordeManager {
                 .map(|r| (r.source.clone(), r.question.clone()))
                 .unwrap_or((None, String::new()))
         };
+        let cancel = self.cancel_token_for(&run_id).await;
         tokio::spawn(async move {
+            let started_at = std::time::Instant::now();
             let started = manager.build_envelope(
                 &spec.topic,
                 AclMessage::TaskStarted {
@@ -1013,7 +1040,6 @@ impl HordeManager {
             let project_path = source
                 .as_deref()
                 .and_then(kowalski_core::source_bundle::extract_project_path_from_source);
-            let cancel = tokio_util::sync::CancellationToken::new();
             let ctx = StepContext {
                 run_id: &run_id,
                 horde_id: &spec.id,
@@ -1029,24 +1055,55 @@ impl HordeManager {
                 tools: None,
                 cancel: &cancel,
             };
-            let (success, artifact, summary, outcome) = match handler.execute(&ctx).await {
-                Ok(StepOutcome::Completed {
+            // Cancellation wins over completion: the in-flight future is dropped
+            // at its next await point and cancel_run owns all state transitions.
+            let result = tokio::select! {
+                biased;
+                _ = cancel.cancelled() => {
+                    log::info!(
+                        "horde {} run {} step {} cancelled after {:?}",
+                        spec.id, run_id, sub.name, started_at.elapsed()
+                    );
+                    return;
+                }
+                r = tokio::time::timeout(manager.step_timeout, handler.execute(&ctx)) => r,
+            };
+            let (success, artifact, summary, outcome) = match result {
+                Ok(Ok(StepOutcome::Completed {
                     artifact,
                     status,
                     summary,
-                }) => (
+                })) => (
                     true,
                     artifact.map(|p| p.display().to_string()),
                     summary,
                     Some(status.as_str().to_string()),
                 ),
-                Err(e) => (
+                Ok(Err(e)) => (
                     false,
                     None,
                     format!("{} step failed: {}", sub.kind, e),
                     None,
                 ),
+                Err(_elapsed) => (
+                    false,
+                    None,
+                    format!(
+                        "step `{}` timed out after {}s",
+                        sub.name,
+                        manager.step_timeout.as_secs()
+                    ),
+                    None,
+                ),
             };
+            log::info!(
+                "horde {} run {} step {} in-process finished success={} in {:?}",
+                spec.id,
+                run_id,
+                sub.name,
+                success,
+                started_at.elapsed()
+            );
             let finished = manager.build_envelope(
                 &spec.topic,
                 AclMessage::TaskFinished {
@@ -1085,8 +1142,26 @@ impl HordeManager {
         };
 
         if !success {
-            let mut runs = self.runs.lock().await;
-            if let Some(run) = runs.runs.get_mut(run_id) {
+            // A failed step (worker error / in-process error / timeout) routes
+            // over a matching `fail` edge when one exists (retry loops); only
+            // otherwise does it fail the whole run.
+            let (fail_route, notice) = {
+                let mut runs = self.runs.lock().await;
+                let Some(run) = runs.runs.get_mut(run_id) else {
+                    return;
+                };
+                if !run.status.is_incomplete() {
+                    return;
+                }
+                let already_finalized = run
+                    .steps
+                    .iter()
+                    .find(|s| s.step == step)
+                    .map(|s| matches!(s.status, StepStatus::Succeeded | StepStatus::Failed))
+                    .unwrap_or(false);
+                if already_finalized {
+                    return;
+                }
                 if let Some(step_record) = run.steps.iter_mut().find(|s| s.step == step) {
                     step_record.status = StepStatus::Failed;
                     step_record.summary = Some(summary.to_string());
@@ -1095,8 +1170,58 @@ impl HordeManager {
                     let failed_step = step_record.clone();
                     self.persist_step(run_id, &failed_step).await;
                 }
+                let finished_event = json!({
+                    "kind": "task_finished",
+                    "step": step,
+                    "success": false,
+                    "outcome": StageStatus::Fail.as_str(),
+                    "summary": summary,
+                    "ts": now_ts(),
+                });
+                self.persist_event(run_id, &finished_event).await;
+                run.events.push(finished_event);
+
+                if has_conditional_outbound(&spec.execution_graph.edges, step) {
+                    match select_next_from_outcome(
+                        &spec.pipeline,
+                        &spec.execution_graph.edges,
+                        step,
+                        StageStatus::Fail,
+                        &run.loop_counts,
+                    ) {
+                        Some(next) => {
+                            let (is_back, loop_count) = self
+                                .apply_route_bookkeeping(&spec, run_id, run, step, &next)
+                                .await;
+                            (
+                                Some(next.clone()),
+                                Some((next, StageStatus::Fail, is_back, loop_count)),
+                            )
+                        }
+                        None => (None, None),
+                    }
+                } else {
+                    (None, None)
+                }
+            };
+            if let Some((next, outcome, is_back, loop_count)) = notice {
+                self.publish_step_routed(
+                    &spec, run_id, step, outcome, &next, is_back, loop_count, None,
+                )
+                .await;
             }
-            drop(runs);
+            if let Some(next) = fail_route {
+                let prev = {
+                    let runs = self.runs.lock().await;
+                    runs.runs
+                        .get(run_id)
+                        .and_then(|run| Self::previous_artifact_for_step(&spec, run, &next))
+                };
+                if let Err(e) = self.delegate_step(&spec, run_id, &next, prev.as_deref()).await {
+                    self.fail_run(&spec, run_id, &e, Some(&next)).await;
+                }
+                return;
+            }
             self.fail_run(
                 &spec,
                 run_id,
@@ -1157,30 +1282,9 @@ impl HordeManager {
                     &run.loop_counts,
                 ) {
                     Some(next) => {
-                        let is_back = is_loop_back_step(&spec.pipeline, step, &next);
-                        let loop_count = if is_back {
-                            let key = loop_edge_key(step, &next);
-                            *run.loop_counts.entry(key.clone()).or_insert(0) += 1;
-                            let mut reset_steps = Vec::new();
-                            for s in retry_span(&spec.pipeline, &next, step) {
-                                if let Some(rec) = run.steps.iter_mut().find(|r| r.step == s) {
-                                    rec.status = StepStatus::Pending;
-                                    rec.attempt += 1;
-                                    rec.artifact = None;
-                                    rec.summary = None;
-                                    rec.finished_at = None;
-                                    rec.outcome = None;
-                                    reset_steps.push(rec.clone());
-                                }
-                            }
-                            self.persist_loop_counts(run_id, &run.loop_counts).await;
-                            for rec in &reset_steps {
-                                self.persist_step(run_id, rec).await;
-                            }
-                            run.loop_counts.get(&key).copied()
-                        } else {
-                            None
-                        };
+                        let (is_back, loop_count) = self
+                            .apply_route_bookkeeping(&spec, run_id, run, step, &next)
+                            .await;
                         let verify_excerpt = Self::verify_excerpt_for_step(
                             &spec,
                             step,
@@ -1266,6 +1370,42 @@ impl HordeManager {
                 .await;
             }
         }
+    }
+
+    /// Loop-back bookkeeping when routing from `step` to `next`: bump the loop
+    /// counter and reset the retry span to pending as a new attempt. Returns
+    /// `(is_loop_back, loop_count)` for the `StepRouted` notice. Caller holds
+    /// the registry lock and passes the run record.
+    async fn apply_route_bookkeeping(
+        &self,
+        spec: &HordeSpec,
+        run_id: &str,
+        run: &mut RunRecord,
+        step: &str,
+        next: &str,
+    ) -> (bool, Option<u32>) {
+        if !is_loop_back_step(&spec.pipeline, step, next) {
+            return (false, None);
+        }
+        let key = loop_edge_key(step, next);
+        *run.loop_counts.entry(key.clone()).or_insert(0) += 1;
+        let mut reset_steps = Vec::new();
+        for s in retry_span(&spec.pipeline, next, step) {
+            if let Some(rec) = run.steps.iter_mut().find(|r| r.step == s) {
+                rec.status = StepStatus::Pending;
+                rec.attempt += 1;
+                rec.artifact = None;
+                rec.summary = None;
+                rec.finished_at = None;
+                rec.outcome = None;
+                reset_steps.push(rec.clone());
+            }
+        }
+        self.persist_loop_counts(run_id, &run.loop_counts).await;
+        for rec in &reset_steps {
+            self.persist_step(run_id, rec).await;
+        }
+        (true, run.loop_counts.get(&key).copied())
     }
 
     fn read_artifact_text(spec: &HordeSpec, artifact: &str) -> Option<String> {
@@ -1374,6 +1514,7 @@ impl HordeManager {
             run.status = RunStatus::Done;
             run.finished_at = Some(now_ts());
             self.persist_run_status(run_id, RunStatus::Done, None).await;
+            self.drop_cancel_token(run_id).await;
             run.steps
                 .iter()
                 .filter_map(|s| s.artifact.clone().map(|a| (s.step.clone(), a)))
@@ -1418,6 +1559,7 @@ impl HordeManager {
     }
 
     async fn fail_run(&self, spec: &HordeSpec, run_id: &str, reason: &str, step: Option<&str>) {
+        self.drop_cancel_token(run_id).await;
         {
             let mut runs = self.runs.lock().await;
             if let Some(run) = runs.runs.get_mut(run_id) {
@@ -1730,6 +1872,91 @@ impl HordeManager {
             },
         );
         self.publish(&env).await;
+    }
+
+    /// Cancel a run: signal the cooperative token (the in-flight in-process step
+    /// stops at its next await point), mark the in-flight step `cancelled` and
+    /// every still-pending step `skipped`, and persist the run as `cancelled`.
+    pub async fn cancel_run(&self, run_id: &str, reason: Option<&str>) -> Result<RunRecord, String> {
+        let persisted = self
+            .store
+            .get_run(run_id)
+            .await
+            .map_err(|e| format!("run store: {e}"))?
+            .ok_or_else(|| format!("run {run_id} not found"))?;
+        if !persisted.status.is_incomplete() {
+            return Err(format!(
+                "run {run_id} is {}, not cancellable",
+                api_run_status(persisted.status)
+            ));
+        }
+        // Signal first: the executor's select! exits without publishing, so
+        // this method owns every state transition below.
+        if let Some(token) = self.cancel_tokens.lock().await.remove(run_id) {
+            token.cancel();
+        }
+        let reason = reason
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("cancelled by operator")
+            .to_string();
+
+        {
+            let mut runs = self.runs.lock().await;
+            let record = runs
+                .runs
+                .entry(run_id.to_string())
+                .or_insert_with(|| RunRecord::from_persisted(persisted.clone()));
+            record.status = RunStatus::Cancelled;
+            record.finished_at = Some(now_ts());
+            let mut changed = Vec::new();
+            for s in record.steps.iter_mut() {
+                match s.status {
+                    StepStatus::Delegating | StepStatus::Running => {
+                        s.status = StepStatus::Cancelled;
+                        s.finished_at = Some(now_ts());
+                        changed.push(s.clone());
+                    }
+                    StepStatus::Pending => {
+                        s.status = StepStatus::Skipped;
+                        s.finished_at = Some(now_ts());
+                        changed.push(s.clone());
+                    }
+                    _ => {}
+                }
+            }
+            for s in &changed {
+                self.persist_step(run_id, s).await;
+            }
+            self.persist_run_status(run_id, RunStatus::Cancelled, Some(&reason))
+                .await;
+            let cancelled_event = json!({
+                "kind": "run_cancelled",
+                "reason": reason,
+                "ts": now_ts(),
+            });
+            self.persist_event(run_id, &cancelled_event).await;
+            record.events.push(cancelled_event);
+        }
+
+        let spec = self.find(&persisted.horde_id).cloned();
+        let topic = spec
+            .as_ref()
+            .map(|s| s.topic.clone())
+            .unwrap_or_else(|| DEFAULT_TOPIC.to_string());
+        let env = self.build_envelope(
+            &topic,
+            AclMessage::RunCancelled {
+                run_id: run_id.to_string(),
+                horde: persisted.horde_id.clone(),
+                reason: Some(reason),
+            },
+        );
+        self.publish(&env).await;
+
+        self.persisted_run(run_id)
+            .await?
+            .ok_or_else(|| "run vanished after cancel".to_string())
     }
 
     /// Startup reconciliation of interrupted runs. Classifies every incomplete
@@ -2727,6 +2954,171 @@ mod tests {
         assert_eq!(done.status, RunStatus::Done, "result: {:?}", done.result);
         assert_eq!(step(&done, "test-verify").status, StepStatus::Succeeded);
         assert_eq!(step(&done, "test-verify").outcome.as_deref(), Some("pass"));
+    }
+
+    /// Test handler with a fixed delay; completes with `pass` unless it is
+    /// outlived by the step timeout or the run's cancellation token.
+    struct DelayHandler {
+        kind: &'static str,
+        delay_ms: u64,
+    }
+
+    #[async_trait::async_trait]
+    impl StepHandler for DelayHandler {
+        fn kind(&self) -> &'static str {
+            self.kind
+        }
+        async fn execute(
+            &self,
+            _ctx: &StepContext<'_>,
+        ) -> Result<StepOutcome, kowalski_core::StepError> {
+            tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
+            Ok(StepOutcome::Completed {
+                artifact: None,
+                status: StageStatus::Pass,
+                summary: "delayed ok".into(),
+            })
+        }
+    }
+
+    async fn wait_for_step_status(
+        manager: &HordeManager,
+        run_id: &str,
+        step_name: &str,
+        status: StepStatus,
+    ) {
+        for _ in 0..200 {
+            let run = manager.store.get_run(run_id).await.unwrap().unwrap();
+            if run.steps.iter().any(|s| s.step == step_name && s.status == status) {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+        panic!("step {step_name} never reached {status:?}");
+    }
+
+    /// A step exceeding the wall-clock timeout fails and routes over its fail
+    /// edge (loop retry); when the loop budget is exhausted the run errors out.
+    #[tokio::test]
+    async fn step_timeout_routes_fail_edge_then_errors_when_exhausted() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut spec = test_spec(dir.path());
+        spec.pipeline = vec!["gen".into(), "work".into(), "done".into()];
+        spec.sub_agents = vec![sub("gen"), sub("work"), sub("done")];
+        spec.sub_agents[0].kind = "quick".into();
+        spec.sub_agents[1].kind = "slow".into();
+        spec.sub_agents[2].kind = "quick".into();
+        let edges = vec![
+            HordeEdge { from: "gen".into(), to: "work".into(), when: None, max_loops: None },
+            HordeEdge {
+                from: "work".into(),
+                to: "done".into(),
+                when: Some("pass".into()),
+                max_loops: None,
+            },
+            HordeEdge {
+                from: "work".into(),
+                to: "gen".into(),
+                when: Some("fail".into()),
+                max_loops: Some(1),
+            },
+        ];
+        spec.manifest_edges = edges.clone();
+        spec.execution_graph = resolve_execution_graph(&spec.pipeline, Some(&edges)).unwrap();
+
+        let broker = Arc::new(MpscBroker::new());
+        let registry = Arc::new(AgentRegistry::new());
+        let federation = Arc::new(FederationOrchestrator::new(registry, broker.clone()));
+        let store = RunStore::open("sqlite::memory:").await.unwrap();
+        let mut manager = HordeManager::new(vec![spec], broker, federation, store);
+        let mut handlers = StepHandlerRegistry::new();
+        handlers.register(Arc::new(DelayHandler { kind: "quick", delay_ms: 0 }));
+        handlers.register(Arc::new(DelayHandler { kind: "slow", delay_ms: 60_000 }));
+        manager.step_handlers = Arc::new(handlers);
+        manager.step_timeout = std::time::Duration::from_millis(150);
+        spawn_orchestrator_loop(manager.clone());
+
+        let record = manager
+            .start_run("test-horde", "timeout walk", None, None, RUN_ORIGIN_OPERATOR)
+            .await
+            .unwrap();
+
+        let done = wait_for_terminal(&manager, &record.run_id).await;
+        assert_eq!(done.status, RunStatus::Error);
+        assert!(
+            done.result.as_deref().unwrap_or("").contains("timed out"),
+            "reason: {:?}",
+            done.result
+        );
+        assert_eq!(
+            done.loop_counts.get("work->gen"),
+            Some(&1),
+            "first timeout routed the fail edge (loop retry)"
+        );
+        assert_eq!(step(&done, "work").status, StepStatus::Failed);
+        assert_eq!(step(&done, "work").attempt, 2, "retried once before exhausting the loop");
+        assert_eq!(step(&done, "done").status, StepStatus::Pending, "pass branch never taken");
+    }
+
+    /// Cancel mid-step: the in-flight step is cancelled, pending steps are
+    /// skipped, the run persists as `cancelled`, and nothing advances after.
+    #[tokio::test]
+    async fn cancel_mid_step_marks_run_cancelled_and_skips_rest() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut spec = test_spec(dir.path());
+        spec.pipeline = vec!["a".into(), "b".into(), "c".into()];
+        spec.sub_agents = vec![sub("a"), sub("b"), sub("c")];
+        spec.sub_agents[0].kind = "quick".into();
+        spec.sub_agents[1].kind = "slow".into();
+        spec.sub_agents[2].kind = "quick".into();
+        spec.execution_graph = resolve_execution_graph(&spec.pipeline, None).unwrap();
+
+        let broker = Arc::new(MpscBroker::new());
+        let registry = Arc::new(AgentRegistry::new());
+        let federation = Arc::new(FederationOrchestrator::new(registry, broker.clone()));
+        let store = RunStore::open("sqlite::memory:").await.unwrap();
+        let mut manager = HordeManager::new(vec![spec], broker, federation, store);
+        let mut handlers = StepHandlerRegistry::new();
+        handlers.register(Arc::new(DelayHandler { kind: "quick", delay_ms: 0 }));
+        handlers.register(Arc::new(DelayHandler { kind: "slow", delay_ms: 60_000 }));
+        manager.step_handlers = Arc::new(handlers);
+        spawn_orchestrator_loop(manager.clone());
+
+        let record = manager
+            .start_run("test-horde", "cancel walk", None, None, RUN_ORIGIN_OPERATOR)
+            .await
+            .unwrap();
+        let run_id = record.run_id;
+
+        // Step `b` is in flight (60s handler) when the operator cancels.
+        wait_for_step_status(&manager, &run_id, "b", StepStatus::Delegating).await;
+        let cancelled = manager.cancel_run(&run_id, None).await.unwrap();
+        assert_eq!(cancelled.status, RunStatus::Cancelled);
+
+        let persisted = manager.store.get_run(&run_id).await.unwrap().unwrap();
+        assert_eq!(persisted.status, RunStatus::Cancelled);
+        assert!(persisted.finished_at.is_some());
+        assert!(persisted.result.as_deref().unwrap_or("").contains("cancelled"));
+        assert_eq!(step(&persisted, "a").status, StepStatus::Succeeded);
+        assert_eq!(step(&persisted, "b").status, StepStatus::Cancelled);
+        assert_eq!(step(&persisted, "c").status, StepStatus::Skipped, "no further steps execute");
+        assert!(
+            persisted
+                .events
+                .iter()
+                .any(|e| e.get("kind").and_then(|k| k.as_str()) == Some("run_cancelled")),
+            "cancellation recorded in the feed"
+        );
+
+        // Terminal: give the (dropped) slow step a beat, confirm nothing advanced.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        let after = manager.store.get_run(&run_id).await.unwrap().unwrap();
+        assert_eq!(after.status, RunStatus::Cancelled);
+        assert_eq!(step(&after, "c").status, StepStatus::Skipped);
+
+        // Cancelled runs are terminal: not resumable, not re-cancellable.
+        assert!(manager.resume_run(&run_id).await.unwrap_err().contains("not resumable"));
+        assert!(manager.cancel_run(&run_id, None).await.unwrap_err().contains("not cancellable"));
     }
 
     #[test]

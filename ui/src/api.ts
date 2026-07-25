@@ -368,6 +368,11 @@ export const api = {
       `/api/hordes/${encodeURIComponent(hordeId)}/runs/${encodeURIComponent(runId)}/resume`,
       { method: "POST", body: "{}" },
     ),
+  hordeRunCancel: (hordeId: string, runId: string) =>
+    json<{ ok: boolean; run: HordeRunRecord }>(
+      `/api/hordes/${encodeURIComponent(hordeId)}/runs/${encodeURIComponent(runId)}/cancel`,
+      { method: "POST", body: "{}" },
+    ),
   hordeRunDetail: (hordeId: string, runId: string) =>
     json<{ run: HordeRunRecord }>(
       `/api/hordes/${encodeURIComponent(hordeId)}/runs/${encodeURIComponent(runId)}`,
