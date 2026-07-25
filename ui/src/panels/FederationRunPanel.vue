@@ -55,6 +55,8 @@ const selectedHordeIsDag = computed(() => {
   return isDagHorde(h.pipeline, h.edges ?? []);
 });
 const selectedHordeWorkers = computed(() => workerProfiles.value.filter((w) => w.horde_id === selectedHordeId.value));
+const resumableRuns = computed(() => runHistory.value.filter((r) => r.resumable));
+const resumeBusyId = ref<string | null>(null);
 const activeRunFromHistory = computed(() =>
   runId.value ? runHistory.value.find((r) => r.run_id === runId.value) ?? null : null,
 );
@@ -578,6 +580,41 @@ async function runHordeWithPayload(payload: {
   }
 }
 
+async function resumeInterruptedRun(run: { run_id: string; prompt: string }) {
+  if (!selectedHordeId.value || resumeBusyId.value) return;
+  resumeBusyId.value = run.run_id;
+  runErr.value = null;
+  progressText.value = "ensuring workers are ready";
+  try {
+    const ready = await ensureSelectedHordeReady();
+    if (!ready) {
+      runErr.value = "Sub-agent workers are not ready — start them in Federation Management, then resume again.";
+      return;
+    }
+    resetDraftState();
+    runBusy.value = true;
+    progressText.value = "resuming";
+    connectStream();
+    feed("user", run.prompt || "(interrupted run)", "You");
+    feed("orchestrator", `resuming run ${run.run_id}`, "Agent: Boss");
+    const out = await api.hordeRunResume(selectedHordeId.value, run.run_id);
+    runId.value = out.run.run_id;
+    runWatchdog.value = window.setTimeout(() => {
+      if (!runBusy.value) return;
+      runBusy.value = false;
+      progressText.value = "timeout";
+      feed("system", "timeout: no progress events within 60s after resume", "System");
+    }, 60_000);
+  } catch (e) {
+    runBusy.value = false;
+    progressText.value = "resume failed";
+    runErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    resumeBusyId.value = null;
+    void loadRunHistory();
+  }
+}
+
 async function onHordeFormSubmit(payload: {
   prompt: string;
   source: string;
@@ -652,6 +689,28 @@ onUnmounted(() => {
         <option v-for="h in hordes" :key="h.id" :value="h.id">{{ h.display_name }}</option>
       </select>
     </p>
+    <section v-if="resumableRuns.length" class="resume-banner">
+      <h3>Interrupted runs</h3>
+      <p class="muted">
+        These runs did not finish (server restart or awaiting input). Completed steps are kept —
+        Resume continues from the next ready step.
+      </p>
+      <article v-for="r in resumableRuns" :key="r.run_id" class="resume-item">
+        <div class="resume-meta">
+          <code>{{ r.run_id }}</code>
+          <span class="muted">{{ r.status }}{{ (r.resume_count ?? 0) > 0 ? ` · ${r.resume_count} resume attempt(s)` : "" }}</span>
+          <span class="muted resume-prompt">{{ r.prompt || r.question }}</span>
+        </div>
+        <button
+          type="button"
+          class="primary"
+          :disabled="resumeBusyId !== null || runBusy"
+          @click="resumeInterruptedRun(r)"
+        >
+          {{ resumeBusyId === r.run_id ? "Resuming…" : "Resume" }}
+        </button>
+      </article>
+    </section>
     <div v-if="selectedHorde" class="horde-box">
       <p class="muted">{{ selectedHorde.description }}</p>
       <p v-if="selectedHordeIsDag" class="dag-note muted">
@@ -820,6 +879,12 @@ onUnmounted(() => {
 .chat-feed { border: 1px solid #2a2e38; border-radius: 8px; background: #141820; padding: 0.6rem; display: grid; gap: 0.45rem; max-height: 55vh; overflow: auto; }
 .followup-feed { max-height: none; overflow: visible; }
 .horde-box { border: 1px solid #2a2e38; border-radius: 8px; background: #161b22; padding: 0.55rem 0.65rem; margin-bottom: 0.55rem; }
+/* Sits above the sticky follow-up composer (z-index 5) so interrupted runs stay actionable at top scroll. */
+.resume-banner { position: relative; z-index: 6; border: 1px solid #8a6d3b; border-radius: 8px; background: #221c10; padding: 0.55rem 0.65rem; margin-bottom: 0.55rem; }
+.resume-banner h3 { margin: 0 0 0.25rem; font-size: 0.95rem; color: #e0c284; }
+.resume-item { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; border: 1px solid #3a3324; border-radius: 6px; background: #1a1712; padding: 0.4rem 0.55rem; margin-top: 0.35rem; }
+.resume-meta { display: grid; gap: 0.1rem; min-width: 0; }
+.resume-prompt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 34rem; }
 .dag-note { font-size: 0.85rem; margin: 0.35rem 0 0; padding: 0.35rem 0.45rem; border-radius: 6px; background: #1a2230; border: 1px solid #2a3548; }
 .delivery { border: 1px solid #2a2e38; border-radius: 8px; background: #151922; padding: 0.55rem 0.65rem; margin-top: 0.45rem; }
 .followup-composer {

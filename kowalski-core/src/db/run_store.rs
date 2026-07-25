@@ -19,6 +19,10 @@ use std::str::FromStr;
 /// Default file name of the run-store database under the server state dir.
 pub const RUN_DB_FILE_NAME: &str = "runs.sqlite";
 
+/// Default `origin` for runs started by an operator (UI or manual API call).
+/// Non-operator origins (e.g. `"trigger"`) may be auto-resumed on server startup.
+pub const RUN_ORIGIN_OPERATOR: &str = "operator";
+
 /// Run lifecycle. `AwaitingInput` is durable by construction: waiting for operator
 /// input ends the executor task, so such runs survive restarts untouched.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -127,6 +131,9 @@ pub struct NewRun {
     pub source: Option<String>,
     pub question: String,
     pub manifest_snapshot: Option<serde_json::Value>,
+    /// How the run was started ([`RUN_ORIGIN_OPERATOR`] for UI/API operators;
+    /// non-operator origins may be auto-resumed on server startup).
+    pub origin: String,
 }
 
 /// Persisted run row (steps loaded alongside via [`RunStore::get_run`]).
@@ -141,6 +148,10 @@ pub struct PersistedRun {
     pub current_step: Option<String>,
     pub manifest_snapshot: Option<serde_json::Value>,
     pub result: Option<String>,
+    pub origin: String,
+    /// Resume attempts spent so far (guard rail: the orchestrator errors the run
+    /// once this exceeds its configured cap).
+    pub resume_count: i64,
     pub events: Vec<serde_json::Value>,
     pub loop_counts: BTreeMap<String, u32>,
     pub started_at: String,
@@ -255,8 +266,8 @@ impl RunStore {
             .as_ref()
             .map(|v| v.to_string());
         sqlx::query(
-            "INSERT INTO horde_run (run_id, horde_id, prompt, source, question, status, manifest_snapshot, started_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6, ?7)",
+            "INSERT INTO horde_run (run_id, horde_id, prompt, source, question, status, manifest_snapshot, origin, started_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6, ?7, ?8)",
         )
         .bind(&run.run_id)
         .bind(&run.horde_id)
@@ -264,6 +275,7 @@ impl RunStore {
         .bind(&run.source)
         .bind(&run.question)
         .bind(snapshot)
+        .bind(&run.origin)
         .bind(now_rfc3339())
         .execute(&self.pool)
         .await
@@ -366,6 +378,22 @@ impl RunStore {
         .await
         .map_err(db_err)?;
         Ok(())
+    }
+
+    /// Spend one resume attempt on the run; returns the new total (atomic).
+    pub async fn increment_resume_count(&self, run_id: &str) -> Result<i64, KowalskiError> {
+        let row = sqlx::query(
+            "UPDATE horde_run SET resume_count = resume_count + 1
+             WHERE run_id = ?1
+             RETURNING resume_count",
+        )
+        .bind(run_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(db_err)?;
+        row.map(|r| r.get("resume_count")).ok_or_else(|| {
+            KowalskiError::Configuration(format!("run {run_id} not found"))
+        })
     }
 
     /// Append one event to the run's compact JSON events log (atomic, no read-modify-write).
@@ -482,6 +510,8 @@ fn run_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<PersistedRun, KowalskiE
         current_step: row.get("current_step"),
         manifest_snapshot,
         result: row.get("result"),
+        origin: row.get("origin"),
+        resume_count: row.get("resume_count"),
         events,
         loop_counts,
         started_at: row.get("started_at"),
@@ -503,6 +533,7 @@ mod tests {
             source: Some("https://example.com".into()),
             question: "q?".into(),
             manifest_snapshot: Some(json!({"pipeline": ["a", "b"], "edges": []})),
+            origin: RUN_ORIGIN_OPERATOR.into(),
         }
     }
 
@@ -592,6 +623,26 @@ mod tests {
         assert_eq!(step.outcome.as_deref(), Some("pass"));
         assert_eq!(step.artifact.as_deref(), Some("out/a.md"));
         assert!(step.started_at.is_some() && step.finished_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn origin_and_resume_count_round_trip() {
+        let store = memory_store().await;
+        store.create_run(&new_run("r1", "h1")).await.unwrap();
+        let mut trigger = new_run("r2", "h1");
+        trigger.origin = "trigger".into();
+        store.create_run(&trigger).await.unwrap();
+
+        let r1 = store.get_run("r1").await.unwrap().unwrap();
+        assert_eq!(r1.origin, RUN_ORIGIN_OPERATOR);
+        assert_eq!(r1.resume_count, 0);
+        let r2 = store.get_run("r2").await.unwrap().unwrap();
+        assert_eq!(r2.origin, "trigger");
+
+        assert_eq!(store.increment_resume_count("r1").await.unwrap(), 1);
+        assert_eq!(store.increment_resume_count("r1").await.unwrap(), 2);
+        assert_eq!(store.get_run("r1").await.unwrap().unwrap().resume_count, 2);
+        assert!(store.increment_resume_count("missing").await.is_err());
     }
 
     #[tokio::test]

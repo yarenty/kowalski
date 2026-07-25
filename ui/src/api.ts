@@ -251,6 +251,10 @@ export type HordeRunRecord = {
   steps: HordeRunStepRecord[];
   events: Array<Record<string, unknown>>;
   loop_counts?: Record<string, number>;
+  origin?: string;
+  resume_count?: number;
+  /** Incomplete in the store with no live orchestrator task (interrupted by a restart or awaiting input). */
+  resumable?: boolean;
 };
 
 export type OpenPathResponse = {
@@ -359,6 +363,11 @@ export const api = {
     ),
   hordeRuns: (hordeId: string) =>
     json<{ horde_id: string; runs: HordeRunRecord[] }>(`/api/hordes/${encodeURIComponent(hordeId)}/runs`),
+  hordeRunResume: (hordeId: string, runId: string) =>
+    json<{ ok: boolean; run: HordeRunRecord }>(
+      `/api/hordes/${encodeURIComponent(hordeId)}/runs/${encodeURIComponent(runId)}/resume`,
+      { method: "POST", body: "{}" },
+    ),
   hordeRunDetail: (hordeId: string, runId: string) =>
     json<{ run: HordeRunRecord }>(
       `/api/hordes/${encodeURIComponent(hordeId)}/runs/${encodeURIComponent(runId)}`,

@@ -21,6 +21,21 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Added
 
+- **Resume interrupted horde runs (#39):** your agents survive a reboot. On startup the
+  server scans the run store for incomplete runs: interrupted runs are surfaced as
+  resumable (`GET /api/hordes/{id}/runs?status=resumable`, `resumable` flag on run
+  records) and runs started with a non-`operator` `origin` (new optional field on
+  `POST /api/hordes/{id}/run`, built for future trigger-fired runs) are auto-resumed.
+  `POST /api/hordes/{id}/runs/{run_id}/resume` resumes a run on demand: the step that was
+  in flight at the kill is retried as a new attempt, the next ready step is recomputed
+  from the manifest snapshot graph plus persisted step outcomes (conditional-loop counts
+  intact — no extra iterations), and completed steps' artifacts are never regenerated.
+  `awaiting_input` runs stay parked and resume on demand. Resume attempts are capped
+  (`[horde] resume_max_attempts`, default 2); an exhausted run goes to `error` with a
+  clear reason. The UI Horde tab shows an "Interrupted runs" banner with a Resume button,
+  and resumed runs carry a marker in the event feed. Migrations
+  `sqlite/004_run_resume.sql` + `postgres/006_run_resume.sql` (adds `origin`,
+  `resume_count`).
 - **Persisted horde-run store (#37):** new `kowalski_core::db::run_store` — typed
   `RunStatus`/`StepStatus` state machine, `manifest_snapshot` at run start, per-step
   `attempt`/`outcome`/artifact, compact JSON events log, and `incomplete_runs()` for restart

@@ -194,9 +194,25 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
   fed to the horde graph. Change it in one place only (root `AGENTS.md` Rule 8).
 - Run reads go to the store: `GET /api/hordes/{id}/runs` is paged (`?limit=` ≤ 500,
   `?offset=`, newest first) and returns runs from before a restart; run detail and
-  follow-up chat use `HordeManager::persisted_run`. A run interrupted by a restart stays
-  visible as `running` with its completed steps recorded (auto-resume is a separate,
-  planned feature; `RunStore::incomplete_runs()` is the restart-scan hook).
+  follow-up chat use `HordeManager::persisted_run`. Add **`?status=resumable`** to list
+  only interrupted / awaiting-input runs that no live orchestrator task owns.
+- **Resume after a restart** (`HordeManager::resume_scan` / `resume_run`): on startup the
+  server scans `RunStore::incomplete_runs()`. `awaiting_input` runs are durable by
+  construction (waiting ends the executor task) and stay parked; interrupted
+  `pending`/`running` runs get a `run_interrupted` feed event and are surfaced as
+  `resumable` in run listings. Runs whose **`origin`** is not `operator` (the default for
+  UI/API-created runs; `POST /api/hordes/{id}/run` accepts an `origin` body field, e.g.
+  `trigger`) are **auto-resumed** by the scan.
+- **`POST /api/hordes/{id}/runs/{run_id}/resume`** resumes a run on demand: the step that
+  was in flight at the kill is reset as a failed attempt (`attempt` + 1), the next ready
+  step is recomputed from the run's **manifest snapshot** graph plus persisted step
+  outcomes (loop counts intact — a conditional loop never gains extra iterations), and
+  that step is re-delegated. Artifacts of completed steps are never regenerated. A
+  `run_resumed` event and an orchestrator feed message mark the resumption; the UI Horde
+  tab shows an "Interrupted runs" banner with a Resume button.
+- Guard rail: each run spends resume attempts (persisted `resume_count`); after
+  **`[horde] resume_max_attempts`** failed resumes (default 2,
+  `horde::DEFAULT_RESUME_MAX_ATTEMPTS`) the run goes to `error` with a clear reason.
 
 - **Rookery** (`src/rookery.rs`, 1.3.0): horde builder API — see [`../ROADMAP.md`](../ROADMAP.md) (*Planned: Rookery*). Routes (require `Extension` store + running LLM for chat/propose):
 
