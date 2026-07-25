@@ -19,8 +19,10 @@ use kowalski_core::federation::{AclEnvelope, AclMessage, FederationOrchestrator,
 use kowalski_core::{
     all_steps_successful, has_conditional_outbound, is_loop_back_step, loop_edge_key,
     next_ready_step_conditional, parse_stage_status_from_artifact, resolve_execution_graph,
-    retry_span, select_next_from_outcome, single_predecessor, verify_output_excerpt, StageStatus,
-    ExecutionGraph, HordeEdge,
+    retry_span, select_next_from_outcome, single_forward_predecessor, verify_output_excerpt,
+    StageStatus,
+    ExecutionGraph, HordeEdge, StepContext, StepEventSink, StepHandler, StepHandlerRegistry,
+    StepOutcome, StepSpec,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -113,6 +115,15 @@ pub struct SubAgentMeta {
     pub avatar: Option<String>,
     #[serde(default)]
     pub tool_ids: Vec<String>,
+    /// Shell command for `kind = "verify"` (in-process step execution).
+    #[serde(default)]
+    pub verify_command: Option<String>,
+    /// Working directory relative to operator `project_path` (verify).
+    #[serde(default)]
+    pub verify_cwd: Option<String>,
+    /// `dry-run` (default) or `execute` for `kind = "apply"`.
+    #[serde(default)]
+    pub apply_mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -128,6 +139,24 @@ pub struct SubAgentSpec {
     pub inputs: Vec<kowalski_core::OperatorInputField>,
     pub avatar: Option<String>,
     pub tool_ids: Vec<String>,
+    pub verify_command: Option<String>,
+    pub verify_cwd: Option<String>,
+    pub apply_mode: Option<String>,
+}
+
+impl SubAgentSpec {
+    /// The handler-facing slice of this spec (see `kowalski_core::horde_step`).
+    pub fn step_spec(&self) -> StepSpec {
+        StepSpec {
+            name: self.name.clone(),
+            kind: self.kind.clone(),
+            output: self.output.clone(),
+            verify_command: self.verify_command.clone(),
+            verify_cwd: self.verify_cwd.clone(),
+            apply_mode: self.apply_mode.clone(),
+            tool_ids: self.tool_ids.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -248,6 +277,9 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
                 inputs: raw.inputs,
                 avatar,
                 tool_ids: raw.tool_ids,
+                verify_command: raw.verify_command,
+                verify_cwd: raw.verify_cwd,
+                apply_mode: raw.apply_mode,
             },
         );
     }
@@ -558,6 +590,9 @@ pub struct HordeManager {
     /// Cap on resume attempts per run before it is errored out
     /// ([`DEFAULT_RESUME_MAX_ATTEMPTS`]; `[horde] resume_max_attempts` in config).
     pub resume_max_attempts: u32,
+    /// Step kinds executed in-process (no federation worker); kinds not in the
+    /// registry are delegated to workers as before (mixed mode).
+    pub step_handlers: Arc<StepHandlerRegistry>,
 }
 
 impl HordeManager {
@@ -575,6 +610,7 @@ impl HordeManager {
             orchestrator_id: federation_orchestrator_id(),
             store,
             resume_max_attempts: DEFAULT_RESUME_MAX_ATTEMPTS,
+            step_handlers: Arc::new(StepHandlerRegistry::with_builtin_deterministic()),
         }
     }
 
@@ -700,7 +736,7 @@ impl HordeManager {
     }
 
     fn previous_artifact_for_step(spec: &HordeSpec, run: &RunRecord, step: &str) -> Option<String> {
-        single_predecessor(&spec.execution_graph, step)
+        single_forward_predecessor(&spec.pipeline, &spec.execution_graph, step)
             .and_then(|pred| Self::artifact_for_step(run, &pred))
     }
 
@@ -887,6 +923,27 @@ impl HordeManager {
                 .await;
         }
         self.publish(&assigned_envelope).await;
+        let _ = run_for_log;
+
+        if let Some(handler) = self.step_handlers.get(&sub.kind) {
+            log::info!(
+                "horde {} run {} step {} -> in-process handler `{}`",
+                spec.id,
+                run_id,
+                step_name,
+                sub.kind
+            );
+            self.spawn_in_process_step(
+                spec.clone(),
+                run_id.to_string(),
+                sub,
+                handler,
+                previous_artifact.map(ToString::to_string),
+            )
+            .await;
+            return Ok(());
+        }
+
         log::info!(
             "horde {} run {} step {} -> capability {}",
             spec.id,
@@ -894,8 +951,6 @@ impl HordeManager {
             step_name,
             sub.capability
         );
-        let _ = run_for_log;
-
         match self
             .federation
             .delegate_first_match(&task_id, &instruction, &sub.capability)
@@ -911,6 +966,102 @@ impl HordeManager {
             }
             Err(e) => Err(format!("federation delegate error: {}", e)),
         }
+    }
+
+    /// Execute a registry-backed step inside the server process as a Tokio task.
+    /// The outcome is fed back as a `TaskFinished` envelope on the run's topic —
+    /// exactly what a federation worker would have published — so
+    /// [`Self::handle_task_finished`] stays the single advance point.
+    async fn spawn_in_process_step(
+        &self,
+        spec: HordeSpec,
+        run_id: String,
+        sub: SubAgentSpec,
+        handler: Arc<dyn StepHandler>,
+        previous_artifact: Option<String>,
+    ) {
+        let manager = self.clone();
+        let (source, question) = {
+            let runs = self.runs.lock().await;
+            runs.runs
+                .get(&run_id)
+                .map(|r| (r.source.clone(), r.question.clone()))
+                .unwrap_or((None, String::new()))
+        };
+        tokio::spawn(async move {
+            let started = manager.build_envelope(
+                &spec.topic,
+                AclMessage::TaskStarted {
+                    run_id: run_id.clone(),
+                    horde: spec.id.clone(),
+                    step: sub.name.clone(),
+                    agent: sub.default_agent_id.clone(),
+                    text: Some(format!("{} step running in-process", sub.kind)),
+                },
+            );
+            manager.publish(&started).await;
+
+            let sink = InProcessEventSink {
+                manager: manager.clone(),
+                topic: spec.topic.clone(),
+                run_id: run_id.clone(),
+                horde: spec.id.clone(),
+                step: sub.name.clone(),
+                agent_id: sub.default_agent_id.clone(),
+            };
+            let step_spec = sub.step_spec();
+            let project_path = source
+                .as_deref()
+                .and_then(kowalski_core::source_bundle::extract_project_path_from_source);
+            let cancel = tokio_util::sync::CancellationToken::new();
+            let ctx = StepContext {
+                run_id: &run_id,
+                horde_id: &spec.id,
+                step: &step_spec,
+                workdir: &spec.workdir,
+                horde_root: &spec.root_path,
+                source: source.as_deref(),
+                question: &question,
+                project_path,
+                previous_artifact: previous_artifact.as_deref().map(Path::new),
+                events: &sink,
+                llm: None,
+                tools: None,
+                cancel: &cancel,
+            };
+            let (success, artifact, summary, outcome) = match handler.execute(&ctx).await {
+                Ok(StepOutcome::Completed {
+                    artifact,
+                    status,
+                    summary,
+                }) => (
+                    true,
+                    artifact.map(|p| p.display().to_string()),
+                    summary,
+                    Some(status.as_str().to_string()),
+                ),
+                Err(e) => (
+                    false,
+                    None,
+                    format!("{} step failed: {}", sub.kind, e),
+                    None,
+                ),
+            };
+            let finished = manager.build_envelope(
+                &spec.topic,
+                AclMessage::TaskFinished {
+                    run_id: run_id.clone(),
+                    horde: spec.id.clone(),
+                    step: sub.name.clone(),
+                    agent: sub.default_agent_id.clone(),
+                    success,
+                    artifact,
+                    summary,
+                    outcome,
+                },
+            );
+            manager.publish(&finished).await;
+        });
     }
 
     /// Mark a step as finished and advance the pipeline (or finalize the run).
@@ -1633,6 +1784,34 @@ fn envelope_summary(env: &AclEnvelope) -> serde_json::Value {
     serde_json::to_value(&env.payload).unwrap_or(json!({}))
 }
 
+/// Publishes in-process step handler progress as `AgentMessage` on the run's
+/// topic — the same feed messages a federation worker would emit.
+struct InProcessEventSink {
+    manager: HordeManager,
+    topic: String,
+    run_id: String,
+    horde: String,
+    step: String,
+    agent_id: String,
+}
+
+#[async_trait::async_trait]
+impl StepEventSink for InProcessEventSink {
+    async fn message(&self, text: &str) {
+        let env = self.manager.build_envelope(
+            &self.topic,
+            AclMessage::AgentMessage {
+                run_id: self.run_id.clone(),
+                horde: self.horde.clone(),
+                from: self.agent_id.clone(),
+                step: Some(self.step.clone()),
+                text: text.to_string(),
+            },
+        );
+        self.manager.publish(&env).await;
+    }
+}
+
 pub fn federation_orchestrator_id() -> String {
     "horde-orchestrator".to_string()
 }
@@ -1763,6 +1942,9 @@ mod tests {
             inputs: Vec::new(),
             avatar: None,
             tool_ids: Vec::new(),
+            verify_command: None,
+            verify_cwd: None,
+            apply_mode: None,
         }
     }
 
@@ -2394,6 +2576,157 @@ mod tests {
         let done = manager.store.get_run(&run_id).await.unwrap().unwrap();
         assert_eq!(done.status, RunStatus::Done);
         assert_eq!(done.loop_counts.get("verify->gen"), Some(&1));
+    }
+
+    /// Poll the store until the run reaches a terminal status (in-process steps
+    /// finish asynchronously via the orchestrator loop).
+    async fn wait_for_terminal(manager: &HordeManager, run_id: &str) -> PersistedRun {
+        for _ in 0..200 {
+            let run = manager.store.get_run(run_id).await.unwrap().unwrap();
+            if !run.status.is_incomplete() {
+                return run;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+        panic!("run {run_id} did not reach a terminal status in time");
+    }
+
+    /// All-deterministic DAG with a verify fail→loop-back edge, executed fully
+    /// in-process: NO federation worker is registered at all.
+    #[tokio::test]
+    async fn deterministic_dag_with_loop_back_runs_in_process() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        std::fs::write(project.path().join("lib.rs"), "fn a() {}\n").unwrap();
+
+        let mut spec = test_spec(dir.path());
+        spec.pipeline = vec!["ingest".into(), "test-verify".into(), "test-apply".into()];
+        spec.sub_agents = vec![sub("ingest"), sub("test-verify"), sub("test-apply")];
+        spec.sub_agents[0].kind = "ingest".into();
+        spec.sub_agents[1].kind = "verify".into();
+        // Fails on the first attempt (creates the flag), passes on the loop retry.
+        spec.sub_agents[1].verify_command =
+            Some("if [ -f flagfile ]; then true; else touch flagfile; false; fi".into());
+        spec.sub_agents[1].output = Some("debug/verify.md".into());
+        spec.sub_agents[2].kind = "apply".into();
+        spec.sub_agents[2].output = Some("debug/apply.md".into());
+        let edges = vec![
+            HordeEdge { from: "ingest".into(), to: "test-verify".into(), when: None, max_loops: None },
+            HordeEdge {
+                from: "test-verify".into(),
+                to: "test-apply".into(),
+                when: Some("pass".into()),
+                max_loops: None,
+            },
+            HordeEdge {
+                from: "test-verify".into(),
+                to: "ingest".into(),
+                when: Some("fail".into()),
+                max_loops: Some(2),
+            },
+        ];
+        spec.manifest_edges = edges.clone();
+        spec.execution_graph = resolve_execution_graph(&spec.pipeline, Some(&edges)).unwrap();
+
+        // No AgentRecord registered anywhere — a worker delegation would fail loudly.
+        let broker = Arc::new(MpscBroker::new());
+        let registry = Arc::new(AgentRegistry::new());
+        let federation = Arc::new(FederationOrchestrator::new(registry, broker.clone()));
+        let store = RunStore::open("sqlite::memory:").await.unwrap();
+        let manager = HordeManager::new(vec![spec], broker, federation, store);
+        spawn_orchestrator_loop(manager.clone());
+
+        let record = manager
+            .start_run(
+                "test-horde",
+                &format!("check {}", project.path().display()),
+                Some(&project.path().display().to_string()),
+                None,
+                RUN_ORIGIN_OPERATOR,
+            )
+            .await
+            .unwrap();
+
+        let done = wait_for_terminal(&manager, &record.run_id).await;
+        assert_eq!(done.status, RunStatus::Done, "result: {:?}", done.result);
+        assert_eq!(
+            done.loop_counts.get("test-verify->ingest"),
+            Some(&1),
+            "verify failed once, looped back once"
+        );
+        assert_eq!(step(&done, "ingest").attempt, 2);
+        let verify = step(&done, "test-verify");
+        assert_eq!(verify.status, StepStatus::Succeeded);
+        assert_eq!(verify.attempt, 2);
+        assert_eq!(verify.outcome.as_deref(), Some("pass"));
+        let apply = step(&done, "test-apply");
+        assert_eq!(apply.status, StepStatus::Succeeded);
+        assert!(
+            PathBuf::from(apply.artifact.as_deref().unwrap()).is_file(),
+            "apply artifact written on disk"
+        );
+        assert!(
+            PathBuf::from(step(&done, "ingest").artifact.as_deref().unwrap()).is_file(),
+            "ingest artifact written on disk"
+        );
+    }
+
+    /// Mixed mode: the LLM-ish `process` step goes through the federation worker
+    /// path; the verify step of the same run executes in-process.
+    #[tokio::test]
+    async fn mixed_mode_worker_and_in_process_steps_share_a_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+
+        let mut spec = test_spec(dir.path());
+        spec.pipeline = vec!["plan".into(), "test-verify".into()];
+        spec.sub_agents = vec![sub("plan"), sub("test-verify")];
+        spec.sub_agents[1].kind = "verify".into();
+        spec.sub_agents[1].verify_command = Some("true".into());
+        spec.sub_agents[1].output = Some("debug/verify.md".into());
+        spec.execution_graph = resolve_execution_graph(&spec.pipeline, None).unwrap();
+
+        let broker = Arc::new(MpscBroker::new());
+        let registry = Arc::new(AgentRegistry::new());
+        registry
+            .register(AgentRecord {
+                id: "w1".into(),
+                capabilities: vec!["test.plan".into()],
+            })
+            .unwrap();
+        let federation = Arc::new(FederationOrchestrator::new(registry, broker.clone()));
+        let store = RunStore::open("sqlite::memory:").await.unwrap();
+        let manager = HordeManager::new(vec![spec], broker, federation, store);
+        spawn_orchestrator_loop(manager.clone());
+
+        let record = manager
+            .start_run(
+                "test-horde",
+                &project.path().display().to_string(),
+                Some(&project.path().display().to_string()),
+                None,
+                RUN_ORIGIN_OPERATOR,
+            )
+            .await
+            .unwrap();
+        let run_id = record.run_id;
+
+        let mid = manager.store.get_run(&run_id).await.unwrap().unwrap();
+        assert_eq!(
+            step(&mid, "plan").status,
+            StepStatus::Delegating,
+            "worker path used for the LLM kind"
+        );
+
+        // Simulate the federation worker finishing the plan step; the verify
+        // step then runs in-process and completes the run without any worker.
+        manager
+            .handle_task_finished(&run_id, "plan", true, Some("out/plan.md"), "planned")
+            .await;
+        let done = wait_for_terminal(&manager, &run_id).await;
+        assert_eq!(done.status, RunStatus::Done, "result: {:?}", done.result);
+        assert_eq!(step(&done, "test-verify").status, StepStatus::Succeeded);
+        assert_eq!(step(&done, "test-verify").outcome.as_deref(), Some("pass"));
     }
 
     #[test]

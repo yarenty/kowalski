@@ -562,6 +562,25 @@ pub fn single_predecessor(graph: &ExecutionGraph, step: &str) -> Option<String> 
     }
 }
 
+/// Single *forward* predecessor of `step` — loop-back edges are ignored, so a
+/// step that is also a retry target (e.g. `verify --fail--> dev`) still chains
+/// its predecessor's artifact on both the first pass and loop re-entries.
+pub fn single_forward_predecessor(
+    pipeline: &[String],
+    graph: &ExecutionGraph,
+    step: &str,
+) -> Option<String> {
+    let preds: Vec<&HordeEdge> = graph
+        .edges
+        .iter()
+        .filter(|e| e.to == step && !is_loop_back_edge(pipeline, e))
+        .collect();
+    match preds.as_slice() {
+        [only] => Some(only.from.clone()),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -577,6 +596,27 @@ mod tests {
 
     fn pipeline(steps: &[&str]) -> Vec<String> {
         steps.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn single_forward_predecessor_ignores_loop_back_edges() {
+        let pipe = pipeline(&["plan", "dev", "verify"]);
+        let mut loop_back = edge("verify", "dev");
+        loop_back.when = Some("fail".into());
+        loop_back.max_loops = Some(2);
+        let edges = vec![edge("plan", "dev"), edge("dev", "verify"), loop_back];
+        let g = resolve_execution_graph(&pipe, Some(&edges)).unwrap();
+        // `dev` has two inbound edges, but only `plan` is a forward predecessor.
+        assert_eq!(single_predecessor(&g, "dev"), None);
+        assert_eq!(
+            single_forward_predecessor(&pipe, &g, "dev"),
+            Some("plan".to_string())
+        );
+        assert_eq!(
+            single_forward_predecessor(&pipe, &g, "verify"),
+            Some("dev".to_string())
+        );
+        assert_eq!(single_forward_predecessor(&pipe, &g, "plan"), None);
     }
 
     #[test]

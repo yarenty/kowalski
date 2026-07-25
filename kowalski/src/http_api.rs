@@ -1188,6 +1188,10 @@ fn worker_profiles(state: &ApiState) -> Vec<WorkerProfile> {
     let mut out = Vec::new();
     for spec in state.horde_manager.specs.iter() {
         for sub in &spec.sub_agents {
+            // Kinds with an in-process step handler need no federation worker.
+            if state.horde_manager.step_handlers.contains(&sub.kind) {
+                continue;
+            }
             let id = format!("{}::{}", spec.id, sub.name);
             out.push(WorkerProfile {
                 id: id.clone(),

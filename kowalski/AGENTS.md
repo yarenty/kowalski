@@ -213,6 +213,15 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
 - Guard rail: each run spends resume attempts (persisted `resume_count`); after
   **`[horde] resume_max_attempts`** failed resumes (default 2,
   `horde::DEFAULT_RESUME_MAX_ATTEMPTS`) the run goes to `error` with a clear reason.
+- **In-process step execution (mixed mode):** `delegate_step` checks the manager's
+  `StepHandlerRegistry` (`kowalski_core::horde_step`, built with the deterministic kinds
+  `verify` / `apply` / `ingest`). Registry hit → the step runs as a Tokio task inside the
+  server: `TaskStarted` is published, the handler executes, and the outcome comes back as
+  a `TaskFinished` envelope on the run's topic — exactly what a federation worker would
+  publish, so `handle_task_finished` stays the single advance point. Registry miss (LLM
+  kinds) → federation worker delegation as before. `worker_profiles` skips registry
+  kinds, so no worker process is spawned (or listed in the UI) for them; a horde whose
+  steps are all deterministic runs with zero workers.
 
 - **Rookery** (`src/rookery.rs`, 1.3.0): horde builder API — see [`../ROADMAP.md`](../ROADMAP.md) (*Planned: Rookery*). Routes (require `Extension` store + running LLM for chat/propose):
 

@@ -7,6 +7,7 @@ pub mod federation;
 pub mod graph;
 pub mod horde_graph;
 pub mod horde_stages;
+pub mod horde_step;
 pub mod llm;
 pub mod source_bundle;
 pub mod logging;
@@ -48,11 +49,15 @@ pub use horde_stages::{
     parse_stage_status_from_artifact, resolve_verify_cwd, run_verify_command, ApplyDryRunResult,
     StageStatus, VerifyRunResult, DEFAULT_VERIFY_MAX_OUTPUT_BYTES, DEFAULT_VERIFY_TIMEOUT_SECS,
 };
+pub use horde_step::{
+    ApplyStepHandler, IngestStepHandler, NullEventSink, StepContext, StepError, StepEventSink,
+    StepHandler, StepHandlerRegistry, StepOutcome, StepSpec, VerifyStepHandler,
+};
 pub use horde_graph::{
     all_steps_successful, edge_matches_outcome, execution_order, has_conditional_outbound,
     inbound_predecessors, is_loop_back_edge, is_loop_back_step, loop_edge_key, next_ready_step, next_ready_step_conditional,
     outbound_edges, resolve_execution_graph, retry_span, select_next_from_outcome,
-    should_persist_edges, single_predecessor, ExecutionGraph, HordeEdge,
+    should_persist_edges, single_forward_predecessor, single_predecessor, ExecutionGraph, HordeEdge,
 };
 pub use markdown_pipeline::{
     maybe_normalize_markdown, parse_app_manifest, parse_stage_agent, render_context_attachments,
