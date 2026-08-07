@@ -217,6 +217,38 @@ stdout line protocol (zero or more `message` lines, then one `outcome`). Isolati
 vocabulary (`ISOLATION_IN_PROCESS`/`ISOLATION_PROCESS`, `is_valid_isolation`) is owned
 here.
 
+### LLM providers (`src/llm/`)
+
+`LLMProvider` (`provider.rs`) is the backend abstraction: `chat`, `embed`, `chat_stream`,
+and — since native tool calling landed — `chat_with_tool_defs` + `supports_native_tools`.
+Implementations: `OllamaProvider` (`ollama.rs`, raw `/api/chat` JSON) and `OpenAIProvider`
+(`openai.rs`, async-openai — works against any OpenAI-compatible Chat Completions server).
+`create_llm_provider(config)` (`mod.rs`) is the only factory; both binaries and step
+handlers get providers through it.
+
+**Native tool calling (opt-in, `[llm] native_tools = true`):**
+
+- `ToolDefinition` (`provider.rs`) is the wire-format tool declaration and the **single
+  owner** of the `Tool` metadata → JSON Schema conversion (`ToolDefinition::from_tool`);
+  providers map it onto their client types (`wire_json()` for Ollama, typed
+  `ChatCompletionTools` for OpenAI).
+- `chat_with_tool_defs(model, messages, tools) -> ChatOutcome` sends declarations on the
+  wire; `ChatOutcome` is either `Text` or structured `ToolCalls` (ids synthesized as
+  `call_<n>` for Ollama, which sends none). The **caller** executes tools and sends results
+  back as `role = "tool"` messages — `Message::tool_result(tool_call_id, content)`;
+  `Message::assistant_tool_calls` records the requesting turn in history.
+- `supports_native_tools(model)` reports the deployment's opt-in (default `false`); the
+  default `chat_with_tool_defs` ignores `tools` and behaves like `chat`, so providers
+  without tool support are unaffected. The ReAct JSON-in-text loop (`agent/mod.rs`
+  `chat_with_tools`) remains the fallback and is unchanged.
+- `Message` (`conversation/mod.rs`) carries `tool_calls` / `tool_call_id` as skippable
+  optionals — conversations persisted before native tool calling still load, and plain
+  messages stay clean on the wire.
+
+Operator-facing error conventions for implementors are documented in `provider.rs` module
+docs. Wire-fixture tests live beside each provider; the scripted two-turn exchange
+(declare → structured calls → tool-role follow-up) is `tests/native_tool_calling.rs`.
+
 ### Tool execution model (three sources, one abstraction)
 
 Agents ultimately call **capabilities** that behave like tools. Those capabilities come from **exactly one of three places** (or a deliberate combination), configured per deployment:

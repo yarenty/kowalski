@@ -82,6 +82,12 @@ pub struct LLMConfig {
     /// Set to `"ollama"` if your OpenAI-compatible API doesn't support embeddings.
     #[serde(default = "default_embeddings_provider")]
     pub embeddings_provider: String,
+    /// Opt in to **native tool calling**: tool declarations are sent on the wire and the
+    /// model returns structured tool calls instead of JSON-in-text. Requires a tool-capable
+    /// model (both Ollama and OpenAI-compatible providers support it). Default `false` —
+    /// agents fall back to text-based tool prompting.
+    #[serde(default)]
+    pub native_tools: bool,
 }
 
 fn default_embeddings_provider() -> String {
@@ -96,6 +102,7 @@ impl Default for LLMConfig {
             openai_api_base: None,
             model: None,
             embeddings_provider: "llm".to_string(),
+            native_tools: false,
         }
     }
 }

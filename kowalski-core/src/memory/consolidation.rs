@@ -64,11 +64,7 @@ impl Consolidator {
 
     async fn summarize_with_llm(&self, content: &str) -> Result<String, KowalskiError> {
         let prompt = format!("Summarize the following text:\n\n{}", content);
-        let messages = vec![crate::conversation::Message {
-            role: "user".to_string(),
-            content: prompt,
-            tool_calls: None,
-        }];
+        let messages = vec![crate::conversation::Message::text("user", &prompt)];
         self.llm_provider.chat(&self.model, &messages).await
     }
 
@@ -77,11 +73,7 @@ impl Consolidator {
             "Create a graph representation of the following text in the format {{ \"subject\": \"...\", \"predicate\": \"...\", \"object\": \"...\" }}:\n\n{}",
             content
         );
-        let messages = vec![crate::conversation::Message {
-            role: "user".to_string(),
-            content: prompt,
-            tool_calls: None,
-        }];
+        let messages = vec![crate::conversation::Message::text("user", &prompt)];
         self.llm_provider.chat(&self.model, &messages).await
     }
 }

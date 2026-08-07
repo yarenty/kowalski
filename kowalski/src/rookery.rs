@@ -230,11 +230,7 @@ fn load_persisted_sessions(
             let messages = persisted
                 .transcript
                 .iter()
-                .map(|t| Message {
-                    role: t.role.clone(),
-                    content: t.content.clone(),
-                    tool_calls: None,
-                })
+                .map(|t| Message::text(&t.role, &t.content))
                 .collect::<Vec<_>>();
             if let Err(e) = agent.replace_conversation_messages(&conversation_id, messages) {
                 log::warn!(
@@ -418,11 +414,7 @@ fn history_to_messages(history: &[RookeryHistoryTurn]) -> Vec<Message> {
             let role = t.role.as_str();
             (role == "user" || role == "assistant") && !t.content.trim().is_empty()
         })
-        .map(|t| Message {
-            role: t.role.clone(),
-            content: t.content.clone(),
-            tool_calls: None,
-        })
+        .map(|t| Message::text(&t.role, &t.content))
         .collect()
 }
 

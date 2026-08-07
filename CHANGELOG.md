@@ -21,6 +21,19 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Added
 
+- **Native tool calling on the LLM provider layer (#50):** `LLMProvider` gains
+  `chat_with_tool_defs(model, messages, tools) -> ChatOutcome` — tool declarations travel
+  on the wire and tool-capable models answer with **structured tool calls** instead of
+  JSON embedded in free text — plus `supports_native_tools(model)`. Opt in with
+  `[llm] native_tools = true` in `config.toml` (default off; providers without the opt-in
+  behave exactly as before, and the text-based ReAct loop remains the fallback). Both
+  backends are wired: Ollama (`tools` in `/api/chat`, `message.tool_calls` parsed, ids
+  synthesized) and OpenAI-compatible servers (typed Chat Completions tools). Tool results
+  return as `role = "tool"` messages (`Message::tool_result`); `ToolDefinition::from_tool`
+  converts `Tool` metadata to the wire JSON Schema in one place, and conversation
+  persistence round-trips the new `tool_calls` / `tool_call_id` message fields (old
+  conversations still load).
+
 - **Opt-in process isolation for horde steps (#42):** a step's `agents/*.md` frontmatter
   can declare `isolation = "process"` (default `in_process`, validated at load, captured
   in the run's manifest snapshot) to execute that step in a spawned one-shot child

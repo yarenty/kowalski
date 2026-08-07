@@ -14,7 +14,43 @@ pub struct Conversation {
 pub struct Message {
     pub role: String,
     pub content: String,
+    /// Structured calls emitted by an assistant turn (native provider tool calling).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
+    /// For `role = "tool"` messages: the id of the [`ToolCall`] this result answers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+}
+
+impl Message {
+    pub fn text(role: &str, content: &str) -> Self {
+        Self {
+            role: role.to_string(),
+            content: content.to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+        }
+    }
+
+    /// Assistant turn that requested tool calls (content may be empty).
+    pub fn assistant_tool_calls(content: &str, calls: Vec<ToolCall>) -> Self {
+        Self {
+            role: "assistant".to_string(),
+            content: content.to_string(),
+            tool_calls: Some(calls),
+            tool_call_id: None,
+        }
+    }
+
+    /// Tool result answering the call with the given id, sent back as `role = "tool"`.
+    pub fn tool_result(tool_call_id: &str, content: &str) -> Self {
+        Self {
+            role: "tool".to_string(),
+            content: content.to_string(),
+            tool_calls: None,
+            tool_call_id: Some(tool_call_id.to_string()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,11 +83,7 @@ impl Conversation {
     }
 
     pub fn add_message(&mut self, role: &str, content: &str) {
-        self.messages.push(Message {
-            role: role.to_string(),
-            content: content.to_string(),
-            tool_calls: None,
-        });
+        self.messages.push(Message::text(role, content));
     }
 
     pub fn get_messages(&self) -> &[Message] {

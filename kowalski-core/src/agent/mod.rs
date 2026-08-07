@@ -498,14 +498,7 @@ impl BaseAgent {
                 effective_context
             );
             let insert_at = messages.len().saturating_sub(1);
-            messages.insert(
-                insert_at,
-                Message {
-                    role: "system".to_string(),
-                    content: memory_prompt,
-                    tool_calls: None,
-                },
-            );
+            messages.insert(insert_at, Message::text("system", &memory_prompt));
         }
         let llm = self.llm_provider.clone();
         Ok((model, messages, llm))
@@ -905,14 +898,7 @@ impl BaseAgent {
                 effective_context
             );
             let insert_at = llm_messages.len().saturating_sub(1);
-            llm_messages.insert(
-                insert_at,
-                Message {
-                    role: "system".to_string(),
-                    content: memory_prompt,
-                    tool_calls: None,
-                },
-            );
+            llm_messages.insert(insert_at, Message::text("system", &memory_prompt));
         }
 
         // Delegate to LLM Provider
