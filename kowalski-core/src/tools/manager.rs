@@ -1,4 +1,5 @@
 use crate::error::KowalskiError;
+use crate::llm::ToolDefinition;
 use crate::tools::{Tool, ToolInput, ToolOutput};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -100,79 +101,49 @@ impl ToolManager {
         result
     }
 
-    /// Generate a JSON schema for all registered tools (OpenAI-style function calling format)
-    pub async fn generate_json_schema(&self) -> serde_json::Value {
+    /// Wire-format tool declarations for native provider tool calling
+    /// ([`crate::llm::LLMProvider::chat_with_tool_defs`]), optionally filtered to an
+    /// allowlist of tool names (horde stage `tool_ids`).
+    pub async fn tool_definitions(&self, allowed: Option<&[String]>) -> Vec<ToolDefinition> {
         let tools_snapshot: Vec<SharedTool> = if let Ok(tools) = self.tools.read() {
             tools.values().cloned().collect()
         } else {
-            return serde_json::json!([]);
+            return Vec::new();
         };
 
-        let mut functions = Vec::new();
+        let mut definitions = Vec::new();
         for tool in tools_snapshot {
             let tool_guard = tool.lock().await;
-            let mut properties = serde_json::Map::new();
-            let mut required = Vec::new();
-
-            for param in tool_guard.parameters() {
-                let mut param_info = serde_json::Map::new();
-                param_info.insert(
-                    "type".to_string(),
-                    serde_json::json!(format!("{:?}", param.parameter_type).to_lowercase()),
-                );
-                param_info.insert(
-                    "description".to_string(),
-                    serde_json::json!(param.description),
-                );
-
-                if let Some(default) = param.default_value {
-                    param_info.insert("default".to_string(), serde_json::json!(default));
-                }
-
-                properties.insert(param.name.clone(), serde_json::Value::Object(param_info));
-                if param.required {
-                    required.push(param.name);
-                }
+            if let Some(list) = allowed.filter(|l| !l.is_empty())
+                && !list.iter().any(|a| a == tool_guard.name())
+            {
+                continue;
             }
-
-            functions.push(serde_json::json!({
-                "type": "function",
-                "function": {
-                    "name": tool_guard.name(),
-                    "description": tool_guard.description(),
-                    "parameters": {
-                        "type": "object",
-                        "properties": properties,
-                        "required": required
-                    }
-                }
-            }));
+            definitions.push(ToolDefinition::from_tool(&*tool_guard));
         }
+        definitions
+    }
 
-        serde_json::Value::Array(functions)
+    /// Generate a JSON schema for all registered tools (OpenAI-style function calling format)
+    pub async fn generate_json_schema(&self) -> serde_json::Value {
+        serde_json::Value::Array(
+            self.tool_definitions(None)
+                .await
+                .iter()
+                .map(ToolDefinition::wire_json)
+                .collect(),
+        )
     }
 
     /// JSON schema subset for an allowlist of tool names (horde stage `tool_ids`).
     pub async fn generate_json_schema_for(&self, allowed: Option<&[String]>) -> serde_json::Value {
-        let full = self.generate_json_schema().await;
-        let Some(list) = allowed.filter(|l| !l.is_empty()) else {
-            return full;
-        };
-        let Some(arr) = full.as_array() else {
-            return full;
-        };
-        let filtered: Vec<_> = arr
-            .iter()
-            .filter(|entry| {
-                entry
-                    .get("function")
-                    .and_then(|f| f.get("name"))
-                    .and_then(|n| n.as_str())
-                    .is_some_and(|name| list.iter().any(|a| a == name))
-            })
-            .cloned()
-            .collect();
-        serde_json::Value::Array(filtered)
+        serde_json::Value::Array(
+            self.tool_definitions(allowed)
+                .await
+                .iter()
+                .map(ToolDefinition::wire_json)
+                .collect(),
+        )
     }
 }
 

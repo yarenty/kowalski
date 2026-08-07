@@ -88,6 +88,25 @@ pub struct LLMConfig {
     /// agents fall back to text-based tool prompting.
     #[serde(default)]
     pub native_tools: bool,
+    /// Which tool loop the agent runs (see [`ToolCallingMode`]). Default `auto`: native
+    /// when [`Self::native_tools`] declares the model capable, else the text-based ReAct
+    /// loop. `native` / `react` force one path regardless of the capability flag.
+    #[serde(default)]
+    pub tool_calling: ToolCallingMode,
+}
+
+/// Single source of truth for the agent tool-loop policy (`[llm] tool_calling`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolCallingMode {
+    /// Native structured tool calls when the provider reports the model capable
+    /// (`[llm] native_tools`), otherwise the ReAct text loop.
+    #[default]
+    Auto,
+    /// Always the native path, even without the capability flag (trust the operator).
+    Native,
+    /// Always the ReAct text loop, even for tool-capable models.
+    React,
 }
 
 fn default_embeddings_provider() -> String {
@@ -103,6 +122,7 @@ impl Default for LLMConfig {
             model: None,
             embeddings_provider: "llm".to_string(),
             native_tools: false,
+            tool_calling: ToolCallingMode::default(),
         }
     }
 }

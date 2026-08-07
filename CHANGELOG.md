@@ -21,6 +21,19 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Added
 
+- **Agent loop: native tool calls first, ReAct as fallback (#51):** every
+  `chat_with_tools*` entry point — REPL chat, `/api/chat` (plain and streaming), in-process
+  horde LLM steps, isolated `exec-step` children, and role workers — now runs the
+  provider's **native structured tool loop** when the model supports it: tool declarations
+  travel on the wire, calls execute in order (multiple per turn), and results feed back as
+  proper `role = "tool"` messages instead of being spliced into prompt text. `[llm]
+  tool_calling = "auto" | "native" | "react"` (default `auto`) overrides the choice per
+  deployment: `auto` follows the `native_tools` capability flag, `native`/`react` force one
+  path. The ReAct text loop is unchanged and remains the fallback; both loops share the
+  same iteration cap, and the native loop gets its own runaway guard (identical consecutive
+  tool calls short-circuit). Tool schemas for the prompt appendix and the wire now come
+  from one place (`ToolDefinition::from_tool`).
+
 - **Native tool calling on the LLM provider layer (#50):** `LLMProvider` gains
   `chat_with_tool_defs(model, messages, tools) -> ChatOutcome` — tool declarations travel
   on the wire and tool-capable models answer with **structured tool calls** instead of

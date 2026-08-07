@@ -52,10 +52,11 @@ impl ToolDefinition {
                 ParameterType::Array => "array",
                 ParameterType::Object => "object",
             };
-            properties.insert(
-                param.name.clone(),
-                json!({ "type": type_name, "description": param.description }),
-            );
+            let mut property = json!({ "type": type_name, "description": param.description });
+            if let Some(default) = param.default_value {
+                property["default"] = json!(default);
+            }
+            properties.insert(param.name.clone(), property);
             if param.required {
                 required.push(param.name);
             }

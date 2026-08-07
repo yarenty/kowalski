@@ -24,6 +24,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub mod repl_trace;
 pub mod types;
 
+/// Upper bound on LLM↔tool round-trips in one `chat_with_tools*` request (both the native
+/// structured loop and the ReAct text loop).
+pub const MAX_TOOL_ITERATIONS: usize = 5;
+
 /// The core agent trait that all our specialized agents must implement.
 #[async_trait]
 pub trait Agent: Send + Sync {
@@ -79,22 +83,38 @@ pub trait Agent: Send + Sync {
         ))
     }
 
-    /// Chat with the agent using ReAct-style tool calling
+    /// Native tool-calling hook: agents whose provider supports structured tool calls
+    /// handle the whole turn and return `Some(result)`; `None` falls through to the
+    /// ReAct text loop in [`Agent::chat_with_tools`]. Default: no native support.
+    async fn native_tool_turn(
+        &mut self,
+        _conversation_id: &str,
+        _user_input: &str,
+    ) -> Option<Result<String, KowalskiError>> {
+        None
+    }
+
+    /// Chat with the agent using tool calling: native structured tool calls when the
+    /// provider+model supports them ([`Agent::native_tool_turn`]), else ReAct-style
+    /// JSON-in-text extraction.
     async fn chat_with_tools(
         &mut self,
         conversation_id: &str,
         user_input: &str,
     ) -> Result<String, KowalskiError> {
+        if let Some(result) = self.native_tool_turn(conversation_id, user_input).await {
+            return result;
+        }
+
         let mut final_response = String::new();
         let mut current_input = user_input.to_string();
         let mut iteration_count = 0;
-        const MAX_ITERATIONS: usize = 5; // Prevent infinite loops
         let mut last_tool_call: Option<(String, serde_json::Value)> = None;
         let mut tool_parse_hint_sent = false;
 
         debug!("Starting chat_with_tools for input: '{}'", user_input);
 
-        while iteration_count < MAX_ITERATIONS {
+        while iteration_count < MAX_TOOL_ITERATIONS {
             iteration_count += 1;
             debug!(" === ITERATION {} ===", iteration_count);
             debug!("Current input: '{}'", current_input);
@@ -213,7 +233,7 @@ pub trait Agent: Send + Sync {
             break;
         }
 
-        if iteration_count >= MAX_ITERATIONS {
+        if iteration_count >= MAX_TOOL_ITERATIONS {
             warn!("Reached maximum iterations, returning current response");
         }
 
@@ -504,6 +524,155 @@ impl BaseAgent {
         Ok((model, messages, llm))
     }
 
+    /// Whether this request should run the native tool loop for `model`:
+    /// `[llm] tool_calling` policy resolved against the provider's capability report.
+    pub fn native_tools_active(&self, model: &str) -> bool {
+        match self.config.llm.tool_calling {
+            crate::config::ToolCallingMode::React => false,
+            crate::config::ToolCallingMode::Native => true,
+            crate::config::ToolCallingMode::Auto => self.llm_provider.supports_native_tools(model),
+        }
+    }
+
+    fn conversation_model(&self, conversation_id: &str) -> Option<String> {
+        self.conversations
+            .get(conversation_id)
+            .map(|c| c.model.clone())
+    }
+
+    /// Shared entry for [`Agent::native_tool_turn`]: run the native loop when the policy
+    /// and provider allow it for this conversation's model, else defer to ReAct.
+    pub async fn try_native_tool_turn(
+        &mut self,
+        conversation_id: &str,
+        user_input: &str,
+    ) -> Option<Result<String, KowalskiError>> {
+        let model = self.conversation_model(conversation_id)?;
+        if !self.native_tools_active(&model) {
+            return None;
+        }
+        Some(
+            self.chat_with_tools_native(conversation_id, user_input, true, None, None)
+                .await,
+        )
+    }
+
+    /// Tool loop over the provider's **native** tool-calling surface
+    /// ([`crate::llm::LLMProvider::chat_with_tool_defs`]): tool declarations travel on the
+    /// wire, structured calls execute in order, and results feed back as `role = "tool"`
+    /// messages — no JSON-in-text extraction, no result splicing into prompts.
+    ///
+    /// Guard: identical consecutive tool-call sets short-circuit the loop (native
+    /// counterpart of the ReAct repeated-call breaker); [`MAX_TOOL_ITERATIONS`] caps
+    /// round-trips. With `token_tx`, the final assistant text is delivered as a single
+    /// chunk (native tool responses are not streamed token-by-token).
+    pub async fn chat_with_tools_native(
+        &mut self,
+        conversation_id: &str,
+        user_input: &str,
+        use_memory: bool,
+        policy: Option<&crate::tools::policy::ToolExecutionPolicy>,
+        token_tx: Option<&tokio::sync::mpsc::Sender<String>>,
+    ) -> Result<String, KowalskiError> {
+        let quiet = policy.is_some_and(|p| p.quiet);
+        let allowed = policy.and_then(|p| p.allowed_tools.as_deref());
+        let tool_defs = self.tool_manager.tool_definitions(allowed).await;
+
+        // Same memory-context + user-turn handling as the text path.
+        let (model, mut llm_messages, llm) = self
+            .prepare_stream_turn_with_options(conversation_id, user_input, None, use_memory)
+            .await?;
+
+        info!(
+            "chat_with_tools: native tool calling active (model `{}`, {} tool(s))",
+            model,
+            tool_defs.len()
+        );
+
+        let mut final_response = String::new();
+        let mut iteration_count = 0;
+        let mut last_calls_key: Option<Vec<(String, String)>> = None;
+
+        while iteration_count < MAX_TOOL_ITERATIONS {
+            iteration_count += 1;
+            debug!(" === NATIVE TOOL ITERATION {} ===", iteration_count);
+
+            let outcome = llm
+                .chat_with_tool_defs(&model, &llm_messages, &tool_defs)
+                .await?;
+
+            let (content, calls) = match outcome {
+                crate::llm::ChatOutcome::Text(text) => {
+                    debug!("Native loop: final assistant text ({} chars)", text.len());
+                    if !quiet {
+                        if repl_trace::repl_trace_enabled() {
+                            println!("[agent] {}", text);
+                        } else {
+                            println!("{}", text);
+                        }
+                        io::stdout()
+                            .flush()
+                            .map_err(|e| KowalskiError::Server(e.to_string()))?;
+                    }
+                    if let Some(tx) = token_tx
+                        && !text.is_empty()
+                    {
+                        let _ = tx.send(text.clone()).await;
+                    }
+                    self.add_message(conversation_id, "assistant", &text).await;
+                    final_response = text;
+                    break;
+                }
+                crate::llm::ChatOutcome::ToolCalls { content, calls } => (content, calls),
+            };
+
+            let calls_key: Vec<(String, String)> = calls
+                .iter()
+                .map(|c| (c.function.name.clone(), c.function.arguments.to_string()))
+                .collect();
+            if last_calls_key.as_ref() == Some(&calls_key) {
+                debug!("Identical consecutive native tool calls; breaking loop");
+                break;
+            }
+            last_calls_key = Some(calls_key);
+
+            let assistant_turn =
+                Message::assistant_tool_calls(content.as_deref().unwrap_or(""), calls.clone());
+            if let Some(conversation) = self.conversations.get_mut(conversation_id) {
+                conversation.messages.push(assistant_turn.clone());
+            }
+            llm_messages.push(assistant_turn);
+
+            for call in &calls {
+                debug!(
+                    "Native tool call `{}` ({}): {}",
+                    call.function.name, call.id, call.function.arguments
+                );
+                if !quiet && repl_trace::repl_trace_enabled() {
+                    println!("[tool] {} {}", call.function.name, call.function.arguments);
+                }
+                let result = match self
+                    .execute_tool_with_policy(&call.function.name, &call.function.arguments, policy)
+                    .await
+                {
+                    Ok(output) => output.result.to_string(),
+                    Err(e) => format!("{}", e),
+                };
+                let tool_turn = Message::tool_result(&call.id, &result);
+                if let Some(conversation) = self.conversations.get_mut(conversation_id) {
+                    conversation.messages.push(tool_turn.clone());
+                }
+                llm_messages.push(tool_turn);
+            }
+        }
+
+        if iteration_count >= MAX_TOOL_ITERATIONS {
+            warn!("Reached maximum iterations (native tool loop)");
+        }
+
+        Ok(final_response)
+    }
+
     /// Like [`Agent::chat_with_tools`] but emits **token deltas** over `token_tx` only for the first
     /// LLM completion **after at least one tool execution** in this request (final natural answer).
     pub async fn chat_with_tools_with_options(
@@ -523,15 +692,22 @@ impl BaseAgent {
         use_memory: bool,
         policy: Option<&crate::tools::policy::ToolExecutionPolicy>,
     ) -> Result<String, KowalskiError> {
+        if let Some(model) = self.conversation_model(conversation_id)
+            && self.native_tools_active(&model)
+        {
+            return self
+                .chat_with_tools_native(conversation_id, user_input, use_memory, policy, None)
+                .await;
+        }
+
         let mut final_response = String::new();
         let mut current_input = user_input.to_string();
         let mut iteration_count = 0;
-        const MAX_ITERATIONS: usize = 5;
         let mut last_tool_call: Option<(String, serde_json::Value)> = None;
         let mut tool_parse_hint_sent = false;
         let quiet = policy.is_some_and(|p| p.quiet);
 
-        while iteration_count < MAX_ITERATIONS {
+        while iteration_count < MAX_TOOL_ITERATIONS {
             iteration_count += 1;
             let response_text = self
                 .chat_with_history_with_options(conversation_id, &current_input, None, use_memory)
@@ -617,10 +793,23 @@ impl BaseAgent {
         token_tx: &tokio::sync::mpsc::Sender<String>,
         use_memory: bool,
     ) -> Result<String, KowalskiError> {
+        if let Some(model) = self.conversation_model(conversation_id)
+            && self.native_tools_active(&model)
+        {
+            return self
+                .chat_with_tools_native(
+                    conversation_id,
+                    user_input,
+                    use_memory,
+                    None,
+                    Some(token_tx),
+                )
+                .await;
+        }
+
         let mut final_response = String::new();
         let mut current_input = user_input.to_string();
         let mut iteration_count = 0;
-        const MAX_ITERATIONS: usize = 5;
         let mut last_tool_call: Option<(String, serde_json::Value)> = None;
         let mut tool_parse_hint_sent = false;
         // After a tool ran, the next LLM completion is streamed (final answer in the common case).
@@ -628,7 +817,7 @@ impl BaseAgent {
 
         debug!("chat_with_tools_stream_final for input: '{}'", user_input);
 
-        while iteration_count < MAX_ITERATIONS {
+        while iteration_count < MAX_TOOL_ITERATIONS {
             iteration_count += 1;
             let use_stream = std::mem::replace(&mut stream_next_llm_turn, false);
             debug!(
@@ -742,7 +931,7 @@ impl BaseAgent {
             break;
         }
 
-        if iteration_count >= MAX_ITERATIONS {
+        if iteration_count >= MAX_TOOL_ITERATIONS {
             warn!("Reached maximum iterations (stream_final)");
         }
 
@@ -823,6 +1012,14 @@ impl Agent for BaseAgent {
 
     async fn add_message(&mut self, conversation_id: &str, role: &str, content: &str) {
         BaseAgent::add_message(self, conversation_id, role, content).await;
+    }
+
+    async fn native_tool_turn(
+        &mut self,
+        conversation_id: &str,
+        user_input: &str,
+    ) -> Option<Result<String, KowalskiError>> {
+        self.try_native_tool_turn(conversation_id, user_input).await
     }
 
     fn export_conversation(&self, id: &str) -> Result<String, KowalskiError> {
