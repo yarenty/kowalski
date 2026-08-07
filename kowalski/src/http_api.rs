@@ -37,21 +37,7 @@ use tokio::sync::Mutex;
 use tokio_stream::wrappers::ReceiverStream;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 
-/// Returns the model to use based on the LLM provider configuration.
-/// Priority order:
-/// 1. llm.model (if set and provider is openai)
-/// 2. ollama.model (fallback for both providers)
-fn determine_model(config: &Config) -> String {
-    // If using openai provider and llm.model is set, use that
-    if config.llm.provider == "openai" {
-        if let Some(ref model) = config.llm.model {
-            return model.clone();
-        }
-    }
-    
-    // Fallback to ollama.model for both providers
-    config.ollama.model.clone()
-}
+use kowalski_core::config::default_model as determine_model;
 
 #[derive(Serialize)]
 struct MemoryStatus {
@@ -250,6 +236,11 @@ pub async fn serve(
     }
     if let Some(secs) = horde_config_step_timeout_secs(&full_config) {
         horde_manager.step_timeout = std::time::Duration::from_secs(secs);
+    }
+    // Process-isolated steps re-load this same config in the child so both
+    // execution paths resolve one LLM provider/model (root AGENTS.md Rule 8).
+    if config_path.is_file() {
+        horde_manager.exec_step_config = Some(config_path.clone());
     }
     // LLM step kinds run in-process by default: a dedicated horde agent (its own
     // conversations; interactive chat keeps its own agent) shared by all LLM

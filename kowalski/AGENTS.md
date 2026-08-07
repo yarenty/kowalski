@@ -222,7 +222,29 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
   **and all LLM kinds** (`process`/`step`/`deliver`/`final`, `compile`, `ask`, `lint` —
   `LlmStepHandler`, backed by a dedicated horde `TemplateAgent`, no HTTP self-loopback),
   so standard hordes run with **zero worker processes**; `worker_profiles` skips registry
-  kinds. Worker code stays in the CLI as the future opt-in isolation mode.
+  kinds.
+- **Opt-in process isolation (`isolation = "process"`):** a step whose `agents/*.md`
+  frontmatter declares `isolation = "process"` (default `in_process`; validated at load,
+  captured in the manifest snapshot) executes in a spawned **one-shot child process**
+  instead of the server: `delegate_step` branches to `spawn_isolated_step`, which runs
+  `kowalski-cli agent-app exec-step` (resolution: `KOWALSKI_CLI_BIN` env > sibling
+  `kowalski-cli` next to the server binary > `cargo run -p kowalski-cli`), writes an
+  `IsolatedStepRequest` JSON document to its stdin, republishes `message` lines from its
+  stdout as run feed messages, and turns the final `outcome` line into the same
+  `TaskFinished` envelope every other path publishes. Lifecycle is owned per step —
+  spawn → execute → reap (pid logged) — and both run cancellation and the step timeout
+  **kill the child** (no orphans). The child re-loads the server's config file
+  (`exec_step_config`) so LLM kinds resolve the same provider/model.
+- **Isolation trust model:** the boundary is one OS process, nothing more. It protects
+  the server from the step (a crashing/hanging/memory-hungry handler, or a prompt-driven
+  tool call, cannot take down or touch server state), and the step gets **no server API
+  access at all** — the child talks only stdin/stdout to its parent and (for LLM kinds)
+  directly to the configured provider, so there is no loopback to authenticate. File
+  scope for LLM tool calls still comes from the existing `sandbox_root` tool policy
+  (the operator `project_path`). It does **not** confine filesystem or network access of
+  `verify_command`/`apply` beyond ordinary OS permissions — no container, jail, or user
+  switching. Use it for third-party hordes you don't fully trust; keep first-party
+  hordes in-process (faster, one process).
 - **Per-step timeout:** every in-process step runs under **`[horde] step_timeout_secs`**
   (default 600, `horde::DEFAULT_STEP_TIMEOUT_SECS`). A timed-out (or otherwise failed)
   step now **routes over a matching `fail` edge** when the graph has one (loop retries

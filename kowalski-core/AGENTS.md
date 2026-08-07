@@ -204,8 +204,18 @@ registry.register(Arc::new(MyHandler));
 file + `@artifact@`/`@step:` context attachments + operator question for `ask`), then a
 direct call into a shared `TemplateAgent` (tool allowlist + sandbox policy preserved,
 memory off) — no HTTP self-loopback, no worker process. Kinds not in the registry are
-delegated to federation workers (the future opt-in isolation mode); the orchestrator
-side (timeouts, cancellation, TaskFinished feedback) lives in the `kowalski` crate.
+delegated to federation workers; the orchestrator side (timeouts, cancellation,
+TaskFinished feedback, process isolation) lives in the `kowalski` crate.
+
+**Out-of-process executors share one entry point.** `IsolatedStepRequest` /
+`IsolatedStepResponse` are the wire contract for running one step outside the caller's
+process, and `execute_isolated_request(req, registry, events)` rebuilds the
+`StepContext` and dispatches through the same registry — so the semantics of the
+`agent-app exec-step` child (steps with `isolation = "process"`) and the SSE federation
+worker can never drift from the in-process path. `IsolatedStepEvent` is the child's
+stdout line protocol (zero or more `message` lines, then one `outcome`). Isolation
+vocabulary (`ISOLATION_IN_PROCESS`/`ISOLATION_PROCESS`, `is_valid_isolation`) is owned
+here.
 
 ### Tool execution model (three sources, one abstraction)
 

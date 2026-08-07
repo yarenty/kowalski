@@ -21,6 +21,22 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Added
 
+- **Opt-in process isolation for horde steps (#42):** a step's `agents/*.md` frontmatter
+  can declare `isolation = "process"` (default `in_process`, validated at load, captured
+  in the run's manifest snapshot) to execute that step in a spawned one-shot child
+  process instead of the server — for hordes you don't fully trust. The orchestrator owns
+  the child per step (spawn → execute → reap, pid logged as evidence): it writes an
+  `IsolatedStepRequest` JSON document to the child's stdin and consumes
+  `message`/`outcome` JSON lines from its stdout; run cancellation and the per-step
+  timeout kill the child (no orphans). The child is the new `kowalski-cli agent-app
+  exec-step` command, a thin client of the same `StepHandlerRegistry` the server runs
+  in-process (`kowalski_core::execute_isolated_request`), so artifacts and pass/fail
+  routing are identical; LLM kinds talk to the configured provider directly — an isolated
+  child never calls the server API. Child binary resolution: `KOWALSKI_CLI_BIN` env >
+  sibling `kowalski-cli` next to the server binary > `cargo run -p kowalski-cli` (dev
+  tree). The SSE federation worker (`agent-app worker --role …`) was refit onto the same
+  shared execution path: its per-role handlers (and the `/api/chat` LLM loopback) are
+  gone. Model resolution now has a single owner: `kowalski_core::config::default_model`.
 - **In-process LLM steps, per-step timeouts, run cancellation (#41):** horde runs no
   longer spawn any worker processes by default. LLM step kinds (`process`/`step`/
   `deliver`/`final`, `compile`, `ask`, `lint`) execute inside the server via

@@ -167,9 +167,25 @@ There are **no** standalone `kowalski-academic-agent` / `kowalski-web-agent` cra
 - **`kowalski-cli`** and **`ui/`** must **not** own reusable domain logic (URL fetch rules, HTML shaping, horde-specific parsers). They **parse argv / render UX** and call **`kowalski`** HTTP APIs or **`kowalski-core`** libraries used by the worker runtime.
 - **No baked-in app types**: `agent-app` resolves the tree only from **`--path`** or env **`KOWALSKI_AGENT_APP_ROOT`**; the dev default `examples/knowledge-compiler` is a **convenience**, not a type system. The manifest is **`app.md`** or legacy **`horde.md`**, plus **`agents/*.md`** (aligned with `kowalski_core::markdown_pipeline` and the server catalog).
 - **Local `agent-app run` workdir**: for the default KC app tree, the CLI uses **`LOCAL_AGENT_APP_WORKDIR`** (`"output"`) under the app root so artifacts match **`horde.md`** `workdir = "output"` (`output/PASTE_ME.md`, `output/debug/`, …).
-- **DAG scheduling (1.5.0):** `agent-app run` calls `kowalski_core::resolve_execution_graph` + `execution_order`; federation workers populate `@step:name@` via `collect_step_paths`. See [`examples/coder/`](../examples/coder/).
-- **Federation worker `--role`:** must match each agent's `kind` in `agents/*.md`. Handlers: `ingest`, `compile`, `ask`, `lint`, plus generic LLM stages for `process`, `step`, `deliver`, and `final` (Rookery-born hordes). **Since the in-process step registry landed, the server executes all standard kinds itself and no longer spawns these workers for horde runs** — the worker path remains for manual operation and as the future opt-in isolation mode.
-- **Source capture** for federation ingest lives in **`kowalski_core::source_bundle`** (uses **`tools::internal::{github, web}`**). The CLI only calls it from `agent_app_ops` when executing a worker step — same code the server could call later without duplicating behavior.
+- **DAG scheduling (1.5.0):** `agent-app run` calls `kowalski_core::resolve_execution_graph` + `execution_order`; `@step:name@` context attachments resolve inside the shared step handlers (`kowalski_core::build_llm_stage_request`). See [`examples/coder/`](../examples/coder/).
+- **Process-isolated steps — `agent-app exec-step`:** the one-shot executor the server
+  spawns for steps whose `agents/*.md` frontmatter declares `isolation = "process"`. It
+  reads one `kowalski_core::IsolatedStepRequest` JSON document from **stdin**, executes
+  it through `kowalski_core::execute_isolated_request` (the same `StepHandlerRegistry`
+  the server runs in-process — deterministic kinds always, LLM handlers built lazily
+  from the CLI config via `--config`), streams `IsolatedStepEvent` JSON lines
+  (`message`…, then one `outcome`) on **stdout**, and exits. Diagnostics — including the
+  pid the parent logs as isolation evidence — go to stderr. The child never calls the
+  server API: LLM kinds talk to the configured provider directly.
+- **Federation worker `--role`:** must match each agent's `kind` in `agents/*.md`. The
+  worker is a **thin client of the same step handlers**: each delegation is parsed into
+  an `IsolatedStepRequest` and executed via `execute_isolated_request` — there is no
+  per-role execution logic (and no `/api/chat` LLM loopback) in this crate anymore.
+  Progress messages and task results still publish over the (bearer-authenticated)
+  federation HTTP API. **The server executes all standard kinds itself and no longer
+  spawns these workers for horde runs** — the SSE worker remains for manual operation;
+  per-step sandboxing is the orchestrator-driven `exec-step` path above.
+- **Source capture** for federation ingest lives in **`kowalski_core::source_bundle`** (uses **`tools::internal::{github, web}`**), called through the shared `ingest` step handler — same code in-process, in `exec-step` children, and in workers.
 - **Markdown app pipeline** (`app.md` / `horde.md` + `agents/*.md`): each LLM stage loads **`prompt_file`**, **`context_paths`** (workdir-relative paths and/or `@artifact@` / `@step:name@`), writes **`output`** under the workdir, and optionally applies **`normalize_*`** fields via **`kowalski_core::markdown_pipeline`**. There is **no** wiki repair, index rebuild, or Rust-side paste-pack builder — final shape is whatever the last stage’s prompt declares (the KC example uses **`PASTE_ME.md`** as the last stage `output`). The server still surfaces delivery copy from manifest **`delivery_*`** fields and reads the finished handoff into **`run_finished.handoff_markdown`** where applicable.
 
 ---

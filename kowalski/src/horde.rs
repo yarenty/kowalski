@@ -17,12 +17,12 @@ use kowalski_core::db::run_store::{
 };
 use kowalski_core::federation::{AclEnvelope, AclMessage, FederationOrchestrator, MpscBroker};
 use kowalski_core::{
-    all_steps_successful, has_conditional_outbound, is_loop_back_step, loop_edge_key,
-    next_ready_step_conditional, parse_stage_status_from_artifact, resolve_execution_graph,
-    retry_span, select_next_from_outcome, single_forward_predecessor, verify_output_excerpt,
-    StageStatus,
-    ExecutionGraph, HordeEdge, StepContext, StepEventSink, StepHandler, StepHandlerRegistry,
-    StepOutcome, StepSpec,
+    all_steps_successful, has_conditional_outbound, is_loop_back_step, is_valid_isolation,
+    loop_edge_key, next_ready_step_conditional, parse_stage_status_from_artifact,
+    resolve_execution_graph, retry_span, select_next_from_outcome, single_forward_predecessor,
+    verify_output_excerpt, StageStatus,
+    ExecutionGraph, HordeEdge, IsolatedStepEvent, IsolatedStepRequest, StepContext, StepEventSink,
+    StepHandler, StepHandlerRegistry, StepOutcome, StepSpec, ISOLATION_PROCESS,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -127,6 +127,10 @@ pub struct SubAgentMeta {
     /// `dry-run` (default) or `execute` for `kind = "apply"`.
     #[serde(default)]
     pub apply_mode: Option<String>,
+    /// `in_process` (default) or `process`: run this step in a spawned,
+    /// per-step child process (`agent-app exec-step`) instead of the server.
+    #[serde(default)]
+    pub isolation: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -145,9 +149,16 @@ pub struct SubAgentSpec {
     pub verify_command: Option<String>,
     pub verify_cwd: Option<String>,
     pub apply_mode: Option<String>,
+    /// `in_process` (default when `None`) or `process` (spawned child per step).
+    pub isolation: Option<String>,
 }
 
 impl SubAgentSpec {
+    /// Whether this step opted into per-step child-process execution.
+    pub fn is_process_isolated(&self) -> bool {
+        self.isolation.as_deref() == Some(ISOLATION_PROCESS)
+    }
+
     /// The handler-facing slice of this spec (see `kowalski_core::horde_step`).
     pub fn step_spec(&self) -> StepSpec {
         StepSpec {
@@ -244,6 +255,17 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
             continue;
         }
         let raw: SubAgentMeta = parse_md_with_toml(&p)?;
+        if let Some(iso) = raw.isolation.as_deref()
+            && !is_valid_isolation(iso)
+        {
+            return Err(format!(
+                "sub-agent `{}`: unknown isolation `{}` (expected `in_process` or `process`) in {}",
+                raw.name,
+                iso,
+                p.display()
+            )
+            .into());
+        }
         let capability = raw
             .capability
             .clone()
@@ -283,6 +305,7 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
                 verify_command: raw.verify_command,
                 verify_cwd: raw.verify_cwd,
                 apply_mode: raw.apply_mode,
+                isolation: raw.isolation,
             },
         );
     }
@@ -603,6 +626,14 @@ pub struct HordeManager {
     /// Live cancellation tokens by run_id (created on first in-process
     /// delegation; cancelled + removed by [`Self::cancel_run`] / terminal states).
     pub cancel_tokens: Arc<Mutex<HashMap<String, tokio_util::sync::CancellationToken>>>,
+    /// Executable spawned for `isolation = "process"` steps (runs
+    /// `agent-app exec-step`). `None` → sibling `kowalski-cli` next to the
+    /// server binary, else `cargo run -p kowalski-cli` (dev tree). Seeded from
+    /// [`kowalski_core::config::CLI_BIN_ENV`].
+    pub exec_step_bin: Option<PathBuf>,
+    /// Config file passed to isolated children (`exec-step --config …`) so the
+    /// child resolves the same LLM provider/model as the server.
+    pub exec_step_config: Option<PathBuf>,
 }
 
 impl HordeManager {
@@ -623,6 +654,11 @@ impl HordeManager {
             step_handlers: Arc::new(StepHandlerRegistry::with_builtin_deterministic()),
             step_timeout: std::time::Duration::from_secs(DEFAULT_STEP_TIMEOUT_SECS),
             cancel_tokens: Arc::new(Mutex::new(HashMap::new())),
+            exec_step_bin: std::env::var(kowalski_core::config::CLI_BIN_ENV)
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+                .map(PathBuf::from),
+            exec_step_config: None,
         }
     }
 
@@ -950,6 +986,24 @@ impl HordeManager {
         self.publish(&assigned_envelope).await;
         let _ = run_for_log;
 
+        if sub.is_process_isolated() {
+            log::info!(
+                "horde {} run {} step {} -> isolated child process (kind `{}`)",
+                spec.id,
+                run_id,
+                step_name,
+                sub.kind
+            );
+            self.spawn_isolated_step(
+                spec.clone(),
+                run_id.to_string(),
+                sub,
+                previous_artifact.map(ToString::to_string),
+            )
+            .await;
+            return Ok(());
+        }
+
         if let Some(handler) = self.step_handlers.get(&sub.kind) {
             log::info!(
                 "horde {} run {} step {} -> in-process handler `{}`",
@@ -1118,6 +1172,272 @@ impl HordeManager {
                 },
             );
             manager.publish(&finished).await;
+        });
+    }
+
+    /// Command line launching one `agent-app exec-step` child: explicit
+    /// [`Self::exec_step_bin`] (env `KOWALSKI_CLI_BIN`), else a sibling
+    /// `kowalski-cli` next to the server binary, else `cargo run` (dev tree).
+    fn exec_step_command(&self) -> (PathBuf, Vec<String>) {
+        let mut args: Vec<String> = Vec::new();
+        let program = if let Some(bin) = &self.exec_step_bin {
+            bin.clone()
+        } else if let Some(sibling) = std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|d| d.join("kowalski-cli")))
+            .filter(|p| p.is_file())
+        {
+            sibling
+        } else {
+            args.extend(
+                ["run", "-q", "-p", "kowalski-cli", "--"]
+                    .iter()
+                    .map(ToString::to_string),
+            );
+            PathBuf::from("cargo")
+        };
+        args.extend(["agent-app", "exec-step"].iter().map(ToString::to_string));
+        if let Some(config) = &self.exec_step_config {
+            args.push("--config".into());
+            args.push(config.display().to_string());
+        }
+        (program, args)
+    }
+
+    /// Execute a step marked `isolation = "process"` in a spawned one-shot
+    /// child (`agent-app exec-step`): request JSON on stdin, [`IsolatedStepEvent`]
+    /// lines on stdout. Lifecycle is owned per step — spawn → execute → reap —
+    /// and the outcome feeds back as the same `TaskFinished` envelope the
+    /// in-process and worker paths publish. Cancellation and the step timeout
+    /// kill the child (no orphans); the child never talks to the server API.
+    async fn spawn_isolated_step(
+        &self,
+        spec: HordeSpec,
+        run_id: String,
+        sub: SubAgentSpec,
+        previous_artifact: Option<String>,
+    ) {
+        let manager = self.clone();
+        let (source, question) = {
+            let runs = self.runs.lock().await;
+            runs.runs
+                .get(&run_id)
+                .map(|r| (r.source.clone(), r.question.clone()))
+                .unwrap_or((None, String::new()))
+        };
+        let cancel = self.cancel_token_for(&run_id).await;
+        tokio::spawn(async move {
+            let started_at = std::time::Instant::now();
+            let started = manager.build_envelope(
+                &spec.topic,
+                AclMessage::TaskStarted {
+                    run_id: run_id.clone(),
+                    horde: spec.id.clone(),
+                    step: sub.name.clone(),
+                    agent: sub.default_agent_id.clone(),
+                    text: Some(format!("{} step running in isolated process", sub.kind)),
+                },
+            );
+            manager.publish(&started).await;
+
+            let sink = InProcessEventSink {
+                manager: manager.clone(),
+                topic: spec.topic.clone(),
+                run_id: run_id.clone(),
+                horde: spec.id.clone(),
+                step: sub.name.clone(),
+                agent_id: sub.default_agent_id.clone(),
+            };
+            let finish = |success: bool,
+                          artifact: Option<String>,
+                          summary: String,
+                          outcome: Option<String>| {
+                manager.build_envelope(
+                    &spec.topic,
+                    AclMessage::TaskFinished {
+                        run_id: run_id.clone(),
+                        horde: spec.id.clone(),
+                        step: sub.name.clone(),
+                        agent: sub.default_agent_id.clone(),
+                        success,
+                        artifact,
+                        summary,
+                        outcome,
+                    },
+                )
+            };
+
+            let request = IsolatedStepRequest {
+                run_id: run_id.clone(),
+                horde_id: spec.id.clone(),
+                step: sub.step_spec(),
+                workdir: spec.workdir.clone(),
+                horde_root: spec.root_path.clone(),
+                source: source.clone(),
+                question: question.clone(),
+                project_path: source
+                    .as_deref()
+                    .and_then(kowalski_core::source_bundle::extract_project_path_from_source),
+                previous_artifact: previous_artifact.map(PathBuf::from),
+            };
+            let request_line = match serde_json::to_string(&request) {
+                Ok(s) => s,
+                Err(e) => {
+                    let env = finish(false, None, format!("isolated step request encode: {e}"), None);
+                    manager.publish(&env).await;
+                    return;
+                }
+            };
+
+            let (program, args) = manager.exec_step_command();
+            let mut child = match tokio::process::Command::new(&program)
+                .args(&args)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .kill_on_drop(true)
+                .spawn()
+            {
+                Ok(c) => c,
+                Err(e) => {
+                    let env = finish(
+                        false,
+                        None,
+                        format!("spawn isolated step `{}` ({}): {e}", sub.name, program.display()),
+                        None,
+                    );
+                    manager.publish(&env).await;
+                    return;
+                }
+            };
+            let pid = child.id();
+            log::info!(
+                "horde {} run {} step {} isolated child spawned pid={:?} ({})",
+                spec.id,
+                run_id,
+                sub.name,
+                pid,
+                program.display()
+            );
+
+            if let Some(mut stdin) = child.stdin.take() {
+                use tokio::io::AsyncWriteExt;
+                let _ = stdin.write_all(request_line.as_bytes()).await;
+                let _ = stdin.write_all(b"\n").await;
+                // Dropping stdin closes the pipe: the one-shot child reads EOF.
+            }
+            if let Some(stderr) = child.stderr.take() {
+                let horde = spec.id.clone();
+                let step = sub.name.clone();
+                tokio::spawn(async move {
+                    use tokio::io::AsyncBufReadExt;
+                    let mut lines = tokio::io::BufReader::new(stderr).lines();
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        log::info!("horde {horde} exec-step[{step}] {line}");
+                    }
+                });
+            }
+
+            let stdout = child.stdout.take();
+            let mut response: Option<kowalski_core::IsolatedStepResponse> = None;
+            let mut timed_out = false;
+            if let Some(stdout) = stdout {
+                use tokio::io::AsyncBufReadExt;
+                let mut lines = tokio::io::BufReader::new(stdout).lines();
+                let deadline = tokio::time::sleep(manager.step_timeout);
+                tokio::pin!(deadline);
+                loop {
+                    // Cancellation wins over protocol progress: kill + reap the
+                    // child, then return — cancel_run owns all state transitions.
+                    tokio::select! {
+                        biased;
+                        _ = cancel.cancelled() => {
+                            let _ = child.start_kill();
+                            let _ = child.wait().await;
+                            log::info!(
+                                "horde {} run {} step {} cancelled after {:?}; killed isolated child pid={:?}",
+                                spec.id, run_id, sub.name, started_at.elapsed(), pid
+                            );
+                            return;
+                        }
+                        _ = &mut deadline => {
+                            timed_out = true;
+                            let _ = child.start_kill();
+                            break;
+                        }
+                        line = lines.next_line() => match line {
+                            Ok(Some(line)) => match serde_json::from_str::<IsolatedStepEvent>(&line) {
+                                Ok(IsolatedStepEvent::Message { text }) => sink.message(&text).await,
+                                Ok(IsolatedStepEvent::Outcome(r)) => {
+                                    response = Some(r);
+                                    break;
+                                }
+                                Err(_) => log::debug!(
+                                    "horde {} exec-step[{}] non-protocol stdout: {line}",
+                                    spec.id, sub.name
+                                ),
+                            },
+                            Ok(None) => break,
+                            Err(e) => {
+                                log::warn!(
+                                    "horde {} run {} step {} isolated stdout read: {e}",
+                                    spec.id, run_id, sub.name
+                                );
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            // Reap unconditionally; a child that lingers after its outcome (or
+            // EOF) is killed rather than orphaned.
+            let exit_status = match tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                child.wait(),
+            )
+            .await
+            {
+                Ok(status) => status.ok(),
+                Err(_) => {
+                    let _ = child.start_kill();
+                    child.wait().await.ok()
+                }
+            };
+            log::info!(
+                "horde {} run {} step {} isolated child pid={:?} reaped ({:?}) in {:?}",
+                spec.id,
+                run_id,
+                sub.name,
+                pid,
+                exit_status,
+                started_at.elapsed()
+            );
+
+            let envelope = if timed_out {
+                finish(
+                    false,
+                    None,
+                    format!(
+                        "step `{}` timed out after {}s (isolated child killed)",
+                        sub.name,
+                        manager.step_timeout.as_secs()
+                    ),
+                    None,
+                )
+            } else if let Some(r) = response {
+                finish(r.success, r.artifact, r.summary, r.outcome)
+            } else {
+                finish(
+                    false,
+                    None,
+                    format!(
+                        "isolated step `{}` exited without an outcome (exit: {:?})",
+                        sub.name, exit_status
+                    ),
+                    None,
+                )
+            };
+            manager.publish(&envelope).await;
         });
     }
 
@@ -2172,6 +2492,7 @@ mod tests {
             verify_command: None,
             verify_cwd: None,
             apply_mode: None,
+            isolation: None,
         }
     }
 
@@ -3129,5 +3450,252 @@ mod tests {
         assert_eq!(api_step_status(StepStatus::Succeeded), "success");
         assert_eq!(api_step_status(StepStatus::Pending), "pending");
         assert_eq!(api_step_status(StepStatus::Delegating), "delegating");
+    }
+
+    /// Executable stub standing in for `kowalski-cli agent-app exec-step`
+    /// (tests exercise the spawn/protocol/kill machinery without compiling the
+    /// CLI; one live smoke with the real binary runs out of band).
+    #[cfg(unix)]
+    fn write_stub_exec_step(dir: &Path, body: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let path = dir.join("stub-exec-step.sh");
+        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        let mut perms = std::fs::metadata(&path).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&path, perms).unwrap();
+        path
+    }
+
+    /// A step with `isolation = "process"` runs through the spawned child:
+    /// request on stdin, `message` + `outcome` lines on stdout, run advances
+    /// exactly as if the handler had run in-process.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn isolated_step_runs_via_child_process() {
+        let dir = tempfile::tempdir().unwrap();
+        let echo_dir = dir.path().display().to_string();
+        let artifact = dir.path().join("iso.md");
+        // The stub proves it received the request by echoing it into a file,
+        // and writes a real verify artifact (the orchestrator re-derives
+        // verify/apply outcomes from the artifact's `status:` frontmatter).
+        let stub = write_stub_exec_step(
+            dir.path(),
+            &format!(
+                "read -r request\nprintf '%s' \"$request\" > {echo_dir}/request.json\n\
+                 printf -- '---\\nstatus: pass\\n---\\nok\\n' > {artifact}\n\
+                 echo '{{\"event\":\"message\",\"text\":\"stub child working\"}}'\n\
+                 echo '{{\"event\":\"outcome\",\"success\":true,\"artifact\":\"{artifact}\",\"summary\":\"stub done\",\"outcome\":\"pass\"}}'",
+                artifact = artifact.display()
+            ),
+        );
+
+        let mut spec = test_spec(dir.path());
+        spec.pipeline = vec!["iso".into()];
+        spec.sub_agents = vec![sub("iso")];
+        spec.sub_agents[0].kind = "verify".into();
+        spec.sub_agents[0].isolation = Some(ISOLATION_PROCESS.into());
+        spec.execution_graph = resolve_execution_graph(&spec.pipeline, None).unwrap();
+
+        // No worker registered and no in-process handler consulted: only the
+        // child can complete this run.
+        let broker = Arc::new(MpscBroker::new());
+        let registry = Arc::new(AgentRegistry::new());
+        let federation = Arc::new(FederationOrchestrator::new(registry, broker.clone()));
+        let store = RunStore::open("sqlite::memory:").await.unwrap();
+        let mut manager = HordeManager::new(vec![spec], broker, federation, store);
+        manager.exec_step_bin = Some(stub);
+        spawn_orchestrator_loop(manager.clone());
+
+        let record = manager
+            .start_run("test-horde", "isolated walk", None, None, RUN_ORIGIN_OPERATOR)
+            .await
+            .unwrap();
+
+        let done = wait_for_terminal(&manager, &record.run_id).await;
+        assert_eq!(done.status, RunStatus::Done, "result: {:?}", done.result);
+        let iso = step(&done, "iso");
+        assert_eq!(iso.status, StepStatus::Succeeded);
+        assert_eq!(iso.outcome.as_deref(), Some("pass"));
+        assert_eq!(iso.artifact.as_deref(), Some(artifact.display().to_string().as_str()));
+        assert_eq!(iso.summary.as_deref(), Some("stub done"));
+
+        // The child received a full IsolatedStepRequest for the step.
+        let request: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.path().join("request.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(request["step"]["name"], "iso");
+        assert_eq!(request["step"]["kind"], "verify");
+        assert_eq!(request["run_id"], done.run_id);
+
+        // The isolation flag is part of the persisted manifest snapshot.
+        let snapshot = done.manifest_snapshot.as_ref().unwrap();
+        assert_eq!(snapshot["sub_agents"][0]["isolation"], "process");
+    }
+
+    /// Mixed run: an in-process verify step and a process-isolated step share
+    /// one run and both advance through `handle_task_finished`.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn mixed_in_process_and_isolated_steps_share_a_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let stub = write_stub_exec_step(
+            dir.path(),
+            "read -r _request\n\
+             echo '{\"event\":\"outcome\",\"success\":true,\"artifact\":null,\"summary\":\"iso ok\",\"outcome\":\"pass\"}'",
+        );
+
+        let mut spec = test_spec(dir.path());
+        spec.pipeline = vec!["check".into(), "iso".into()];
+        spec.sub_agents = vec![sub("check"), sub("iso")];
+        spec.sub_agents[0].kind = "verify".into();
+        spec.sub_agents[0].verify_command = Some("true".into());
+        spec.sub_agents[0].output = Some("debug/verify.md".into());
+        spec.sub_agents[1].kind = "verify".into();
+        spec.sub_agents[1].isolation = Some(ISOLATION_PROCESS.into());
+        spec.execution_graph = resolve_execution_graph(&spec.pipeline, None).unwrap();
+
+        let broker = Arc::new(MpscBroker::new());
+        let registry = Arc::new(AgentRegistry::new());
+        let federation = Arc::new(FederationOrchestrator::new(registry, broker.clone()));
+        let store = RunStore::open("sqlite::memory:").await.unwrap();
+        let mut manager = HordeManager::new(vec![spec], broker, federation, store);
+        manager.exec_step_bin = Some(stub);
+        spawn_orchestrator_loop(manager.clone());
+
+        let record = manager
+            .start_run(
+                "test-horde",
+                &project.path().display().to_string(),
+                Some(&project.path().display().to_string()),
+                None,
+                RUN_ORIGIN_OPERATOR,
+            )
+            .await
+            .unwrap();
+
+        let done = wait_for_terminal(&manager, &record.run_id).await;
+        assert_eq!(done.status, RunStatus::Done, "result: {:?}", done.result);
+        assert_eq!(step(&done, "check").status, StepStatus::Succeeded, "in-process step");
+        assert_eq!(step(&done, "iso").status, StepStatus::Succeeded, "isolated step");
+        assert!(
+            PathBuf::from(step(&done, "check").artifact.as_deref().unwrap()).is_file(),
+            "in-process verify artifact written on disk"
+        );
+    }
+
+    /// Cancelling a run kills the isolated step's child process — no orphans.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn cancel_kills_isolated_child_process() {
+        let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("child.pid");
+        // The stub records its own pid, then hangs far longer than the test.
+        let stub = write_stub_exec_step(
+            dir.path(),
+            &format!("echo $$ > {}\nsleep 60", pid_file.display()),
+        );
+
+        let mut spec = test_spec(dir.path());
+        spec.pipeline = vec!["iso".into()];
+        spec.sub_agents = vec![sub("iso")];
+        spec.sub_agents[0].kind = "verify".into();
+        spec.sub_agents[0].isolation = Some(ISOLATION_PROCESS.into());
+        spec.execution_graph = resolve_execution_graph(&spec.pipeline, None).unwrap();
+
+        let broker = Arc::new(MpscBroker::new());
+        let registry = Arc::new(AgentRegistry::new());
+        let federation = Arc::new(FederationOrchestrator::new(registry, broker.clone()));
+        let store = RunStore::open("sqlite::memory:").await.unwrap();
+        let mut manager = HordeManager::new(vec![spec], broker, federation, store);
+        manager.exec_step_bin = Some(stub);
+        spawn_orchestrator_loop(manager.clone());
+
+        let record = manager
+            .start_run("test-horde", "cancel isolated", None, None, RUN_ORIGIN_OPERATOR)
+            .await
+            .unwrap();
+        let run_id = record.run_id;
+
+        // Wait until the child is alive (it wrote its pid).
+        let pid = {
+            let mut pid = None;
+            for _ in 0..200 {
+                if let Ok(body) = std::fs::read_to_string(&pid_file)
+                    && let Ok(v) = body.trim().parse::<i32>()
+                {
+                    pid = Some(v);
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+            }
+            pid.expect("isolated child never started")
+        };
+        let alive = |pid: i32| {
+            std::process::Command::new("kill")
+                .args(["-0", &pid.to_string()])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        };
+        assert!(alive(pid), "child pid {pid} should be running before cancel");
+
+        let cancelled = manager.cancel_run(&run_id, Some("operator stop")).await.unwrap();
+        assert_eq!(cancelled.status, RunStatus::Cancelled);
+
+        // The child must be killed and reaped — poll briefly, then assert.
+        let mut gone = false;
+        for _ in 0..200 {
+            if !alive(pid) {
+                gone = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+        assert!(gone, "isolated child pid {pid} survived cancellation");
+
+        let persisted = manager.store.get_run(&run_id).await.unwrap().unwrap();
+        assert_eq!(persisted.status, RunStatus::Cancelled);
+        assert_eq!(step(&persisted, "iso").status, StepStatus::Cancelled);
+    }
+
+    /// `isolation` frontmatter parses into the spec; unknown values are a
+    /// load-time error.
+    #[test]
+    fn isolation_frontmatter_parses_and_validates() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("horde.md"),
+            "---\nid = \"iso-horde\"\ndisplay_name = \"Iso\"\ndescription = \"d\"\npipeline = [\"a\"]\n---\n",
+        )
+        .unwrap();
+        let agents = dir.path().join("agents");
+        std::fs::create_dir_all(&agents).unwrap();
+        std::fs::write(
+            agents.join("a.md"),
+            "---\nname = \"a\"\nkind = \"verify\"\nisolation = \"process\"\n---\n",
+        )
+        .unwrap();
+
+        let spec = load_horde(dir.path()).unwrap();
+        assert_eq!(spec.sub_agents[0].isolation.as_deref(), Some("process"));
+        assert!(spec.sub_agents[0].is_process_isolated());
+
+        // Default: no isolation → in-process.
+        std::fs::write(agents.join("a.md"), "---\nname = \"a\"\nkind = \"verify\"\n---\n").unwrap();
+        let spec = load_horde(dir.path()).unwrap();
+        assert_eq!(spec.sub_agents[0].isolation, None);
+        assert!(!spec.sub_agents[0].is_process_isolated());
+
+        // Unknown value → load error naming the field.
+        std::fs::write(
+            agents.join("a.md"),
+            "---\nname = \"a\"\nkind = \"verify\"\nisolation = \"container\"\n---\n",
+        )
+        .unwrap();
+        let err = load_horde(dir.path()).unwrap_err().to_string();
+        assert!(err.contains("isolation"), "error: {err}");
+        assert!(err.contains("container"), "error: {err}");
     }
 }

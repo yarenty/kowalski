@@ -19,6 +19,23 @@ pub const API_TOKEN_ENV: &str = "KOWALSKI_API_TOKEN";
 /// Without it the store creates `runs.sqlite` under the server state dir — zero config.
 pub const RUN_DB_ENV: &str = "KOWALSKI_RUN_DB";
 
+/// Env var overriding the `kowalski-cli` binary used to spawn process-isolated
+/// horde steps (`agent-app exec-step`). Without it the server looks for a
+/// sibling `kowalski-cli` next to its own executable, then falls back to
+/// `cargo run -p kowalski-cli` (dev tree).
+pub const CLI_BIN_ENV: &str = "KOWALSKI_CLI_BIN";
+
+/// Single source of truth for the model a deployment chats with:
+/// `llm.model` when the `openai` provider declares one, else `ollama.model`.
+pub fn default_model(config: &Config) -> String {
+    if config.llm.provider == "openai"
+        && let Some(ref model) = config.llm.model
+    {
+        return model.clone();
+    }
+    config.ollama.model.clone()
+}
+
 /// Core configuration for the Kowalski system
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]

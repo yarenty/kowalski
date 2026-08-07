@@ -26,21 +26,7 @@ use tokio::sync::Mutex;
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
-/// Returns the model to use based on the LLM provider configuration.
-/// Priority order:
-/// 1. llm.model (if set and provider is openai)
-/// 2. ollama.model (fallback for both providers)
-fn determine_model(config: &Config) -> String {
-    // If using openai provider and llm.model is set, use that
-    if config.llm.provider == "openai" {
-        if let Some(ref model) = config.llm.model {
-            return model.clone();
-        }
-    }
-    
-    // Fallback to ollama.model for both providers
-    config.ollama.model.clone()
-}
+use kowalski_core::config::default_model as determine_model;
 
 const BUILDER_PROMPT_REL: &str = "resources/prompts/rookery/builder.md";
 const PROPOSE_USER_MESSAGE: &str = "Based on our conversation so far, emit ONLY a single ```toml code block with the complete horde draft. No other prose.\n\nRequired top-level: `id`, `display_name`, `description`, `pipeline` (array of step names), and `[[penguins]]` rows with at least `name`, `description`, `prompt_body`, `output`. Optional per penguin: `kind` (inferred from `name` if omitted), `display_name`, `context_paths`, `inputs`.\n\nID rules: `id` and every penguin `name` / pipeline entry must be lowercase ASCII kebab-case (`a-z`, `0-9`, hyphens only). Human titles go in `display_name`, not in `name`.\n\nExample:\n```toml\nid = \"my-horde\"\ndisplay_name = \"My Horde\"\ndescription = \"…\"\npipeline = [\"ingest\", \"deliver\"]\n\n[[penguins]]\nname = \"ingest\"\ndescription = \"…\"\nprompt_body = \"…\"\noutput = \"debug/raw/\"\n\n[[penguins]]\nname = \"deliver\"\ndescription = \"…\"\nprompt_body = \"…\"\noutput = \"HANDOFF.md\"\n```\n\nYou may use ```json instead if needed; omitting `kind` is OK when the step `name` is ingest/deliver/ask/lint.";
