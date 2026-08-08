@@ -241,6 +241,15 @@ handlers get providers through it.
   default `chat_with_tool_defs` ignores `tools` and behaves like `chat`, so providers
   without tool support are unaffected. The ReAct JSON-in-text loop (`agent/mod.rs`
   `chat_with_tools`) remains the fallback and is unchanged.
+- **The agent loop prefers the native path.** `[llm] tool_calling = "auto" | "native" |
+  "react"` (default `auto`) picks the loop: `auto` runs native when
+  `supports_native_tools` says the model is capable, `native`/`react` force one path.
+  `BaseAgent::chat_with_tools_native` owns the native loop (structured calls executed in
+  order, results fed back as tool-role messages, identical-consecutive-calls breaker,
+  `MAX_TOOL_ITERATIONS` cap shared with ReAct); every `chat_with_tools*` entry point —
+  the `Agent` trait method (REPL), `chat_with_tools_with_policy` (`/api/chat`, horde LLM
+  steps), and `chat_with_tools_stream_final*` (chat streaming; native final text arrives
+  as a single chunk) — branches through it.
 - `Message` (`conversation/mod.rs`) carries `tool_calls` / `tool_call_id` as skippable
   optionals — conversations persisted before native tool calling still load, and plain
   messages stay clean on the wire.
@@ -274,6 +283,11 @@ command = ["docker", "mcp", "gateway", "run"]
 
 **Principles (no shortcuts):**
 
+- **How the model invokes tools:** the agent loop uses **native provider tool calling**
+  (structured `tool_calls` on the wire) when `[llm] tool_calling` resolves to it, with the
+  ReAct JSON-in-text extractor as the fallback for models without tool support — see the
+  **LLM providers** section above. Tool schemas come from `ToolDefinition::from_tool` in
+  both cases (the prompt appendix and the wire declarations share one owner).
 - **Internal tools are not “the platform core”** in a business sense — they are **escape hatches**: dependency-light defaults when no MCP is configured, CI-friendly smoke paths, and deterministic helpers.
 - **MCP is the extension plane** for anything that needs OAuth, catalog discovery, headless browsers, vendor APIs, or isolation. The **`McpHub` / `McpClient`** stack ([`src/mcp/`](./src/mcp/)) is the integration point for sources **1** and **2**; do not re-implement those concerns inside `tools/internal/` without a strong reason.
 - **Configuration** (future work, explicit in config schema): per **logical capability** (e.g. `fetch_github`, `read_url`, `list_dir`), choose `provider = internal | mcp` and optional `mcp_server` / tool name so operators can **turn internal tools off** or **shadow** them with an MCP tool without changing orchestration code.

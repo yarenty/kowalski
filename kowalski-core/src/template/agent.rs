@@ -90,9 +90,7 @@ impl TemplateAgent {
         tool_manager: &crate::tools::manager::ToolManager,
         allowed: &[String],
     ) -> String {
-        let schema = tool_manager
-            .generate_json_schema_for(Some(allowed))
-            .await;
+        let schema = tool_manager.generate_json_schema_for(Some(allowed)).await;
         let empty = schema.as_array().map(|a| a.is_empty()).unwrap_or(true);
         if empty {
             return String::new();
@@ -466,6 +464,16 @@ impl crate::agent::Agent for TemplateAgent {
         tool_input: &serde_json::Value,
     ) -> Result<ToolOutput, KowalskiError> {
         self.execute_tool(tool_name, tool_input).await
+    }
+
+    async fn native_tool_turn(
+        &mut self,
+        conversation_id: &str,
+        user_input: &str,
+    ) -> Option<Result<String, KowalskiError>> {
+        self.base_mut()
+            .try_native_tool_turn(conversation_id, user_input)
+            .await
     }
 
     async fn list_tools(&self) -> Vec<(String, String)> {
