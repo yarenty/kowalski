@@ -211,12 +211,15 @@ pub async fn serve(
     );
 
     let horde_roots = crate::horde::default_horde_roots(state_config_dir(&config_path).as_deref());
-    let horde_specs = crate::horde::discover_hordes(&horde_roots);
-    log::info!(
-        "horde catalog: {} horde(s) discovered ({:?})",
-        horde_specs.len(),
-        horde_specs.iter().map(|s| &s.id).collect::<Vec<_>>()
-    );
+    let horde_catalog = Arc::new(crate::horde::HordeCatalog::with_roots(horde_roots.clone()));
+    {
+        let entries = horde_catalog.list();
+        log::info!(
+            "horde catalog: {} horde(s) discovered ({:?})",
+            entries.len(),
+            entries.iter().map(|e| &e.spec.id).collect::<Vec<_>>()
+        );
+    }
     let run_store = {
         let state_root = state_config_dir(&config_path)
             .unwrap_or_else(|| PathBuf::from("."))
@@ -226,11 +229,12 @@ pub async fn serve(
             .map_err(|e| format!("run store: {e}"))?
     };
     let mut horde_manager = crate::horde::HordeManager::new(
-        horde_specs,
+        Vec::new(),
         federation_broker.clone(),
         federation.clone(),
         run_store,
     );
+    horde_manager.catalog = horde_catalog;
     if let Some(cap) = horde_config_resume_max_attempts(&full_config) {
         horde_manager.resume_max_attempts = cap;
     }
@@ -248,8 +252,7 @@ pub async fn serve(
     {
         let horde_agent = TemplateAgent::new(full_config.clone()).await?;
         let horde_agent = Arc::new(Mutex::new(horde_agent));
-        let mut registry =
-            kowalski_core::StepHandlerRegistry::with_builtin_deterministic();
+        let mut registry = kowalski_core::StepHandlerRegistry::with_builtin_deterministic();
         kowalski_core::LlmStepHandler::register_all(&mut registry, horde_agent, &model);
         horde_manager.step_handlers = Arc::new(registry);
     }
@@ -264,7 +267,8 @@ pub async fn serve(
         .await
         .map(|runs| runs.into_iter().map(|r| r.horde_id).collect())
         .unwrap_or_default();
-    for spec in horde_manager.specs.iter() {
+    for entry in horde_manager.catalog.list() {
+        let spec = &entry.spec;
         let mut effective_clean_on_startup =
             global_clean_on_startup.unwrap_or(spec.config_on_startup);
         if effective_clean_on_startup && hordes_with_incomplete_runs.contains(&spec.id) {
@@ -294,6 +298,29 @@ pub async fn serve(
         }
     }
     crate::horde::spawn_orchestrator_loop(horde_manager.clone());
+    // Hot reload: one debounced watcher over the horde roots refreshes the
+    // catalog (add/edit/remove without restart) and subscribes the orchestrator
+    // to any new run topics. Held until the server future completes; rescans
+    // never create additional watchers (bounded threads/fds). The catalog also
+    // rescans lazily on every listing/find, so a missing watcher (e.g. a root
+    // created after startup) only loses push-style refresh, not correctness.
+    let _horde_watcher = {
+        let manager = horde_manager.clone();
+        let runtime = tokio::runtime::Handle::current();
+        crate::fswatch::spawn_debounced_watcher(
+            &horde_roots,
+            std::time::Duration::from_millis(500),
+            move || {
+                let manager = manager.clone();
+                runtime.spawn(async move {
+                    manager.catalog.rescan();
+                    crate::horde::ensure_topic_subscriptions(&manager).await;
+                });
+            },
+        )
+        .map_err(|e| log::warn!("horde catalog watcher unavailable: {e}"))
+        .ok()
+    };
     // Reconcile runs interrupted by the previous shutdown ("agents survive a
     // reboot"): auto-resume non-operator runs, surface the rest as resumable.
     {
@@ -428,14 +455,11 @@ pub async fn serve(
         );
     #[cfg(feature = "postgres")]
     let router = router.route("/api/graph/cypher", post(post_graph_cypher));
-    let app = router
-        .with_state(state)
-        .layer(Extension(rookery))
-        .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(DefaultMakeSpan::new().include_headers(false))
-                .on_response(DefaultOnResponse::new()),
-        );
+    let app = router.with_state(state).layer(Extension(rookery)).layer(
+        TraceLayer::new_for_http()
+            .make_span_with(DefaultMakeSpan::new().include_headers(false))
+            .on_response(DefaultOnResponse::new()),
+    );
     let app = if let Some(token) = api_token {
         app.layer(axum::middleware::from_fn(move |req, next| {
             let token = token.clone();
@@ -771,7 +795,10 @@ async fn post_open_path(
         return Err((StatusCode::BAD_REQUEST, "path must be absolute".into()));
     }
     if !path.exists() {
-        return Err((StatusCode::NOT_FOUND, format!("path not found: {}", path.display())));
+        return Err((
+            StatusCode::NOT_FOUND,
+            format!("path not found: {}", path.display()),
+        ));
     }
 
     let mut cmd: Command;
@@ -798,10 +825,12 @@ async fn post_open_path(
         ));
     }
 
-    let out = cmd
-        .output()
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("failed to launch opener: {e}")))?;
+    let out = cmd.output().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("failed to launch opener: {e}"),
+        )
+    })?;
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
         return Err((
@@ -881,11 +910,7 @@ async fn post_chat(
         } else {
             guard
                 .agent
-                .ensure_conversation_with_tools(
-                    &state.model,
-                    cid,
-                    body.tool_ids.as_deref(),
-                )
+                .ensure_conversation_with_tools(&state.model, cid, body.tool_ids.as_deref())
                 .await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
             guard.conv_id = cid.clone();
@@ -936,12 +961,7 @@ async fn post_chat(
         guard
             .agent
             .base_mut()
-            .chat_with_history_with_options(
-                &conv_id,
-                body.message.trim(),
-                None,
-                body.use_memory,
-            )
+            .chat_with_history_with_options(&conv_id, body.message.trim(), None, body.use_memory)
             .await
     }
     .map_err(|e| {
@@ -1223,7 +1243,8 @@ fn repo_root_from_state(state: &ApiState) -> PathBuf {
 fn worker_profiles(state: &ApiState) -> Vec<WorkerProfile> {
     let root = repo_root_from_state(state);
     let mut out = Vec::new();
-    for spec in state.horde_manager.specs.iter() {
+    for entry in state.horde_manager.catalog.list() {
+        let spec = &entry.spec;
         for sub in &spec.sub_agents {
             // Kinds with an in-process step handler need no federation worker.
             if state.horde_manager.step_handlers.contains(&sub.kind) {
@@ -1824,12 +1845,15 @@ async fn get_hordes(State(state): State<ApiState>) -> Json<serde_json::Value> {
     let global_clean_on_startup = global_horde_clean_on_startup(&state.full_config);
     let hordes: Vec<serde_json::Value> = state
         .horde_manager
-        .specs
+        .catalog
+        .list()
         .iter()
-        .map(|s| {
+        .map(|entry| {
+            let s = &entry.spec;
             let effective_clean_on_startup = global_clean_on_startup.unwrap_or(s.config_on_startup);
             json!({
                 "id": s.id,
+                "load_error": entry.load_error,
                 "display_name": s.display_name,
                 "description": s.description,
                 "capability_prefix": s.capability_prefix,
@@ -1859,14 +1883,22 @@ async fn get_horde_detail(
     AxumPath(horde_id): AxumPath<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let global_clean_on_startup = global_horde_clean_on_startup(&state.full_config);
-    let spec = state.horde_manager.find(&horde_id).ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            format!("unknown horde id: {}", horde_id),
-        )
-    })?;
+    let entry = state
+        .horde_manager
+        .catalog
+        .list()
+        .into_iter()
+        .find(|e| e.spec.id == horde_id)
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("unknown horde id: {}", horde_id),
+            )
+        })?;
+    let spec = &entry.spec;
     Ok(Json(json!({
         "id": spec.id,
+        "load_error": entry.load_error,
         "display_name": spec.display_name,
         "description": spec.description,
         "capability_prefix": spec.capability_prefix,
@@ -2136,7 +2168,7 @@ async fn post_horde_clean_workdir(
             format!("unknown horde id: {}", horde_id),
         )
     })?;
-    crate::horde::clean_horde_workdir(spec).map_err(|e| {
+    crate::horde::clean_horde_workdir(&spec).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("clean workdir: {}", e),
@@ -2164,9 +2196,8 @@ async fn post_horde_repair_outputs(
             format!("unknown horde id: {}", horde_id),
         )
     })?;
-    let fixed = kowalski_core::repair_horde_tree_outputs(&spec.root_path).map_err(|e| {
-        (StatusCode::BAD_REQUEST, e.to_string())
-    })?;
+    let fixed = kowalski_core::repair_horde_tree_outputs(&spec.root_path)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     Ok(Json(json!({
         "ok": true,
         "horde_id": horde_id,
@@ -2183,7 +2214,10 @@ async fn post_horde_run(
     // operator-input block via kowalski-core (no client-side prompt assembly or validation).
     let operator_block = match (
         body.form_answers.as_ref(),
-        state.horde_manager.find(&horde_id).and_then(|s| s.run_form.clone()),
+        state
+            .horde_manager
+            .find(&horde_id)
+            .and_then(|s| s.run_form.clone()),
     ) {
         (Some(answers), Some(form)) => {
             kowalski_core::validate_form_answers(&form, answers)

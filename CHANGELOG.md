@@ -21,6 +21,18 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Added
 
+- **Horde catalog hot reload (#52):** horde definitions are no longer frozen at server
+  startup. The new `HordeCatalog` re-resolves a horde from disk when its definition files
+  change and re-scans the horde roots on every listing — **adding, editing, or removing a
+  horde directory takes effect without a restart** (a single debounced file watcher also
+  pushes refreshes and hooks new run topics into the orchestrator). In-flight runs are
+  immune: the orchestrator advances, resumes, and cancels runs from the run's persisted
+  manifest snapshot, so a definition edited mid-run applies from the next run only. A
+  broken edit never drops a horde — the server keeps the last good version and surfaces
+  the parse error on `/api/hordes` (`load_error`); the UI Horde tab polls the listing,
+  shows a ⚠ badge with the error, and clears it once the file is fixed. Hot-added hordes
+  get their workdir prepared on first reference; reloads never re-run `clean_on_startup`.
+
 - **Agent loop: native tool calls first, ReAct as fallback (#51):** every
   `chat_with_tools*` entry point — REPL chat, `/api/chat` (plain and streaming), in-process
   horde LLM steps, isolated `exec-step` children, and role workers — now runs the

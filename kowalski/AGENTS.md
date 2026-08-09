@@ -179,6 +179,30 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
   `--cors-origin` or `[server] cors_origins = [...]` in `config.toml`. A non-allowlisted
   origin gets no `Access-Control-Allow-Origin` header. One shared token by design (no
   multi-user auth/roles).
+#### Horde catalog hot reload (`src/horde.rs` `HordeCatalog`, `src/fswatch.rs`)
+
+- Horde definitions are **no longer frozen at startup**: `HordeManager.catalog`
+  (`HordeCatalog::with_roots`) re-resolves a horde from disk when its definition files
+  change (stat-only fingerprint of `horde.md` + `agents/*.md` + `prompts/*.md`) and
+  re-scans the roots on every listing/`find` — adding, editing, or removing a horde dir
+  takes effect **without a restart**. One debounced `notify` watcher over the roots
+  (`fswatch::spawn_debounced_watcher`, created once at startup — no watcher growth across
+  reloads) additionally pushes rescans and subscribes the orchestrator to new run topics
+  (`ensure_topic_subscriptions`).
+- **In-flight runs are immune to edits**: the orchestrator advances, resumes, and cancels
+  runs from the run's persisted **manifest snapshot** (`HordeSpec::from_snapshot`,
+  `spec_for_run`), never the live catalog. A definition change applies from the **next**
+  run. (Prompt-file *contents* are read at step-execution time, as before — the snapshot
+  pins the run's structure: pipeline, steps, edges, isolation.)
+- **Broken edits never drop a horde**: a failed reload keeps the last-good spec and
+  surfaces the parse error as `load_error` on `GET /api/hordes` (+ detail); the UI shows a
+  ⚠ badge and the error text, and clears it when the file is fixed. A brand-new dir that
+  fails to parse is skipped with a warning (same as startup).
+- **Workdir lifecycle**: startup keeps the existing policy (`clean_on_startup`, skipped
+  while interrupted runs pend resume). A hot-added horde gets its workdir created on
+  first reference; a reload **never** re-runs the clean.
+- Fixed catalogs (`HordeCatalog::fixed`) serve tests/embedded use — no roots, no reloads.
+
 #### Horde run persistence (`src/horde.rs`)
 
 - The orchestrator **writes through** every run/step transition to the persisted run store

@@ -682,15 +682,21 @@ async function onHordeFormSubmit(payload: {
   }
 }
 
+// The server catalog hot-reloads horde definitions (add/edit/remove without a
+// restart); poll the listing so changes show up without a manual refresh.
+let hordePollTimer: ReturnType<typeof setInterval> | null = null;
+
 onMounted(() => {
   restoreRunHistory();
   connectStream();
   void refreshAll();
+  hordePollTimer = setInterval(() => void loadHordes(), 15000);
 });
 
 onUnmounted(() => {
   fedEs.value?.close();
   clearRunWatchdog();
+  if (hordePollTimer) clearInterval(hordePollTimer);
 });
 </script>
 
@@ -708,7 +714,9 @@ onUnmounted(() => {
     <p>
       <label class="lbl">Horde</label>
       <select v-model="selectedHordeId" class="inp">
-        <option v-for="h in hordes" :key="h.id" :value="h.id">{{ h.display_name }}</option>
+        <option v-for="h in hordes" :key="h.id" :value="h.id">
+          {{ h.display_name }}{{ h.load_error ? " ⚠" : "" }}
+        </option>
       </select>
     </p>
     <section v-if="resumableRuns.length" class="resume-banner">
@@ -734,6 +742,9 @@ onUnmounted(() => {
       </article>
     </section>
     <div v-if="selectedHorde" class="horde-box">
+      <p v-if="selectedHorde.load_error" class="load-error">
+        ⚠ Definition edit failed to load — running the last good version. {{ selectedHorde.load_error }}
+      </p>
       <p class="muted">{{ selectedHorde.description }}</p>
       <p v-if="selectedHordeIsDag" class="dag-note muted">
         <strong>DAG horde.</strong> The orchestrator runs fork/join layers in order; steps sharing a layer run when all
@@ -914,6 +925,7 @@ onUnmounted(() => {
 /* Sits above the sticky follow-up composer (z-index 5) so interrupted runs stay actionable at top scroll. */
 .resume-banner { position: relative; z-index: 6; border: 1px solid #8a6d3b; border-radius: 8px; background: #221c10; padding: 0.55rem 0.65rem; margin-bottom: 0.55rem; }
 .resume-banner h3 { margin: 0 0 0.25rem; font-size: 0.95rem; color: #e0c284; }
+.load-error { color: #e0a184; font-size: 0.85rem; }
 .resume-item { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; border: 1px solid #3a3324; border-radius: 6px; background: #1a1712; padding: 0.4rem 0.55rem; margin-top: 0.35rem; }
 .resume-meta { display: grid; gap: 0.1rem; min-width: 0; }
 .resume-prompt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 34rem; }

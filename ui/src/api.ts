@@ -202,6 +202,8 @@ export type HordeEdge = { from: string; to: string };
 
 export type HordeCatalogItem = {
   id: string;
+  /** Set when the latest on-disk reload of this horde failed; the listed spec is the last good one. */
+  load_error?: string | null;
   display_name: string;
   description: string;
   capability_prefix: string;
