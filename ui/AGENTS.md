@@ -13,6 +13,9 @@ Features are **not done** until an operator can complete the primary flows in **
 - **Chat** tab (LLM + optional tools stream).
 - **Rookery** tab (1.3.0+): conversational horde builder → **Propose horde** → **PenguinCanvas** (linear track or layered DAG when `edges[]` present) + **PenguinEditor** (save penguin) → **Give birth** → **Save horde to disk** (`/api/rookery/*`).
 - **Horde** tab: catalog → worker lifecycle → **Horde Run** (e.g. Knowledge Compiler delivery).
+  The horde listing polls every 15 s (server catalog hot-reloads definitions — add/edit/remove
+  without restart); a horde whose latest on-disk edit failed to parse shows a ⚠ badge and the
+  `load_error` message while the server keeps running its last good version.
 - **Federation** tab: registry, worker start/stop, delegate smoke tests.
 
 Backend or `kowalski-core` changes that touch chat, horde, federation, or delivery metadata **must** be smoke-checked here (or documented with a blocking reason). Error copy shown in panels should always reference **current** CLI commands (see [`examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md)), not deprecated wrappers.

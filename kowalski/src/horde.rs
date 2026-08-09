@@ -17,12 +17,12 @@ use kowalski_core::db::run_store::{
 };
 use kowalski_core::federation::{AclEnvelope, AclMessage, FederationOrchestrator, MpscBroker};
 use kowalski_core::{
-    all_steps_successful, has_conditional_outbound, is_loop_back_step, is_valid_isolation,
-    loop_edge_key, next_ready_step_conditional, parse_stage_status_from_artifact,
-    resolve_execution_graph, retry_span, select_next_from_outcome, single_forward_predecessor,
-    verify_output_excerpt, StageStatus,
-    ExecutionGraph, HordeEdge, IsolatedStepEvent, IsolatedStepRequest, StepContext, StepEventSink,
-    StepHandler, StepHandlerRegistry, StepOutcome, StepSpec, ISOLATION_PROCESS,
+    ExecutionGraph, HordeEdge, ISOLATION_PROCESS, IsolatedStepEvent, IsolatedStepRequest,
+    StageStatus, StepContext, StepEventSink, StepHandler, StepHandlerRegistry, StepOutcome,
+    StepSpec, all_steps_successful, has_conditional_outbound, is_loop_back_step,
+    is_valid_isolation, loop_edge_key, next_ready_step_conditional,
+    parse_stage_status_from_artifact, resolve_execution_graph, retry_span,
+    select_next_from_outcome, single_forward_predecessor, verify_output_excerpt,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -133,7 +133,7 @@ pub struct SubAgentMeta {
     pub isolation: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubAgentSpec {
     pub name: String,
     pub kind: String,
@@ -173,7 +173,7 @@ impl SubAgentSpec {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HordeSpec {
     pub id: String,
     pub display_name: String,
@@ -181,8 +181,9 @@ pub struct HordeSpec {
     pub capability_prefix: String,
     pub pipeline: Vec<String>,
     /// Explicit `[[edges]]` from manifest (empty = linear horde).
+    #[serde(default)]
     pub manifest_edges: Vec<HordeEdge>,
-    #[serde(skip)]
+    #[serde(skip, default = "empty_execution_graph")]
     pub execution_graph: ExecutionGraph,
     pub default_question: String,
     pub topic: String,
@@ -204,9 +205,33 @@ pub struct HordeSpec {
     pub run_form: Option<kowalski_core::HordeRunFormSpec>,
 }
 
+/// Placeholder for the `#[serde(skip)]` graph field during snapshot deserialization;
+/// [`HordeSpec::from_snapshot`] rebuilds the real graph before the spec is used.
+fn empty_execution_graph() -> ExecutionGraph {
+    ExecutionGraph {
+        edges: Vec::new(),
+        layers: Vec::new(),
+    }
+}
+
 impl HordeSpec {
     pub fn sub_agent(&self, name: &str) -> Option<&SubAgentSpec> {
         self.sub_agents.iter().find(|a| a.name == name)
+    }
+
+    /// Rebuild the full spec a run was started with from its persisted manifest
+    /// snapshot (the serialized [`HordeSpec`]), recomputing the execution graph.
+    /// `None` when the snapshot is missing, unparseable, or graph-invalid — callers
+    /// fall back to the live catalog spec.
+    pub fn from_snapshot(snapshot: &serde_json::Value) -> Option<HordeSpec> {
+        let mut spec: HordeSpec = serde_json::from_value(snapshot.clone()).ok()?;
+        let edges = if spec.manifest_edges.is_empty() {
+            None
+        } else {
+            Some(spec.manifest_edges.as_slice())
+        };
+        spec.execution_graph = resolve_execution_graph(&spec.pipeline, edges).ok()?;
+        Some(spec)
     }
 }
 
@@ -285,9 +310,10 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
             .description
             .clone()
             .unwrap_or_else(|| format!("{} sub-agent of {}", raw.kind, meta.id));
-        let avatar = raw.avatar.clone().or_else(|| {
-            Some(kowalski_core::infer_penguin_avatar(&raw.kind, &raw.name))
-        });
+        let avatar = raw
+            .avatar
+            .clone()
+            .or_else(|| Some(kowalski_core::infer_penguin_avatar(&raw.kind, &raw.name)));
         by_name.insert(
             raw.name.clone(),
             SubAgentSpec {
@@ -320,11 +346,7 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
 
     let workdir = if let Some(w) = &meta.workdir {
         let p = PathBuf::from(w.clone());
-        if p.is_absolute() {
-            p
-        } else {
-            root.join(w)
-        }
+        if p.is_absolute() { p } else { root.join(w) }
     } else {
         root.join("workdir")
     };
@@ -337,17 +359,18 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
     } else {
         Some(meta.edges.as_slice())
     };
-    let execution_graph = resolve_execution_graph(&meta.pipeline, edge_slice)
-        .map_err(|e| e.to_string())?;
+    let execution_graph =
+        resolve_execution_graph(&meta.pipeline, edge_slice).map_err(|e| e.to_string())?;
 
-    let run_form = sub_agents
-        .iter()
-        .find(|a| !a.inputs.is_empty())
-        .map(|a| kowalski_core::HordeRunFormSpec {
-            step: a.name.clone(),
-            display_name: Some(a.display_name.clone()),
-            inputs: a.inputs.clone(),
-        });
+    let run_form =
+        sub_agents
+            .iter()
+            .find(|a| !a.inputs.is_empty())
+            .map(|a| kowalski_core::HordeRunFormSpec {
+                step: a.name.clone(),
+                display_name: Some(a.display_name.clone()),
+                inputs: a.inputs.clone(),
+            });
 
     Ok(HordeSpec {
         id: meta.id,
@@ -425,40 +448,245 @@ pub fn prepare_workdir_on_startup_with_policy(
     Ok(())
 }
 
-/// Discover all horde directories under `roots` (each root must contain a `horde.md`).
-pub fn discover_hordes(roots: &[PathBuf]) -> Vec<HordeSpec> {
-    let mut out = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-    for r in roots {
-        if !r.exists() {
-            continue;
+/// Stat-only fingerprint of one horde dir's definition files (`horde.md`,
+/// `agents/*.md`, `prompts/*.md`): (path, mtime-nanos, len) triples. A changed
+/// fingerprint means the definition must be re-resolved from disk.
+type HordeFingerprint = Vec<(PathBuf, u128, u64)>;
+
+fn horde_fingerprint(root: &Path) -> HordeFingerprint {
+    let mut out: HordeFingerprint = Vec::new();
+    let mut push = |p: &Path| {
+        if let Ok(meta) = std::fs::metadata(p) {
+            let mtime = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            out.push((p.to_path_buf(), mtime, meta.len()));
         }
-        let direct = r.join("horde.md");
-        if direct.exists() {
-            if let Ok(spec) = load_horde(r)
-                && seen.insert(spec.id.clone())
-            {
-                out.push(spec);
+    };
+    push(&root.join("horde.md"));
+    for dir in ["agents", "prompts"] {
+        let mut files: Vec<PathBuf> = std::fs::read_dir(root.join(dir))
+            .map(|rd| {
+                rd.flatten()
+                    .map(|e| e.path())
+                    .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("md"))
+                    .collect()
+            })
+            .unwrap_or_default();
+        files.sort();
+        for f in &files {
+            push(f);
+        }
+    }
+    out
+}
+
+/// One catalog slot: the last successfully loaded spec plus reload state.
+#[derive(Clone)]
+pub struct HordeCatalogEntry {
+    /// Last-good spec — never dropped on a failed reload.
+    pub spec: Arc<HordeSpec>,
+    /// Error from the most recent (failed) reload of this horde's files; `None`
+    /// when the on-disk definition matches `spec`.
+    pub load_error: Option<String>,
+    fingerprint: HordeFingerprint,
+}
+
+/// Live horde catalog: hordes are re-resolved from disk when their definition
+/// files change, and the root listing itself is re-scanned on every [`Self::list`]
+/// (and on watcher events), so adds/edits/removals take effect without a restart.
+///
+/// In-flight runs are unaffected: the orchestrator advances runs from their
+/// persisted manifest snapshot ([`HordeSpec::from_snapshot`]), never the live
+/// catalog. A broken edit keeps the last-good spec and surfaces `load_error` in
+/// the listing; a brand-new directory that fails to parse is skipped (warn), as
+/// at startup. Hot-added hordes get their workdir created on insert; a reload
+/// never re-runs `clean_on_startup`.
+pub struct HordeCatalog {
+    /// Roots scanned for horde dirs; empty for fixed test catalogs.
+    roots: Vec<PathBuf>,
+    entries: std::sync::RwLock<Vec<HordeCatalogEntry>>,
+}
+
+impl HordeCatalog {
+    /// Live catalog over `roots` (initial scan included).
+    pub fn with_roots(roots: Vec<PathBuf>) -> Self {
+        let catalog = Self {
+            roots,
+            entries: std::sync::RwLock::new(Vec::new()),
+        };
+        catalog.rescan();
+        catalog
+    }
+
+    /// Fixed catalog for pre-loaded specs (tests, embedded use): no roots, no reloads.
+    pub fn fixed(specs: Vec<HordeSpec>) -> Self {
+        Self {
+            roots: Vec::new(),
+            entries: std::sync::RwLock::new(
+                specs
+                    .into_iter()
+                    .map(|spec| HordeCatalogEntry {
+                        fingerprint: Vec::new(),
+                        spec: Arc::new(spec),
+                        load_error: None,
+                    })
+                    .collect(),
+            ),
+        }
+    }
+
+    /// Enumerate horde dirs under the roots (a root is itself a horde dir when it
+    /// holds `horde.md`, else its direct children are).
+    fn horde_dirs(&self) -> Vec<PathBuf> {
+        let mut dirs = Vec::new();
+        for r in &self.roots {
+            if r.join("horde.md").exists() {
+                dirs.push(r.clone());
+                continue;
             }
-            continue;
-        }
-        if let Ok(rd) = std::fs::read_dir(r) {
-            for e in rd.flatten() {
-                let p = e.path();
-                if p.is_dir() && p.join("horde.md").exists() {
-                    match load_horde(&p) {
-                        Ok(spec) => {
-                            if seen.insert(spec.id.clone()) {
-                                out.push(spec);
-                            }
-                        }
-                        Err(err) => log::warn!("horde load failed at {}: {}", p.display(), err),
+            if let Ok(rd) = std::fs::read_dir(r) {
+                for e in rd.flatten() {
+                    let p = e.path();
+                    if p.is_dir() && p.join("horde.md").exists() {
+                        dirs.push(p);
                     }
                 }
             }
         }
+        dirs
     }
-    out
+
+    /// Re-resolve the catalog against disk: load new horde dirs (workdir prepared,
+    /// no clean), reload changed ones (last-good + `load_error` on failure), drop
+    /// removed ones. Cheap when nothing changed (stat-only fingerprints). No-op for
+    /// fixed catalogs.
+    pub fn rescan(&self) {
+        if self.roots.is_empty() {
+            return;
+        }
+        let dirs = self.horde_dirs();
+        let mut entries = self.entries.write().expect("horde catalog lock poisoned");
+        // Drop hordes whose directory (or horde.md) disappeared.
+        entries.retain(|e| {
+            let kept = dirs.iter().any(|d| *d == e.spec.root_path);
+            if !kept {
+                log::info!("horde catalog: `{}` removed (dir gone)", e.spec.id);
+            }
+            kept
+        });
+        let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for dir in dirs {
+            if let Some(entry) = entries.iter_mut().find(|e| e.spec.root_path == dir) {
+                let fingerprint = horde_fingerprint(&dir);
+                if fingerprint != entry.fingerprint {
+                    match load_horde(&dir) {
+                        Ok(spec) => {
+                            log::info!(
+                                "horde catalog: `{}` reloaded (definition changed)",
+                                spec.id
+                            );
+                            // Reload never cleans; just keep the workdir present.
+                            let _ = std::fs::create_dir_all(&spec.workdir);
+                            entry.spec = Arc::new(spec);
+                            entry.load_error = None;
+                        }
+                        Err(err) => {
+                            log::warn!(
+                                "horde catalog: `{}` reload failed (keeping last-good): {}",
+                                entry.spec.id,
+                                err
+                            );
+                            entry.load_error = Some(err.to_string());
+                        }
+                    }
+                    entry.fingerprint = fingerprint;
+                }
+                seen_ids.insert(entry.spec.id.clone());
+                continue;
+            }
+            // New horde dir discovered while the server runs.
+            let fingerprint = horde_fingerprint(&dir);
+            match load_horde(&dir) {
+                Ok(spec) => {
+                    if entries.iter().any(|e| e.spec.id == spec.id) || seen_ids.contains(&spec.id) {
+                        log::warn!(
+                            "horde catalog: duplicate id `{}` at {} ignored",
+                            spec.id,
+                            dir.display()
+                        );
+                        continue;
+                    }
+                    // First reference of a hot-added horde: prepare (create) the
+                    // workdir; `clean_on_startup` is a startup-only policy.
+                    if let Err(e) = prepare_workdir_on_startup_with_policy(&spec, false) {
+                        log::warn!(
+                            "horde catalog: workdir prepare failed horde={} err={}",
+                            spec.id,
+                            e
+                        );
+                    }
+                    log::info!("horde catalog: `{}` added ({})", spec.id, dir.display());
+                    seen_ids.insert(spec.id.clone());
+                    entries.push(HordeCatalogEntry {
+                        fingerprint,
+                        spec: Arc::new(spec),
+                        load_error: None,
+                    });
+                }
+                Err(err) => log::warn!("horde load failed at {}: {}", dir.display(), err),
+            }
+        }
+    }
+
+    /// Snapshot of the catalog after a rescan — always reflects disk.
+    pub fn list(&self) -> Vec<HordeCatalogEntry> {
+        self.rescan();
+        self.entries
+            .read()
+            .expect("horde catalog lock poisoned")
+            .clone()
+    }
+
+    /// Resolve one horde, lazily reloading it if its files changed; a miss triggers
+    /// one rescan (hot-added hordes are findable before any watcher event lands).
+    pub fn find(&self, horde_id: &str) -> Option<Arc<HordeSpec>> {
+        {
+            let entries = self.entries.read().expect("horde catalog lock poisoned");
+            if let Some(e) = entries.iter().find(|e| e.spec.id == horde_id) {
+                if self.roots.is_empty() || horde_fingerprint(&e.spec.root_path) == e.fingerprint {
+                    return Some(e.spec.clone());
+                }
+            } else if self.roots.is_empty() {
+                return None;
+            }
+        }
+        // Stale entry or miss on a live catalog: re-resolve from disk first.
+        self.rescan();
+        self.entries
+            .read()
+            .expect("horde catalog lock poisoned")
+            .iter()
+            .find(|e| e.spec.id == horde_id)
+            .map(|e| e.spec.clone())
+    }
+
+    /// Distinct run topics of all cataloged hordes (orchestrator subscriptions).
+    pub fn topics(&self) -> Vec<String> {
+        let mut topics: Vec<String> = self
+            .entries
+            .read()
+            .expect("horde catalog lock poisoned")
+            .iter()
+            .map(|e| e.spec.topic.clone())
+            .collect();
+        topics.sort();
+        topics.dedup();
+        topics
+    }
 }
 
 /// API wire vocabulary for run statuses. The store speaks the canonical enum
@@ -532,6 +760,12 @@ pub struct RunRecord {
     /// True when the run is incomplete in the store but no live orchestrator
     /// task owns it (interrupted by a restart, or awaiting operator input).
     pub resumable: bool,
+    /// The serialized [`HordeSpec`] this run started with — the orchestrator
+    /// advances the run from it, never from the live catalog (definition edits
+    /// on disk must not restructure an in-flight run). Persisted in the store;
+    /// not part of API run payloads.
+    #[serde(skip)]
+    pub manifest_snapshot: Option<serde_json::Value>,
 }
 
 impl RunRecord {
@@ -590,6 +824,7 @@ impl RunRecord {
             origin: p.origin,
             resume_count: p.resume_count.max(0) as u32,
             resumable: false,
+            manifest_snapshot: p.manifest_snapshot,
         }
     }
 }
@@ -605,7 +840,11 @@ pub type SharedRunRegistry = Arc<Mutex<RunRegistry>>;
 
 #[derive(Clone)]
 pub struct HordeManager {
-    pub specs: Arc<Vec<HordeSpec>>,
+    /// Live horde catalog (lazy reload + rescan); replaces the old frozen spec list.
+    pub catalog: Arc<HordeCatalog>,
+    /// Run topics the orchestrator loop already subscribed to; hot-added hordes
+    /// with new topics get their subscription via [`ensure_topic_subscriptions`].
+    pub subscribed_topics: Arc<Mutex<std::collections::HashSet<String>>>,
     pub runs: SharedRunRegistry,
     pub broker: Arc<MpscBroker>,
     pub federation: Arc<FederationOrchestrator>,
@@ -644,7 +883,8 @@ impl HordeManager {
         store: RunStore,
     ) -> Self {
         Self {
-            specs: Arc::new(specs),
+            catalog: Arc::new(HordeCatalog::fixed(specs)),
+            subscribed_topics: Arc::new(Mutex::new(std::collections::HashSet::new())),
             runs: Arc::new(Mutex::new(RunRegistry::default())),
             broker,
             federation,
@@ -665,10 +905,7 @@ impl HordeManager {
     /// Token used to cooperatively cancel all in-process steps of `run_id`.
     async fn cancel_token_for(&self, run_id: &str) -> tokio_util::sync::CancellationToken {
         let mut tokens = self.cancel_tokens.lock().await;
-        tokens
-            .entry(run_id.to_string())
-            .or_default()
-            .clone()
+        tokens.entry(run_id.to_string()).or_default().clone()
     }
 
     async fn drop_cancel_token(&self, run_id: &str) {
@@ -687,7 +924,10 @@ impl HordeManager {
             summary: step.summary.clone(),
         };
         if let Err(e) = self.store.upsert_step(run_id, &update).await {
-            log::warn!("run store: step write failed run={run_id} step={}: {e}", step.step);
+            log::warn!(
+                "run store: step write failed run={run_id} step={}: {e}",
+                step.step
+            );
         }
     }
 
@@ -715,8 +955,19 @@ impl HordeManager {
         }
     }
 
-    pub fn find(&self, horde_id: &str) -> Option<&HordeSpec> {
-        self.specs.iter().find(|s| s.id == horde_id)
+    pub fn find(&self, horde_id: &str) -> Option<Arc<HordeSpec>> {
+        self.catalog.find(horde_id)
+    }
+
+    /// Spec to advance an **in-flight run** with: the run's persisted manifest
+    /// snapshot first (definition changes never restructure a running run), the
+    /// live catalog spec only as a fallback for legacy runs without a snapshot.
+    fn spec_for_run(&self, run: &RunRecord) -> Option<Arc<HordeSpec>> {
+        run.manifest_snapshot
+            .as_ref()
+            .and_then(HordeSpec::from_snapshot)
+            .map(Arc::new)
+            .or_else(|| self.find(&run.horde_id))
     }
 
     /// Compose the canonical task_id for a (horde, run, step) triple.
@@ -859,6 +1110,7 @@ impl HordeManager {
             origin: origin.to_string(),
             resume_count: 0,
             resumable: false,
+            manifest_snapshot: serde_json::to_value(&*spec).ok(),
         };
 
         self.store
@@ -868,7 +1120,7 @@ impl HordeManager {
                 prompt: prompt.to_string(),
                 source: source.map(ToString::to_string),
                 question: q.clone(),
-                manifest_snapshot: serde_json::to_value(&spec).ok(),
+                manifest_snapshot: record.manifest_snapshot.clone(),
                 origin: origin.to_string(),
             })
             .await
@@ -876,7 +1128,8 @@ impl HordeManager {
         for step in &record.steps {
             self.persist_step(&run_id, step).await;
         }
-        self.persist_run_status(&run_id, RunStatus::Running, None).await;
+        self.persist_run_status(&run_id, RunStatus::Running, None)
+            .await;
 
         let started_msg = AclMessage::RunStarted {
             run_id: run_id.clone(),
@@ -904,15 +1157,10 @@ impl HordeManager {
                 &status,
                 &BTreeMap::new(),
             )
-            .ok_or_else(|| {
-                format!("horde {} has no runnable step after RunStarted", horde_id)
-            })?
+            .ok_or_else(|| format!("horde {} has no runnable step after RunStarted", horde_id))?
         };
 
-        if let Err(e) = self
-            .delegate_step(&spec, &run_id, &first_step, None)
-            .await
-        {
+        if let Err(e) = self.delegate_step(&spec, &run_id, &first_step, None).await {
             self.fail_run(
                 &spec,
                 &run_id,
@@ -1283,7 +1531,12 @@ impl HordeManager {
             let request_line = match serde_json::to_string(&request) {
                 Ok(s) => s,
                 Err(e) => {
-                    let env = finish(false, None, format!("isolated step request encode: {e}"), None);
+                    let env = finish(
+                        false,
+                        None,
+                        format!("isolated step request encode: {e}"),
+                        None,
+                    );
                     manager.publish(&env).await;
                     return;
                 }
@@ -1303,7 +1556,11 @@ impl HordeManager {
                     let env = finish(
                         false,
                         None,
-                        format!("spawn isolated step `{}` ({}): {e}", sub.name, program.display()),
+                        format!(
+                            "spawn isolated step `{}` ({}): {e}",
+                            sub.name,
+                            program.display()
+                        ),
                         None,
                     );
                     manager.publish(&env).await;
@@ -1450,11 +1707,12 @@ impl HordeManager {
         artifact: Option<&str>,
         summary: &str,
     ) {
+        // Advance from the run's manifest snapshot — a definition edited on disk
+        // mid-run must never restructure an in-flight run (live spec only as a
+        // fallback for legacy runs without a snapshot).
         let spec_opt = {
             let runs = self.runs.lock().await;
-            runs.runs
-                .get(run_id)
-                .and_then(|r| self.find(&r.horde_id).cloned())
+            runs.runs.get(run_id).and_then(|r| self.spec_for_run(r))
         };
         let Some(spec) = spec_opt else {
             log::warn!("horde TaskFinished for unknown run_id={}", run_id);
@@ -1537,7 +1795,10 @@ impl HordeManager {
                         .get(run_id)
                         .and_then(|run| Self::previous_artifact_for_step(&spec, run, &next))
                 };
-                if let Err(e) = self.delegate_step(&spec, run_id, &next, prev.as_deref()).await {
+                if let Err(e) = self
+                    .delegate_step(&spec, run_id, &next, prev.as_deref())
+                    .await
+                {
                     self.fail_run(&spec, run_id, &e, Some(&next)).await;
                 }
                 return;
@@ -1593,7 +1854,10 @@ impl HordeManager {
             run.events.push(finished_event);
 
             let mut route_notice = None;
-            let (next_step, route_error) = if has_conditional_outbound(&spec.execution_graph.edges, step) {
+            let (next_step, route_error) = if has_conditional_outbound(
+                &spec.execution_graph.edges,
+                step,
+            ) {
                 match select_next_from_outcome(
                     &spec.pipeline,
                     &spec.execution_graph.edges,
@@ -1605,12 +1869,9 @@ impl HordeManager {
                         let (is_back, loop_count) = self
                             .apply_route_bookkeeping(&spec, run_id, run, step, &next)
                             .await;
-                        let verify_excerpt = Self::verify_excerpt_for_step(
-                            &spec,
-                            step,
-                            artifact,
-                        );
-                        route_notice = Some((next.clone(), outcome, is_back, loop_count, verify_excerpt));
+                        let verify_excerpt = Self::verify_excerpt_for_step(&spec, step, artifact);
+                        route_notice =
+                            Some((next.clone(), outcome, is_back, loop_count, verify_excerpt));
                         (Some(next), None)
                     }
                     None => (
@@ -1790,10 +2051,7 @@ impl HordeManager {
         if !worker_success {
             return StageStatus::Fail;
         }
-        let kind = spec
-            .sub_agent(step)
-            .map(|s| s.kind.as_str())
-            .unwrap_or("");
+        let kind = spec.sub_agent(step).map(|s| s.kind.as_str()).unwrap_or("");
         if matches!(kind, "verify" | "apply") {
             if let Some(path) = artifact {
                 if let Some(body) = Self::read_artifact_text(spec, path) {
@@ -2021,15 +2279,20 @@ impl HordeManager {
                 return Err(format!("run {run_id} is already active"));
             }
         }
-        let spec = self
-            .find(&persisted.horde_id)
+        // Resume on the definition the run started with (manifest snapshot);
+        // the live catalog spec is only a fallback for legacy runs without one.
+        let spec = persisted
+            .manifest_snapshot
+            .as_ref()
+            .and_then(HordeSpec::from_snapshot)
+            .map(Arc::new)
+            .or_else(|| self.find(&persisted.horde_id))
             .ok_or_else(|| {
                 format!(
                     "horde {} for run {run_id} is no longer in the catalog",
                     persisted.horde_id
                 )
-            })?
-            .clone();
+            })?;
 
         if persisted.resume_count >= self.resume_max_attempts as i64 {
             let reason = format!(
@@ -2045,7 +2308,8 @@ impl HordeManager {
             .await
             .map_err(|e| format!("run store: {e}"))?;
 
-        let (pipeline, graph) = Self::snapshot_execution(&spec, persisted.manifest_snapshot.as_ref());
+        let (pipeline, graph) =
+            Self::snapshot_execution(&spec, persisted.manifest_snapshot.as_ref());
         let mut record = RunRecord::from_persisted(persisted);
         record.status = RunStatus::Running;
         record.finished_at = None;
@@ -2068,7 +2332,8 @@ impl HordeManager {
         for s in &reset_steps {
             self.persist_step(run_id, s).await;
         }
-        self.persist_run_status(run_id, RunStatus::Running, None).await;
+        self.persist_run_status(run_id, RunStatus::Running, None)
+            .await;
 
         let next = {
             let status = Self::step_status_map(&record);
@@ -2090,9 +2355,9 @@ impl HordeManager {
                     .await?
                     .ok_or_else(|| "run vanished after resume".to_string());
             }
-            let reason =
-                "resume found no runnable step (check `when` / `max_loops`)".to_string();
-            self.resume_attempt_failed(&spec, run_id, attempt_no, &reason).await;
+            let reason = "resume found no runnable step (check `when` / `max_loops`)".to_string();
+            self.resume_attempt_failed(&spec, run_id, attempt_no, &reason)
+                .await;
             return Err(reason);
         };
 
@@ -2117,9 +2382,7 @@ impl HordeManager {
                 horde: spec.id.clone(),
                 from: self.orchestrator_id.clone(),
                 step: None,
-                text: format!(
-                    "run resumed (attempt {attempt_no}): continuing from step `{next}`"
-                ),
+                text: format!("run resumed (attempt {attempt_no}): continuing from step `{next}`"),
             },
         );
         self.publish(&marker).await;
@@ -2130,8 +2393,12 @@ impl HordeManager {
                 .get(run_id)
                 .and_then(|run| Self::previous_artifact_for_step(&spec, run, &next))
         };
-        if let Err(e) = self.delegate_step(&spec, run_id, &next, prev.as_deref()).await {
-            self.resume_attempt_failed(&spec, run_id, attempt_no, &e).await;
+        if let Err(e) = self
+            .delegate_step(&spec, run_id, &next, prev.as_deref())
+            .await
+        {
+            self.resume_attempt_failed(&spec, run_id, attempt_no, &e)
+                .await;
             return Err(e);
         }
         let runs = self.runs.lock().await;
@@ -2175,7 +2442,8 @@ impl HordeManager {
     /// Error out a run that can no longer be resumed (attempt cap exhausted).
     /// Unlike [`Self::fail_run`] this does not require a registry entry.
     async fn mark_unresumable(&self, spec: &HordeSpec, run_id: &str, reason: &str) {
-        self.persist_run_status(run_id, RunStatus::Error, Some(reason)).await;
+        self.persist_run_status(run_id, RunStatus::Error, Some(reason))
+            .await;
         let failed_event = json!({
             "kind": "run_failed",
             "reason": reason,
@@ -2197,7 +2465,11 @@ impl HordeManager {
     /// Cancel a run: signal the cooperative token (the in-flight in-process step
     /// stops at its next await point), mark the in-flight step `cancelled` and
     /// every still-pending step `skipped`, and persist the run as `cancelled`.
-    pub async fn cancel_run(&self, run_id: &str, reason: Option<&str>) -> Result<RunRecord, String> {
+    pub async fn cancel_run(
+        &self,
+        run_id: &str,
+        reason: Option<&str>,
+    ) -> Result<RunRecord, String> {
         let persisted = self
             .store
             .get_run(run_id)
@@ -2259,10 +2531,12 @@ impl HordeManager {
             record.events.push(cancelled_event);
         }
 
-        let spec = self.find(&persisted.horde_id).cloned();
-        let topic = spec
+        let topic = persisted
+            .manifest_snapshot
             .as_ref()
-            .map(|s| s.topic.clone())
+            .and_then(HordeSpec::from_snapshot)
+            .map(|s| s.topic)
+            .or_else(|| self.find(&persisted.horde_id).map(|s| s.topic.clone()))
             .unwrap_or_else(|| DEFAULT_TOPIC.to_string());
         let env = self.build_envelope(
             &topic,
@@ -2366,13 +2640,23 @@ pub fn federation_orchestrator_id() -> String {
 /// Spawn the broker subscription loop that drives horde runs forward when a
 /// sub-agent worker reports `TaskFinished`. Spawns one task per distinct horde topic.
 pub fn spawn_orchestrator_loop(manager: HordeManager) {
-    let mut topics: Vec<String> = manager.specs.iter().map(|s| s.topic.clone()).collect();
-    topics.sort();
-    topics.dedup();
+    let m = manager.clone();
+    tokio::spawn(async move { ensure_topic_subscriptions(&m).await });
+}
+
+/// Subscribe the orchestrator to every cataloged horde topic it does not listen
+/// on yet. Idempotent — called at startup and after catalog rescans, so hot-added
+/// hordes with new topics drive runs without a restart (one task per topic, ever).
+pub async fn ensure_topic_subscriptions(manager: &HordeManager) {
+    let mut topics = manager.catalog.topics();
     if topics.is_empty() {
         topics.push(DEFAULT_TOPIC.to_string());
     }
+    let mut subscribed = manager.subscribed_topics.lock().await;
     for topic in topics {
+        if !subscribed.insert(topic.clone()) {
+            continue;
+        }
         let m = manager.clone();
         tokio::spawn(async move {
             let mut rx = m.broker.subscribe(&topic, 128);
@@ -2541,7 +2825,10 @@ mod tests {
         HordeManager::new(vec![test_spec(dir)], broker, federation, store)
     }
 
-    fn step<'a>(run: &'a PersistedRun, name: &str) -> &'a kowalski_core::db::run_store::PersistedRunStep {
+    fn step<'a>(
+        run: &'a PersistedRun,
+        name: &str,
+    ) -> &'a kowalski_core::db::run_store::PersistedRunStep {
         run.steps
             .iter()
             .find(|s| s.step == name)
@@ -2554,12 +2841,23 @@ mod tests {
         let manager = test_manager(dir.path(), true).await;
 
         let record = manager
-            .start_run("test-horde", "do the thing", None, Some("q?"), RUN_ORIGIN_OPERATOR)
+            .start_run(
+                "test-horde",
+                "do the thing",
+                None,
+                Some("q?"),
+                RUN_ORIGIN_OPERATOR,
+            )
             .await
             .unwrap();
         assert_eq!(record.status, RunStatus::Running);
 
-        let persisted = manager.store.get_run(&record.run_id).await.unwrap().unwrap();
+        let persisted = manager
+            .store
+            .get_run(&record.run_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(persisted.status, RunStatus::Running);
         assert_eq!(persisted.question, "q?");
         assert_eq!(persisted.current_step.as_deref(), Some("a"));
@@ -2608,7 +2906,13 @@ mod tests {
         );
 
         let api = RunRecord::from_persisted(done);
-        assert_eq!(api.steps.iter().map(|s| s.step.as_str()).collect::<Vec<_>>(), ["a", "b"]);
+        assert_eq!(
+            api.steps
+                .iter()
+                .map(|s| s.step.as_str())
+                .collect::<Vec<_>>(),
+            ["a", "b"]
+        );
         assert_eq!(serde_json::to_value(&api).unwrap()["status"], "completed");
     }
 
@@ -2628,7 +2932,13 @@ mod tests {
         let persisted = manager.store.get_run(&run_id).await.unwrap().unwrap();
         assert_eq!(persisted.status, RunStatus::Error);
         assert!(persisted.finished_at.is_some());
-        assert!(persisted.result.as_deref().unwrap_or("").contains("worker exploded"));
+        assert!(
+            persisted
+                .result
+                .as_deref()
+                .unwrap_or("")
+                .contains("worker exploded")
+        );
         assert_eq!(step(&persisted, "a").status, StepStatus::Failed);
         assert_eq!(
             serde_json::to_value(RunRecord::from_persisted(persisted)).unwrap()["status"],
@@ -2644,7 +2954,12 @@ mod tests {
             .start_run("test-horde", "no workers", None, None, RUN_ORIGIN_OPERATOR)
             .await
             .unwrap();
-        let persisted = manager.store.get_run(&record.run_id).await.unwrap().unwrap();
+        let persisted = manager
+            .store
+            .get_run(&record.run_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(persisted.status, RunStatus::Error);
         assert!(
             persisted
@@ -2656,16 +2971,29 @@ mod tests {
     }
 
     fn write_fixture_horde(root: &Path) {
+        write_fixture_horde_with(root, "it-horde", "IT Horde", &["a", "b"]);
+    }
+
+    fn write_fixture_horde_with(root: &Path, id: &str, display_name: &str, pipeline: &[&str]) {
         std::fs::create_dir_all(root.join("agents")).unwrap();
+        let steps = pipeline
+            .iter()
+            .map(|s| format!("\"{s}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
         std::fs::write(
             root.join("horde.md"),
-            "---\nid = \"it-horde\"\ndisplay_name = \"IT Horde\"\ndescription = \"integration fixture\"\npipeline = [\"a\", \"b\"]\n---\n# IT Horde\n",
+            format!(
+                "---\nid = \"{id}\"\ndisplay_name = \"{display_name}\"\ndescription = \"integration fixture\"\npipeline = [{steps}]\n---\n# {display_name}\n"
+            ),
         )
         .unwrap();
-        for (name, cap) in [("a", "test.a"), ("b", "test.b")] {
+        for name in ["a", "b"] {
             std::fs::write(
                 root.join("agents").join(format!("{name}.md")),
-                format!("---\nname = \"{name}\"\nkind = \"process\"\ncapability = \"{cap}\"\n---\n"),
+                format!(
+                    "---\nname = \"{name}\"\nkind = \"process\"\ncapability = \"test.{name}\"\n---\n"
+                ),
             )
             .unwrap();
         }
@@ -2708,7 +3036,13 @@ mod tests {
                 .handle_task_finished(&done.run_id, "b", true, None, "ok")
                 .await;
             let mid = manager
-                .start_run(&horde_id, "interrupted run", None, None, RUN_ORIGIN_OPERATOR)
+                .start_run(
+                    &horde_id,
+                    "interrupted run",
+                    None,
+                    None,
+                    RUN_ORIGIN_OPERATOR,
+                )
                 .await
                 .unwrap();
             manager
@@ -2722,8 +3056,14 @@ mod tests {
 
         let history = manager.persisted_runs(&horde_id, 50, 0).await.unwrap();
         let ids: Vec<&str> = history.iter().map(|r| r.run_id.as_str()).collect();
-        assert!(ids.contains(&completed_id.as_str()), "pre-restart run listed");
-        assert!(ids.contains(&interrupted_id.as_str()), "interrupted run listed");
+        assert!(
+            ids.contains(&completed_id.as_str()),
+            "pre-restart run listed"
+        );
+        assert!(
+            ids.contains(&interrupted_id.as_str()),
+            "interrupted run listed"
+        );
 
         let completed = manager.persisted_run(&completed_id).await.unwrap().unwrap();
         assert_eq!(completed.status, RunStatus::Done);
@@ -2762,7 +3102,12 @@ mod tests {
         spec.sub_agents = vec![sub("gen"), sub("verify"), sub("apply")];
         spec.sub_agents[1].kind = "verify".into();
         let edges = vec![
-            HordeEdge { from: "gen".into(), to: "verify".into(), when: None, max_loops: None },
+            HordeEdge {
+                from: "gen".into(),
+                to: "verify".into(),
+                when: None,
+                max_loops: None,
+            },
             HordeEdge {
                 from: "verify".into(),
                 to: "apply".into(),
@@ -2894,8 +3239,12 @@ mod tests {
         let run_id = {
             let store = RunStore::open(&db_url).await.unwrap();
             let manager = test_manager(dir.path(), true).await;
-            let manager =
-                HordeManager::new(vec![test_spec(dir.path())], manager.broker.clone(), manager.federation.clone(), store);
+            let manager = HordeManager::new(
+                vec![test_spec(dir.path())],
+                manager.broker.clone(),
+                manager.federation.clone(),
+                store,
+            );
             let record = manager
                 .start_run("test-horde", "kill me", None, None, RUN_ORIGIN_OPERATOR)
                 .await
@@ -2917,10 +3266,18 @@ mod tests {
         assert_eq!(persisted.resume_count, 1);
         let a = step(&persisted, "a");
         assert_eq!(a.status, StepStatus::Succeeded, "completed step untouched");
-        assert_eq!(a.artifact.as_deref(), Some("out/a.md"), "artifact not regenerated");
+        assert_eq!(
+            a.artifact.as_deref(),
+            Some("out/a.md"),
+            "artifact not regenerated"
+        );
         assert_eq!(a.attempt, 1);
         let b = step(&persisted, "b");
-        assert_eq!(b.status, StepStatus::Delegating, "interrupted step re-delegated");
+        assert_eq!(
+            b.status,
+            StepStatus::Delegating,
+            "interrupted step re-delegated"
+        );
         assert_eq!(b.attempt, 2, "interrupted attempt counted as failed");
         assert!(
             persisted
@@ -2944,10 +3301,26 @@ mod tests {
     async fn resume_scan_auto_resumes_trigger_and_surfaces_operator_runs() {
         let dir = tempfile::tempdir().unwrap();
         let store = RunStore::open("sqlite::memory:").await.unwrap();
-        seed_interrupted_run(&store, "run-op", RUN_ORIGIN_OPERATOR, RunStatus::Running, &[("a", "out/a.md")], Some("b"), &[])
-            .await;
-        seed_interrupted_run(&store, "run-trig", "trigger", RunStatus::Running, &[("a", "out/a.md")], Some("b"), &[])
-            .await;
+        seed_interrupted_run(
+            &store,
+            "run-op",
+            RUN_ORIGIN_OPERATOR,
+            RunStatus::Running,
+            &[("a", "out/a.md")],
+            Some("b"),
+            &[],
+        )
+        .await;
+        seed_interrupted_run(
+            &store,
+            "run-trig",
+            "trigger",
+            RunStatus::Running,
+            &[("a", "out/a.md")],
+            Some("b"),
+            &[],
+        )
+        .await;
         let manager = manager_with_store(test_spec(dir.path()), store).await;
 
         manager.resume_scan().await;
@@ -2959,7 +3332,11 @@ mod tests {
 
         let op = manager.store.get_run("run-op").await.unwrap().unwrap();
         assert_eq!(op.resume_count, 0, "operator run left for on-demand resume");
-        assert_eq!(step(&op, "b").status, StepStatus::Delegating, "store state untouched");
+        assert_eq!(
+            step(&op, "b").status,
+            StepStatus::Delegating,
+            "store state untouched"
+        );
         assert!(
             op.events
                 .iter()
@@ -2980,8 +3357,16 @@ mod tests {
     async fn resume_cap_exhausted_errors_run_with_reason() {
         let dir = tempfile::tempdir().unwrap();
         let store = RunStore::open("sqlite::memory:").await.unwrap();
-        seed_interrupted_run(&store, "run-1", RUN_ORIGIN_OPERATOR, RunStatus::Running, &[], Some("a"), &["b"])
-            .await;
+        seed_interrupted_run(
+            &store,
+            "run-1",
+            RUN_ORIGIN_OPERATOR,
+            RunStatus::Running,
+            &[],
+            Some("a"),
+            &["b"],
+        )
+        .await;
         // No worker registered → every delegation fails.
         let broker = Arc::new(MpscBroker::new());
         let registry = Arc::new(AgentRegistry::new());
@@ -2993,7 +3378,11 @@ mod tests {
         assert!(first.is_err(), "no worker → resume fails");
         let after_first = manager.store.get_run("run-1").await.unwrap().unwrap();
         assert_eq!(after_first.resume_count, 1);
-        assert_eq!(after_first.status, RunStatus::Running, "still resumable below the cap");
+        assert_eq!(
+            after_first.status,
+            RunStatus::Running,
+            "still resumable below the cap"
+        );
 
         let second = manager.resume_run("run-1").await;
         assert!(second.is_err());
@@ -3001,7 +3390,11 @@ mod tests {
         assert_eq!(after_second.resume_count, 2);
         assert_eq!(after_second.status, RunStatus::Error, "cap spent → error");
         assert!(
-            after_second.result.as_deref().unwrap_or("").contains("resume failed"),
+            after_second
+                .result
+                .as_deref()
+                .unwrap_or("")
+                .contains("resume failed"),
             "reason recorded: {:?}",
             after_second.result
         );
@@ -3016,17 +3409,35 @@ mod tests {
     async fn awaiting_input_run_is_resumable_on_demand() {
         let dir = tempfile::tempdir().unwrap();
         let store = RunStore::open("sqlite::memory:").await.unwrap();
-        seed_interrupted_run(&store, "run-wait", RUN_ORIGIN_OPERATOR, RunStatus::AwaitingInput, &[], None, &["a", "b"])
-            .await;
+        seed_interrupted_run(
+            &store,
+            "run-wait",
+            RUN_ORIGIN_OPERATOR,
+            RunStatus::AwaitingInput,
+            &[],
+            None,
+            &["a", "b"],
+        )
+        .await;
         let manager = manager_with_store(test_spec(dir.path()), store).await;
 
         manager.resume_scan().await;
         let after_scan = manager.store.get_run("run-wait").await.unwrap().unwrap();
-        assert_eq!(after_scan.status, RunStatus::AwaitingInput, "scan leaves awaiting runs parked");
+        assert_eq!(
+            after_scan.status,
+            RunStatus::AwaitingInput,
+            "scan leaves awaiting runs parked"
+        );
         assert_eq!(after_scan.resume_count, 0);
 
         let listed = manager.persisted_runs("test-horde", 50, 0).await.unwrap();
-        assert!(listed.iter().find(|r| r.run_id == "run-wait").unwrap().resumable);
+        assert!(
+            listed
+                .iter()
+                .find(|r| r.run_id == "run-wait")
+                .unwrap()
+                .resumable
+        );
 
         let resumed = manager.resume_run("run-wait").await.unwrap();
         assert_eq!(resumed.status, RunStatus::Running);
@@ -3073,7 +3484,13 @@ mod tests {
             let store = RunStore::open(&db_url).await.unwrap();
             let manager = loop_manager(dir.path(), store).await;
             let record = manager
-                .start_run("test-horde", "loop then die", None, None, RUN_ORIGIN_OPERATOR)
+                .start_run(
+                    "test-horde",
+                    "loop then die",
+                    None,
+                    None,
+                    RUN_ORIGIN_OPERATOR,
+                )
                 .await
                 .unwrap();
             // Iteration 1: gen ok, verify says fail → loop back resets gen+verify.
@@ -3081,13 +3498,24 @@ mod tests {
                 .handle_task_finished(&record.run_id, "gen", true, Some("out/gen-1.md"), "ok")
                 .await;
             manager
-                .handle_task_finished(&record.run_id, "verify", true, Some(&fail_artifact), "checked")
+                .handle_task_finished(
+                    &record.run_id,
+                    "verify",
+                    true,
+                    Some(&fail_artifact),
+                    "checked",
+                )
                 .await;
             // Iteration 2: gen ok again; server dies while verify is in flight.
             manager
                 .handle_task_finished(&record.run_id, "gen", true, Some("out/gen-2.md"), "ok")
                 .await;
-            let mid = manager.store.get_run(&record.run_id).await.unwrap().unwrap();
+            let mid = manager
+                .store
+                .get_run(&record.run_id)
+                .await
+                .unwrap()
+                .unwrap();
             assert_eq!(mid.loop_counts.get("verify->gen"), Some(&1));
             assert_eq!(step(&mid, "verify").status, StepStatus::Delegating);
             record.run_id
@@ -3105,11 +3533,22 @@ mod tests {
             "loop counts intact — no extra iteration granted"
         );
         let gen_step = step(&persisted, "gen");
-        assert_eq!(gen_step.status, StepStatus::Succeeded, "second gen attempt not re-run");
+        assert_eq!(
+            gen_step.status,
+            StepStatus::Succeeded,
+            "second gen attempt not re-run"
+        );
         assert_eq!(gen_step.artifact.as_deref(), Some("out/gen-2.md"));
-        assert_eq!(gen_step.attempt, 2, "attempt counter reflects the loop, not the resume");
+        assert_eq!(
+            gen_step.attempt, 2,
+            "attempt counter reflects the loop, not the resume"
+        );
         let verify = step(&persisted, "verify");
-        assert_eq!(verify.status, StepStatus::Delegating, "resume re-delegated verify");
+        assert_eq!(
+            verify.status,
+            StepStatus::Delegating,
+            "resume re-delegated verify"
+        );
         assert_eq!(verify.attempt, 3, "loop attempt + interrupted attempt");
         assert_eq!(step(&persisted, "apply").status, StepStatus::Pending);
 
@@ -3159,7 +3598,12 @@ mod tests {
         spec.sub_agents[2].kind = "apply".into();
         spec.sub_agents[2].output = Some("debug/apply.md".into());
         let edges = vec![
-            HordeEdge { from: "ingest".into(), to: "test-verify".into(), when: None, max_loops: None },
+            HordeEdge {
+                from: "ingest".into(),
+                to: "test-verify".into(),
+                when: None,
+                max_loops: None,
+            },
             HordeEdge {
                 from: "test-verify".into(),
                 to: "test-apply".into(),
@@ -3310,7 +3754,11 @@ mod tests {
     ) {
         for _ in 0..200 {
             let run = manager.store.get_run(run_id).await.unwrap().unwrap();
-            if run.steps.iter().any(|s| s.step == step_name && s.status == status) {
+            if run
+                .steps
+                .iter()
+                .any(|s| s.step == step_name && s.status == status)
+            {
                 return;
             }
             tokio::time::sleep(std::time::Duration::from_millis(25)).await;
@@ -3330,7 +3778,12 @@ mod tests {
         spec.sub_agents[1].kind = "slow".into();
         spec.sub_agents[2].kind = "quick".into();
         let edges = vec![
-            HordeEdge { from: "gen".into(), to: "work".into(), when: None, max_loops: None },
+            HordeEdge {
+                from: "gen".into(),
+                to: "work".into(),
+                when: None,
+                max_loops: None,
+            },
             HordeEdge {
                 from: "work".into(),
                 to: "done".into(),
@@ -3353,14 +3806,26 @@ mod tests {
         let store = RunStore::open("sqlite::memory:").await.unwrap();
         let mut manager = HordeManager::new(vec![spec], broker, federation, store);
         let mut handlers = StepHandlerRegistry::new();
-        handlers.register(Arc::new(DelayHandler { kind: "quick", delay_ms: 0 }));
-        handlers.register(Arc::new(DelayHandler { kind: "slow", delay_ms: 60_000 }));
+        handlers.register(Arc::new(DelayHandler {
+            kind: "quick",
+            delay_ms: 0,
+        }));
+        handlers.register(Arc::new(DelayHandler {
+            kind: "slow",
+            delay_ms: 60_000,
+        }));
         manager.step_handlers = Arc::new(handlers);
         manager.step_timeout = std::time::Duration::from_millis(150);
         spawn_orchestrator_loop(manager.clone());
 
         let record = manager
-            .start_run("test-horde", "timeout walk", None, None, RUN_ORIGIN_OPERATOR)
+            .start_run(
+                "test-horde",
+                "timeout walk",
+                None,
+                None,
+                RUN_ORIGIN_OPERATOR,
+            )
             .await
             .unwrap();
 
@@ -3377,8 +3842,16 @@ mod tests {
             "first timeout routed the fail edge (loop retry)"
         );
         assert_eq!(step(&done, "work").status, StepStatus::Failed);
-        assert_eq!(step(&done, "work").attempt, 2, "retried once before exhausting the loop");
-        assert_eq!(step(&done, "done").status, StepStatus::Pending, "pass branch never taken");
+        assert_eq!(
+            step(&done, "work").attempt,
+            2,
+            "retried once before exhausting the loop"
+        );
+        assert_eq!(
+            step(&done, "done").status,
+            StepStatus::Pending,
+            "pass branch never taken"
+        );
     }
 
     /// Cancel mid-step: the in-flight step is cancelled, pending steps are
@@ -3400,8 +3873,14 @@ mod tests {
         let store = RunStore::open("sqlite::memory:").await.unwrap();
         let mut manager = HordeManager::new(vec![spec], broker, federation, store);
         let mut handlers = StepHandlerRegistry::new();
-        handlers.register(Arc::new(DelayHandler { kind: "quick", delay_ms: 0 }));
-        handlers.register(Arc::new(DelayHandler { kind: "slow", delay_ms: 60_000 }));
+        handlers.register(Arc::new(DelayHandler {
+            kind: "quick",
+            delay_ms: 0,
+        }));
+        handlers.register(Arc::new(DelayHandler {
+            kind: "slow",
+            delay_ms: 60_000,
+        }));
         manager.step_handlers = Arc::new(handlers);
         spawn_orchestrator_loop(manager.clone());
 
@@ -3419,10 +3898,20 @@ mod tests {
         let persisted = manager.store.get_run(&run_id).await.unwrap().unwrap();
         assert_eq!(persisted.status, RunStatus::Cancelled);
         assert!(persisted.finished_at.is_some());
-        assert!(persisted.result.as_deref().unwrap_or("").contains("cancelled"));
+        assert!(
+            persisted
+                .result
+                .as_deref()
+                .unwrap_or("")
+                .contains("cancelled")
+        );
         assert_eq!(step(&persisted, "a").status, StepStatus::Succeeded);
         assert_eq!(step(&persisted, "b").status, StepStatus::Cancelled);
-        assert_eq!(step(&persisted, "c").status, StepStatus::Skipped, "no further steps execute");
+        assert_eq!(
+            step(&persisted, "c").status,
+            StepStatus::Skipped,
+            "no further steps execute"
+        );
         assert!(
             persisted
                 .events
@@ -3438,8 +3927,20 @@ mod tests {
         assert_eq!(step(&after, "c").status, StepStatus::Skipped);
 
         // Cancelled runs are terminal: not resumable, not re-cancellable.
-        assert!(manager.resume_run(&run_id).await.unwrap_err().contains("not resumable"));
-        assert!(manager.cancel_run(&run_id, None).await.unwrap_err().contains("not cancellable"));
+        assert!(
+            manager
+                .resume_run(&run_id)
+                .await
+                .unwrap_err()
+                .contains("not resumable")
+        );
+        assert!(
+            manager
+                .cancel_run(&run_id, None)
+                .await
+                .unwrap_err()
+                .contains("not cancellable")
+        );
     }
 
     #[test]
@@ -3507,7 +4008,13 @@ mod tests {
         spawn_orchestrator_loop(manager.clone());
 
         let record = manager
-            .start_run("test-horde", "isolated walk", None, None, RUN_ORIGIN_OPERATOR)
+            .start_run(
+                "test-horde",
+                "isolated walk",
+                None,
+                None,
+                RUN_ORIGIN_OPERATOR,
+            )
             .await
             .unwrap();
 
@@ -3516,7 +4023,10 @@ mod tests {
         let iso = step(&done, "iso");
         assert_eq!(iso.status, StepStatus::Succeeded);
         assert_eq!(iso.outcome.as_deref(), Some("pass"));
-        assert_eq!(iso.artifact.as_deref(), Some(artifact.display().to_string().as_str()));
+        assert_eq!(
+            iso.artifact.as_deref(),
+            Some(artifact.display().to_string().as_str())
+        );
         assert_eq!(iso.summary.as_deref(), Some("stub done"));
 
         // The child received a full IsolatedStepRequest for the step.
@@ -3577,8 +4087,16 @@ mod tests {
 
         let done = wait_for_terminal(&manager, &record.run_id).await;
         assert_eq!(done.status, RunStatus::Done, "result: {:?}", done.result);
-        assert_eq!(step(&done, "check").status, StepStatus::Succeeded, "in-process step");
-        assert_eq!(step(&done, "iso").status, StepStatus::Succeeded, "isolated step");
+        assert_eq!(
+            step(&done, "check").status,
+            StepStatus::Succeeded,
+            "in-process step"
+        );
+        assert_eq!(
+            step(&done, "iso").status,
+            StepStatus::Succeeded,
+            "isolated step"
+        );
         assert!(
             PathBuf::from(step(&done, "check").artifact.as_deref().unwrap()).is_file(),
             "in-process verify artifact written on disk"
@@ -3613,7 +4131,13 @@ mod tests {
         spawn_orchestrator_loop(manager.clone());
 
         let record = manager
-            .start_run("test-horde", "cancel isolated", None, None, RUN_ORIGIN_OPERATOR)
+            .start_run(
+                "test-horde",
+                "cancel isolated",
+                None,
+                None,
+                RUN_ORIGIN_OPERATOR,
+            )
             .await
             .unwrap();
         let run_id = record.run_id;
@@ -3639,9 +4163,15 @@ mod tests {
                 .map(|s| s.success())
                 .unwrap_or(false)
         };
-        assert!(alive(pid), "child pid {pid} should be running before cancel");
+        assert!(
+            alive(pid),
+            "child pid {pid} should be running before cancel"
+        );
 
-        let cancelled = manager.cancel_run(&run_id, Some("operator stop")).await.unwrap();
+        let cancelled = manager
+            .cancel_run(&run_id, Some("operator stop"))
+            .await
+            .unwrap();
         assert_eq!(cancelled.status, RunStatus::Cancelled);
 
         // The child must be killed and reaped — poll briefly, then assert.
@@ -3683,7 +4213,11 @@ mod tests {
         assert!(spec.sub_agents[0].is_process_isolated());
 
         // Default: no isolation → in-process.
-        std::fs::write(agents.join("a.md"), "---\nname = \"a\"\nkind = \"verify\"\n---\n").unwrap();
+        std::fs::write(
+            agents.join("a.md"),
+            "---\nname = \"a\"\nkind = \"verify\"\n---\n",
+        )
+        .unwrap();
         let spec = load_horde(dir.path()).unwrap();
         assert_eq!(spec.sub_agents[0].isolation, None);
         assert!(!spec.sub_agents[0].is_process_isolated());
@@ -3697,5 +4231,128 @@ mod tests {
         let err = load_horde(dir.path()).unwrap_err().to_string();
         assert!(err.contains("isolation"), "error: {err}");
         assert!(err.contains("container"), "error: {err}");
+    }
+
+    // --- Horde catalog hot reload (KWC-2.3) ---
+
+    #[test]
+    fn catalog_add_edit_break_fix_remove_cycle() {
+        let root = tempfile::tempdir().unwrap();
+        let catalog = HordeCatalog::with_roots(vec![root.path().to_path_buf()]);
+        assert!(catalog.list().is_empty(), "empty root, empty catalog");
+
+        // Hot-add: a new horde dir appears without any restart.
+        let h1 = root.path().join("h1");
+        std::fs::create_dir_all(&h1).unwrap();
+        write_fixture_horde_with(&h1, "it-horde", "IT Horde", &["a", "b"]);
+        let entries = catalog.list();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].spec.id, "it-horde");
+        assert!(entries[0].load_error.is_none());
+        assert!(
+            entries[0].spec.workdir.is_dir(),
+            "hot-added horde gets its workdir prepared on first reference"
+        );
+
+        // Edit: definition change is picked up on the next listing.
+        write_fixture_horde_with(&h1, "it-horde", "IT Horde Renamed", &["a", "b"]);
+        let entries = catalog.list();
+        assert_eq!(entries[0].spec.display_name, "IT Horde Renamed");
+        assert!(entries[0].load_error.is_none());
+
+        // Break: last-good spec stays listed, the parse error is surfaced.
+        std::fs::write(h1.join("horde.md"), "---\nnot valid toml = = =\n---\n").unwrap();
+        let entries = catalog.list();
+        assert_eq!(entries.len(), 1, "broken edit never drops the horde");
+        assert_eq!(entries[0].spec.display_name, "IT Horde Renamed");
+        assert!(entries[0].load_error.is_some(), "error badge data present");
+
+        // Fix: the error clears and the new definition loads.
+        write_fixture_horde_with(&h1, "it-horde", "IT Horde Fixed", &["a", "b"]);
+        let entries = catalog.list();
+        assert_eq!(entries[0].spec.display_name, "IT Horde Fixed");
+        assert!(entries[0].load_error.is_none());
+
+        // Remove: the horde disappears from the catalog.
+        std::fs::remove_dir_all(&h1).unwrap();
+        assert!(catalog.list().is_empty());
+    }
+
+    #[test]
+    fn catalog_find_reloads_changed_and_discovers_new_dirs() {
+        let root = tempfile::tempdir().unwrap();
+        let h1 = root.path().join("h1");
+        std::fs::create_dir_all(&h1).unwrap();
+        write_fixture_horde_with(&h1, "it-horde", "IT Horde", &["a", "b"]);
+        let catalog = HordeCatalog::with_roots(vec![root.path().to_path_buf()]);
+
+        // Lazy reload on reference: no list() call in between.
+        write_fixture_horde_with(&h1, "it-horde", "Edited Via Find", &["a", "b"]);
+        let spec = catalog.find("it-horde").expect("known horde");
+        assert_eq!(spec.display_name, "Edited Via Find");
+
+        // A miss triggers a rescan, so a hot-added horde is findable immediately.
+        let h2 = root.path().join("h2");
+        std::fs::create_dir_all(&h2).unwrap();
+        write_fixture_horde_with(&h2, "second-horde", "Second", &["a"]);
+        assert!(catalog.find("second-horde").is_some());
+        assert!(catalog.find("no-such-horde").is_none());
+    }
+
+    /// Acceptance: a definition edited on disk mid-run never restructures the
+    /// in-flight run — the orchestrator advances it from the manifest snapshot;
+    /// only the NEXT run uses the new definition.
+    #[tokio::test]
+    async fn in_flight_run_advances_on_snapshot_after_definition_edit() {
+        let root = tempfile::tempdir().unwrap();
+        let h1 = root.path().join("h1");
+        std::fs::create_dir_all(&h1).unwrap();
+        write_fixture_horde_with(&h1, "it-horde", "IT Horde", &["a", "b"]);
+
+        let broker = Arc::new(MpscBroker::new());
+        let registry = Arc::new(AgentRegistry::new());
+        registry
+            .register(AgentRecord {
+                id: "w1".into(),
+                capabilities: vec!["test.a".into(), "test.b".into()],
+            })
+            .unwrap();
+        let federation = Arc::new(FederationOrchestrator::new(registry, broker.clone()));
+        let store = RunStore::open("sqlite::memory:").await.unwrap();
+        let mut manager = HordeManager::new(Vec::new(), broker, federation, store);
+        manager.catalog = Arc::new(HordeCatalog::with_roots(vec![root.path().to_path_buf()]));
+
+        let record = manager
+            .start_run("it-horde", "walk", None, None, RUN_ORIGIN_OPERATOR)
+            .await
+            .unwrap();
+        assert_eq!(record.steps.len(), 2, "run started on the a->b definition");
+
+        // Shrink the pipeline on disk while the run is in flight.
+        write_fixture_horde_with(&h1, "it-horde", "IT Horde", &["a"]);
+        let live = manager.find("it-horde").expect("live spec");
+        assert_eq!(
+            live.pipeline,
+            vec!["a"],
+            "next run would use the new definition"
+        );
+
+        // Step `a` finishing must advance to `b` per the run's snapshot — with the
+        // live (single-step) spec the run would have completed here instead.
+        manager
+            .handle_task_finished(&record.run_id, "a", true, Some("out/a.md"), "ok")
+            .await;
+        let persisted = manager
+            .store
+            .get_run(&record.run_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            persisted.status,
+            RunStatus::Running,
+            "in-flight run keeps its 2-step snapshot definition"
+        );
+        assert_eq!(step(&persisted, "b").status, StepStatus::Delegating);
     }
 }

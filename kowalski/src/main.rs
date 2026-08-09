@@ -1,6 +1,7 @@
 use clap::Parser;
 
 mod auth;
+mod fswatch;
 mod horde;
 mod http_api;
 mod http_ops;
