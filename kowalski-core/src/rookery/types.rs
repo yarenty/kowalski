@@ -38,6 +38,30 @@ pub struct RookeryDraft {
     pub prompt_tip: Option<String>,
 }
 
+impl RookeryDraft {
+    /// A blank draft for the builder interview: only the server-owned `id` is set; everything
+    /// else is filled in via delta ops. Passes `DraftStrictness::Draft` validation, not `Birth`.
+    pub fn empty_draft(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            display_name: String::new(),
+            description: String::new(),
+            capability_prefix: None,
+            pipeline: Vec::new(),
+            edges: Vec::new(),
+            penguins: Vec::new(),
+            default_question: None,
+            default_topic: None,
+            workdir: None,
+            delivery_title: None,
+            delivery_note: None,
+            delivery_root_rel: None,
+            delivery_summary_note: None,
+            prompt_tip: None,
+        }
+    }
+}
+
 /// One pipeline step (“penguin”).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PenguinSpec {

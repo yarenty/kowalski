@@ -21,6 +21,23 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Added
 
+- **Rookery builder delta operations (#56):** the horde builder gains a delta layer in
+  `kowalski-core` — instead of emitting one complete draft document (which breaks on small
+  local models), a builder LLM can emit small, typed edit operations that the server applies
+  to the draft. `DeltaOp` covers `set_meta`, `add_step`, `update_step`, `set_prompt`,
+  `bind_tool`, `unbind_tool`, `remove_step`, `reorder`, `set_edges` (edges are first-class in
+  kowalski hordes), and `replace_draft` (whole-document escape hatch for capable models);
+  `apply_batch` applies a `DeltaBatch` in order with prefix-apply semantics — validate after
+  each op, roll back to the last good state on the first failure, and report
+  `{ applied, error: { index, message } }` so the failure can be fed back to the model. Draft
+  validation gains a lenient `DraftStrictness::Draft` mode for in-progress drafts (structural
+  rules enforced; completeness deferred to birth). The batch contract ships as a JSON Schema
+  asset (`kowalski-core/resources/schemas/rookery-delta.schema.json`) kept inside a
+  conservative subset that constrained-decoding backends support, with a schema-variant
+  builder (per-turn ops cap, `replace_draft` stripped unless opted in) and a mechanical
+  subset guard. The draft `id` stays server-owned — no op can edit it. LLM structured-output
+  plumbing and the interview flow land in follow-up work.
+
 - **Horde catalog hot reload (#52):** horde definitions are no longer frozen at server
   startup. The new `HordeCatalog` re-resolves a horde from disk when its definition files
   change and re-scans the horde roots on every listing — **adding, editing, or removing a
