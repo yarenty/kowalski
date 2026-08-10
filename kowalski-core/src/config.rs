@@ -93,6 +93,12 @@ pub struct LLMConfig {
     /// loop. `native` / `react` force one path regardless of the capability flag.
     #[serde(default)]
     pub tool_calling: ToolCallingMode,
+    /// Opt in to **constrained structured output**: a JSON Schema travels on the request
+    /// (Ollama `format`; OpenAI-compatible strict `response_format: json_schema`) and the
+    /// model's reply is forced to conform. Requires backend support. Default `false` —
+    /// callers fall back to prompt-based JSON extraction.
+    #[serde(default)]
+    pub structured_output: bool,
 }
 
 /// Single source of truth for the agent tool-loop policy (`[llm] tool_calling`).
@@ -123,6 +129,7 @@ impl Default for LLMConfig {
             embeddings_provider: "llm".to_string(),
             native_tools: false,
             tool_calling: ToolCallingMode::default(),
+            structured_output: false,
         }
     }
 }

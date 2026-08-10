@@ -2,6 +2,7 @@ use super::provider::{ChatOutcome, LLMProvider, TokenStream, ToolDefinition};
 use crate::agent::types::ChatRequest;
 use crate::conversation::{FunctionCall, Message, ToolCall};
 use crate::error::KowalskiError;
+use crate::rookery::ensure_schema_supported;
 use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::Client;
@@ -10,6 +11,7 @@ pub struct OllamaProvider {
     base_url: String,
     client: Client,
     native_tools: bool,
+    structured_output: bool,
 }
 
 impl OllamaProvider {
@@ -20,6 +22,7 @@ impl OllamaProvider {
             base_url,
             client,
             native_tools: false,
+            structured_output: false,
         }
     }
 
@@ -29,14 +32,22 @@ impl OllamaProvider {
         self
     }
 
+    /// Opt in to constrained structured output (`[llm] structured_output`); the model must
+    /// honor Ollama's JSON-Schema `format` field.
+    pub fn with_structured_output(mut self, enabled: bool) -> Self {
+        self.structured_output = enabled;
+        self
+    }
+
     /// Single owner of Ollama `ChatRequest` construction — every request path (chat,
-    /// stream, native tools) goes through here.
+    /// stream, native tools, structured output) goes through here.
     fn build_request(
         &self,
         model: &str,
         messages: &[Message],
         stream: bool,
         tools: Option<&[ToolDefinition]>,
+        format: Option<&serde_json::Value>,
     ) -> ChatRequest {
         ChatRequest {
             model: model.to_string(),
@@ -46,6 +57,7 @@ impl OllamaProvider {
             max_tokens: 2048,
             tools: tools
                 .map(|defs| serde_json::Value::Array(defs.iter().map(|d| d.wire_json()).collect())),
+            format: format.cloned(),
         }
     }
 
@@ -66,7 +78,7 @@ impl OllamaProvider {
 impl LLMProvider for OllamaProvider {
     async fn chat(&self, model: &str, messages: &[Message]) -> Result<String, KowalskiError> {
         let url = format!("{}/api/chat", self.base_url);
-        let request = self.build_request(model, messages, false, None);
+        let request = self.build_request(model, messages, false, None, None);
 
         let response = self
             .client
@@ -169,6 +181,67 @@ impl LLMProvider for OllamaProvider {
         self.native_tools
     }
 
+    fn supports_structured_output(&self, _model: &str) -> bool {
+        self.structured_output
+    }
+
+    async fn chat_with_schema(
+        &self,
+        model: &str,
+        messages: &[Message],
+        schema: &serde_json::Value,
+    ) -> Result<String, KowalskiError> {
+        ensure_schema_supported(schema)?;
+        let url = format!("{}/api/chat", self.base_url);
+        let request = self.build_request(model, messages, false, None, Some(schema));
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| KowalskiError::Server(self.troubleshoot_connect(&url, &e)))?;
+
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(KowalskiError::Server(format!(
+                "Ollama returned HTTP {} from {} for model `{}` (structured-output request). Body: {}.\n\
+                 What to check:\n\
+                 - Model pulled? `ollama pull {}` (constrained decoding needs a reasonably recent Ollama).\n\
+                 - Ollama logs for stack traces (terminal where `ollama serve` runs).",
+                status,
+                url,
+                model,
+                error_text.trim(),
+                model
+            )));
+        }
+
+        let response_json: serde_json::Value = response.json().await.map_err(|e| {
+            KowalskiError::Server(format!(
+                "Ollama returned success HTTP but invalid JSON from {}: {}. Raw response may be truncated in logs.",
+                url, e
+            ))
+        })?;
+
+        response_json["message"]["content"]
+            .as_str()
+            .map(str::to_string)
+            .ok_or_else(|| {
+                KowalskiError::Server(format!(
+                    "No `message.content` in Ollama JSON from {} (structured-output request). Keys present: {:?}. Full body (trimmed): {:.500}",
+                    url,
+                    response_json
+                        .as_object()
+                        .map(|o| o.keys().cloned().collect::<Vec<_>>())
+                        .unwrap_or_default(),
+                    response_json.to_string()
+                ))
+            })
+    }
+
     async fn chat_with_tool_defs(
         &self,
         model: &str,
@@ -176,7 +249,7 @@ impl LLMProvider for OllamaProvider {
         tools: &[ToolDefinition],
     ) -> Result<ChatOutcome, KowalskiError> {
         let url = format!("{}/api/chat", self.base_url);
-        let request = self.build_request(model, messages, false, Some(tools));
+        let request = self.build_request(model, messages, false, Some(tools), None);
 
         let response = self
             .client
@@ -215,7 +288,7 @@ impl LLMProvider for OllamaProvider {
     fn chat_stream(&self, model: &str, messages: Vec<Message>) -> TokenStream<'_> {
         let url = format!("{}/api/chat", self.base_url);
         let base_url = self.base_url.clone();
-        let request = self.build_request(model, &messages, true, None);
+        let request = self.build_request(model, &messages, true, None, None);
         let client = self.client.clone();
         Box::pin(async_stream::stream! {
             let response = match client.post(&url).json(&request).send().await {
@@ -370,7 +443,7 @@ mod tests {
     fn request_with_tools_serializes_function_format() {
         let messages = vec![Message::text("user", "What is the weather in Paris?")];
         let request =
-            provider().build_request("llama3.2", &messages, false, Some(&[weather_tool()]));
+            provider().build_request("llama3.2", &messages, false, Some(&[weather_tool()]), None);
         let wire = serde_json::to_value(&request).unwrap();
 
         assert_eq!(wire["model"], "llama3.2");
@@ -388,7 +461,7 @@ mod tests {
     #[test]
     fn request_without_tools_omits_tools() {
         let messages = vec![Message::text("user", "hi")];
-        let request = provider().build_request("llama3.2", &messages, false, None);
+        let request = provider().build_request("llama3.2", &messages, false, None, None);
         let wire = serde_json::to_value(&request).unwrap();
         assert!(wire["tools"].is_null());
     }
@@ -410,7 +483,7 @@ mod tests {
             Message::tool_result("call_0", "12 degrees and cloudy"),
         ];
         let request =
-            provider().build_request("llama3.2", &messages, false, Some(&[weather_tool()]));
+            provider().build_request("llama3.2", &messages, false, Some(&[weather_tool()]), None);
         let wire = serde_json::to_value(&request).unwrap();
 
         let assistant = &wire["messages"][1];
@@ -500,5 +573,57 @@ mod tests {
     fn native_tools_flag_gates_support() {
         assert!(!OllamaProvider::new("localhost", 11434).supports_native_tools("llama3.2"));
         assert!(provider().supports_native_tools("llama3.2"));
+    }
+
+    fn person_schema() -> serde_json::Value {
+        json!({
+            "title": "Person",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name"],
+            "properties": { "name": { "type": "string" } }
+        })
+    }
+
+    #[test]
+    fn request_with_schema_carries_format() {
+        let messages = vec![Message::text("user", "Who?")];
+        let schema = person_schema();
+        let request = provider().build_request("llama3.2", &messages, false, None, Some(&schema));
+        let wire = serde_json::to_value(&request).unwrap();
+        assert_eq!(wire["format"], schema);
+        assert_eq!(wire["stream"], false);
+    }
+
+    #[test]
+    fn request_without_schema_omits_format() {
+        let messages = vec![Message::text("user", "hi")];
+        let request = provider().build_request("llama3.2", &messages, false, None, None);
+        let wire = serde_json::to_value(&request).unwrap();
+        assert!(
+            !wire.as_object().unwrap().contains_key("format"),
+            "format must not appear on the wire when unset"
+        );
+    }
+
+    /// The subset guard fires before any network I/O: no Ollama needed for this error.
+    #[tokio::test]
+    async fn out_of_subset_schema_fails_client_side() {
+        let schema = json!({ "type": "array", "uniqueItems": true });
+        let err = provider()
+            .chat_with_schema("llama3.2", &[Message::text("user", "go")], &schema)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("uniqueItems"), "err: {err}");
+    }
+
+    #[test]
+    fn structured_output_flag_gates_support() {
+        assert!(!OllamaProvider::new("localhost", 11434).supports_structured_output("llama3.2"));
+        assert!(
+            OllamaProvider::new("localhost", 11434)
+                .with_structured_output(true)
+                .supports_structured_output("llama3.2")
+        );
     }
 }

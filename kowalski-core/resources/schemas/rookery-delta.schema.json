@@ -35,16 +35,16 @@
       "properties": {
         "op": { "const": "set_meta" },
         "display_name": { "type": "string", "maxLength": 200 },
-        "description": { "type": "string", "maxLength": 4000 },
+        "description": { "type": "string" },
         "capability_prefix": { "type": "string", "maxLength": 100 },
-        "default_question": { "type": "string", "maxLength": 2000 },
+        "default_question": { "type": "string" },
         "default_topic": { "type": "string", "maxLength": 200 },
         "workdir": { "type": "string", "maxLength": 200 },
         "delivery_title": { "type": "string", "maxLength": 200 },
-        "delivery_note": { "type": "string", "maxLength": 2000 },
+        "delivery_note": { "type": "string" },
         "delivery_root_rel": { "type": "string", "maxLength": 200 },
-        "delivery_summary_note": { "type": "string", "maxLength": 2000 },
-        "prompt_tip": { "type": "string", "maxLength": 2000 }
+        "delivery_summary_note": { "type": "string" },
+        "prompt_tip": { "type": "string" }
       }
     },
     "add_step": {
@@ -73,7 +73,7 @@
         "op": { "const": "update_step" },
         "step_id": { "$ref": "#/$defs/stepId" },
         "name": { "type": "string", "maxLength": 200 },
-        "description": { "type": "string", "maxLength": 2000 },
+        "description": { "type": "string" },
         "model_id": { "type": "string", "minLength": 1, "maxLength": 200 },
         "output": {
           "type": "string",

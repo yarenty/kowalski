@@ -254,9 +254,29 @@ handlers get providers through it.
   optionals — conversations persisted before native tool calling still load, and plain
   messages stay clean on the wire.
 
+**Constrained structured output (opt-in, `[llm] structured_output = true`):**
+
+- `chat_with_schema(model, messages, schema) -> String` constrains the reply to a JSON
+  Schema and returns the raw JSON text (the caller parses). Ollama carries the schema in
+  the request's `format` field (via the single `build_request` owner; `ChatRequest.format`
+  is skip-when-`None`); OpenAI-compatible servers get strict
+  `response_format: {type: "json_schema", json_schema: {name, schema, strict: true}}`
+  (typed async-openai; `name` derives from the schema `title` via `schema_wire_name`).
+- `supports_structured_output(model)` reports the deployment's opt-in (default `false`);
+  the default `chat_with_schema` returns a graceful error, so callers check the capability
+  and fall back to prompt-based extraction —
+  `utils::json::extract_first_json_object` recovers the first JSON object from plain,
+  fenced, prose-embedded, or repairably-sloppy replies.
+- Both providers run the **conservative-subset guard**
+  (`rookery::ensure_schema_supported`) at request-build time: an out-of-subset schema
+  (e.g. `patternProperties`, `uniqueItems`, `multipleOf`, length/count bounds over 1024 —
+  grammar backends compile those into bounded repetition) fails immediately with the
+  offending feature named, instead of an opaque backend rejection.
+
 Operator-facing error conventions for implementors are documented in `provider.rs` module
 docs. Wire-fixture tests live beside each provider; the scripted two-turn exchange
-(declare → structured calls → tool-role follow-up) is `tests/native_tool_calling.rs`.
+(declare → structured calls → tool-role follow-up) is `tests/native_tool_calling.rs`;
+schema-on-the-wire round-trips for both providers are `tests/structured_output.rs`.
 
 ### Tool execution model (three sources, one abstraction)
 
