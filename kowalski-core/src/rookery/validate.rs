@@ -62,17 +62,37 @@ pub fn validate_workdir_relative_path(rel: &str) -> Result<(), KowalskiError> {
     Ok(())
 }
 
-/// Validate a draft before **Give birth** (linear pipeline only).
+/// How complete a draft must be to pass [`validate_draft_with`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DraftStrictness {
+    /// In-progress builder draft: empty display name, pipeline, prompt bodies, and outputs are
+    /// allowed while the interview fills them in. Structural integrity (ids, pipeline↔penguins
+    /// consistency, path safety, execution graph) is still enforced.
+    Draft,
+    /// Everything required before **Give birth** (the historical `validate_draft` behavior).
+    Birth,
+}
+
+/// Validate a draft before **Give birth** (full [`DraftStrictness::Birth`] rules).
 pub fn validate_draft(draft: &RookeryDraft) -> Result<(), KowalskiError> {
+    validate_draft_with(draft, DraftStrictness::Birth)
+}
+
+/// Validate a draft at the given strictness.
+pub fn validate_draft_with(
+    draft: &RookeryDraft,
+    strictness: DraftStrictness,
+) -> Result<(), KowalskiError> {
+    let lenient = strictness == DraftStrictness::Draft;
     let mut errs = Vec::new();
 
     if let Err(e) = validate_horde_id(&draft.id) {
         errs.push(e.to_string());
     }
-    if draft.display_name.trim().is_empty() {
+    if !lenient && draft.display_name.trim().is_empty() {
         errs.push("display_name must not be empty".into());
     }
-    if draft.pipeline.is_empty() {
+    if !lenient && draft.pipeline.is_empty() {
         errs.push("pipeline must contain at least one step".into());
     }
 
@@ -115,10 +135,12 @@ pub fn validate_draft(draft: &RookeryDraft) -> Result<(), KowalskiError> {
         if let Err(e) = validate_step_name(&p.name) {
             errs.push(format!("penguin name: {e}"));
         }
-        if p.prompt_body.trim().is_empty() {
+        if !lenient && p.prompt_body.trim().is_empty() {
             errs.push(format!("penguin `{}`: prompt_body must not be empty", p.name));
         }
-        if let Err(e) = validate_workdir_relative_path(&p.output) {
+        if !(lenient && p.output.is_empty())
+            && let Err(e) = validate_workdir_relative_path(&p.output)
+        {
             errs.push(format!("penguin `{}`: {}", p.name, e));
         }
         for ctx in &p.context_paths {
@@ -137,10 +159,11 @@ pub fn validate_draft(draft: &RookeryDraft) -> Result<(), KowalskiError> {
         errs.push(format!("workdir: {e}"));
     }
 
-    if errs.is_empty() {
-        if let Err(e) = resolve_execution_graph(&draft.pipeline, Some(&draft.edges)) {
-            errs.push(e.to_string());
-        }
+    if errs.is_empty()
+        && !(draft.pipeline.is_empty() && draft.edges.is_empty())
+        && let Err(e) = resolve_execution_graph(&draft.pipeline, Some(&draft.edges))
+    {
+        errs.push(e.to_string());
     }
 
     if errs.is_empty() {

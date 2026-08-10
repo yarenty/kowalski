@@ -1,0 +1,197 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/yarenty/kowalski/schemas/rookery-delta/1.0",
+  "title": "DeltaBatch",
+  "description": "One builder turn: a batch of Rookery draft edit commands, applied in order with prefix-apply semantics (the first failing op stops the batch; the valid prefix is kept). The server tunes maxItems on ops per turn and may strip replace_draft. Every construct used here stays inside a conservative JSON Schema subset that constrained-decoding backends support.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ops"],
+  "properties": {
+    "ops": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "anyOf": [
+          { "$ref": "#/$defs/set_meta" },
+          { "$ref": "#/$defs/add_step" },
+          { "$ref": "#/$defs/update_step" },
+          { "$ref": "#/$defs/set_prompt" },
+          { "$ref": "#/$defs/bind_tool" },
+          { "$ref": "#/$defs/unbind_tool" },
+          { "$ref": "#/$defs/remove_step" },
+          { "$ref": "#/$defs/reorder" },
+          { "$ref": "#/$defs/set_edges" },
+          { "$ref": "#/$defs/replace_draft" }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "stepId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "maxLength": 64 },
+    "set_meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": {
+        "op": { "const": "set_meta" },
+        "display_name": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 4000 },
+        "capability_prefix": { "type": "string", "maxLength": 100 },
+        "default_question": { "type": "string", "maxLength": 2000 },
+        "default_topic": { "type": "string", "maxLength": 200 },
+        "workdir": { "type": "string", "maxLength": 200 },
+        "delivery_title": { "type": "string", "maxLength": 200 },
+        "delivery_note": { "type": "string", "maxLength": 2000 },
+        "delivery_root_rel": { "type": "string", "maxLength": 200 },
+        "delivery_summary_note": { "type": "string", "maxLength": 2000 },
+        "prompt_tip": { "type": "string", "maxLength": 2000 }
+      }
+    },
+    "add_step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "step_id", "kind"],
+      "properties": {
+        "op": { "const": "add_step" },
+        "step_id": { "$ref": "#/$defs/stepId" },
+        "kind": {
+          "enum": ["process", "step", "deliver", "final", "compile", "ask", "lint", "verify", "apply", "ingest"]
+        },
+        "name": { "type": "string", "maxLength": 200 },
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Position in pipeline[]; omitted = append."
+        }
+      }
+    },
+    "update_step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "step_id"],
+      "properties": {
+        "op": { "const": "update_step" },
+        "step_id": { "$ref": "#/$defs/stepId" },
+        "name": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "model_id": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "output": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300,
+          "description": "Workdir-relative artifact path (e.g. debug/stage-collect.md)."
+        },
+        "avatar": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "context_paths": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 300 },
+          "description": "Replaces the step's context paths (workdir-relative, @artifact@, or @step:<id>@)."
+        }
+      }
+    },
+    "set_prompt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "step_id", "prompt"],
+      "properties": {
+        "op": { "const": "set_prompt" },
+        "step_id": { "$ref": "#/$defs/stepId" },
+        "prompt": {
+          "type": "string",
+          "description": "The full step prompt as plain prose (replaces the previous one)."
+        }
+      }
+    },
+    "bind_tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "step_id", "tool_ids"],
+      "properties": {
+        "op": { "const": "bind_tool" },
+        "step_id": { "$ref": "#/$defs/stepId" },
+        "tool_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1, "maxLength": 200 }
+        }
+      }
+    },
+    "unbind_tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "step_id"],
+      "properties": {
+        "op": { "const": "unbind_tool" },
+        "step_id": { "$ref": "#/$defs/stepId" },
+        "tool_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "description": "Omitted = remove all tool bindings from the step."
+        }
+      }
+    },
+    "remove_step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "step_id"],
+      "properties": {
+        "op": { "const": "remove_step" },
+        "step_id": { "$ref": "#/$defs/stepId" }
+      }
+    },
+    "reorder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "pipeline"],
+      "properties": {
+        "op": { "const": "reorder" },
+        "pipeline": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/stepId" },
+          "description": "The complete new pipeline order (all step ids, exactly once each — enforced server-side)."
+        }
+      }
+    },
+    "set_edges": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "edges"],
+      "properties": {
+        "op": { "const": "set_edges" },
+        "edges": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/edge" },
+          "description": "Replaces the draft's DAG edges. Empty array = implicit linear chain along pipeline[]."
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "$ref": "#/$defs/stepId" },
+        "to": { "$ref": "#/$defs/stepId" },
+        "when": { "enum": ["pass", "fail", "always"] },
+        "max_loops": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Required (with when) on loop-back edges."
+        }
+      }
+    },
+    "replace_draft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "draft"],
+      "properties": {
+        "op": { "const": "replace_draft" },
+        "draft": {
+          "type": "object",
+          "description": "A complete RookeryDraft, replacing the whole draft (whole-document escape hatch for capable models). The draft id stays server-owned and is preserved."
+        }
+      }
+    }
+  }
+}

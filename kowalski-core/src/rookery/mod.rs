@@ -4,6 +4,7 @@
 //! (DAG scheduling) is validated via [`crate::horde_graph`] (1.5.0+).
 
 mod avatars;
+mod delta;
 mod draft_parse;
 mod fixture;
 mod normalize;
@@ -13,6 +14,11 @@ mod validate;
 mod writer;
 
 pub use avatars::{assign_penguin_avatars, infer_penguin_avatar};
+pub use delta::{
+    apply_batch, apply_op, base_delta_schema, build_delta_schema, ensure_schema_supported,
+    unsupported_schema_feature, BatchError, BatchOutcome, DeltaBatch, DeltaOp, DeltaSchemaOptions,
+    DELTA_SCHEMA_JSON,
+};
 pub use draft_parse::{extract_json_block, parse_draft_from_assistant};
 pub use fixture::{minimal_dag_draft, minimal_linear_draft};
 pub use normalize::{
@@ -22,8 +28,8 @@ pub use normalize::{
 pub use repair::repair_horde_tree_outputs;
 pub use types::{HordeBirthSpec, PenguinSpec, RookeryDraft};
 pub use validate::{
-    validate_draft, validate_horde_id, validate_horde_tree, validate_step_name,
-    validate_workdir_relative_path,
+    validate_draft, validate_draft_with, validate_horde_id, validate_horde_tree,
+    validate_step_name, validate_workdir_relative_path, DraftStrictness,
 };
 pub use writer::{horde_root_path, write_horde_tree};
 
