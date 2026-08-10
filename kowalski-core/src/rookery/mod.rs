@@ -7,6 +7,7 @@ mod avatars;
 mod delta;
 mod draft_parse;
 mod fixture;
+mod interview;
 mod normalize;
 mod repair;
 mod types;
@@ -21,6 +22,10 @@ pub use delta::{
 };
 pub use draft_parse::{extract_json_block, parse_draft_from_assistant};
 pub use fixture::{minimal_dag_draft, minimal_linear_draft};
+pub use interview::{
+    ops_call_messages, run_ops_phase, turn_note, InterviewConfig, OpsModel, OpsPhase,
+    OPS_SYSTEM_PROMPT,
+};
 pub use normalize::{
     default_output_for_penguin, normalize_draft, normalize_penguin_output, output_looks_invalid,
     slugify_horde_id,

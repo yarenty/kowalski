@@ -208,6 +208,16 @@ or `[server] cors_origins` in `config.toml`). CLI workers and scripts authentica
 
 Production build: `cd ui && npm run build` (static assets under `ui/dist/`). More detail: [`ui/README.md`](./ui/README.md) and [`ui/DEPLOY.md`](./ui/DEPLOY.md).
 
+**Rookery (horde builder):** the UI's Rookery tab builds hordes conversationally. Each chat
+turn asks the model for a **small batch of typed edit operations** which the server applies
+to the draft (validated, rolled back on a bad op) — the draft pane updates after every turn,
+and the model never has to emit a whole document, so the builder stays reliable on small
+local models. By default the ops are recovered by JSON extraction (works well with Ollama
+7B-class models); `[llm] structured_output = true` switches to grammar-constrained emission
+for backends where guided decoding is known-good. Press **Give birth** when the draft
+validates. Tuning (optional, `config.toml` `[rookery]`): `max_ops_per_turn`,
+`structured_output`, `allow_replace_draft`.
+
 ### Rust API (minimal)
 
 ```rust

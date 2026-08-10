@@ -291,8 +291,8 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
 | `POST` | `/api/rookery/sessions` | Create session; optional body `{ history?, draft?, summary?, status? }` (legacy restore hint — no longer needed by the UI, see server-owned draft below) |
 | `GET` | `/api/rookery/sessions/{id}` | Draft + status |
 | `DELETE` | `/api/rookery/sessions/{id}` | Drop session |
-| `POST` | `/api/rookery/sessions/{id}/chat` | Body: `{ "message", "stream"? }` — no tools/memory |
-| `POST` | `/api/rookery/sessions/{id}/propose` | Parse `RookeryDraft` JSON from builder reply |
+| `POST` | `/api/rookery/sessions/{id}/chat` | Body: `{ "message", "stream"? }` — **guided interview turn**: ops phase (delta batch applied to the draft server-side) + reply phase (prose; streams). Response carries `ops_applied` / `ops_error`; SSE adds a `{"type":"ops",…}` event. No tools/memory |
+| `POST` | `/api/rookery/sessions/{id}/propose` | Whole-draft fallback: parse `RookeryDraft` TOML/JSON from a one-shot builder reply |
 | `POST` | `/api/rookery/sessions/{id}/give-birth` | Body: `{ "output_root"?, "overwrite"? }` → `write_horde_tree` + validate |
 | `PATCH` | `/api/rookery/sessions/{id}/penguins/{name}` | Update one penguin in session draft |
 | `POST` | `/api/rookery/sessions/{id}/save-horde` | Re-write born horde from draft (overwrite on disk) |
@@ -300,6 +300,25 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
 | `GET` | `/api/models` | Ollama model list + server default |
 
 Builder system prompt: [`../resources/prompts/rookery/builder.md`](../resources/prompts/rookery/builder.md). Default birth directory: `examples/` (`KOWALSKI_ROOKERY_OUTPUT`).
+
+**Guided interview (per-turn deltas):** every chat turn runs two channels. The **ops phase**
+(`kowalski_core::rookery::run_ops_phase`) asks the model for a small `DeltaBatch` — under
+`chat_with_schema` when both `[llm] structured_output` and `[rookery] structured_output` are
+on, otherwise fenced-JSON extraction — and applies it to the session draft with prefix-apply
+(a rejected op keeps the last-good draft and is reported back). The **reply phase** answers in
+prose, informed by an ephemeral system note describing what was applied. The draft `id` is
+server-owned: generated per session, re-slugged from `display_name` until birth. Config
+(`[rookery]` in `config.toml`, all optional): `max_ops_per_turn` (default 12),
+`structured_output` (default true), `allow_replace_draft` (default false — whole-document
+emission stays off for small models). The whole-draft propose endpoint and give-birth /
+MCP-rookery contracts are unchanged.
+
+**Ollama caveat (empirical):** grammar-constrained decoding over the full multi-op delta
+schema can *distort op choice* on Ollama (models avoid `add_step` under the constraint while
+emitting perfect batches unconstrained). The default deployment is unaffected —
+`[llm] structured_output` is off by default, so the interview uses fenced-JSON extraction,
+which is the path that works best with Ollama 7B-class models. Enable the constrained ops
+channel only on backends where guided decoding is known-good.
 
 **Server-owned draft (PLAN.md §R1):** the server is the **source of truth** for Rookery sessions. Each session (status, draft, summary, and chat transcript) is persisted as one **YAML** file under the state dir (default `db/rookery/`; override with `KOWALSKI_ROOKERY_STATE`) and reloaded on startup — so sessions survive a server restart **without** the browser re-POSTing the draft. The UI keeps only a thin session-id list and renders draft/status via `GET /api/rookery/sessions/{id}`. The legacy `POST` restore body (`history`/`draft`/…) is still accepted for back-compat but is no longer used by `ui/`.
 
