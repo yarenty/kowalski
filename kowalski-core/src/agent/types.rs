@@ -8,6 +8,9 @@ pub struct ChatRequest {
     pub temperature: f32,
     pub max_tokens: usize,
     pub tools: Option<serde_json::Value>,
+    /// Ollama constrained decoding: a JSON Schema the response must conform to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

@@ -21,6 +21,21 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Added
 
+- **Constrained structured output on LLM providers (#57):** opt-in `[llm]
+  structured_output = true` adds `chat_with_schema(model, messages, schema)` to the
+  provider layer — the model's reply is *forced* to conform to a JSON Schema and comes
+  back as raw JSON text. Ollama carries the schema in the request's `format` field;
+  OpenAI-compatible servers get strict `response_format: json_schema` (this is also how
+  guided-decoding servers expose the feature). `supports_structured_output(model)` reports
+  the capability and the default implementation degrades gracefully, so callers fall back
+  to prompt-based extraction — the new `utils::json::extract_first_json_object` recovers a
+  JSON object from plain, fenced, prose-embedded, or repairably-truncated replies. The
+  conservative schema-subset guard now runs at request-build time on both providers, and
+  additionally rejects length/count bounds over 1024 (grammar-based backends compile them
+  into bounded repetition and reject the request; large prose caps were dropped from the
+  builder delta schema accordingly). Verified live against a 3B local model emitting a
+  valid builder delta batch under the schema.
+
 - **Rookery builder delta operations (#56):** the horde builder gains a delta layer in
   `kowalski-core` — instead of emitting one complete draft document (which breaks on small
   local models), a builder LLM can emit small, typed edit operations that the server applies

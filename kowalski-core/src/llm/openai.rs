@@ -1,6 +1,7 @@
-use super::provider::{ChatOutcome, LLMProvider, TokenStream, ToolDefinition};
+use super::provider::{ChatOutcome, LLMProvider, TokenStream, ToolDefinition, schema_wire_name};
 use crate::conversation::{FunctionCall, Message, ToolCall};
 use crate::error::KowalskiError;
+use crate::rookery::ensure_schema_supported;
 use async_openai::{
     Client,
     config::OpenAIConfig,
@@ -10,8 +11,9 @@ use async_openai::{
             ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
             ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestToolMessageArgs,
             ChatCompletionRequestUserMessageArgs, ChatCompletionTool, ChatCompletionTools,
-            CreateChatCompletionRequestArgs, CreateChatCompletionResponse,
-            FunctionCall as OpenAIFunctionCall, FunctionObject,
+            CreateChatCompletionRequest, CreateChatCompletionRequestArgs,
+            CreateChatCompletionResponse, FunctionCall as OpenAIFunctionCall, FunctionObject,
+            ResponseFormat, ResponseFormatJsonSchema,
         },
         embeddings::CreateEmbeddingRequestArgs,
     },
@@ -25,6 +27,7 @@ pub struct OpenAIProvider {
     /// Effective HTTP API root (for operator-facing errors).
     api_base_display: String,
     native_tools: bool,
+    structured_output: bool,
 }
 
 impl OpenAIProvider {
@@ -49,12 +52,20 @@ impl OpenAIProvider {
             embedding_model: "text-embedding-3-small".to_string(),
             api_base_display,
             native_tools: false,
+            structured_output: false,
         }
     }
 
     /// Opt in to native tool calling (`[llm] native_tools`); requires a tool-capable model.
     pub fn with_native_tools(mut self, enabled: bool) -> Self {
         self.native_tools = enabled;
+        self
+    }
+
+    /// Opt in to constrained structured output (`[llm] structured_output`); the server must
+    /// support strict `response_format: json_schema`.
+    pub fn with_structured_output(mut self, enabled: bool) -> Self {
+        self.structured_output = enabled;
         self
     }
 
@@ -159,6 +170,45 @@ impl LLMProvider for OpenAIProvider {
 
     fn supports_native_tools(&self, _model: &str) -> bool {
         self.native_tools
+    }
+
+    fn supports_structured_output(&self, _model: &str) -> bool {
+        self.structured_output
+    }
+
+    async fn chat_with_schema(
+        &self,
+        model: &str,
+        messages: &[Message],
+        schema: &serde_json::Value,
+    ) -> Result<String, KowalskiError> {
+        let request = build_schema_request(model, messages, schema)?;
+
+        let response = self
+            .client
+            .chat()
+            .create(request)
+            .await
+            .map_err(|e| KowalskiError::Server(self.troubleshoot_chat(model, &e)))?;
+
+        let n_choices = response.choices.len();
+        response
+            .choices
+            .first()
+            .and_then(|choice| choice.message.content.clone())
+            .ok_or_else(|| {
+                let finish = response
+                    .choices
+                    .first()
+                    .and_then(|c| c.finish_reason)
+                    .map(|r| format!(" first_choice_finish_reason={:?}", r))
+                    .unwrap_or_default();
+                KowalskiError::Server(format!(
+                    "No assistant text in OpenAI-compatible structured-output response (model `{}`, API base `{}`, {} choice(s){}).\n\
+                     What to check: the server supports `response_format: json_schema` (strict structured outputs), `max_tokens` / empty completion, or a refusal instead of content.",
+                    model, self.api_base_display, n_choices, finish
+                ))
+            })
     }
 
     async fn chat_with_tool_defs(
@@ -330,6 +380,31 @@ fn messages_to_openai(
         }
     }
     Ok(openai_messages)
+}
+
+/// Build a strict-json_schema Chat Completions request. Runs the conservative-subset guard
+/// before anything touches the wire, so an out-of-subset schema fails with the offending
+/// feature named instead of an opaque backend rejection.
+fn build_schema_request(
+    model: &str,
+    messages: &[Message],
+    schema: &serde_json::Value,
+) -> Result<CreateChatCompletionRequest, KowalskiError> {
+    ensure_schema_supported(schema)?;
+    let openai_messages = messages_to_openai(messages)?;
+    CreateChatCompletionRequestArgs::default()
+        .model(model)
+        .messages(openai_messages)
+        .response_format(ResponseFormat::JsonSchema {
+            json_schema: ResponseFormatJsonSchema {
+                description: None,
+                name: schema_wire_name(schema),
+                schema: schema.clone(),
+                strict: Some(true),
+            },
+        })
+        .build()
+        .map_err(|e| KowalskiError::Initialization(format!("OpenAI request error: {}", e)))
 }
 
 fn tool_defs_to_openai(tools: &[ToolDefinition]) -> Vec<ChatCompletionTools> {
@@ -552,6 +627,45 @@ mod tests {
             OpenAIProvider::new("k", None)
                 .with_native_tools(true)
                 .supports_native_tools("gpt-4o-mini")
+        );
+    }
+
+    #[test]
+    fn schema_request_serializes_strict_json_schema_response_format() {
+        let schema = json!({
+            "title": "Person",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name"],
+            "properties": { "name": { "type": "string" } }
+        });
+        let request =
+            build_schema_request("gpt-4o-mini", &[Message::text("user", "Who?")], &schema)
+                .unwrap();
+        let wire = serde_json::to_value(&request).unwrap();
+
+        let rf = &wire["response_format"];
+        assert_eq!(rf["type"], "json_schema");
+        assert_eq!(rf["json_schema"]["name"], "Person");
+        assert_eq!(rf["json_schema"]["strict"], true);
+        assert_eq!(rf["json_schema"]["schema"], schema);
+    }
+
+    #[test]
+    fn schema_request_rejects_out_of_subset_schema() {
+        let schema = json!({ "type": "number", "multipleOf": 2 });
+        let err = build_schema_request("gpt-4o-mini", &[Message::text("user", "go")], &schema)
+            .unwrap_err();
+        assert!(err.to_string().contains("multipleOf"), "err: {err}");
+    }
+
+    #[test]
+    fn structured_output_flag_gates_support() {
+        assert!(!OpenAIProvider::new("k", None).supports_structured_output("gpt-4o-mini"));
+        assert!(
+            OpenAIProvider::new("k", None)
+                .with_structured_output(true)
+                .supports_structured_output("gpt-4o-mini")
         );
     }
 }

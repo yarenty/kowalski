@@ -464,6 +464,11 @@ const ALLOWED_FORMATS: &[&str] = &[
     "relative-json-pointer",
 ];
 
+/// Grammar-based constrained-decoding backends compile length/count keywords into bounded
+/// repetition; large bounds blow the grammar up (observed: Ollama rejects `maxLength: 2000`
+/// with "failed to parse grammar"). Prose fields should carry **no** length bound instead.
+const MAX_REPETITION_BOUND: u64 = 1024;
+
 /// Recursively check a schema for JSON Schema features outside the conservative subset that
 /// constrained-decoding backends commonly support. Returns the first offending keyword found,
 /// or `None` if the schema is safe.
@@ -481,6 +486,15 @@ pub fn unsupported_schema_feature(schema: &Value) -> Option<String> {
             ] {
                 if map.contains_key(key) {
                     return Some(key.to_string());
+                }
+            }
+            for key in ["minLength", "maxLength", "minItems", "maxItems"] {
+                if let Some(bound) = map.get(key).and_then(Value::as_u64)
+                    && bound > MAX_REPETITION_BOUND
+                {
+                    return Some(format!(
+                        "{key}:{bound} (exceeds the bounded-repetition cap {MAX_REPETITION_BOUND}; drop the bound for prose fields)"
+                    ));
                 }
             }
             if let Some(Value::String(fmt)) = map.get("format")
@@ -1146,6 +1160,10 @@ mod tests {
             (
                 json!({ "type": "string", "format": "email-list" }),
                 "format:email-list",
+            ),
+            (
+                json!({ "type": "string", "maxLength": 4000 }),
+                "maxLength:4000 (exceeds the bounded-repetition cap 1024; drop the bound for prose fields)",
             ),
         ] {
             assert_eq!(unsupported_schema_feature(&bad), Some(expect.to_string()));

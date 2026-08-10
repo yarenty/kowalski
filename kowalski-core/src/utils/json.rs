@@ -89,6 +89,53 @@ fn extract_tool_calls_inner(input: &str) -> Vec<ToolCall> {
     results
 }
 
+/// The first balanced `{…}` object in `input` (string-and-escape aware); when braces never
+/// close, the tail from the first `{` (so JSON repair can finish it).
+fn first_object_slice(input: &str) -> Option<&str> {
+    let bytes = input.as_bytes();
+    let start = input.find('{')?;
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+    for (i, &b) in bytes.iter().enumerate().skip(start) {
+        if escaped {
+            escaped = false;
+        } else if b == b'\\' {
+            escaped = true;
+        } else if b == b'"' {
+            in_string = !in_string;
+        } else if !in_string {
+            if b == b'{' {
+                depth += 1;
+            } else if b == b'}' {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(&input[start..=i]);
+                }
+            }
+        }
+    }
+    Some(&input[start..])
+}
+
+/// Fallback extractor for models without constrained structured output: recover the first
+/// JSON object from a free-form reply (plain JSON, JSON inside prose, ```json fences, or a
+/// truncated/sloppy object that JSON repair can fix). Returns `None` when nothing in the
+/// input parses to a JSON object.
+pub fn extract_first_json_object(input: &str) -> Option<serde_json::Value> {
+    let stripped = strip_markdown_code_fences(input);
+    for candidate in [stripped.as_str(), input] {
+        if let Some(slice) = first_object_slice(candidate)
+            && let Ok(repaired) = repair_json(slice, &llm_json::RepairOptions::default())
+            && let Ok(value) = serde_json::from_str::<serde_json::Value>(&repaired)
+            && value.is_object()
+        {
+            return Some(value);
+        }
+    }
+    None
+}
+
 /// Extracts potential tool calls from a string, repairing malformed JSON if necessary.
 /// Strips a leading markdown ```json … ``` fence when present, then runs extraction.
 pub fn extract_tool_calls(input: &str) -> Vec<ToolCall> {
@@ -166,5 +213,50 @@ mod tests {
     #[test]
     fn looks_like_attempt_false_on_plain_text() {
         assert!(!looks_like_tool_json_attempt("Hello, no JSON here."));
+    }
+
+    /// Table of reply shapes an unconstrained model actually produces.
+    #[test]
+    fn extract_first_json_object_table() {
+        let expected = serde_json::json!({"ops": [{"op": "remove_step", "step_id": "a"}]});
+        let cases: &[&str] = &[
+            // plain JSON, nothing else
+            r#"{"ops": [{"op": "remove_step", "step_id": "a"}]}"#,
+            // fenced with language tag
+            "Here you go:\n```json\n{\"ops\": [{\"op\": \"remove_step\", \"step_id\": \"a\"}]}\n```",
+            // fenced without language tag
+            "```\n{\"ops\": [{\"op\": \"remove_step\", \"step_id\": \"a\"}]}\n```",
+            // bare JSON inside prose
+            "Sure! The batch is {\"ops\": [{\"op\": \"remove_step\", \"step_id\": \"a\"}]} — done.",
+            // prose before AND after a fence
+            "Thinking...\n```json\n{\"ops\": [{\"op\": \"remove_step\", \"step_id\": \"a\"}]}\n```\nLet me know!",
+        ];
+        for case in cases {
+            assert_eq!(
+                extract_first_json_object(case).as_ref(),
+                Some(&expected),
+                "case: {case}"
+            );
+        }
+    }
+
+    #[test]
+    fn extract_first_json_object_repairs_sloppy_json() {
+        // unquoted keys + trailing truncation
+        let truncated = r#"{"ops": [{"op": "remove_step", "step_id": "a""#;
+        let v = extract_first_json_object(truncated).expect("repairable");
+        assert_eq!(v["ops"][0]["op"], "remove_step");
+
+        let unquoted = "{ops: [{op: \"remove_step\", step_id: \"a\"}]}";
+        let v = extract_first_json_object(unquoted).expect("repairable");
+        assert_eq!(v["ops"][0]["step_id"], "a");
+    }
+
+    #[test]
+    fn extract_first_json_object_none_on_plain_text() {
+        assert!(extract_first_json_object("No JSON to be found here.").is_none());
+        assert!(extract_first_json_object("").is_none());
+        // a bare array is not an object
+        assert!(extract_first_json_object("[1, 2, 3]").is_none());
     }
 }

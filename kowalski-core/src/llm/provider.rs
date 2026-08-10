@@ -137,10 +137,68 @@ pub trait LLMProvider: Send + Sync {
         self.chat(model, messages).await.map(ChatOutcome::Text)
     }
 
+    /// Whether constrained structured output (a JSON Schema on the request) may be used with
+    /// the given model.
+    ///
+    /// Config-informed: implementations return the deployment's `[llm] structured_output`
+    /// opt-in. Default `false` — callers must fall back to prompt-and-extract
+    /// ([`crate::utils::json::extract_first_json_object`]).
+    fn supports_structured_output(&self, _model: &str) -> bool {
+        false
+    }
+
+    /// Chat with the response constrained to `schema` (a JSON Schema object). Returns the raw
+    /// JSON text — the caller parses it into its own type.
+    ///
+    /// Implementations must run [`crate::rookery::ensure_schema_supported`] before touching the
+    /// wire, so an out-of-subset schema fails immediately with the offending feature named
+    /// instead of an opaque backend rejection.
+    ///
+    /// Default implementation returns a graceful error so providers without constrained
+    /// decoding are unaffected; callers check [`LLMProvider::supports_structured_output`] and
+    /// fall back.
+    async fn chat_with_schema(
+        &self,
+        model: &str,
+        messages: &[Message],
+        schema: &serde_json::Value,
+    ) -> Result<String, KowalskiError> {
+        let _ = (messages, schema);
+        Err(KowalskiError::Server(format!(
+            "This LLM provider does not support constrained structured output (model `{}`). \
+             Callers should check supports_structured_output() and fall back to prompt-based \
+             JSON extraction.",
+            model
+        )))
+    }
+
     /// Token deltas (concatenate for the full reply). Empty strings may be omitted by callers.
     ///
     /// Stream errors should follow the same clarity convention as [`LLMProvider::chat`].
     fn chat_stream(&self, model: &str, messages: Vec<Message>) -> TokenStream<'_>;
+}
+
+/// The `name` a JSON Schema travels under in OpenAI-style `response_format` envelopes:
+/// the schema's `title` (sanitized to `[a-zA-Z0-9_-]`, max 64 chars) or `structured_output`.
+pub fn schema_wire_name(schema: &serde_json::Value) -> String {
+    let name: String = schema["title"]
+        .as_str()
+        .unwrap_or("structured_output")
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .take(64)
+        .collect();
+    if name.is_empty() {
+        "structured_output".to_string()
+    } else {
+        name
+    }
 }
 
 /// Single-chunk stream when a provider does not implement native token streaming.
@@ -156,4 +214,57 @@ pub fn chat_stream_single_chunk<'a>(
             Err(e) => yield Err(e),
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A provider that implements only the required methods — exercises the trait defaults.
+    struct MinimalProvider;
+
+    #[async_trait]
+    impl LLMProvider for MinimalProvider {
+        async fn chat(&self, _model: &str, _messages: &[Message]) -> Result<String, KowalskiError> {
+            Ok("hi".to_string())
+        }
+        async fn embed(&self, _text: &str) -> Result<Vec<f32>, KowalskiError> {
+            Ok(vec![])
+        }
+        fn supports_streaming(&self) -> bool {
+            false
+        }
+        fn chat_stream(&self, _model: &str, _messages: Vec<Message>) -> TokenStream<'_> {
+            Box::pin(futures::stream::empty())
+        }
+    }
+
+    /// Providers without constrained decoding degrade gracefully: capability reports `false`
+    /// and `chat_with_schema` returns an actionable error instead of panicking or lying.
+    #[tokio::test]
+    async fn default_structured_output_degrades_gracefully() {
+        let p = MinimalProvider;
+        assert!(!p.supports_structured_output("any-model"));
+        let err = p
+            .chat_with_schema("any-model", &[], &json!({"type": "object"}))
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("does not support constrained structured output"),
+            "err: {err}"
+        );
+    }
+
+    #[test]
+    fn schema_wire_name_sanitizes_title() {
+        assert_eq!(schema_wire_name(&json!({"title": "DeltaBatch"})), "DeltaBatch");
+        assert_eq!(
+            schema_wire_name(&json!({"title": "My Schema (v1)!"})),
+            "My_Schema__v1__"
+        );
+        assert_eq!(schema_wire_name(&json!({})), "structured_output");
+        assert_eq!(schema_wire_name(&json!({"title": ""})), "structured_output");
+        let long = "x".repeat(100);
+        assert_eq!(schema_wire_name(&json!({ "title": long })).len(), 64);
+    }
 }
