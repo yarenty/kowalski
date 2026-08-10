@@ -21,6 +21,26 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Added
 
+- **Rookery guided interview — per-turn deltas (#58):** the horde builder no longer asks the
+  model to emit one complete draft document. Each chat turn now runs two channels: an **ops
+  phase** that asks the model for a small batch of typed edit operations (constrained to the
+  delta schema when structured output is enabled; fenced-JSON extraction otherwise — and
+  un-parseable output degrades to a clean "no edits" turn) which the server applies to the
+  session draft with prefix-apply (a rejected op keeps the last-good draft and is explained
+  to the operator), and a **reply phase** that answers in plain prose, informed by a note
+  about what was actually applied. The draft pane updates after every turn; the draft id is
+  server-owned (derived from the display name until birth); `replace_draft` (whole-document
+  emission) stays off unless explicitly enabled. Ops are recovered by JSON extraction by
+  default — empirically the most reliable path on Ollama, where grammar-constrained decoding
+  over the multi-op schema can distort op choice — with `[llm] structured_output = true`
+  switching to constrained emission on backends where guided decoding is known-good. New
+  optional `[rookery]` config:
+  `max_ops_per_turn` (default 12), `structured_output` (default true; effective only with
+  `[llm] structured_output`), `allow_replace_draft` (default false). The builder system
+  prompt was rewritten for op-at-a-time building; the whole-draft propose endpoint,
+  give-birth flow, and the MCP rookery server are unchanged. Also fixed: born hordes now
+  keep `when` / `max_loops` on `[[edges]]` (the writer previously dropped them).
+
 - **Constrained structured output on LLM providers (#57):** opt-in `[llm]
   structured_output = true` adds `chat_with_schema(model, messages, schema)` to the
   provider layer — the model's reply is *forced* to conform to a JSON Schema and comes

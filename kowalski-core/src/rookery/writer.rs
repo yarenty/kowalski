@@ -265,6 +265,12 @@ fn render_horde_md(draft: &RookeryDraft) -> String {
                 "\n[[edges]]\nfrom = \"{}\"\nto = \"{}\"\n",
                 edge.from, edge.to
             ));
+            if let Some(when) = &edge.when {
+                out.push_str(&format!("when = \"{}\"\n", when));
+            }
+            if let Some(max_loops) = edge.max_loops {
+                out.push_str(&format!("max_loops = {}\n", max_loops));
+            }
         }
     }
     out.push_str("---\n\n");

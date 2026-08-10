@@ -10,10 +10,12 @@ use futures::StreamExt;
 use kowalski_core::agent::Agent;
 use kowalski_core::config::Config;
 use kowalski_core::conversation::Message;
+use kowalski_core::error::KowalskiError;
+use kowalski_core::llm::LLMProvider;
 use kowalski_core::rookery::{
-    normalize_draft, parse_draft_from_assistant, validate_draft, validate_horde_tree,
-    write_horde_tree,
-    HordeBirthSpec, RookeryDraft,
+    normalize_draft, parse_draft_from_assistant, run_ops_phase, slugify_horde_id, validate_draft,
+    validate_horde_tree, write_horde_tree,
+    HordeBirthSpec, InterviewConfig, OpsModel, OpsPhase, RookeryDraft,
 };
 use kowalski_core::template::agent::TemplateAgent;
 use serde::{Deserialize, Serialize};
@@ -55,6 +57,9 @@ pub struct RookeryStore {
     pub agent: TemplateAgent,
     pub model: String,
     pub output_root: PathBuf,
+    /// Interview policy (`[rookery]` in `config.toml`): per-turn ops cap, structured output,
+    /// `replace_draft` gate.
+    pub interview: InterviewConfig,
     /// Directory where session snapshots are persisted so they survive a server restart.
     persist_dir: PathBuf,
     sessions: HashMap<String, RookerySession>,
@@ -284,9 +289,29 @@ pub async fn new_rookery_store(
         agent,
         model,
         output_root,
+        interview: interview_config_from(config),
         persist_dir,
         sessions,
     })))
+}
+
+/// `[rookery]` in `config.toml` — interview policy knobs, all optional:
+/// `max_ops_per_turn` (default 12), `structured_output` (default true; effective only when the
+/// provider also opts in via `[llm] structured_output`), `allow_replace_draft` (default false).
+fn interview_config_from(config: &Config) -> InterviewConfig {
+    let mut cfg = InterviewConfig::default();
+    if let Some(section) = config.additional.get("rookery").and_then(|v| v.as_object()) {
+        if let Some(v) = section.get("max_ops_per_turn").and_then(|v| v.as_u64()) {
+            cfg.max_ops = v.max(1) as usize;
+        }
+        if let Some(v) = section.get("structured_output").and_then(|v| v.as_bool()) {
+            cfg.structured_output = v;
+        }
+        if let Some(v) = section.get("allow_replace_draft").and_then(|v| v.as_bool()) {
+            cfg.allow_replace_draft = v;
+        }
+    }
+    cfg
 }
 
 pub fn default_rookery_output_root(config_dir: Option<&Path>) -> PathBuf {
@@ -445,6 +470,11 @@ pub struct RookeryChatBody {
 pub struct RookeryChatResponse {
     pub reply: String,
     pub session: RookerySessionResponse,
+    /// Delta ops applied to the draft this turn (guided interview).
+    pub ops_applied: usize,
+    /// First rejected op of the turn's batch, if any (prefix-apply kept the draft consistent).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ops_error: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -616,16 +646,26 @@ pub async fn post_chat(
     }
     let mut guard = store.lock().await;
     let output_root = guard.output_root.clone();
-    let session = guard
-        .get_mut(&session_id)
-        .ok_or_else(|| (StatusCode::NOT_FOUND, "session not found".into()))?;
-    let conv_id = session.conversation_id.clone();
-    let reply = guard
-        .agent
-        .base_mut()
-        .chat_with_history_with_options(&conv_id, msg, None, false)
+    let conv_id = guard
+        .get(&session_id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "session not found".into()))?
+        .conversation_id
+        .clone();
+
+    /* ops channel: apply the turn's delta batch to the session draft */
+    let phase = session_ops_phase(&mut guard, &session_id, msg)
         .await
         .map_err(internal_err)?;
+
+    /* reply channel: plain prose, informed by an ephemeral note about what was applied */
+    let (model, mut messages, llm) = guard
+        .agent
+        .prepare_stream_turn_with_options(&conv_id, msg, false)
+        .await
+        .map_err(internal_err)?;
+    messages.push(Message::text("system", &phase.note));
+    let reply = llm.chat(&model, &messages).await.map_err(internal_err)?;
+    guard.agent.add_message(&conv_id, "assistant", &reply).await;
     if let Some(ref mut s) = guard.get_mut(&session_id) {
         RookeryStore::touch(s);
     }
@@ -636,6 +676,8 @@ pub async fn post_chat(
     Ok(Json(RookeryChatResponse {
         reply,
         session: RookerySessionResponse::from_session(session, &output_root),
+        ops_applied: phase.outcome.applied,
+        ops_error: phase.outcome.error.map(|e| format!("op {}: {}", e.index, e.message)),
     })
     .into_response())
 }
@@ -654,27 +696,52 @@ pub async fn post_chat_stream(
         return Sse::new(ReceiverStream::new(rx));
     }
     tokio::spawn(async move {
-        let prep = {
+        let (prep, ops_event, note) = {
             let mut guard = store.lock().await;
-            let session = match guard.get(&session_id) {
+            let conv_id = match guard.get(&session_id) {
                 Some(s) => s.conversation_id.clone(),
                 None => {
                     send_error(&tx, "session not found").await;
                     return;
                 }
             };
-            guard
+
+            /* ops channel: apply the turn's delta batch to the session draft */
+            let phase = match session_ops_phase(&mut guard, &session_id, &msg).await {
+                Ok(p) => p,
+                Err(e) => {
+                    send_error(&tx, &e.to_string()).await;
+                    return;
+                }
+            };
+            let ops_event = json!({
+                "type": "ops",
+                "applied": phase.outcome.applied,
+                "error": phase.outcome.error.as_ref().map(|e| format!("op {}: {}", e.index, e.message)),
+            });
+
+            let prep = guard
                 .agent
-                .prepare_stream_turn_with_options(&session, &msg, false)
-                .await
+                .prepare_stream_turn_with_options(&conv_id, &msg, false)
+                .await;
+            (prep, ops_event, phase.note)
         };
-        let (model, messages, llm) = match prep {
+        let (model, mut messages, llm) = match prep {
             Ok(x) => x,
             Err(e) => {
                 send_error(&tx, &e.to_string()).await;
                 return;
             }
         };
+        /* reply channel: plain prose, informed by an ephemeral note about what was applied */
+        messages.push(Message::text("system", &note));
+        if tx
+            .send(Ok(Event::default().data(ops_event.to_string())))
+            .await
+            .is_err()
+        {
+            return;
+        }
         let start = json!({ "type": "start", "session_id": session_id, "model": model });
         if tx
             .send(Ok(Event::default().data(start.to_string())))
@@ -736,6 +803,106 @@ async fn send_error(tx: &tokio::sync::mpsc::Sender<Result<Event, Infallible>>, m
     let _ = tx
         .send(Ok(Event::default().data(r#"{"type":"done"}"#)))
         .await;
+}
+
+/// [`OpsModel`] over the store's LLM provider: constrained `chat_with_schema` when the turn
+/// carries a schema, plain `chat` (fenced-JSON fallback) otherwise.
+struct ProviderOpsModel {
+    llm: Arc<dyn LLMProvider>,
+    model: String,
+}
+
+#[async_trait::async_trait]
+impl OpsModel for ProviderOpsModel {
+    async fn generate_ops(
+        &mut self,
+        messages: Vec<Message>,
+        schema: Option<&serde_json::Value>,
+    ) -> Result<String, KowalskiError> {
+        match schema {
+            Some(schema) => self.llm.chat_with_schema(&self.model, &messages, schema).await,
+            None => self.llm.chat(&self.model, &messages).await,
+        }
+    }
+}
+
+/// Server-generated draft id for a fresh session (the draft id is server-owned; it is
+/// re-slugged from `display_name` until birth).
+fn draft_id_for_session(session_id: &str) -> String {
+    let suffix: String = session_id
+        .strip_prefix("rookery-")
+        .unwrap_or(session_id)
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .take(8)
+        .collect::<String>()
+        .to_ascii_lowercase();
+    if suffix.is_empty() {
+        "new-horde".to_string()
+    } else {
+        format!("horde-{suffix}")
+    }
+}
+
+/// Run the ops phase for one interview turn against a session and fold the result into it:
+/// apply the delta batch to the session draft (prefix-apply), re-slug the server-owned draft
+/// id from `display_name` while unborn, and derive the session status. Returns the phase (its
+/// `note` feeds the reply channel). The caller persists the session after the reply.
+async fn session_ops_phase(
+    guard: &mut RookeryStore,
+    session_id: &str,
+    user_message: &str,
+) -> Result<OpsPhase, KowalskiError> {
+    let (conv_id, draft, had_draft, born) = {
+        let session = guard
+            .get(session_id)
+            .ok_or_else(|| KowalskiError::Validation("session not found".into()))?;
+        (
+            session.conversation_id.clone(),
+            session
+                .draft
+                .clone()
+                .unwrap_or_else(|| RookeryDraft::empty_draft(draft_id_for_session(&session.id))),
+            session.draft.is_some(),
+            session.horde_root.is_some(),
+        )
+    };
+    let transcript = guard
+        .agent
+        .get_conversation(&conv_id)
+        .map(|c| c.messages.clone())
+        .unwrap_or_default();
+
+    let llm = guard.agent.base().llm_provider.clone();
+    let model = guard.model.clone();
+    let mut config = guard.interview;
+    config.structured_output =
+        config.structured_output && llm.supports_structured_output(&model);
+    let mut ops_model = ProviderOpsModel { llm, model };
+
+    let mut phase = run_ops_phase(&mut ops_model, &config, &transcript, user_message, draft).await?;
+
+    if !born
+        && !phase.draft.display_name.trim().is_empty()
+        && phase.outcome.applied > 0
+    {
+        let slug = slugify_horde_id(&phase.draft.display_name);
+        if !slug.is_empty() {
+            phase.draft.id = slug;
+        }
+    }
+    if let Some(session) = guard.get_mut(session_id) {
+        if had_draft || phase.outcome.applied > 0 {
+            session.status = if validate_draft(&phase.draft).is_ok() {
+                RookerySessionStatus::Proposed
+            } else {
+                RookerySessionStatus::Interviewing
+            };
+            session.draft = Some(phase.draft.clone());
+        }
+        RookeryStore::touch(session);
+    }
+    Ok(phase)
 }
 
 pub async fn post_propose(
@@ -1062,6 +1229,32 @@ mod tests {
     fn default_output_root_is_examples_under_repo() {
         let p = default_rookery_output_root(Some(Path::new("/opt/ml/kowalski")));
         assert!(p.ends_with("examples") || p.to_string_lossy().contains("examples"));
+    }
+
+    #[test]
+    fn interview_config_defaults_and_overrides() {
+        let cfg = interview_config_from(&Config::default());
+        assert_eq!(cfg.max_ops, InterviewConfig::DEFAULT_MAX_OPS);
+        assert!(cfg.structured_output);
+        assert!(!cfg.allow_replace_draft);
+
+        let mut config = Config::default();
+        config.additional.insert(
+            "rookery".to_string(),
+            json!({ "max_ops_per_turn": 0, "structured_output": false, "allow_replace_draft": true }),
+        );
+        let cfg = interview_config_from(&config);
+        assert_eq!(cfg.max_ops, 1, "cap clamps to >= 1");
+        assert!(!cfg.structured_output);
+        assert!(cfg.allow_replace_draft);
+    }
+
+    #[test]
+    fn draft_id_for_session_is_a_valid_horde_id() {
+        let id = draft_id_for_session("rookery-1a2b3c4d-e5f6-7890-abcd-ef0123456789");
+        assert_eq!(id, "horde-1a2b3c4d");
+        kowalski_core::rookery::validate_horde_id(&id).expect("valid horde id");
+        assert_eq!(draft_id_for_session("---"), "new-horde");
     }
 
     #[test]
