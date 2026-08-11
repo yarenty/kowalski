@@ -112,6 +112,7 @@ mod tests {
                 watch: None,
                 webhook: None,
                 enabled: true,
+                overlap: "skip".into(),
                 input: std::collections::BTreeMap::new(),
                 prompt: Some("Daily digest at {{trigger.time}}\nSecond line.".into()),
             },
@@ -124,6 +125,7 @@ mod tests {
                 }),
                 webhook: None,
                 enabled: false,
+                overlap: "queue".into(),
                 input: std::collections::BTreeMap::new(),
                 prompt: None,
             },
@@ -134,6 +136,7 @@ mod tests {
                     route: "demo-ingest".into(),
                 }),
                 enabled: true,
+                overlap: "skip".into(),
                 input: std::collections::BTreeMap::from([(
                     "question".to_string(),
                     "digest".to_string(),

@@ -359,7 +359,7 @@ to = "lint"
 
 Omit `edges` (or leave empty) for linear hordes — no migration required.
 
-**[`horde_trigger`](./src/horde_trigger.rs):** `HordeTrigger` — optional `[[triggers]]` on manifests / Rookery drafts declaring event-driven runs. **Declaration layer only** (parse + validate + snapshot + Rookery editing); nothing fires yet. `validate_triggers(triggers, base)` returns warnings (watch path missing = warning, not error) or one aggregate error; `parse_cron` is a dependency-free 5-field cron parser (numeric `*` / `N` / `N-M` / `,` / `/step`; day-of-week `7` = Sunday = 0) that expands into `CronSchedule` value sets for the future scheduler. `is_valid_slug` owns the kebab-slug shape shared with horde/step ids.
+**[`horde_trigger`](./src/horde_trigger.rs):** `HordeTrigger` — optional `[[triggers]]` on manifests / Rookery drafts declaring event-driven runs. **Declaration layer only** (parse + validate + snapshot + Rookery editing); the firing runtime lives in the server crate (`kowalski/src/triggers.rs`). `validate_triggers(triggers, base)` returns warnings (watch path missing = warning, not error) or one aggregate error; `parse_cron` is a dependency-free 5-field cron parser (numeric `*` / `N` / `N-M` / `,` / `/step`; day-of-week `7` = Sunday = 0) that expands into `CronSchedule` value sets consumed by the server's minute scheduler. `is_valid_slug` owns the kebab-slug shape shared with horde/step ids. Per-trigger `overlap` (`"skip"` default / `"queue"` / `"parallel"`) declares what a firing does while the trigger's previous run is still in flight.
 
 **Horde manifest `[[triggers]]` TOML (optional, 1.6.0+):**
 
@@ -377,6 +377,8 @@ enabled = false               # declared but skipped by the runtime (default tru
 webhook = { route = "my-horde-ingest" }   # served under /api/triggers/<route>; unique across hordes
 input = { question = "digest" }           # pre-fills operator-form fields by id
 prompt = "Payload: {{trigger.payload}}"   # placeholders: {{trigger.path}} / {{trigger.payload}} / {{trigger.time}}
+overlap = "queue"                         # while a previous run from this trigger is in flight:
+                                          # "skip" (default) / "queue" (park one firing) / "parallel"
 ```
 
 Triggers ride on the spec's manifest snapshot, appear read-only in `/api/hordes`, and are reported by `agent-app validate` (plus non-fatal warnings via `validate_horde_tree_report`).

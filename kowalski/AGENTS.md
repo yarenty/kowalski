@@ -203,12 +203,52 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
   first reference; a reload **never** re-runs the clean.
 - Fixed catalogs (`HordeCatalog::fixed`) serve tests/embedded use — no roots, no reloads.
 - **Triggers (declaration layer):** `[[triggers]]` from `horde.md` parse into
-  `HordeSpec.triggers` (validated at load — invalid cron / duplicate route / unknown keys
-  are a load error like any other manifest problem), ride the manifest snapshot, and are
-  exposed read-only on `GET /api/hordes` (+ detail). Webhook routes are a **global
-  namespace** (future `/api/triggers/<route>`): cross-horde collisions are overlaid on
-  `load_error` in the listing snapshot (not stored), so they clear as soon as one manifest
-  is fixed. Nothing fires yet — scheduling/watch/webhook runtime is a separate layer.
+  `HordeSpec.triggers` (validated at load — invalid cron / duplicate route / unknown keys /
+  unknown `overlap` are a load error like any other manifest problem), ride the manifest
+  snapshot, and are exposed read-only on `GET /api/hordes` (+ detail). Webhook routes are a
+  **global namespace** (`POST /api/triggers/<route>`): cross-horde collisions are overlaid
+  on `load_error` in the listing snapshot (not stored), so they clear as soon as one
+  manifest is fixed.
+
+#### Trigger runtime (`src/triggers.rs`)
+
+- **`TriggerManager`** arms every enabled trigger from the catalog at startup and re-arms
+  on every catalog hot reload (the same debounced watcher callback that rescans the
+  catalog calls `rearm()`). A firing is an ordinary durable run:
+  `origin = "trigger"` (`kowalski_core::db::run_store::RUN_ORIGIN_TRIGGER` — auto-resumed
+  by the startup resume scan like any non-operator run) with
+  `source = "trigger:<cron|watch|webhook>:<horde>"` for provenance, a `trigger_fired`
+  event in the run feed, and the trigger's `prompt` template
+  (`{{trigger.path}}` / `{{trigger.payload}}` / `{{trigger.time}}`) plus validated
+  `input` form answers as the run input. Failures to fire are logged loudly and never
+  crash the server.
+- **Cron:** the 5-field expressions parsed by `kowalski_core::horde_trigger::parse_cron`
+  (hand-rolled, dependency-light) drive a minute scheduler (`spawn_cron_loop`) that checks
+  the armed table once per wall-clock minute, local time. `next_cron_match` scans **naive**
+  wall-clock time (zone-aware day arithmetic would loop forever on DST fall-back days) and
+  is used for the "next fire" log line; `fire_due_cron(now)` is public so tests inject a
+  clock instead of sleeping.
+- **Watch:** all watch triggers share **one** `notify` instance
+  (`fswatch::DynamicWatcher`) whose subscriptions are replaced on re-arm — per-trigger
+  debounce/coalescing lives in a small tokio task per trigger, and the deduplicated
+  changed paths land in the run input. Relative `watch.path` resolves against the horde
+  root; a missing path logs a warning and stays dark until the next re-arm.
+- **Webhook:** `POST /api/triggers/{route}` (auth like any `/api/*` route when enabled;
+  404 unknown/disabled route, 409 cross-horde collision) resolves the route against the
+  live catalog per request — no re-arm needed — and the JSON body becomes
+  `{{trigger.payload}}`.
+- **Overlap policy** (`overlap = "skip" | "queue" | "parallel"`, default skip): while a
+  run from the same trigger is **in flight** — a live orchestrator task owns it (the
+  in-memory registry decides; a run parked awaiting input or an interrupted run nobody
+  resumed never wedges its trigger) — `skip` drops the firing and records a
+  `trigger_skipped` event on the in-flight run; `queue` parks at most one firing (later
+  ones coalesce into it) and fires when the run ends — after re-validating the trigger
+  still exists and is enabled; `parallel` always starts a run.
+- Catalog-watcher callbacks re-arm on every change under the horde roots (run artifacts
+  included); `rearm()` compares the serialized trigger view and no-ops when it is
+  unchanged, so unrelated churn never resets in-flight debounce windows. If a
+  subscription IS replaced mid-burst, the outgoing debounce task fires what it collected
+  instead of dropping the events.
 
 #### Horde run persistence (`src/horde.rs`)
 

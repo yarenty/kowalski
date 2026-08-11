@@ -21,6 +21,24 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Added
 
+- **Trigger runtime — event-driven horde runs (#63):** the `[[triggers]]` declared in
+  `horde.md` (#62) now fire. The server arms every enabled trigger from the horde catalog
+  at startup and re-arms on hot reload: **cron** schedules run on a dependency-free minute
+  scheduler (5-field expressions, local time — the runtime consumes the #62 parser, no
+  cron crate); **watch** triggers share one filesystem-watcher instance with per-trigger
+  debounce, and the deduplicated changed paths become the run input; **webhook** triggers
+  are served at `POST /api/triggers/{route}` (bearer auth like any `/api/*` route when
+  enabled; 404 for unknown or disabled routes, 409 for cross-horde route collisions) with
+  the JSON body as `{{trigger.payload}}`. A firing is an ordinary durable run —
+  `origin = "trigger"`, so a server restart **auto-resumes** it, with
+  `source = "trigger:<kind>:<horde>"` and a `trigger_fired` run event (changed paths /
+  webhook payload included) for the audit trail; failures to fire are logged loudly and
+  never crash the server. New per-trigger `overlap` field (also validated, editable in
+  Rookery, and emitted at birth): while a previous run from the same trigger is in flight,
+  `"skip"` (default) drops the firing and records `trigger_skipped` on the in-flight run,
+  `"queue"` parks at most one firing (newer ones coalesce) and fires when the run ends,
+  `"parallel"` always starts a run. Runs paused awaiting operator input don't count as in
+  flight, so a parked run never wedges its trigger.
 - **Triggers in the horde manifest (#62):** hordes can now declare event-driven runs in
   `horde.md` frontmatter via a `[[triggers]]` TOML array — three kinds: `cron = "0 7 * * *"`
   (5-field, local time; dependency-free parser), `watch = { path, events, debounce_ms }`
@@ -33,7 +51,8 @@ All notable changes to this project will be documented in this file, or at least
   cron, duplicate routes, unknown keys; missing watch paths are a warning), carried on the
   run's manifest snapshot, listed read-only in `GET /api/hordes`, reported by
   `agent-app validate`, and editable in Rookery (draft field + `set_triggers` delta op +
-  written to `horde.md` at birth). Nothing fires yet — the trigger runtime is a follow-up.
+  written to `horde.md` at birth). The firing itself lives in the trigger runtime (#63,
+  above).
 - **Rookery guided interview — per-turn deltas (#58):** the horde builder no longer asks the
   model to emit one complete draft document. Each chat turn now runs two channels: an **ops
   phase** that asks the model for a small batch of typed edit operations (constrained to the

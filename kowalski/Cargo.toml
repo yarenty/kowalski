@@ -43,6 +43,7 @@ reqwest = { workspace = true }
 axum-server = { version = "0.8.0", features = ["tls-rustls"] }
 toml = { workspace = true }
 notify = "8"
+chrono = { workspace = true }
 uuid = { version = "1.7", features = ["v4"] }
 
 [dev-dependencies]

@@ -339,6 +339,10 @@ fn render_trigger_toml(trigger: &crate::horde_trigger::HordeTrigger) -> String {
         ));
     }
     out.push_str(&format!("enabled = {}\n", trigger.enabled));
+    out.push_str(&format!(
+        "overlap = \"{}\"\n",
+        escape_toml_str(&trigger.overlap)
+    ));
     if !trigger.input.is_empty() {
         let inner = trigger
             .input

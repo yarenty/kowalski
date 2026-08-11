@@ -65,6 +65,7 @@ struct ApiState {
     managed_workers: Arc<Mutex<HashMap<String, Child>>>,
     managed_worker_last_exit: Arc<Mutex<HashMap<String, String>>>,
     horde_manager: crate::horde::HordeManager,
+    trigger_manager: crate::triggers::TriggerManager,
     /// This server's own base URL (from `--bind` + TLS scheme) — passed to spawned
     /// workers as `--api` so they call back to the right address.
     api_url: String,
@@ -298,23 +299,33 @@ pub async fn serve(
         }
     }
     crate::horde::spawn_orchestrator_loop(horde_manager.clone());
+    // Trigger runtime: arm every enabled `[[triggers]]` declaration from the
+    // catalog (cron table + shared watch instance) and start the minute
+    // scheduler. Webhook firings arrive via POST /api/triggers/{route}.
+    let trigger_manager = crate::triggers::TriggerManager::new(horde_manager.clone());
+    trigger_manager.rearm().await;
+    crate::triggers::spawn_cron_loop(trigger_manager.clone());
     // Hot reload: one debounced watcher over the horde roots refreshes the
-    // catalog (add/edit/remove without restart) and subscribes the orchestrator
-    // to any new run topics. Held until the server future completes; rescans
-    // never create additional watchers (bounded threads/fds). The catalog also
-    // rescans lazily on every listing/find, so a missing watcher (e.g. a root
-    // created after startup) only loses push-style refresh, not correctness.
+    // catalog (add/edit/remove without restart), subscribes the orchestrator
+    // to any new run topics, and re-arms the trigger runtime. Held until the
+    // server future completes; rescans never create additional watchers
+    // (bounded threads/fds). The catalog also rescans lazily on every
+    // listing/find, so a missing watcher (e.g. a root created after startup)
+    // only loses push-style refresh, not correctness.
     let _horde_watcher = {
         let manager = horde_manager.clone();
+        let triggers = trigger_manager.clone();
         let runtime = tokio::runtime::Handle::current();
         crate::fswatch::spawn_debounced_watcher(
             &horde_roots,
             std::time::Duration::from_millis(500),
             move || {
                 let manager = manager.clone();
+                let triggers = triggers.clone();
                 runtime.spawn(async move {
                     manager.catalog.rescan();
                     crate::horde::ensure_topic_subscriptions(&manager).await;
+                    triggers.rearm().await;
                 });
             },
         )
@@ -341,6 +352,7 @@ pub async fn serve(
         managed_workers: Arc::new(Mutex::new(HashMap::new())),
         managed_worker_last_exit: Arc::new(Mutex::new(HashMap::new())),
         horde_manager,
+        trigger_manager,
         api_url: format!("{}://{}", scheme, addr),
         api_token: api_token.clone(),
         #[cfg(feature = "postgres")]
@@ -390,6 +402,7 @@ pub async fn serve(
             post(post_horde_repair_outputs),
         )
         .route("/api/hordes/{horde_id}/run", post(post_horde_run))
+        .route("/api/triggers/{route}", post(post_trigger_webhook))
         .route(
             "/api/hordes/{horde_id}/clean-workdir",
             post(post_horde_clean_workdir),
@@ -2279,6 +2292,58 @@ async fn post_horde_run(
         "ok": true,
         "run": record,
     })))
+}
+
+/// Webhook trigger firing: the JSON body becomes `{{trigger.payload}}` on the
+/// fired run. Auth (when enabled) applies like any other `/api/*` route; the
+/// route slug must belong to exactly one enabled webhook trigger.
+async fn post_trigger_webhook(
+    State(state): State<ApiState>,
+    AxumPath(route): AxumPath<String>,
+    payload: Option<Json<serde_json::Value>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let entries = state.horde_manager.catalog.list();
+    let (spec, index) = match crate::triggers::resolve_webhook_route(&entries, &route) {
+        Ok(m) => m,
+        Err(crate::triggers::WebhookRouteError::NotFound) => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                format!("no enabled webhook trigger with route `{route}`"),
+            ));
+        }
+        Err(crate::triggers::WebhookRouteError::Duplicate(n)) => {
+            return Err((
+                StatusCode::CONFLICT,
+                format!("route `{route}` is declared by {n} triggers — fix the collision first"),
+            ));
+        }
+    };
+    let payload = payload.map(|Json(v)| v).unwrap_or_else(|| json!({}));
+    match state
+        .trigger_manager
+        .fire_webhook(&spec, index, payload)
+        .await
+    {
+        crate::triggers::FireOutcome::Started(run) => Ok(Json(json!({
+            "ok": true,
+            "fired": true,
+            "run": run,
+        }))),
+        crate::triggers::FireOutcome::Skipped { active_run_id } => Ok(Json(json!({
+            "ok": true,
+            "fired": false,
+            "skipped": true,
+            "active_run_id": active_run_id,
+        }))),
+        crate::triggers::FireOutcome::Queued => Ok(Json(json!({
+            "ok": true,
+            "fired": false,
+            "queued": true,
+        }))),
+        crate::triggers::FireOutcome::Failed(e) => {
+            Err((StatusCode::INTERNAL_SERVER_ERROR, e))
+        }
+    }
 }
 
 async fn post_horde_followup(
