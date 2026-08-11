@@ -228,6 +228,7 @@
           }
         },
         "enabled": { "type": "boolean", "description": "Omitted = true." },
+        "overlap": { "enum": ["skip", "queue", "parallel"], "description": "Firing while a previous run from this trigger is in flight: skip it (default), queue at most one, or run in parallel." },
         "input": {
           "type": "object",
           "description": "Pre-filled operator-form answers keyed by field id (string values)."

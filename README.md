@@ -83,6 +83,15 @@ kowalski/
   owns the child per step (spawn → execute → reap); cancellation and timeouts kill it,
   and the child never talks to the server API. See
   [`kowalski/AGENTS.md`](./kowalski/AGENTS.md) for the trust model.
+- **Event-driven runs**: `[[triggers]]` declared in `horde.md` fire real runs with no
+  chat turn involved — `cron = "0 7 * * *"` (5-field, local time), `watch = { path }`
+  (debounced filesystem events; the changed paths become the run input), and
+  `webhook = { route }` (`POST /api/triggers/<route>`; the JSON body becomes
+  `{{trigger.payload}}`). Trigger-fired runs persist like any other and **auto-resume**
+  after a restart; watchers and schedules re-arm on startup and on horde hot reload. A
+  per-trigger `overlap` policy (`skip` default / `queue` / `parallel`) decides what a
+  firing does while the previous run is still in flight, and every firing (or skip) is
+  recorded on the run's event feed.
 - Build with **`--features postgres`** for SQL memory + pgvector bindings and **`POST /api/graph/cypher`** (Apache AGE) on `serve`.
 
 ### **kowalski-mcp-datafusion**

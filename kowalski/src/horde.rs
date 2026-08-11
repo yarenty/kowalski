@@ -1006,6 +1006,19 @@ impl HordeManager {
         }
     }
 
+    /// Append an audit event to a run: the in-memory registry (when the run is
+    /// live) plus the persistent store. Used by the trigger runtime to record
+    /// firings and skipped firings on the affected run.
+    pub async fn record_run_event(&self, run_id: &str, event: serde_json::Value) {
+        {
+            let mut runs = self.runs.lock().await;
+            if let Some(run) = runs.runs.get_mut(run_id) {
+                run.events.push(event.clone());
+            }
+        }
+        self.persist_event(run_id, &event).await;
+    }
+
     pub fn find(&self, horde_id: &str) -> Option<Arc<HordeSpec>> {
         self.catalog.find(horde_id)
     }
@@ -2809,6 +2822,7 @@ pub fn default_horde_roots(config_dir: Option<&Path>) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kowalski_core::db::run_store::RUN_ORIGIN_TRIGGER;
     use kowalski_core::federation::{AgentRecord, AgentRegistry};
 
     fn sub(name: &str) -> SubAgentSpec {
@@ -3366,7 +3380,7 @@ mod tests {
         seed_interrupted_run(
             &store,
             "run-trig",
-            "trigger",
+            RUN_ORIGIN_TRIGGER,
             RunStatus::Running,
             &[("a", "out/a.md")],
             Some("b"),

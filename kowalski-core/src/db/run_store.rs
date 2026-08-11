@@ -20,8 +20,13 @@ use std::str::FromStr;
 pub const RUN_DB_FILE_NAME: &str = "runs.sqlite";
 
 /// Default `origin` for runs started by an operator (UI or manual API call).
-/// Non-operator origins (e.g. `"trigger"`) may be auto-resumed on server startup.
+/// Non-operator origins (e.g. [`RUN_ORIGIN_TRIGGER`]) may be auto-resumed on
+/// server startup.
 pub const RUN_ORIGIN_OPERATOR: &str = "operator";
+
+/// `origin` for runs fired by a horde trigger (cron / watch / webhook). The
+/// startup resume scan auto-resumes these — no operator confirmation involved.
+pub const RUN_ORIGIN_TRIGGER: &str = "trigger";
 
 /// Run lifecycle. `AwaitingInput` is durable by construction: waiting for operator
 /// input ends the executor task, so such runs survive restarts untouched.

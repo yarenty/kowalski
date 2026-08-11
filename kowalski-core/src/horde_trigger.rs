@@ -18,6 +18,13 @@ pub const DEFAULT_WATCH_EVENTS: &[&str] = &["create", "modify"];
 /// Default `watch.debounce_ms` when the manifest omits it.
 pub const DEFAULT_WATCH_DEBOUNCE_MS: u64 = 2000;
 
+/// Allowed `overlap` policies: what a firing does while a previous run from the
+/// same trigger is still in flight.
+pub const OVERLAP_POLICIES: &[&str] = &["skip", "queue", "parallel"];
+
+/// Default `overlap` when the manifest omits it.
+pub const DEFAULT_TRIGGER_OVERLAP: &str = "skip";
+
 /// One `[[triggers]]` entry: exactly one of `cron` / `watch` / `webhook`, plus common
 /// optional fields. Unknown keys are rejected at parse time.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -33,6 +40,11 @@ pub struct HordeTrigger {
     /// Disabled triggers still parse and validate; the runtime skips them.
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// Overlap policy while a previous run from this trigger is in flight:
+    /// `skip` (default) drops the firing, `queue` holds at most one pending
+    /// firing, `parallel` always starts a run. See [`OVERLAP_POLICIES`].
+    #[serde(default = "default_overlap")]
+    pub overlap: String,
     /// Pre-filled operator-form answers keyed by `run_form` field id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub input: BTreeMap<String, String>,
@@ -44,6 +56,10 @@ pub struct HordeTrigger {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_overlap() -> String {
+    DEFAULT_TRIGGER_OVERLAP.to_string()
 }
 
 /// `watch = { path = "...", events = [...], debounce_ms = ... }`.
@@ -154,6 +170,14 @@ pub fn validate_triggers(
                 ));
                 continue;
             }
+        }
+
+        if !OVERLAP_POLICIES.contains(&t.overlap.as_str()) {
+            errs.push(format!(
+                "trigger {n}: unknown overlap policy `{}` (allowed: {})",
+                t.overlap,
+                OVERLAP_POLICIES.join(", ")
+            ));
         }
 
         if let Some(expr) = &t.cron
@@ -326,6 +350,7 @@ mod tests {
             watch: None,
             webhook: None,
             enabled: true,
+            overlap: default_overlap(),
             input: BTreeMap::new(),
             prompt: None,
         }
@@ -337,6 +362,7 @@ mod tests {
             watch: None,
             webhook: Some(WebhookTrigger { route: route.into() }),
             enabled: true,
+            overlap: default_overlap(),
             input: BTreeMap::new(),
             prompt: None,
         }
@@ -400,6 +426,7 @@ mod tests {
                 }),
                 webhook: None,
                 enabled: true,
+                overlap: default_overlap(),
                 input: BTreeMap::new(),
                 prompt: Some("Process {{trigger.path}} at {{trigger.time}}".into()),
             },
@@ -421,6 +448,7 @@ mod tests {
             watch: None,
             webhook: None,
             enabled: true,
+            overlap: default_overlap(),
             input: BTreeMap::new(),
             prompt: None,
         };
@@ -443,6 +471,15 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(e.contains("[a-z0-9][a-z0-9-]*"), "{e}");
+    }
+
+    #[test]
+    fn validate_rejects_unknown_overlap_policy() {
+        let mut t = cron_trigger("0 7 * * *");
+        t.overlap = "always".into();
+        let e = validate_triggers(&[t], None).unwrap_err().to_string();
+        assert!(e.contains("unknown overlap policy `always`"), "{e}");
+        assert!(e.contains("skip, queue, parallel"), "{e}");
     }
 
     #[test]
@@ -484,11 +521,14 @@ enabled = false
 webhook = { route = "my-ingest" }
 input = { question = "daily digest" }
 prompt = "Payload: {{trigger.payload}}"
+overlap = "queue"
 "#,
         )
         .unwrap();
         assert_eq!(doc.triggers.len(), 3);
         assert!(doc.triggers[0].enabled);
+        assert_eq!(doc.triggers[0].overlap, DEFAULT_TRIGGER_OVERLAP);
+        assert_eq!(doc.triggers[2].overlap, "queue");
         let w = doc.triggers[1].watch.as_ref().unwrap();
         assert_eq!(w.events, default_watch_events());
         assert_eq!(w.debounce_ms, DEFAULT_WATCH_DEBOUNCE_MS);
