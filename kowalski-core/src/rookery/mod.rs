@@ -34,6 +34,7 @@ pub use repair::repair_horde_tree_outputs;
 pub use types::{HordeBirthSpec, PenguinSpec, RookeryDraft};
 pub use validate::{
     validate_draft, validate_draft_with, validate_horde_id, validate_horde_tree,
+    validate_horde_tree_report,
     validate_step_name, validate_workdir_relative_path, DraftStrictness,
 };
 pub use writer::{horde_root_path, write_horde_tree};
@@ -96,6 +97,55 @@ mod tests {
             write_horde_tree(dir.path(), &HordeBirthSpec::new(draft2).with_overwrite(true)).unwrap();
         let body = fs::read_to_string(root.join("horde.md")).unwrap();
         assert!(body.contains("v2"));
+    }
+
+    /// A draft with all three trigger kinds writes `[[triggers]]` blocks that re-parse into
+    /// the exact same triggers (writer emits every field, defaults included).
+    #[test]
+    fn write_triggers_round_trip() {
+        use crate::horde_trigger::{HordeTrigger, WatchTrigger, WebhookTrigger};
+        let dir = tempdir().unwrap();
+        let mut draft = minimal_linear_draft();
+        draft.triggers = vec![
+            HordeTrigger {
+                cron: Some("0 7 * * *".into()),
+                watch: None,
+                webhook: None,
+                enabled: true,
+                input: std::collections::BTreeMap::new(),
+                prompt: Some("Daily digest at {{trigger.time}}\nSecond line.".into()),
+            },
+            HordeTrigger {
+                cron: None,
+                watch: Some(WatchTrigger {
+                    path: "inbox".into(),
+                    events: vec!["create".into(), "modify".into()],
+                    debounce_ms: 500,
+                }),
+                webhook: None,
+                enabled: false,
+                input: std::collections::BTreeMap::new(),
+                prompt: None,
+            },
+            HordeTrigger {
+                cron: None,
+                watch: None,
+                webhook: Some(WebhookTrigger {
+                    route: "demo-ingest".into(),
+                }),
+                enabled: true,
+                input: std::collections::BTreeMap::from([(
+                    "question".to_string(),
+                    "digest".to_string(),
+                )]),
+                prompt: Some("Payload: {{trigger.payload}}".into()),
+            },
+        ];
+        let expected = draft.triggers.clone();
+        let root = write_horde_tree(dir.path(), &HordeBirthSpec::new(draft)).unwrap();
+        validate_horde_tree(&root).expect("written tree with triggers should validate");
+        let manifest = parse_app_manifest(&resolve_manifest_path(&root)).unwrap();
+        assert_eq!(manifest.triggers, expected);
     }
 
     #[test]

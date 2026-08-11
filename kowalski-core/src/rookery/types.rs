@@ -1,6 +1,7 @@
 //! Rookery draft types (linear pipeline in 1.3.0; optional `edges[]` in 1.5.0+).
 
 use crate::horde_graph::HordeEdge;
+use crate::horde_trigger::HordeTrigger;
 use crate::operator_input::OperatorInputField;
 use serde::{Deserialize, Serialize};
 
@@ -17,6 +18,9 @@ pub struct RookeryDraft {
     /// Optional DAG edges; absent or empty → implicit chain along `pipeline`.
     #[serde(default)]
     pub edges: Vec<HordeEdge>,
+    /// Optional event-driven run declarations (`[[triggers]]` in horde.md).
+    #[serde(default)]
+    pub triggers: Vec<HordeTrigger>,
     pub penguins: Vec<PenguinSpec>,
     #[serde(default)]
     pub default_question: Option<String>,
@@ -49,6 +53,7 @@ impl RookeryDraft {
             capability_prefix: None,
             pipeline: Vec::new(),
             edges: Vec::new(),
+            triggers: Vec::new(),
             penguins: Vec::new(),
             default_question: None,
             default_topic: None,

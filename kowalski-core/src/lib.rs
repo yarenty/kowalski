@@ -8,6 +8,7 @@ pub mod graph;
 pub mod horde_graph;
 pub mod horde_stages;
 pub mod horde_step;
+pub mod horde_trigger;
 pub mod llm;
 pub mod source_bundle;
 pub mod logging;
@@ -61,6 +62,10 @@ pub use horde_graph::{
     outbound_edges, resolve_execution_graph, retry_span, select_next_from_outcome,
     should_persist_edges, single_forward_predecessor, single_predecessor, ExecutionGraph, HordeEdge,
 };
+pub use horde_trigger::{
+    is_valid_slug, parse_cron, validate_triggers, CronSchedule, HordeTrigger, WatchTrigger,
+    WebhookTrigger, DEFAULT_WATCH_DEBOUNCE_MS, DEFAULT_WATCH_EVENTS, WATCH_EVENTS,
+};
 pub use markdown_pipeline::{
     maybe_normalize_markdown, parse_app_manifest, parse_stage_agent, render_context_attachments,
     resolve_manifest_path, AppManifestMeta, StageAgentMeta,
@@ -72,7 +77,8 @@ pub use operator_input::{
 pub use rookery::{
     assign_penguin_avatars, extract_json_block, horde_root_path, infer_penguin_avatar,
     minimal_dag_draft, minimal_linear_draft, parse_draft_from_assistant, normalize_draft, output_looks_invalid,
-    repair_horde_tree_outputs, validate_draft, validate_horde_tree, write_horde_tree,
+    repair_horde_tree_outputs, validate_draft, validate_horde_tree, validate_horde_tree_report,
+    write_horde_tree,
     HordeBirthSpec, PenguinSpec, RookeryDraft,
 };
 pub use mcp::{

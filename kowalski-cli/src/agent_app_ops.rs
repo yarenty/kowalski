@@ -5,7 +5,8 @@
 use kowalski_core::{
     has_conditional_outbound, is_loop_back_step, loop_edge_key,
     next_ready_step_conditional, parse_stage_status_from_artifact, resolve_execution_graph,
-    retry_span, select_next_from_outcome, single_forward_predecessor, StageStatus, validate_horde_tree,
+    retry_span, select_next_from_outcome, single_forward_predecessor, StageStatus,
+    validate_horde_tree_report,
 };
 use kowalski_core::markdown_pipeline::{
     maybe_normalize_markdown, parse_app_manifest, parse_stage_agent, render_context_attachments,
@@ -142,8 +143,18 @@ pub fn list_agents(path: Option<&str>) -> Result<(), Box<dyn std::error::Error>>
 
 pub fn validate(path: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     let root = app_root(path);
-    validate_horde_tree(&root).map_err(|e| e.to_string())?;
+    let warnings = validate_horde_tree_report(&root).map_err(|e| e.to_string())?;
     println!("OK - manifest + agents/ definitions are valid");
+    let meta = parse_app_manifest(&resolve_manifest_path(&root))?;
+    if !meta.triggers.is_empty() {
+        println!("triggers:");
+        for t in &meta.triggers {
+            println!("- {}", t.summary());
+        }
+    }
+    for w in &warnings {
+        println!("warning: {w}");
+    }
     Ok(())
 }
 

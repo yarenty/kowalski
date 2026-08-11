@@ -232,6 +232,7 @@ mod tests {
                 "Deliver".into(),
             ],
             edges: vec![],
+            triggers: vec![],
             penguins: vec![
                 PenguinSpec {
                     name: "Ingest".into(),

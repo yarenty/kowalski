@@ -25,6 +25,7 @@ use serde_json::{json, Value};
 
 use crate::error::KowalskiError;
 use crate::horde_graph::HordeEdge;
+use crate::horde_trigger::HordeTrigger;
 use crate::rookery::avatars::infer_penguin_avatar;
 use crate::rookery::normalize::default_output_for_penguin;
 use crate::rookery::types::{PenguinSpec, RookeryDraft};
@@ -101,6 +102,8 @@ pub enum DeltaOp {
     Reorder { pipeline: Vec<String> },
     /// Replace the draft's DAG edges. Empty = implicit linear chain along `pipeline`.
     SetEdges { edges: Vec<HordeEdge> },
+    /// Replace the draft's triggers (cron / watch / webhook). Empty = no automatic runs.
+    SetTriggers { triggers: Vec<HordeTrigger> },
     /// Replace the entire draft (whole-document escape hatch for capable models).
     /// The draft `id` is server-owned and preserved.
     ReplaceDraft { draft: Value },
@@ -119,6 +122,7 @@ impl DeltaOp {
             DeltaOp::RemoveStep { .. } => "remove_step",
             DeltaOp::Reorder { .. } => "reorder",
             DeltaOp::SetEdges { .. } => "set_edges",
+            DeltaOp::SetTriggers { .. } => "set_triggers",
             DeltaOp::ReplaceDraft { .. } => "replace_draft",
         }
     }
@@ -353,6 +357,11 @@ pub fn apply_op(draft: &mut RookeryDraft, op: &DeltaOp) -> Result<(), KowalskiEr
 
         DeltaOp::SetEdges { edges } => {
             draft.edges = edges.clone();
+            Ok(())
+        }
+
+        DeltaOp::SetTriggers { triggers } => {
+            draft.triggers = triggers.clone();
             Ok(())
         }
 
@@ -886,6 +895,45 @@ mod tests {
         assert!(outcome.is_complete(), "outcome: {outcome:?}");
     }
 
+    /// set_triggers replaces the list; an invalid trigger (bad cron / duplicate route) fails
+    /// post-op draft validation and rolls back.
+    #[test]
+    fn set_triggers_applies_and_invalid_is_rolled_back() {
+        let mut draft = draft();
+        let batch = DeltaBatch::from_value(&json!({ "ops": [{ "op": "set_triggers", "triggers": [
+            { "cron": "0 7 * * *" },
+            { "watch": { "path": "inbox" }, "prompt": "Changed: {{trigger.path}}" },
+            { "webhook": { "route": "my-ingest" }, "enabled": false }
+        ]}] }))
+        .unwrap();
+        let outcome = apply_batch(&mut draft, &batch);
+        assert!(outcome.is_complete(), "outcome: {outcome:?}");
+        assert_eq!(draft.triggers.len(), 3);
+        assert_eq!(draft.triggers[0].kind(), "cron");
+
+        let base = draft.clone();
+        for triggers in [
+            json!([{ "cron": "99 7 * * *" }]),
+            json!([{ "webhook": { "route": "r1" } }, { "webhook": { "route": "r1" } }]),
+        ] {
+            let batch = DeltaBatch::from_value(
+                &json!({ "ops": [{ "op": "set_triggers", "triggers": triggers }] }),
+            )
+            .unwrap();
+            let outcome = apply_batch(&mut draft, &batch);
+            assert_eq!(outcome.applied, 0, "triggers should be rejected");
+            assert_eq!(draft, base, "draft must be rolled back");
+        }
+
+        let clear = DeltaBatch {
+            ops: vec![DeltaOp::SetTriggers {
+                triggers: Vec::new(),
+            }],
+        };
+        assert!(apply_batch(&mut draft, &clear).is_complete());
+        assert!(draft.triggers.is_empty());
+    }
+
     /// reorder on a DAG draft keeps the graph valid (edges are id-based, not position-based).
     #[test]
     fn reorder_on_dag_draft_keeps_graph_valid() {
@@ -1034,6 +1082,9 @@ mod tests {
                 pipeline: vec!["s".into()],
             },
             DeltaOp::SetEdges { edges: Vec::new() },
+            DeltaOp::SetTriggers {
+                triggers: Vec::new(),
+            },
             DeltaOp::ReplaceDraft { draft: json!({}) },
         ];
         let mut kinds: Vec<&str> = ops.iter().map(|o| o.kind()).collect();
@@ -1094,6 +1145,11 @@ mod tests {
             { "op": "reorder", "pipeline": ["collect"] },
             { "op": "set_edges", "edges": [
                 { "from": "a", "to": "b", "when": "fail", "max_loops": 2 } ] },
+            { "op": "set_triggers", "triggers": [
+                { "cron": "0 7 * * *", "prompt": "Daily digest at {{trigger.time}}" },
+                { "watch": { "path": "inbox", "events": ["create"], "debounce_ms": 500 } },
+                { "webhook": { "route": "my-ingest" }, "enabled": false,
+                  "input": { "question": "digest" } } ] },
             { "op": "remove_step", "step_id": "collect" },
             { "op": "replace_draft", "draft": { "id": "x" } }
         ]});
@@ -1107,6 +1163,11 @@ mod tests {
             json!({ "ops": [{ "op": "set_prompt", "step_id": "s" }] }),
             json!({ "ops": [{ "op": "set_edges", "edges": [{ "from": "a" }] }] }),
             json!({ "ops": [{ "op": "set_meta", "extra": true }] }),
+            json!({ "ops": [{ "op": "set_triggers", "triggers": [{ "frequency": "daily" }] }] }),
+            json!({ "ops": [{ "op": "set_triggers", "triggers": [
+                { "watch": { "path": "x", "events": ["created"] } } ] }] }),
+            json!({ "ops": [{ "op": "set_triggers", "triggers": [
+                { "webhook": { "route": "Bad Route" } } ] }] }),
         ] {
             assert!(!validator.is_valid(&bad), "should reject: {bad}");
         }

@@ -21,6 +21,7 @@
           { "$ref": "#/$defs/remove_step" },
           { "$ref": "#/$defs/reorder" },
           { "$ref": "#/$defs/set_edges" },
+          { "$ref": "#/$defs/set_triggers" },
           { "$ref": "#/$defs/replace_draft" }
         ]
       }
@@ -178,6 +179,62 @@
           "type": "integer",
           "minimum": 1,
           "description": "Required (with when) on loop-back edges."
+        }
+      }
+    },
+    "set_triggers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "triggers"],
+      "properties": {
+        "op": { "const": "set_triggers" },
+        "triggers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/trigger" },
+          "description": "Replaces the draft's triggers. Empty array = no automatic runs."
+        }
+      }
+    },
+    "trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cron": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "5-field cron expression (minute hour day-of-month month day-of-week), local time. Exactly one of cron/watch/webhook per trigger — enforced server-side."
+        },
+        "watch": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path"],
+          "properties": {
+            "path": { "type": "string", "minLength": 1, "maxLength": 300, "description": "Watched file or directory; relative paths resolve against the horde root." },
+            "events": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "enum": ["create", "modify", "remove"] },
+              "description": "Omitted = [\"create\", \"modify\"]."
+            },
+            "debounce_ms": { "type": "integer", "minimum": 0, "description": "Omitted = 2000." }
+          }
+        },
+        "webhook": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["route"],
+          "properties": {
+            "route": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "maxLength": 100, "description": "Route slug, unique across hordes; served under /api/triggers/<route>." }
+          }
+        },
+        "enabled": { "type": "boolean", "description": "Omitted = true." },
+        "input": {
+          "type": "object",
+          "description": "Pre-filled operator-form answers keyed by field id (string values)."
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Run prompt template; placeholders {{trigger.path}}, {{trigger.payload}}, {{trigger.time}}."
         }
       }
     },

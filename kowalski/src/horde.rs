@@ -17,12 +17,13 @@ use kowalski_core::db::run_store::{
 };
 use kowalski_core::federation::{AclEnvelope, AclMessage, FederationOrchestrator, MpscBroker};
 use kowalski_core::{
-    ExecutionGraph, HordeEdge, ISOLATION_PROCESS, IsolatedStepEvent, IsolatedStepRequest,
-    StageStatus, StepContext, StepEventSink, StepHandler, StepHandlerRegistry, StepOutcome,
-    StepSpec, all_steps_successful, has_conditional_outbound, is_loop_back_step,
-    is_valid_isolation, loop_edge_key, next_ready_step_conditional,
+    ExecutionGraph, HordeEdge, HordeTrigger, ISOLATION_PROCESS, IsolatedStepEvent,
+    IsolatedStepRequest, StageStatus, StepContext, StepEventSink, StepHandler,
+    StepHandlerRegistry, StepOutcome, StepSpec, all_steps_successful, has_conditional_outbound,
+    is_loop_back_step, is_valid_isolation, loop_edge_key, next_ready_step_conditional,
     parse_stage_status_from_artifact, resolve_execution_graph, retry_span,
-    select_next_from_outcome, single_forward_predecessor, verify_output_excerpt,
+    select_next_from_outcome, single_forward_predecessor, validate_triggers,
+    verify_output_excerpt,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -73,6 +74,9 @@ pub struct HordeMeta {
     pub pipeline: Vec<String>,
     #[serde(default)]
     pub edges: Vec<HordeEdge>,
+    /// Optional event-driven run declarations (`[[triggers]]`): cron / watch / webhook.
+    #[serde(default)]
+    pub triggers: Vec<HordeTrigger>,
     #[serde(default)]
     pub default_question: Option<String>,
     #[serde(default)]
@@ -183,6 +187,9 @@ pub struct HordeSpec {
     /// Explicit `[[edges]]` from manifest (empty = linear horde).
     #[serde(default)]
     pub manifest_edges: Vec<HordeEdge>,
+    /// Validated `[[triggers]]` from manifest (declaration only until a trigger runtime lands).
+    #[serde(default)]
+    pub triggers: Vec<HordeTrigger>,
     #[serde(skip, default = "empty_execution_graph")]
     pub execution_graph: ExecutionGraph,
     pub default_question: String,
@@ -362,6 +369,10 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
     let execution_graph =
         resolve_execution_graph(&meta.pipeline, edge_slice).map_err(|e| e.to_string())?;
 
+    for warning in validate_triggers(&meta.triggers, Some(root)).map_err(|e| e.to_string())? {
+        log::warn!("horde `{}`: {}", meta.id, warning);
+    }
+
     let run_form =
         sub_agents
             .iter()
@@ -379,6 +390,7 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
         capability_prefix: prefix,
         pipeline: meta.pipeline.clone(),
         manifest_edges: meta.edges.clone(),
+        triggers: meta.triggers.clone(),
         execution_graph,
         default_question: meta
             .default_question
@@ -482,6 +494,40 @@ fn horde_fingerprint(root: &Path) -> HordeFingerprint {
         }
     }
     out
+}
+
+/// Mark every horde whose webhook trigger route is also declared by another horde
+/// (routes are a global namespace under `/api/triggers/`). Real load errors keep priority.
+fn flag_duplicate_webhook_routes(entries: &mut [HordeCatalogEntry]) {
+    let mut owners: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for e in entries.iter() {
+        for t in &e.spec.triggers {
+            if let Some(h) = &t.webhook {
+                owners.entry(h.route.as_str()).or_default().push(e.spec.id.as_str());
+            }
+        }
+    }
+    let mut flagged: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (route, ids) in owners {
+        if ids.len() < 2 {
+            continue;
+        }
+        for id in &ids {
+            let others: Vec<&str> = ids.iter().filter(|o| *o != id).copied().collect();
+            flagged.entry(id.to_string()).or_default().push(format!(
+                "webhook route `{}` is also declared by horde `{}` (routes must be unique across hordes)",
+                route,
+                others.join("`, `")
+            ));
+        }
+    }
+    for e in entries.iter_mut() {
+        if e.load_error.is_none()
+            && let Some(msgs) = flagged.get(e.spec.id.as_str())
+        {
+            e.load_error = Some(msgs.join("; "));
+        }
+    }
 }
 
 /// One catalog slot: the last successfully loaded spec plus reload state.
@@ -643,12 +689,17 @@ impl HordeCatalog {
     }
 
     /// Snapshot of the catalog after a rescan — always reflects disk.
+    /// Webhook routes must be unique **across** hordes; collisions are overlaid on the
+    /// snapshot's `load_error` (not stored), so they clear as soon as a manifest is fixed.
     pub fn list(&self) -> Vec<HordeCatalogEntry> {
         self.rescan();
-        self.entries
+        let mut entries: Vec<HordeCatalogEntry> = self
+            .entries
             .read()
             .expect("horde catalog lock poisoned")
-            .clone()
+            .clone();
+        flag_duplicate_webhook_routes(&mut entries);
+        entries
     }
 
     /// Resolve one horde, lazily reloading it if its files changed; a miss triggers
@@ -2790,6 +2841,7 @@ mod tests {
             capability_prefix: "test".into(),
             pipeline,
             manifest_edges: Vec::new(),
+            triggers: Vec::new(),
             execution_graph,
             default_question: "default question".into(),
             topic: "test.topic".into(),
@@ -4231,6 +4283,124 @@ mod tests {
         let err = load_horde(dir.path()).unwrap_err().to_string();
         assert!(err.contains("isolation"), "error: {err}");
         assert!(err.contains("container"), "error: {err}");
+    }
+
+    /// `[[triggers]]` frontmatter (all three kinds) parses into the spec, survives the
+    /// manifest snapshot round-trip, and invalid declarations are load-time errors.
+    #[test]
+    fn triggers_frontmatter_parses_validates_and_snapshots() {
+        let dir = tempfile::tempdir().unwrap();
+        write_fixture_horde(dir.path());
+        let manifest = std::fs::read_to_string(dir.path().join("horde.md")).unwrap();
+        let with_triggers = manifest.replacen(
+            "\n---\n",
+            "\n\n[[triggers]]\ncron = \"0 7 * * *\"\nprompt = \"Daily at {{trigger.time}}\"\n\n[[triggers]]\nwatch = { path = \"inbox\", events = [\"create\", \"modify\"], debounce_ms = 500 }\nenabled = false\n\n[[triggers]]\nwebhook = { route = \"it-ingest\" }\ninput = { question = \"digest\" }\n---\n",
+            1,
+        );
+        std::fs::write(dir.path().join("horde.md"), &with_triggers).unwrap();
+
+        let spec = load_horde(dir.path()).unwrap();
+        assert_eq!(spec.triggers.len(), 3);
+        assert_eq!(spec.triggers[0].kind(), "cron");
+        assert_eq!(spec.triggers[1].kind(), "watch");
+        assert!(!spec.triggers[1].enabled);
+        assert_eq!(
+            spec.triggers[2].webhook.as_ref().unwrap().route,
+            "it-ingest"
+        );
+
+        let snapshot = serde_json::to_value(&spec).unwrap();
+        let restored = HordeSpec::from_snapshot(&snapshot).unwrap();
+        assert_eq!(restored.triggers, spec.triggers);
+
+        // Invalid cron → precise load error.
+        std::fs::write(
+            dir.path().join("horde.md"),
+            manifest.replacen(
+                "\n---\n",
+                "\n\n[[triggers]]\ncron = \"99 7 * * *\"\n---\n",
+                1,
+            ),
+        )
+        .unwrap();
+        let err = load_horde(dir.path()).unwrap_err().to_string();
+        assert!(err.contains("out of range 0-59"), "error: {err}");
+
+        // Duplicate webhook route within one manifest → load error.
+        std::fs::write(
+            dir.path().join("horde.md"),
+            manifest.replacen(
+                "\n---\n",
+                "\n\n[[triggers]]\nwebhook = { route = \"r1\" }\n\n[[triggers]]\nwebhook = { route = \"r1\" }\n---\n",
+                1,
+            ),
+        )
+        .unwrap();
+        let err = load_horde(dir.path()).unwrap_err().to_string();
+        assert!(err.contains("duplicate webhook route `r1`"), "error: {err}");
+
+        // Unknown trigger key → load error.
+        std::fs::write(
+            dir.path().join("horde.md"),
+            manifest.replacen(
+                "\n---\n",
+                "\n\n[[triggers]]\ncron = \"0 7 * * *\"\nfrequency = \"daily\"\n---\n",
+                1,
+            ),
+        )
+        .unwrap();
+        let err = load_horde(dir.path()).unwrap_err().to_string();
+        assert!(err.contains("frequency"), "error: {err}");
+    }
+
+    /// Webhook routes are a global namespace: two hordes claiming the same route are both
+    /// flagged in the listing, and the flag clears once one manifest is fixed.
+    #[test]
+    fn catalog_flags_duplicate_webhook_routes_across_hordes() {
+        let root = tempfile::tempdir().unwrap();
+        let write_with_route = |dir: &Path, id: &str, route: &str| {
+            write_fixture_horde_with(dir, id, id, &["a", "b"]);
+            let manifest = std::fs::read_to_string(dir.join("horde.md")).unwrap();
+            std::fs::write(
+                dir.join("horde.md"),
+                manifest.replacen(
+                    "\n---\n",
+                    &format!("\n\n[[triggers]]\nwebhook = {{ route = \"{route}\" }}\n---\n"),
+                    1,
+                ),
+            )
+            .unwrap();
+        };
+        let h1 = root.path().join("h1");
+        let h2 = root.path().join("h2");
+        std::fs::create_dir_all(&h1).unwrap();
+        std::fs::create_dir_all(&h2).unwrap();
+        write_with_route(&h1, "horde-one", "shared-route");
+        write_with_route(&h2, "horde-two", "shared-route");
+
+        let catalog = HordeCatalog::with_roots(vec![root.path().to_path_buf()]);
+        let entries = catalog.list();
+        assert_eq!(entries.len(), 2);
+        for e in &entries {
+            let err = e.load_error.as_deref().unwrap_or_default();
+            assert!(
+                err.contains("webhook route `shared-route`"),
+                "horde `{}` should be flagged, got: {err:?}",
+                e.spec.id
+            );
+        }
+
+        // Fix one manifest → the collision clears for both on the next listing.
+        write_with_route(&h2, "horde-two", "other-route");
+        let entries = catalog.list();
+        for e in &entries {
+            assert!(
+                e.load_error.is_none(),
+                "horde `{}` should be clean after fix, got: {:?}",
+                e.spec.id,
+                e.load_error
+            );
+        }
     }
 
     // --- Horde catalog hot reload (KWC-2.3) ---
