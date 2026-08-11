@@ -323,9 +323,9 @@ command = ["docker", "mcp", "gateway", "run"]
 
 **[`source_bundle`](./src/source_bundle.rs):** builds `raw/*.md` bundles under the given root (typically `workdir/debug`, so **`debug/raw/`**) from URL / file / text tokens (used by `kowalski-cli` worker ingest and any future server-side ingest). Uses **`tools::internal::github`** and **`tools::internal::web`** (HTML heuristic → Markdown). Not horde-specific.
 
-**[`rookery`](./src/rookery/):** horde builder — `RookeryDraft`, `validate_draft`, `validate_horde_tree`, `write_horde_tree`. Optional DAG scheduling via **`[[edges]]`** in manifest / draft (see [`horde_graph`](./src/horde_graph.rs)). **`write_horde_tree`** emits `[[edges]]` only when the graph differs from an implicit linear chain. Builder system prompt: [`../resources/prompts/rookery/builder.md`](../resources/prompts/rookery/builder.md). Fixtures: `minimal_linear_draft()`, `minimal_dag_draft()`.
+**[`rookery`](./src/rookery/):** horde builder — `RookeryDraft`, `validate_draft`, `validate_horde_tree`, `write_horde_tree`. Optional DAG scheduling via **`[[edges]]`** in manifest / draft (see [`horde_graph`](./src/horde_graph.rs)). **`write_horde_tree`** emits `[[edges]]` only when the graph differs from an implicit linear chain, and one `[[triggers]]` block per draft trigger (every field, defaults included, so a round-trip through the parser reproduces the draft). Builder system prompt: [`../resources/prompts/rookery/builder.md`](../resources/prompts/rookery/builder.md). Fixtures: `minimal_linear_draft()`, `minimal_dag_draft()`.
 
-**Builder delta ops ([`rookery/delta.rs`](./src/rookery/delta.rs)):** typed edit commands for drafts, built for small local models that can't emit a whole document reliably. `DeltaOp` (serde tag `op`, snake_case: `set_meta`, `add_step`, `update_step`, `set_prompt`, `bind_tool`, `unbind_tool`, `remove_step`, `reorder`, `set_edges`, `replace_draft`) in a `DeltaBatch { ops }` envelope. `apply_batch` applies ops **in order** with **prefix-apply** semantics: snapshot before each op, validate at `DraftStrictness::Draft` after each (`validate_draft_with`; `Draft` allows empty display name / pipeline / prompts / outputs while structural rules stay enforced — `validate_draft` = `Birth`), and on the first failure roll back to the last good state and return `BatchOutcome { applied, error: { index, message } }`. The draft `id` is server-owned: no op edits it; `replace_draft` (whole-document escape hatch for capable models) preserves it. Contract asset: [`resources/schemas/rookery-delta.schema.json`](./resources/schemas/rookery-delta.schema.json), embedded via `base_delta_schema()`; `build_delta_schema(DeltaSchemaOptions)` shapes the per-turn variant (`max_ops` cap, `replace_draft` opt-in), and `unsupported_schema_feature` / `ensure_schema_supported` guard the conservative JSON Schema subset that constrained-decoding backends support (no `patternProperties`, `uniqueItems`, `contains`, `multipleOf`, exotic `format`s, length/count bounds over 1024).
+**Builder delta ops ([`rookery/delta.rs`](./src/rookery/delta.rs)):** typed edit commands for drafts, built for small local models that can't emit a whole document reliably. `DeltaOp` (serde tag `op`, snake_case: `set_meta`, `add_step`, `update_step`, `set_prompt`, `bind_tool`, `unbind_tool`, `remove_step`, `reorder`, `set_edges`, `set_triggers`, `replace_draft`) in a `DeltaBatch { ops }` envelope. `apply_batch` applies ops **in order** with **prefix-apply** semantics: snapshot before each op, validate at `DraftStrictness::Draft` after each (`validate_draft_with`; `Draft` allows empty display name / pipeline / prompts / outputs while structural rules stay enforced — `validate_draft` = `Birth`), and on the first failure roll back to the last good state and return `BatchOutcome { applied, error: { index, message } }`. The draft `id` is server-owned: no op edits it; `replace_draft` (whole-document escape hatch for capable models) preserves it. Contract asset: [`resources/schemas/rookery-delta.schema.json`](./resources/schemas/rookery-delta.schema.json), embedded via `base_delta_schema()`; `build_delta_schema(DeltaSchemaOptions)` shapes the per-turn variant (`max_ops` cap, `replace_draft` opt-in), and `unsupported_schema_feature` / `ensure_schema_supported` guard the conservative JSON Schema subset that constrained-decoding backends support (no `patternProperties`, `uniqueItems`, `contains`, `multipleOf`, exotic `format`s, length/count bounds over 1024).
 
 **Guided interview ops phase ([`rookery/interview.rs`](./src/rookery/interview.rs)):** the per-turn delta half of the builder split. `run_ops_phase(model, config, transcript, user_message, draft)` builds the per-turn schema (when `InterviewConfig::structured_output`), asks the model (via the `OpsModel` trait — one `generate_ops` call, scripted-testable) for a batch, parses it (structured output, or `utils::json::extract_first_json_object` fallback; garbage degrades to a clean no-edit turn), gates `replace_draft` unless allowed, truncates to `max_ops`, and applies with prefix-apply. Returns `OpsPhase { draft, outcome, note }` — the `note` (`turn_note`) is injected as an ephemeral system message into the reply channel so the prose answer matches what actually happened. Ops system prompt (op cheat-sheet, embedded beside the vocabulary it describes): [`resources/prompts/rookery-delta-ops.md`](./resources/prompts/rookery-delta-ops.md). The HTTP server owns session persistence, the reply channel, and the server-owned draft id policy (see [`../kowalski/AGENTS.md`](../kowalski/AGENTS.md)).
 
@@ -358,6 +358,28 @@ to = "lint"
 ```
 
 Omit `edges` (or leave empty) for linear hordes — no migration required.
+
+**[`horde_trigger`](./src/horde_trigger.rs):** `HordeTrigger` — optional `[[triggers]]` on manifests / Rookery drafts declaring event-driven runs. **Declaration layer only** (parse + validate + snapshot + Rookery editing); nothing fires yet. `validate_triggers(triggers, base)` returns warnings (watch path missing = warning, not error) or one aggregate error; `parse_cron` is a dependency-free 5-field cron parser (numeric `*` / `N` / `N-M` / `,` / `/step`; day-of-week `7` = Sunday = 0) that expands into `CronSchedule` value sets for the future scheduler. `is_valid_slug` owns the kebab-slug shape shared with horde/step ids.
+
+**Horde manifest `[[triggers]]` TOML (optional, 1.6.0+):**
+
+```toml
+# Exactly one of cron / watch / webhook per trigger. Unknown keys are rejected.
+[[triggers]]
+cron = "0 7 * * *"            # 5-field cron (minute hour dom month dow), local time
+prompt = "Daily digest at {{trigger.time}}"
+
+[[triggers]]
+watch = { path = "inbox", events = ["create", "modify"], debounce_ms = 2000 }
+enabled = false               # declared but skipped by the runtime (default true)
+
+[[triggers]]
+webhook = { route = "my-horde-ingest" }   # served under /api/triggers/<route>; unique across hordes
+input = { question = "digest" }           # pre-fills operator-form fields by id
+prompt = "Payload: {{trigger.payload}}"   # placeholders: {{trigger.path}} / {{trigger.payload}} / {{trigger.time}}
+```
+
+Triggers ride on the spec's manifest snapshot, appear read-only in `/api/hordes`, and are reported by `agent-app validate` (plus non-fatal warnings via `validate_horde_tree_report`).
 
 ---
 

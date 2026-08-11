@@ -16,6 +16,7 @@ pub fn minimal_linear_draft() -> RookeryDraft {
             "deliver".into(),
         ],
         edges: vec![],
+        triggers: vec![],
         penguins: vec![
             PenguinSpec {
                 name: "collect".into(),
@@ -101,6 +102,7 @@ pub fn minimal_dag_draft() -> RookeryDraft {
             edge("branch-b", "join"),
             edge("join", "deliver"),
         ],
+        triggers: vec![],
         penguins: vec![
             PenguinSpec {
                 name: "ingest".into(),

@@ -125,7 +125,10 @@ fn write_penguin_files(
 }
 
 fn escape_toml_str(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('\"', "\\\"")
+    s.replace('\\', "\\\\")
+        .replace('\"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
 }
 
 fn effective_output(draft: &RookeryDraft, penguin: &PenguinSpec) -> String {
@@ -273,6 +276,9 @@ fn render_horde_md(draft: &RookeryDraft) -> String {
             }
         }
     }
+    for trigger in &draft.triggers {
+        out.push_str(&render_trigger_toml(trigger));
+    }
     out.push_str("---\n\n");
     out.push_str(&format!("# {}\n\n", draft.display_name));
     out.push_str(&format!("{}\n\n", draft.description));
@@ -301,6 +307,49 @@ Parallel branches run sequentially per process in 1.5.0 MVP.\n\n```\n",
         for edge in &draft.edges {
             out.push_str(&format!("- `{}` → `{}`\n", edge.from, edge.to));
         }
+    }
+    out
+}
+
+/// One `[[triggers]]` frontmatter block. Every stored field is emitted (defaults included)
+/// so a round-trip through the parser reproduces the draft exactly.
+fn render_trigger_toml(trigger: &crate::horde_trigger::HordeTrigger) -> String {
+    let mut out = String::from("\n[[triggers]]\n");
+    if let Some(cron) = &trigger.cron {
+        out.push_str(&format!("cron = \"{}\"\n", escape_toml_str(cron)));
+    }
+    if let Some(watch) = &trigger.watch {
+        let events = watch
+            .events
+            .iter()
+            .map(|e| format!("\"{}\"", escape_toml_str(e)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        out.push_str(&format!(
+            "watch = {{ path = \"{}\", events = [{}], debounce_ms = {} }}\n",
+            escape_toml_str(&watch.path),
+            events,
+            watch.debounce_ms
+        ));
+    }
+    if let Some(webhook) = &trigger.webhook {
+        out.push_str(&format!(
+            "webhook = {{ route = \"{}\" }}\n",
+            escape_toml_str(&webhook.route)
+        ));
+    }
+    out.push_str(&format!("enabled = {}\n", trigger.enabled));
+    if !trigger.input.is_empty() {
+        let inner = trigger
+            .input
+            .iter()
+            .map(|(k, v)| format!("\"{}\" = \"{}\"", escape_toml_str(k), escape_toml_str(v)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        out.push_str(&format!("input = {{ {inner} }}\n"));
+    }
+    if let Some(prompt) = &trigger.prompt {
+        out.push_str(&format!("prompt = \"{}\"\n", escape_toml_str(prompt)));
     }
     out
 }

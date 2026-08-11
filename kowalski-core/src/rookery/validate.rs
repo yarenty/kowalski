@@ -2,6 +2,7 @@
 
 use crate::error::KowalskiError;
 use crate::horde_graph::resolve_execution_graph;
+use crate::horde_trigger::validate_triggers;
 use crate::markdown_pipeline::{parse_app_manifest, parse_stage_agent, resolve_manifest_path};
 use crate::rookery::types::RookeryDraft;
 use std::collections::{BTreeMap, BTreeSet};
@@ -23,10 +24,7 @@ pub fn validate_horde_id(id: &str) -> Result<(), KowalskiError> {
             "horde id must not contain path separators: `{id}`"
         )));
     }
-    let ok = id
-        .chars()
-        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
-    if !ok || !id.chars().next().is_some_and(|c| c.is_ascii_alphanumeric()) {
+    if !crate::horde_trigger::is_valid_slug(id) {
         return Err(KowalskiError::Validation(format!(
             "horde id must match [a-z0-9][a-z0-9-]*: `{id}`"
         )));
@@ -159,6 +157,12 @@ pub fn validate_draft_with(
         errs.push(format!("workdir: {e}"));
     }
 
+    // Structural trigger rules apply at both strictnesses (drafts have no root on disk,
+    // so the watch-path existence warning is skipped here).
+    if let Err(e) = validate_triggers(&draft.triggers, None) {
+        errs.push(e.to_string());
+    }
+
     if errs.is_empty()
         && !(draft.pipeline.is_empty() && draft.edges.is_empty())
         && let Err(e) = resolve_execution_graph(&draft.pipeline, Some(&draft.edges))
@@ -175,7 +179,14 @@ pub fn validate_draft_with(
 
 /// Validate an on-disk horde tree (`horde.md` + `agents/*.md`), same rules as `agent-app validate`.
 pub fn validate_horde_tree(root: &Path) -> Result<(), KowalskiError> {
+    validate_horde_tree_report(root).map(|_warnings| ())
+}
+
+/// [`validate_horde_tree`] variant that also returns non-fatal warnings (e.g. a watch
+/// trigger path that does not exist yet).
+pub fn validate_horde_tree_report(root: &Path) -> Result<Vec<String>, KowalskiError> {
     let mut errs = Vec::new();
+    let mut warnings = Vec::new();
     let mpath = resolve_manifest_path(root);
     if !mpath.is_file() {
         return Err(KowalskiError::Validation(format!(
@@ -245,8 +256,13 @@ pub fn validate_horde_tree(root: &Path) -> Result<(), KowalskiError> {
         }
     }
 
+    match validate_triggers(&meta.triggers, Some(root)) {
+        Ok(w) => warnings.extend(w),
+        Err(e) => errs.push(e.to_string()),
+    }
+
     if errs.is_empty() {
-        Ok(())
+        Ok(warnings)
     } else {
         Err(KowalskiError::Validation(errs.join("; ")))
     }

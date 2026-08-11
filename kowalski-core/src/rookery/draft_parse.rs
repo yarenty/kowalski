@@ -34,6 +34,8 @@ struct LenientDraft {
     pipeline: Option<Vec<LenientPipelineStep>>,
     #[serde(default)]
     edges: Vec<HordeEdge>,
+    #[serde(default)]
+    triggers: Vec<crate::horde_trigger::HordeTrigger>,
     penguins: Option<Vec<LenientPenguin>>,
     steps: Option<Vec<LenientPenguin>>,
     #[serde(default)]
@@ -259,6 +261,7 @@ fn lenient_to_draft(l: LenientDraft) -> Result<RookeryDraft, KowalskiError> {
         capability_prefix: l.capability_prefix,
         pipeline,
         edges: l.edges,
+        triggers: l.triggers,
         penguins,
         default_question: l.default_question,
         default_topic: l.default_topic,

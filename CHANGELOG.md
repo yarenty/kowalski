@@ -21,6 +21,19 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Added
 
+- **Triggers in the horde manifest (#62):** hordes can now declare event-driven runs in
+  `horde.md` frontmatter via a `[[triggers]]` TOML array — three kinds: `cron = "0 7 * * *"`
+  (5-field, local time; dependency-free parser), `watch = { path, events, debounce_ms }`
+  (events ⊆ create/modify/remove, default `["create","modify"]` / 2000 ms), and
+  `webhook = { route }` (kebab-case slug, unique across all hordes; reserved under
+  `/api/triggers/`). Common optional fields per trigger: `enabled` (default true), `input`
+  (pre-filled operator-form answers by field id), and `prompt` (run prompt template with
+  `{{trigger.path}}` / `{{trigger.payload}}` / `{{trigger.time}}` placeholders). This release
+  is the **declaration layer**: triggers are parsed and validated (precise errors for bad
+  cron, duplicate routes, unknown keys; missing watch paths are a warning), carried on the
+  run's manifest snapshot, listed read-only in `GET /api/hordes`, reported by
+  `agent-app validate`, and editable in Rookery (draft field + `set_triggers` delta op +
+  written to `horde.md` at birth). Nothing fires yet — the trigger runtime is a follow-up.
 - **Rookery guided interview — per-turn deltas (#58):** the horde builder no longer asks the
   model to emit one complete draft document. Each chat turn now runs two channels: an **ops
   phase** that asks the model for a small batch of typed edit operations (constrained to the

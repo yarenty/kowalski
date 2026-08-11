@@ -202,6 +202,13 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
   while interrupted runs pend resume). A hot-added horde gets its workdir created on
   first reference; a reload **never** re-runs the clean.
 - Fixed catalogs (`HordeCatalog::fixed`) serve tests/embedded use — no roots, no reloads.
+- **Triggers (declaration layer):** `[[triggers]]` from `horde.md` parse into
+  `HordeSpec.triggers` (validated at load — invalid cron / duplicate route / unknown keys
+  are a load error like any other manifest problem), ride the manifest snapshot, and are
+  exposed read-only on `GET /api/hordes` (+ detail). Webhook routes are a **global
+  namespace** (future `/api/triggers/<route>`): cross-horde collisions are overlaid on
+  `load_error` in the listing snapshot (not stored), so they clear as soon as one manifest
+  is fixed. Nothing fires yet — scheduling/watch/webhook runtime is a separate layer.
 
 #### Horde run persistence (`src/horde.rs`)
 

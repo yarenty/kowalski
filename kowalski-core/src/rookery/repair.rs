@@ -38,6 +38,7 @@ pub fn repair_horde_tree_outputs(root: &Path) -> Result<u32, KowalskiError> {
         capability_prefix: None,
         pipeline: meta.pipeline.clone(),
         edges: meta.edges.clone(),
+        triggers: meta.triggers.clone(),
         penguins: vec![],
         default_question: meta.default_question.clone(),
         default_topic: None,
