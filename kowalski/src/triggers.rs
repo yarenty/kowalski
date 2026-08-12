@@ -20,9 +20,10 @@ use crate::horde::{HordeManager, HordeSpec, RunRecord};
 use chrono::{DateTime, Datelike, Local, Timelike};
 use kowalski_core::db::run_store::{RUN_ORIGIN_TRIGGER, RunStatus};
 use kowalski_core::horde_trigger::{CronSchedule, HordeTrigger, parse_cron};
+use serde::Serialize;
 use serde_json::json;
-use std::collections::HashMap;
-use std::path::Path;
+use std::collections::{BTreeMap, HashMap};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -31,6 +32,81 @@ use tokio::sync::Mutex;
 /// the run row, the UI run feed, and the overlap-policy check).
 pub fn trigger_source(kind: &str, horde_id: &str) -> String {
     format!("trigger:{kind}:{horde_id}")
+}
+
+/// Stable identity of one trigger declaration: `<horde>#<index>`. Used for
+/// logs, `trigger_fired` events, and the operator override store.
+pub fn trigger_key(horde_id: &str, index: usize) -> String {
+    format!("{horde_id}#{index}")
+}
+
+/// Operator enable/disable overrides, persisted as a small JSON map
+/// (`"<horde>#<index>" -> bool`) beside the run store. Toggling a trigger from
+/// the UI must survive a restart without editing `horde.md` — the declaration
+/// stays authoritative in the file; an override only applies while it differs
+/// from the declared `enabled` (toggling back to the declared state removes it).
+#[derive(Default)]
+struct TriggerOverrides {
+    map: BTreeMap<String, bool>,
+    /// `None` (tests): overrides live in memory only.
+    path: Option<PathBuf>,
+}
+
+impl TriggerOverrides {
+    fn load(path: PathBuf) -> Self {
+        let map = match std::fs::read_to_string(&path) {
+            Ok(raw) => match serde_json::from_str(&raw) {
+                Ok(map) => map,
+                Err(e) => {
+                    log::error!(
+                        "trigger overrides {}: unreadable, starting empty: {e}",
+                        path.display()
+                    );
+                    BTreeMap::new()
+                }
+            },
+            Err(_) => BTreeMap::new(), // no file yet
+        };
+        Self {
+            map,
+            path: Some(path),
+        }
+    }
+
+    fn effective(&self, horde_id: &str, index: usize, declared: bool) -> bool {
+        self.map
+            .get(&trigger_key(horde_id, index))
+            .copied()
+            .unwrap_or(declared)
+    }
+
+    /// Record the operator's choice and persist. Setting a trigger back to its
+    /// declared state drops the override so future `horde.md` edits win again.
+    fn set(&mut self, horde_id: &str, index: usize, enabled: bool, declared: bool) {
+        let key = trigger_key(horde_id, index);
+        if enabled == declared {
+            self.map.remove(&key);
+        } else {
+            self.map.insert(key, enabled);
+        }
+        self.save();
+    }
+
+    fn save(&self) {
+        let Some(path) = &self.path else { return };
+        let raw = match serde_json::to_string_pretty(&self.map) {
+            Ok(raw) => raw,
+            Err(e) => {
+                log::error!("trigger overrides: serialize failed: {e}");
+                return;
+            }
+        };
+        let tmp = path.with_extension("json.tmp");
+        let write = std::fs::write(&tmp, raw).and_then(|()| std::fs::rename(&tmp, path));
+        if let Err(e) = write {
+            log::error!("trigger overrides {}: persist failed: {e}", path.display());
+        }
+    }
 }
 
 /// How often a queued firing re-checks whether the in-flight run finished.
@@ -132,7 +208,7 @@ struct Armed {
 
 impl Armed {
     fn key(&self) -> String {
-        format!("{}#{}", self.horde_id, self.index)
+        trigger_key(&self.horde_id, self.index)
     }
 
     fn source(&self) -> String {
@@ -146,6 +222,36 @@ pub enum Firing {
     Cron,
     Watch { events: Vec<WatchEvent> },
     Webhook { payload: serde_json::Value },
+}
+
+/// One trigger's operator status (`GET /api/hordes/{id}/triggers`).
+/// `enabled` is always the `horde.md` declaration; `effective_enabled` is what
+/// the runtime arms after the operator override.
+#[derive(Debug, Serialize)]
+pub struct TriggerStatusRow {
+    pub index: usize,
+    pub kind: String,
+    /// Kind + configuration, e.g. `cron 0 7 * * *` / `watch inbox/` / `webhook ingest`.
+    pub detail: String,
+    pub enabled: bool,
+    pub effective_enabled: bool,
+    /// True while an operator override differs from the declaration.
+    pub overridden: bool,
+    pub overlap: String,
+    /// Next cron firing (RFC 3339), when armed and within a year.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_fire: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_fired: Option<LastFired>,
+}
+
+/// The newest run a trigger fired, for the "last fired" line + run link.
+#[derive(Debug, Serialize)]
+pub struct LastFired {
+    pub run_id: String,
+    /// The run's `started_at` timestamp.
+    pub time: String,
+    pub status: String,
 }
 
 /// What one firing did after the overlap policy was applied.
@@ -181,6 +287,8 @@ pub struct TriggerManager {
     /// (logged loudly); cron and webhooks still work.
     watcher: Option<Arc<DynamicWatcher>>,
     state: Arc<Mutex<TriggerState>>,
+    /// Sync mutex: critical sections are map reads/writes, never held across await.
+    overrides: Arc<std::sync::Mutex<TriggerOverrides>>,
 }
 
 impl TriggerManager {
@@ -201,7 +309,24 @@ impl TriggerManager {
             clock,
             watcher,
             state: Arc::new(Mutex::new(TriggerState::default())),
+            overrides: Arc::new(std::sync::Mutex::new(TriggerOverrides::default())),
         }
+    }
+
+    /// Persist operator enable/disable overrides at `path` (loading any
+    /// existing file). Apply before the first [`Self::rearm`].
+    pub fn with_override_store(self, path: PathBuf) -> Self {
+        *self.overrides.lock().unwrap() = TriggerOverrides::load(path);
+        self
+    }
+
+    /// The state the runtime arms: the operator override when one is in force,
+    /// else the `enabled` declared in `horde.md`.
+    fn effective_enabled(&self, horde_id: &str, index: usize, trigger: &HordeTrigger) -> bool {
+        self.overrides
+            .lock()
+            .unwrap()
+            .effective(horde_id, index, trigger.enabled)
     }
 
     /// (Re-)arm every enabled trigger in the catalog: rebuild the cron table
@@ -211,12 +336,17 @@ impl TriggerManager {
     /// Webhooks need no arming — routes resolve per-request from the catalog.
     pub async fn rearm(&self) {
         let entries = self.manager.catalog.list();
+        // Operator overrides are part of the trigger view: a toggle must
+        // re-arm even though the on-disk declarations are unchanged.
+        let overrides_view = serde_json::to_string(&self.overrides.lock().unwrap().map)
+            .unwrap_or_default();
         let fingerprint = entries
             .iter()
             .map(|e| {
                 serde_json::to_string(&(&e.spec.id, &e.spec.root_path, &e.spec.triggers))
                     .unwrap_or_default()
             })
+            .chain(std::iter::once(overrides_view))
             .collect::<Vec<_>>()
             .join("\n");
         {
@@ -232,7 +362,7 @@ impl TriggerManager {
         for entry in &entries {
             let spec = &entry.spec;
             for (index, trigger) in spec.triggers.iter().enumerate() {
-                if !trigger.enabled {
+                if !self.effective_enabled(&spec.id, index, trigger) {
                     continue;
                 }
                 let armed = Armed {
@@ -390,6 +520,140 @@ impl TriggerManager {
         outcome
     }
 
+    /// [`resolve_webhook_route`] against the live catalog with the operator
+    /// overrides applied.
+    pub fn resolve_webhook(
+        &self,
+        route: &str,
+    ) -> Result<(Arc<HordeSpec>, usize), WebhookRouteError> {
+        let entries = self.manager.catalog.list();
+        let overrides = self.overrides.lock().unwrap().map.clone();
+        resolve_webhook_route(&entries, route, &overrides)
+    }
+
+    /// Operator toggle: override the trigger's enabled state, persist the
+    /// override, and re-arm the runtime so the change takes effect immediately.
+    pub async fn set_enabled(
+        &self,
+        horde_id: &str,
+        index: usize,
+        enabled: bool,
+    ) -> Result<(), String> {
+        let spec = self
+            .manager
+            .find(horde_id)
+            .ok_or_else(|| format!("unknown horde id: {horde_id}"))?;
+        let trigger = spec
+            .triggers
+            .get(index)
+            .ok_or_else(|| format!("horde {horde_id} has no trigger at index {index}"))?;
+        self.overrides
+            .lock()
+            .unwrap()
+            .set(horde_id, index, enabled, trigger.enabled);
+        self.rearm().await;
+        Ok(())
+    }
+
+    /// Operator "fire now": start the trigger's run immediately with empty
+    /// firing details, still subject to the overlap policy. Deliberately works
+    /// on disabled triggers — its purpose is testing a trigger before arming it.
+    pub async fn fire_manual(&self, horde_id: &str, index: usize) -> FireOutcome {
+        let Some(spec) = self.manager.find(horde_id) else {
+            return FireOutcome::Failed(format!("unknown horde id: {horde_id}"));
+        };
+        let Some(trigger) = spec.triggers.get(index).cloned() else {
+            return FireOutcome::Failed(format!(
+                "horde {horde_id} has no trigger at index {index}"
+            ));
+        };
+        let firing = match trigger.kind() {
+            "watch" => Firing::Watch { events: Vec::new() },
+            "webhook" => Firing::Webhook {
+                payload: serde_json::Value::Object(Default::default()),
+            },
+            _ => Firing::Cron,
+        };
+        let armed = Armed {
+            horde_id: spec.id.clone(),
+            index,
+            trigger,
+        };
+        let outcome = self.fire(&armed, firing).await;
+        log_outcome(&armed, &outcome);
+        outcome
+    }
+
+    /// Effective enabled state per trigger of `spec`, in declaration order.
+    /// Cheap (no store access) — used to enrich catalog listings on every poll.
+    pub fn effective_states(&self, spec: &HordeSpec) -> Vec<bool> {
+        let overrides = self.overrides.lock().unwrap();
+        spec.triggers
+            .iter()
+            .enumerate()
+            .map(|(index, t)| overrides.effective(&spec.id, index, t.enabled))
+            .collect()
+    }
+
+    /// Per-trigger operator status for one horde (`None`: unknown horde).
+    /// `last_fired` comes from the run store — the newest run whose
+    /// `trigger_fired` event names this trigger — so it survives restarts.
+    pub async fn trigger_status(&self, horde_id: &str) -> Option<Vec<TriggerStatusRow>> {
+        let spec = self.manager.find(horde_id)?;
+        // Newest-first; one page of history is plenty to locate last firings.
+        let runs = self
+            .manager
+            .persisted_runs(horde_id, 100, 0)
+            .await
+            .unwrap_or_default();
+        let now = self.clock.now_local();
+        let rows = spec
+            .triggers
+            .iter()
+            .enumerate()
+            .map(|(index, trigger)| {
+                let key = trigger_key(&spec.id, index);
+                let effective_enabled = self.effective_enabled(&spec.id, index, trigger);
+                let last_fired = runs
+                    .iter()
+                    .find(|r| {
+                        r.events.iter().any(|e| {
+                            e.get("kind").and_then(|k| k.as_str()) == Some("trigger_fired")
+                                && e.get("trigger").and_then(|t| t.as_str())
+                                    == Some(key.as_str())
+                        })
+                    })
+                    .map(|r| LastFired {
+                        run_id: r.run_id.clone(),
+                        time: r.started_at.clone(),
+                        status: r.status.as_str().to_string(),
+                    });
+                let next_fire = if effective_enabled {
+                    trigger
+                        .cron
+                        .as_deref()
+                        .and_then(|expr| parse_cron(expr).ok())
+                        .and_then(|s| next_cron_match(&s, &now, 366))
+                        .map(|t| t.to_rfc3339())
+                } else {
+                    None
+                };
+                TriggerStatusRow {
+                    index,
+                    kind: trigger.kind().to_string(),
+                    detail: trigger.detail(),
+                    enabled: trigger.enabled,
+                    effective_enabled,
+                    overridden: effective_enabled != trigger.enabled,
+                    overlap: trigger.overlap.clone(),
+                    next_fire,
+                    last_fired,
+                }
+            })
+            .collect();
+        Some(rows)
+    }
+
     /// Apply the trigger's overlap policy, then start the run.
     async fn fire(&self, armed: &Armed, firing: Firing) -> FireOutcome {
         let source = armed.source();
@@ -463,7 +727,10 @@ impl TriggerManager {
                 .manager
                 .find(&armed.horde_id)
                 .and_then(|spec| spec.triggers.get(armed.index).cloned())
-                .is_some_and(|t| t.enabled && t.kind() == armed.trigger.kind());
+                .is_some_and(|t| {
+                    tm.effective_enabled(&armed.horde_id, armed.index, &t)
+                        && t.kind() == armed.trigger.kind()
+                });
             if !still_armed {
                 log::info!(
                     "trigger {}: queued firing dropped (trigger removed or disabled)",
@@ -595,17 +862,21 @@ pub enum WebhookRouteError {
 }
 
 /// Resolve a webhook route slug against the catalog: exactly one enabled
-/// webhook trigger must own it.
+/// webhook trigger must own it. `overrides` maps [`trigger_key`]s to operator
+/// enable/disable choices (an overridden-off trigger no longer owns its route).
 pub fn resolve_webhook_route(
     entries: &[crate::horde::HordeCatalogEntry],
     route: &str,
+    overrides: &BTreeMap<String, bool>,
 ) -> Result<(Arc<HordeSpec>, usize), WebhookRouteError> {
     let mut matches: Vec<(Arc<HordeSpec>, usize)> = Vec::new();
     for entry in entries {
         for (index, trigger) in entry.spec.triggers.iter().enumerate() {
-            if trigger.enabled
-                && trigger.webhook.as_ref().is_some_and(|w| w.route == route)
-            {
+            let enabled = overrides
+                .get(&trigger_key(&entry.spec.id, index))
+                .copied()
+                .unwrap_or(trigger.enabled);
+            if enabled && trigger.webhook.as_ref().is_some_and(|w| w.route == route) {
                 matches.push((entry.spec.clone(), index));
             }
         }
@@ -1095,23 +1366,140 @@ mod tests {
 
         let catalog = crate::horde::HordeCatalog::fixed(vec![spec.clone()]);
         let entries = catalog.list();
-        let (found, index) = resolve_webhook_route(&entries, "ingest").unwrap();
+        let none = BTreeMap::new();
+        let (found, index) = resolve_webhook_route(&entries, "ingest", &none).unwrap();
         assert_eq!(found.id, "test-horde");
         assert_eq!(index, 0);
         assert_eq!(
-            resolve_webhook_route(&entries, "dark").unwrap_err(),
+            resolve_webhook_route(&entries, "dark", &none).unwrap_err(),
             WebhookRouteError::NotFound,
             "disabled triggers do not serve their route"
         );
         assert_eq!(
-            resolve_webhook_route(&entries, "nope").unwrap_err(),
+            resolve_webhook_route(&entries, "nope", &none).unwrap_err(),
+            WebhookRouteError::NotFound
+        );
+
+        // Operator overrides flip route ownership without touching horde.md:
+        // enabling the declaration-disabled trigger serves its route; disabling
+        // the declaration-enabled one releases its route.
+        let overrides: BTreeMap<String, bool> = [
+            (trigger_key("test-horde", 0), false),
+            (trigger_key("test-horde", 1), true),
+        ]
+        .into();
+        let (found, index) = resolve_webhook_route(&entries, "dark", &overrides).unwrap();
+        assert_eq!((found.id.as_str(), index), ("test-horde", 1));
+        assert_eq!(
+            resolve_webhook_route(&entries, "ingest", &overrides).unwrap_err(),
             WebhookRouteError::NotFound
         );
 
         let collided = crate::horde::HordeCatalog::fixed(vec![spec, other]).list();
         assert_eq!(
-            resolve_webhook_route(&collided, "ingest").unwrap_err(),
+            resolve_webhook_route(&collided, "ingest", &none).unwrap_err(),
             WebhookRouteError::Duplicate(2)
+        );
+    }
+
+    #[tokio::test]
+    async fn operator_disable_unarms_and_survives_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let store_path = dir.path().join("trigger_overrides.json");
+        let mut t = trigger("skip");
+        t.cron = Some("30 7 * * *".into());
+        let now = local(2026, 8, 10, 7, 30);
+        let source = trigger_source("cron", "test-horde");
+
+        let tm = test_tm(test_spec(dir.path(), vec![t.clone()]), now)
+            .await
+            .with_override_store(store_path.clone());
+        tm.rearm().await;
+        tm.fire_due_cron(now).await;
+        assert_eq!(runs_with_source(&tm, &source).await.len(), 1);
+
+        tm.set_enabled("test-horde", 0, false).await.unwrap();
+        tm.fire_due_cron(local(2026, 8, 11, 7, 30)).await;
+        assert_eq!(
+            runs_with_source(&tm, &source).await.len(),
+            1,
+            "disabled trigger no longer fires"
+        );
+        let status = tm.trigger_status("test-horde").await.unwrap();
+        assert!(status[0].enabled, "declaration untouched");
+        assert!(!status[0].effective_enabled);
+        assert!(status[0].overridden);
+        assert!(status[0].next_fire.is_none(), "no next fire while disabled");
+
+        // "Restart": a fresh manager loading the same override file.
+        let tm2 = test_tm(test_spec(dir.path(), vec![t]), now)
+            .await
+            .with_override_store(store_path);
+        tm2.rearm().await;
+        tm2.fire_due_cron(now).await;
+        assert!(
+            runs_with_source(&tm2, &source).await.is_empty(),
+            "override survived the restart"
+        );
+
+        // Toggling back to the declared state drops the override and re-arms.
+        tm2.set_enabled("test-horde", 0, true).await.unwrap();
+        let status = tm2.trigger_status("test-horde").await.unwrap();
+        assert!(status[0].effective_enabled && !status[0].overridden);
+        tm2.fire_due_cron(now).await;
+        assert_eq!(runs_with_source(&tm2, &source).await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn fire_manual_starts_a_run_and_status_links_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut t = trigger("skip");
+        t.cron = Some("30 7 * * *".into());
+        let tm = test_tm(test_spec(dir.path(), vec![t]), local(2026, 8, 10, 7, 0)).await;
+        tm.rearm().await;
+
+        let outcome = tm.fire_manual("test-horde", 0).await;
+        let FireOutcome::Started(run) = outcome else {
+            panic!("expected Started, got {outcome:?}");
+        };
+        assert_eq!(run.source.as_deref(), Some("trigger:cron:test-horde"));
+        assert_eq!(run.origin, RUN_ORIGIN_TRIGGER);
+
+        let status = tm.trigger_status("test-horde").await.unwrap();
+        assert_eq!(status.len(), 1);
+        assert_eq!(status[0].kind, "cron");
+        assert_eq!(status[0].detail, "cron 30 7 * * *");
+        let last = status[0].last_fired.as_ref().expect("last_fired set");
+        assert_eq!(last.run_id, run.run_id);
+        assert_eq!(
+            status[0].next_fire.as_deref(),
+            Some(local(2026, 8, 10, 7, 30).to_rfc3339().as_str())
+        );
+
+        assert!(matches!(
+            tm.fire_manual("test-horde", 7).await,
+            FireOutcome::Failed(_)
+        ));
+        assert!(matches!(
+            tm.fire_manual("nope", 0).await,
+            FireOutcome::Failed(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn fire_manual_respects_the_overlap_policy() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut t = trigger("skip");
+        t.cron = Some("30 7 * * *".into());
+        let tm = test_tm(test_spec(dir.path(), vec![t]), local(2026, 8, 10, 7, 0)).await;
+        tm.rearm().await;
+        let source = trigger_source("cron", "test-horde");
+        seed_active_run(&tm, "run-busy", &source).await;
+
+        let outcome = tm.fire_manual("test-horde", 0).await;
+        assert!(
+            matches!(outcome, FireOutcome::Skipped { ref active_run_id } if active_run_id == "run-busy"),
+            "manual firing skipped while the trigger's run is in flight: {outcome:?}"
         );
     }
 }

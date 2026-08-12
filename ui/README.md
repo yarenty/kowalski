@@ -74,6 +74,7 @@ Use this after any change to **`kowalski`**, **`kowalski-core`**, or **`ui/`** t
 | 5b | **Horde — Coder** | Restart server; select **Coder (planning tier)** → **Start All** → run | DAG canvas; project path + task form; `HANDOFF.md` under `examples/coder/output/`. |
 | 5c | **Horde — resume** | Kill the server mid-run; restart; reselect the horde | **Interrupted runs** banner lists the run (status + resume attempts); **Resume** continues from the next ready step (completed steps keep artifacts) and the feed shows a "run resumed" marker. |
 | 5d | **Horde — cancel** | Start a run; click **Cancel run** next to the progress spinner | Feed shows "run cancelled"; run history lists the run as `cancelled`; remaining steps are skipped. No worker processes are involved — steps run in-process. |
+| 5e | **Horde — triggers** | Select a horde with `[[triggers]]` → **Triggers** panel: toggle one **Disable/Enable**, click **Fire now**; restart the server and reselect | Toggle flips armed/disabled (marked "operator override") and **survives the restart**; Fire now reports the started run and highlights it in **Recent runs**; trigger-fired runs carry a cron/watch/webhook badge there (operator runs say `operator`). Trigger cards also badge on **Federation**. |
 | 6 | **Federation** (optional extra) | Lower on the same panel: **Refresh registry** if you use raw delegate / `kc.run` smoke | Registry JSON loads; see [`examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md) for legacy worker commands. |
 
 

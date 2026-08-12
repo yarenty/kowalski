@@ -6,6 +6,7 @@ import {
   type FederationWorkerProfile,
   type HordeCatalogItem,
   type HordeRunRecord,
+  type HordeTriggerStatus,
 } from "../api";
 import HordeRunForm from "../components/HordeRunForm.vue";
 import PenguinAvatar from "../components/PenguinAvatar.vue";
@@ -47,6 +48,10 @@ const followupMsgs = ref<Array<{ role: "user" | "assistant" | "orchestrator"; sp
 const pathAction = ref<string | null>(null);
 const cleanWorkdirBusy = ref(false);
 const runPromotedToHistory = ref(false);
+const triggerRows = ref<HordeTriggerStatus[]>([]);
+const triggerBusy = ref<number | null>(null);
+const triggerNote = ref<string | null>(null);
+const highlightRunId = ref<string | null>(null);
 
 const selectedHorde = computed(() => hordes.value.find((h) => h.id === selectedHordeId.value) ?? null);
 const selectedHordeIsDag = computed(() => {
@@ -117,7 +122,7 @@ const processingLabel = computed(() =>
 watch(
   () => selectedHordeId.value,
   async () => {
-    await Promise.all([loadProfiles(), loadRunHistory()]);
+    await Promise.all([loadProfiles(), loadRunHistory(), loadTriggers()]);
   },
   { immediate: true },
 );
@@ -302,7 +307,70 @@ async function loadProfiles() {
 
 async function refreshAll() {
   await loadHordes();
-  await Promise.all([loadProfiles(), loadRunHistory()]);
+  await Promise.all([loadProfiles(), loadRunHistory(), loadTriggers()]);
+}
+
+async function loadTriggers() {
+  if (!selectedHordeId.value) {
+    triggerRows.value = [];
+    return;
+  }
+  try {
+    const r = await api.hordeTriggers(selectedHordeId.value);
+    triggerRows.value = r.triggers ?? [];
+  } catch {
+    triggerRows.value = [];
+  }
+}
+
+async function toggleTrigger(t: HordeTriggerStatus) {
+  if (!selectedHordeId.value || triggerBusy.value !== null) return;
+  triggerBusy.value = t.index;
+  triggerNote.value = null;
+  try {
+    const r = await api.hordeTriggerSetEnabled(selectedHordeId.value, t.index, !t.effective_enabled);
+    triggerRows.value = r.triggers ?? [];
+    triggerNote.value = `Trigger "${t.detail}" ${t.effective_enabled ? "disabled" : "enabled"} (persisted server-side; horde.md is untouched).`;
+  } catch (e) {
+    triggerNote.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    triggerBusy.value = null;
+  }
+}
+
+async function fireTriggerNow(t: HordeTriggerStatus) {
+  if (!selectedHordeId.value || triggerBusy.value !== null) return;
+  triggerBusy.value = t.index;
+  triggerNote.value = null;
+  try {
+    const r = await api.hordeTriggerFire(selectedHordeId.value, t.index);
+    if (r.fired && r.run) {
+      triggerNote.value = `Fired: run ${r.run.run_id} started.`;
+      highlightRunId.value = r.run.run_id;
+    } else if (r.skipped) {
+      triggerNote.value = `Not fired: run ${r.active_run_id ?? "?"} from this trigger is still in flight (overlap=skip).`;
+      highlightRunId.value = r.active_run_id ?? null;
+    } else if (r.queued) {
+      triggerNote.value = "Queued behind the in-flight run — fires when it ends (overlap=queue).";
+    }
+  } catch (e) {
+    triggerNote.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    triggerBusy.value = null;
+    await Promise.all([loadTriggers(), loadRunHistory()]);
+  }
+}
+
+/** Feed badge: `trigger:<kind>:<horde>` sources → the trigger kind; anything else is an operator run. */
+function runSourceBadge(r: HordeRunRecord): { label: string; isTrigger: boolean } {
+  const m = /^trigger:([a-z]+):/.exec(r.source ?? "");
+  return m ? { label: m[1], isTrigger: true } : { label: "operator", isTrigger: false };
+}
+
+function shortTime(iso?: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
 
 async function openOutputFolder(path?: string) {
@@ -690,7 +758,10 @@ onMounted(() => {
   restoreRunHistory();
   connectStream();
   void refreshAll();
-  hordePollTimer = setInterval(() => void loadHordes(), 15000);
+  hordePollTimer = setInterval(() => {
+    void loadHordes();
+    void loadTriggers();
+  }, 15000);
 });
 
 onUnmounted(() => {
@@ -772,6 +843,80 @@ onUnmounted(() => {
         </button>
       </p>
     </div>
+    <section v-if="triggerRows.length" class="trigger-box">
+      <h3>Triggers</h3>
+      <p class="muted">
+        Declared in this horde's <code>horde.md</code>. The toggle is a server-side operator
+        override (survives restarts, never edits the file); Fire now starts the trigger's run
+        immediately — the overlap policy still applies.
+      </p>
+      <article v-for="t in triggerRows" :key="t.index" class="trigger-item">
+        <div class="trigger-meta">
+          <div>
+            <span class="trigger-badge" :class="t.effective_enabled ? 'trigger-on' : 'trigger-off'">
+              {{ t.kind }}
+            </span>
+            <code>{{ t.detail }}</code>
+            <span class="muted">
+              {{ t.effective_enabled ? "armed" : "disabled" }}{{ t.overridden ? " · operator override" : "" }} · overlap={{ t.overlap }}
+            </span>
+          </div>
+          <div class="muted trigger-times">
+            <span v-if="t.next_fire">next fire {{ shortTime(t.next_fire) }}</span>
+            <span v-if="t.last_fired">
+              last fired {{ shortTime(t.last_fired.time) }} ·
+              <a
+                href="#"
+                :title="`Highlight run ${t.last_fired.run_id} in Recent runs`"
+                @click.prevent="highlightRunId = t.last_fired?.run_id ?? null"
+              >{{ t.last_fired.run_id }}</a>
+              ({{ t.last_fired.status }})
+            </span>
+            <span v-else>never fired</span>
+          </div>
+        </div>
+        <div class="trigger-actions">
+          <button type="button" class="inline-btn" :disabled="triggerBusy !== null" @click="toggleTrigger(t)">
+            {{ triggerBusy === t.index ? "…" : t.effective_enabled ? "Disable" : "Enable" }}
+          </button>
+          <button
+            type="button"
+            class="inline-btn"
+            :disabled="triggerBusy !== null"
+            title="Start this trigger's run immediately (works while disabled; overlap policy still applies)"
+            @click="fireTriggerNow(t)"
+          >
+            Fire now
+          </button>
+        </div>
+      </article>
+      <p v-if="triggerNote" class="muted">{{ triggerNote }}</p>
+    </section>
+    <section v-if="runHistory.length" class="runs-feed">
+      <h3>Recent runs</h3>
+      <article
+        v-for="r in runHistory.slice(0, 15)"
+        :key="r.run_id"
+        class="run-row"
+        :class="{ 'run-highlight': r.run_id === highlightRunId }"
+      >
+        <span
+          class="trigger-badge"
+          :class="runSourceBadge(r).isTrigger ? 'badge-trigger' : 'badge-operator'"
+          :title="runSourceBadge(r).isTrigger ? `Fired by a ${runSourceBadge(r).label} trigger` : 'Started by an operator'"
+        >
+          {{ runSourceBadge(r).label }}
+        </span>
+        <code>{{ r.run_id }}</code>
+        <span class="muted">{{ r.status }}</span>
+        <span class="muted">{{ shortTime(r.started_at) }}</span>
+        <span
+          v-if="(r.resume_count ?? 0) > 0"
+          class="resumed-marker"
+          title="This run was interrupted and resumed"
+        >resumed ×{{ r.resume_count }}</span>
+      </article>
+    </section>
     <p v-if="pathAction" class="muted">{{ pathAction }}</p>
     <div v-if="isProcessing" class="processing-inline" aria-live="polite" aria-busy="true">
       <div class="orbital-loader orbital-loader-inline" aria-hidden="true">
@@ -930,6 +1075,22 @@ onUnmounted(() => {
 .resume-meta { display: grid; gap: 0.1rem; min-width: 0; }
 .resume-prompt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 34rem; }
 .dag-note { font-size: 0.85rem; margin: 0.35rem 0 0; padding: 0.35rem 0.45rem; border-radius: 6px; background: #1a2230; border: 1px solid #2a3548; }
+.trigger-box, .runs-feed { border: 1px solid #2a2e38; border-radius: 8px; background: #161b22; padding: 0.55rem 0.65rem; margin-bottom: 0.55rem; }
+.trigger-box h3, .runs-feed h3 { margin: 0 0 0.25rem; font-size: 0.95rem; }
+.trigger-item { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; border: 1px solid #2a2e38; border-radius: 6px; background: #12161d; padding: 0.4rem 0.55rem; margin-top: 0.35rem; }
+.trigger-meta { display: grid; gap: 0.15rem; min-width: 0; }
+.trigger-meta > div { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }
+.trigger-times { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+.trigger-times a { color: #9cc2ff; }
+.trigger-actions { display: flex; gap: 0.35rem; flex: 0 0 auto; }
+.trigger-badge { border-radius: 999px; font-size: 0.72rem; padding: 0.12rem 0.45rem; border: 1px solid #555f74; color: #b0b7c7; background: #2a3142; text-transform: uppercase; letter-spacing: 0.03em; }
+.trigger-on { border-color: #2f7c47; color: #8de3a8; background: #153323; }
+.trigger-off { border-color: #8a4b3b; color: #e0a184; background: #2b1c15; }
+.badge-trigger { border-color: #5a7ab8; color: #9cc2ff; background: #1d2a42; }
+.badge-operator { border-color: #555f74; color: #b0b7c7; background: #2a3142; }
+.run-row { display: flex; align-items: center; gap: 0.55rem; border: 1px solid #2a2e38; border-radius: 6px; background: #12161d; padding: 0.35rem 0.55rem; margin-top: 0.35rem; flex-wrap: wrap; }
+.run-highlight { border-color: #5a7ab8; box-shadow: 0 0 0 1px #5a7ab8; }
+.resumed-marker { border-radius: 999px; font-size: 0.72rem; padding: 0.12rem 0.45rem; border: 1px solid #8a6d3b; color: #e0c284; background: #221c10; }
 .delivery { border: 1px solid #2a2e38; border-radius: 8px; background: #151922; padding: 0.55rem 0.65rem; margin-top: 0.45rem; }
 .followup-composer {
   position: sticky;

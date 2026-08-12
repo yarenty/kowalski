@@ -16,6 +16,13 @@ Features are **not done** until an operator can complete the primary flows in **
   The horde listing polls every 15 s (server catalog hot-reloads definitions — add/edit/remove
   without restart); a horde whose latest on-disk edit failed to parse shows a ⚠ badge and the
   `load_error` message while the server keeps running its last good version.
+  The **Triggers** panel (when the horde declares `[[triggers]]`) lists each trigger with its
+  kind/detail badge, armed/disabled state, next cron fire, and last-fired run link; the
+  Enable/Disable toggle is a server-side operator override (persists across restarts, never
+  edits `horde.md`) and **Fire now** starts the trigger's run immediately. The **Recent runs**
+  feed shows every run with a source badge (cron/watch/webhook vs operator) and a
+  `resumed ×N` marker on interrupted-then-resumed runs. Trigger definitions are **not**
+  editable here — authoring stays in `horde.md` / Rookery.
 - **Federation** tab: registry, worker start/stop, delegate smoke tests.
 
 Backend or `kowalski-core` changes that touch chat, horde, federation, or delivery metadata **must** be smoke-checked here (or documented with a blocking reason). Error copy shown in panels should always reference **current** CLI commands (see [`examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md)), not deprecated wrappers.

@@ -185,6 +185,17 @@ onMounted(() => void refreshAll());
           DAG horde · {{ (card.horde.edges ?? []).length }} scheduling edge(s)
         </p>
         <p v-else class="muted">Sub-agents: {{ card.horde.pipeline.join(" → ") }}</p>
+        <p v-if="card.horde.triggers?.length" class="muted trigger-row">
+          <span
+            v-for="t in card.horde.triggers"
+            :key="t.index"
+            class="trigger-badge"
+            :class="t.effective_enabled ? 'trigger-on' : 'trigger-off'"
+            :title="`${t.detail} — ${t.effective_enabled ? 'armed' : 'disabled'}${t.overridden ? ' (operator override)' : ''}; manage on the Horde tab`"
+          >
+            {{ t.detail }}{{ t.effective_enabled ? "" : " · off" }}
+          </span>
+        </p>
         <p class="muted workdir-row">
           Workdir: <code>{{ card.horde.workdir || card.horde.root_path }}</code>
           <button type="button" class="inline-btn" @click="openOutputFolder(card.horde.workdir || card.horde.root_path)">
@@ -270,6 +281,10 @@ onMounted(() => void refreshAll());
 .card header { display: flex; justify-content: space-between; align-items: center; }
 .status-badge { border-radius: 999px; font-size: 0.72rem; padding: 0.12rem 0.45rem; border: 1px solid #2f7c47; color: #8de3a8; background: #153323; }
 .status-off { border-color: #555f74; color: #b0b7c7; background: #2a3142; }
+.trigger-row { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+.trigger-badge { border-radius: 999px; font-size: 0.72rem; padding: 0.12rem 0.45rem; border: 1px solid #555f74; color: #b0b7c7; background: #2a3142; }
+.trigger-on { border-color: #5a7ab8; color: #9cc2ff; background: #1d2a42; }
+.trigger-off { border-color: #8a4b3b; color: #e0a184; background: #2b1c15; }
 .muted { color: #6a7285; font-size: 0.9rem; }
 .workdir-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .clean-on-row { align-items: center; justify-content: space-between; gap: 0.75rem; }

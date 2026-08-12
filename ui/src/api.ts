@@ -200,6 +200,47 @@ export type HordeRunFormSpec = {
 
 export type HordeEdge = { from: string; to: string };
 
+/** One `[[triggers]]` declaration as listed on `GET /api/hordes` (+ detail):
+ * the horde.md fields enriched with `kind`/`detail` and the operator-override
+ * state (`enabled` is always the declaration; `effective_enabled` is what the
+ * runtime arms). */
+export type HordeTriggerInfo = {
+  index: number;
+  kind: string;
+  /** Kind + configuration, e.g. `cron 0 7 * * *` / `watch inbox/` / `webhook ingest`. */
+  detail: string;
+  enabled: boolean;
+  effective_enabled: boolean;
+  overridden: boolean;
+  overlap?: string;
+  cron?: string | null;
+  watch?: { path: string; events?: string[]; debounce_ms?: number } | null;
+  webhook?: { route: string } | null;
+};
+
+/** Per-trigger operator status from `GET /api/hordes/{id}/triggers`. */
+export type HordeTriggerStatus = {
+  index: number;
+  kind: string;
+  detail: string;
+  enabled: boolean;
+  effective_enabled: boolean;
+  overridden: boolean;
+  overlap: string;
+  /** Next cron firing (RFC 3339), when armed. */
+  next_fire?: string;
+  last_fired?: { run_id: string; time: string; status: string };
+};
+
+export type HordeTriggerFireResponse = {
+  ok: boolean;
+  fired: boolean;
+  skipped?: boolean;
+  queued?: boolean;
+  active_run_id?: string;
+  run?: HordeRunRecord;
+};
+
 export type HordeCatalogItem = {
   id: string;
   /** Set when the latest on-disk reload of this horde failed; the listed spec is the last good one. */
@@ -209,6 +250,7 @@ export type HordeCatalogItem = {
   capability_prefix: string;
   pipeline: string[];
   edges?: HordeEdge[];
+  triggers?: HordeTriggerInfo[];
   default_question: string;
   topic: string;
   root_path: string;
@@ -250,6 +292,8 @@ export type HordeRunRecord = {
   source?: string | null;
   question: string;
   status: string;
+  started_at?: string;
+  finished_at?: string | null;
   steps: HordeRunStepRecord[];
   events: Array<Record<string, unknown>>;
   loop_counts?: Record<string, number>;
@@ -365,6 +409,20 @@ export const api = {
     ),
   hordeRuns: (hordeId: string) =>
     json<{ horde_id: string; runs: HordeRunRecord[] }>(`/api/hordes/${encodeURIComponent(hordeId)}/runs`),
+  hordeTriggers: (hordeId: string) =>
+    json<{ horde_id: string; triggers: HordeTriggerStatus[] }>(
+      `/api/hordes/${encodeURIComponent(hordeId)}/triggers`,
+    ),
+  hordeTriggerSetEnabled: (hordeId: string, index: number, enabled: boolean) =>
+    json<{ ok: boolean; horde_id: string; triggers: HordeTriggerStatus[] }>(
+      `/api/hordes/${encodeURIComponent(hordeId)}/triggers/${index}/${enabled ? "enable" : "disable"}`,
+      { method: "POST", body: "{}" },
+    ),
+  hordeTriggerFire: (hordeId: string, index: number) =>
+    json<HordeTriggerFireResponse>(
+      `/api/hordes/${encodeURIComponent(hordeId)}/triggers/${index}/fire`,
+      { method: "POST", body: "{}" },
+    ),
   hordeRunResume: (hordeId: string, runId: string) =>
     json<{ ok: boolean; run: HordeRunRecord }>(
       `/api/hordes/${encodeURIComponent(hordeId)}/runs/${encodeURIComponent(runId)}/resume`,
