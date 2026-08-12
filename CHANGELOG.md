@@ -21,6 +21,23 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Added
 
+- **Trigger operator UI (#64):** triggers are now visible and controllable from the
+  operator UI. The **Horde** tab gains a **Triggers** panel per horde: each trigger shows
+  a kind badge with its schedule/route/path, armed/disabled state, next cron fire, and a
+  link to the run it last fired; an **Enable/Disable** toggle records a server-side
+  operator override (persisted at `<config-dir>/db/trigger_overrides.json` — never by
+  editing `horde.md` — and it survives restarts: overrides un-arm cron/watch triggers,
+  release webhook routes, and are re-checked before queued firings), and **Fire now**
+  starts the trigger's run immediately for testing (works while disabled; the overlap
+  policy still applies). A new **Recent runs** feed badges every run's source
+  (cron/watch/webhook vs operator) and marks interrupted-then-resumed runs with
+  `resumed ×N`; Federation horde cards show the same trigger badges. New thin API
+  endpoints over the trigger runtime: `GET /api/hordes/{id}/triggers` (status incl.
+  last-fired from the run store) and `POST /api/hordes/{id}/triggers/{index}/enable`,
+  `…/disable`, `…/fire`; the `triggers` array on `GET /api/hordes` (+ detail) is enriched
+  with `index`/`kind`/`detail`/`effective_enabled`/`overridden` so the UI's 15 s listing
+  poll reflects toggles. Trigger definitions stay authored in `horde.md` / Rookery — the
+  UI does not edit them.
 - **Trigger runtime — event-driven horde runs (#63):** the `[[triggers]]` declared in
   `horde.md` (#62) now fire. The server arms every enabled trigger from the horde catalog
   at startup and re-arms on hot reload: **cron** schedules run on a dependency-free minute

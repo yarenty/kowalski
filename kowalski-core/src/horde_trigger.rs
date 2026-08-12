@@ -107,9 +107,10 @@ impl HordeTrigger {
         }
     }
 
-    /// Short human summary for listings, e.g. `cron 0 7 * * *` or `webhook my-ingest`.
-    pub fn summary(&self) -> String {
-        let body = if let Some(c) = &self.cron {
+    /// Kind plus its configuration, e.g. `cron 0 7 * * *` or `webhook my-ingest`,
+    /// without any enabled-state suffix (callers that show state render it themselves).
+    pub fn detail(&self) -> String {
+        if let Some(c) = &self.cron {
             format!("cron {c}")
         } else if let Some(w) = &self.watch {
             format!("watch {}", w.path)
@@ -117,7 +118,12 @@ impl HordeTrigger {
             format!("webhook {}", h.route)
         } else {
             "unset".to_string()
-        };
+        }
+    }
+
+    /// Short human summary for listings: [`Self::detail`] plus a `(disabled)` marker.
+    pub fn summary(&self) -> String {
+        let body = self.detail();
         if self.enabled {
             body
         } else {

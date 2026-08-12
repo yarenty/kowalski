@@ -249,6 +249,19 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
   unchanged, so unrelated churn never resets in-flight debounce windows. If a
   subscription IS replaced mid-burst, the outgoing debounce task fires what it collected
   instead of dropping the events.
+- **Operator surface:** `GET /api/hordes/{id}/triggers` returns per-trigger status rows
+  (`kind`/`detail`, declared `enabled` vs `effective_enabled` + `overridden`, next cron
+  fire, and `last_fired` — the newest run whose `trigger_fired` event names the trigger,
+  read from the store so it survives restarts). `POST …/triggers/{index}/enable|disable`
+  records an **operator override** persisted at `<config-dir>/db/trigger_overrides.json`
+  (keyed `<horde>#<index>`; never edits `horde.md`; an override matching the declaration
+  is dropped so future file edits win) and re-arms — overrides are part of the re-arm
+  fingerprint, apply to webhook route resolution, and are re-checked before a queued
+  firing releases. `POST …/triggers/{index}/fire` is "fire now" for testing: starts the
+  run immediately with empty firing details (works on disabled triggers; the overlap
+  policy still applies). The `triggers` array on `GET /api/hordes` (+ detail) carries the
+  declarations enriched with `index`/`kind`/`detail`/`effective_enabled`/`overridden` so
+  the UI's listing poll reflects toggles.
 
 #### Horde run persistence (`src/horde.rs`)
 

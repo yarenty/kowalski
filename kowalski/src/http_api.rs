@@ -96,6 +96,10 @@ pub async fn serve(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let config_path = crate::http_ops::mcp_config_path(config.as_deref());
     let full_config = crate::http_ops::load_kowalski_config_for_serve(&config_path)?;
+    // Server state dir (`<config-dir>/db`): API token file, run store, trigger overrides.
+    let state_root = state_config_dir(&config_path)
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("db");
 
     let auth_enabled = security.auth
         || server_config_auth(&full_config)
@@ -103,9 +107,6 @@ pub async fn serve(
             .map(|v| !v.trim().is_empty())
             .unwrap_or(false);
     let api_token: Option<Arc<String>> = if auth_enabled {
-        let state_root = state_config_dir(&config_path)
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("db");
         let (token, generated, token_path) = crate::auth::resolve_api_token(&state_root)?;
         if generated {
             println!(
@@ -221,14 +222,9 @@ pub async fn serve(
             entries.iter().map(|e| &e.spec.id).collect::<Vec<_>>()
         );
     }
-    let run_store = {
-        let state_root = state_config_dir(&config_path)
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("db");
-        kowalski_core::db::run_store::RunStore::open_default(&state_root)
-            .await
-            .map_err(|e| format!("run store: {e}"))?
-    };
+    let run_store = kowalski_core::db::run_store::RunStore::open_default(&state_root)
+        .await
+        .map_err(|e| format!("run store: {e}"))?;
     let mut horde_manager = crate::horde::HordeManager::new(
         Vec::new(),
         federation_broker.clone(),
@@ -302,7 +298,9 @@ pub async fn serve(
     // Trigger runtime: arm every enabled `[[triggers]]` declaration from the
     // catalog (cron table + shared watch instance) and start the minute
     // scheduler. Webhook firings arrive via POST /api/triggers/{route}.
-    let trigger_manager = crate::triggers::TriggerManager::new(horde_manager.clone());
+    // Operator enable/disable overrides persist beside the run store.
+    let trigger_manager = crate::triggers::TriggerManager::new(horde_manager.clone())
+        .with_override_store(state_root.join("trigger_overrides.json"));
     trigger_manager.rearm().await;
     crate::triggers::spawn_cron_loop(trigger_manager.clone());
     // Hot reload: one debounced watcher over the horde roots refreshes the
@@ -403,6 +401,22 @@ pub async fn serve(
         )
         .route("/api/hordes/{horde_id}/run", post(post_horde_run))
         .route("/api/triggers/{route}", post(post_trigger_webhook))
+        .route(
+            "/api/hordes/{horde_id}/triggers",
+            get(get_horde_triggers),
+        )
+        .route(
+            "/api/hordes/{horde_id}/triggers/{index}/enable",
+            post(post_horde_trigger_enable),
+        )
+        .route(
+            "/api/hordes/{horde_id}/triggers/{index}/disable",
+            post(post_horde_trigger_disable),
+        )
+        .route(
+            "/api/hordes/{horde_id}/triggers/{index}/fire",
+            post(post_horde_trigger_fire),
+        )
         .route(
             "/api/hordes/{horde_id}/clean-workdir",
             post(post_horde_clean_workdir),
@@ -1854,6 +1868,28 @@ struct HordeFollowupBody {
     message: String,
 }
 
+/// Trigger declarations enriched with kind/detail and the operator-override
+/// state, so the catalog listing poll carries what the runtime actually arms.
+fn triggers_json(state: &ApiState, spec: &crate::horde::HordeSpec) -> Vec<serde_json::Value> {
+    let effective = state.trigger_manager.effective_states(spec);
+    spec.triggers
+        .iter()
+        .zip(effective)
+        .enumerate()
+        .map(|(index, (t, effective_enabled))| {
+            let mut v = serde_json::to_value(t).unwrap_or_else(|_| json!({}));
+            if let Some(obj) = v.as_object_mut() {
+                obj.insert("index".into(), json!(index));
+                obj.insert("kind".into(), json!(t.kind()));
+                obj.insert("detail".into(), json!(t.detail()));
+                obj.insert("effective_enabled".into(), json!(effective_enabled));
+                obj.insert("overridden".into(), json!(effective_enabled != t.enabled));
+            }
+            v
+        })
+        .collect()
+}
+
 async fn get_hordes(State(state): State<ApiState>) -> Json<serde_json::Value> {
     let global_clean_on_startup = global_horde_clean_on_startup(&state.full_config);
     let hordes: Vec<serde_json::Value> = state
@@ -1872,7 +1908,7 @@ async fn get_hordes(State(state): State<ApiState>) -> Json<serde_json::Value> {
                 "capability_prefix": s.capability_prefix,
                 "pipeline": s.pipeline,
                 "edges": s.manifest_edges,
-                "triggers": s.triggers,
+                "triggers": triggers_json(&state, s),
                 "default_question": s.default_question,
                 "topic": s.topic,
                 "root_path": s.root_path.display().to_string(),
@@ -1918,7 +1954,7 @@ async fn get_horde_detail(
         "capability_prefix": spec.capability_prefix,
         "pipeline": spec.pipeline,
         "edges": spec.manifest_edges,
-        "triggers": spec.triggers,
+        "triggers": triggers_json(&state, spec),
         "default_question": spec.default_question,
         "topic": spec.topic,
         "root_path": spec.root_path.display().to_string(),
@@ -2302,8 +2338,7 @@ async fn post_trigger_webhook(
     AxumPath(route): AxumPath<String>,
     payload: Option<Json<serde_json::Value>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let entries = state.horde_manager.catalog.list();
-    let (spec, index) = match crate::triggers::resolve_webhook_route(&entries, &route) {
+    let (spec, index) = match state.trigger_manager.resolve_webhook(&route) {
         Ok(m) => m,
         Err(crate::triggers::WebhookRouteError::NotFound) => {
             return Err((
@@ -2319,11 +2354,18 @@ async fn post_trigger_webhook(
         }
     };
     let payload = payload.map(|Json(v)| v).unwrap_or_else(|| json!({}));
-    match state
+    let outcome = state
         .trigger_manager
         .fire_webhook(&spec, index, payload)
-        .await
-    {
+        .await;
+    fire_outcome_response(outcome)
+}
+
+/// Shared JSON shape for a trigger firing (webhook route + operator fire-now).
+fn fire_outcome_response(
+    outcome: crate::triggers::FireOutcome,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    match outcome {
         crate::triggers::FireOutcome::Started(run) => Ok(Json(json!({
             "ok": true,
             "fired": true,
@@ -2340,10 +2382,88 @@ async fn post_trigger_webhook(
             "fired": false,
             "queued": true,
         }))),
-        crate::triggers::FireOutcome::Failed(e) => {
-            Err((StatusCode::INTERNAL_SERVER_ERROR, e))
-        }
+        crate::triggers::FireOutcome::Failed(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
     }
+}
+
+/// Per-trigger operator status for one horde: effective enabled state
+/// (declaration + override), next cron fire, and the last fired run.
+async fn get_horde_triggers(
+    State(state): State<ApiState>,
+    AxumPath(horde_id): AxumPath<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let triggers = state
+        .trigger_manager
+        .trigger_status(&horde_id)
+        .await
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("unknown horde id: {horde_id}"),
+            )
+        })?;
+    Ok(Json(json!({ "horde_id": horde_id, "triggers": triggers })))
+}
+
+/// Operator toggle: persist an enable/disable override (beside the run store,
+/// never by editing `horde.md`) and re-arm the runtime. Returns the updated rows.
+async fn set_horde_trigger_enabled(
+    state: &ApiState,
+    horde_id: &str,
+    index: usize,
+    enabled: bool,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    state
+        .trigger_manager
+        .set_enabled(horde_id, index, enabled)
+        .await
+        .map_err(|e| (StatusCode::NOT_FOUND, e))?;
+    let triggers = state
+        .trigger_manager
+        .trigger_status(horde_id)
+        .await
+        .unwrap_or_default();
+    Ok(Json(json!({
+        "ok": true,
+        "horde_id": horde_id,
+        "triggers": triggers,
+    })))
+}
+
+async fn post_horde_trigger_enable(
+    State(state): State<ApiState>,
+    AxumPath((horde_id, index)): AxumPath<(String, usize)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    set_horde_trigger_enabled(&state, &horde_id, index, true).await
+}
+
+async fn post_horde_trigger_disable(
+    State(state): State<ApiState>,
+    AxumPath((horde_id, index)): AxumPath<(String, usize)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    set_horde_trigger_enabled(&state, &horde_id, index, false).await
+}
+
+/// Operator "fire now" for testing a trigger: starts the run immediately
+/// (works on disabled triggers; the overlap policy still applies).
+async fn post_horde_trigger_fire(
+    State(state): State<ApiState>,
+    AxumPath((horde_id, index)): AxumPath<(String, usize)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let spec = state.horde_manager.find(&horde_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("unknown horde id: {horde_id}"),
+        )
+    })?;
+    if spec.triggers.get(index).is_none() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            format!("horde {horde_id} has no trigger at index {index}"),
+        ));
+    }
+    let outcome = state.trigger_manager.fire_manual(&horde_id, index).await;
+    fire_outcome_response(outcome)
 }
 
 async fn post_horde_followup(
