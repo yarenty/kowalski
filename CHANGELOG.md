@@ -21,6 +21,30 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Added
 
+- **Portable workflow manifest (#68):** hordes now have a canonical **JSON interchange
+  form** next to the markdown authoring format. `kowalski_core::manifest` ships a strict
+  `WorkflowManifest` model (`deny_unknown_fields`, `schema_version` 1.0, kebab
+  identifier, semver version, steps with inlined prompts / tool bindings / `ui` operator
+  form, `pipeline[]` + `edges[]` 1:1 with the horde DAG declaration, and `kowalski`
+  extension blocks carrying triggers — every field incl. `overlap` — plus delivery and
+  step runtime config), a published JSON Schema asset
+  (`kowalski-core/resources/schemas/workflow-manifest.schema.json`, draft 2020-12), and
+  two-tier semantic validation (`Draft` vs `Publish` strictness; unknown step kinds are
+  portability warnings, not errors). Converters go both ways: `horde_dir_to_manifest`
+  exports any horde directory (prompt files inlined, writer defaults resolved so the
+  manifest is self-contained), and `write_manifest_tree` validates then regenerates the
+  markdown tree through the rookery writer. Round-trip tested on `examples/coder` and
+  `examples/knowledge-compiler` (dir → manifest → dir preserves semantics; manifest →
+  dir → manifest is byte-stable; DAG edges, conditional retry loops, and triggers survive
+  exactly). Manifests never contain credentials, run history, document contents, or
+  server-local trigger overrides. Supporting fixes: the rookery writer now emits
+  `tool_ids`, `model_id`, `verify_command`/`verify_cwd`, `apply_mode`, `isolation`, and
+  `normalize_*` agent fields (previously dropped on birth), skips prompt files for
+  prompt-less deterministic steps, orders `[[inputs]]` blocks last so following keys are
+  not swallowed into the inputs table, and honors per-step `capability` /
+  `default_agent_id` overrides; horde.md accepts an optional `version`; born-horde
+  validation no longer demands prompts on deterministic (`verify`/`apply`/`ingest`)
+  steps.
 - **Trigger operator UI (#64):** triggers are now visible and controllable from the
   operator UI. The **Horde** tab gains a **Triggers** panel per horde: each trigger shows
   a kind badge with its schedule/route/path, armed/disabled state, next cron fire, and a

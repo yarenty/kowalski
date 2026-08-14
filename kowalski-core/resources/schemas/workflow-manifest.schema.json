@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/yarenty/kowalski/main/kowalski-core/resources/schemas/workflow-manifest.schema.json",
+  "title": "Kowalski workflow manifest",
+  "description": "Portable JSON interchange form of a horde: the markdown directory (horde.md + agents/*.md + prompts/*.md) stays the authoring format; this manifest is the canonical export/import representation. Contract version 1.0 (schema_version MAJOR.MINOR).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "identifier", "name", "version", "description", "steps", "pipeline"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "description": "Manifest contract version (MAJOR.MINOR). MAJOR 1 is current; a newer MAJOR must be rejected on import."
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z](?:[a-z0-9-]{0,62})?[a-z0-9]$|^[a-z]$",
+      "description": "Kebab-case workflow id; becomes the horde id on import."
+    },
+    "name": { "type": "string", "description": "Human-readable workflow name (horde display_name)." },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$",
+      "description": "Workflow semver."
+    },
+    "description": { "type": "string" },
+    "steps": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/step" }
+    },
+    "pipeline": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Step ids in topological order; must cover steps[] exactly."
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/edge" },
+      "description": "Scheduling DAG; absent or empty means an implicit chain along pipeline order."
+    },
+    "kowalski": { "$ref": "#/$defs/manifest_extension" }
+  },
+  "$defs": {
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "name"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z](?:[a-z0-9-]*[a-z0-9])?$" },
+        "kind": {
+          "type": "string",
+          "enum": ["llm", "rag", "input", "verify", "apply", "ingest", "process", "step", "deliver", "final", "compile", "ask", "lint"],
+          "description": "Step kind. Kowalski LLM kinds: process/step/deliver/final/compile/ask/lint; deterministic kinds: verify/apply/ingest; llm/rag/input are interchange vocabulary."
+        },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "agent": { "$ref": "#/$defs/agent" },
+        "tool_bindings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/tool_binding" }
+        },
+        "input": { "$ref": "#/$defs/step_input" },
+        "ui": {
+          "type": "object",
+          "description": "Free-form UI hints. Kowalski convention: {\"inputs\": [...]} carries the pre-run operator form fields.",
+          "properties": {
+            "inputs": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/input_field" }
+            }
+          }
+        },
+        "kowalski": { "$ref": "#/$defs/step_extension" }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system_prompt"],
+      "properties": {
+        "system_prompt": { "type": "string", "description": "Full prompt text (prompt file inlined on export)." },
+        "model": { "type": "string", "description": "Pinned model id; omitted = deployment default." },
+        "parameters": { "type": "object", "description": "Free-form generation parameters." }
+      }
+    },
+    "tool_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider"],
+      "properties": {
+        "provider": { "type": "string", "description": "Tool source; kowalski built-in tool_ids export under provider \"builtin\"." },
+        "tools": { "type": "array", "items": { "type": "string" } },
+        "overrides": { "type": "object", "description": "Provider-specific settings (never credentials)." }
+      }
+    },
+    "step_input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prompt"],
+      "properties": {
+        "prompt": { "type": "string" },
+        "schema": { "type": "object", "description": "JSON Schema constraining the expected value." }
+      }
+    },
+    "input_field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "label"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string" },
+        "label": { "type": "string" },
+        "required": { "type": "boolean" },
+        "placeholder": { "type": ["string", "null"] },
+        "options": { "type": "array", "items": { "type": "string" } },
+        "default": { "type": ["string", "null"] }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "when": {
+          "type": ["string", "null"],
+          "enum": ["pass", "fail", "always", null],
+          "description": "Route only when the upstream outcome matches; omitted = always."
+        },
+        "max_loops": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "description": "Required on loop-back edges; maximum traversals."
+        }
+      }
+    },
+    "trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cron": { "type": "string", "description": "5-field cron expression (minute hour day-of-month month day-of-week), local timezone." },
+        "watch": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path"],
+          "properties": {
+            "path": { "type": "string" },
+            "events": { "type": "array", "items": { "type": "string", "enum": ["create", "modify", "remove"] } },
+            "debounce_ms": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "webhook": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["route"],
+          "properties": {
+            "route": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" }
+          }
+        },
+        "enabled": { "type": "boolean" },
+        "overlap": { "type": "string", "enum": ["skip", "queue", "parallel"] },
+        "input": { "type": "object", "additionalProperties": { "type": "string" } },
+        "prompt": { "type": "string" }
+      }
+    },
+    "manifest_extension": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "capability_prefix": { "type": "string" },
+        "default_question": { "type": "string" },
+        "default_topic": { "type": "string" },
+        "workdir": { "type": "string" },
+        "delivery_title": { "type": "string" },
+        "delivery_note": { "type": "string" },
+        "delivery_root_rel": { "type": "string" },
+        "delivery_summary_note": { "type": "string" },
+        "prompt_tip": { "type": "string" },
+        "triggers": { "type": "array", "items": { "$ref": "#/$defs/trigger" } }
+      }
+    },
+    "step_extension": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "output": { "type": "string", "description": "Artifact path relative to workdir." },
+        "context_paths": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Context wiring: @artifact@, @step:<id>@, or workdir-relative paths."
+        },
+        "capability": { "type": "string" },
+        "default_agent_id": { "type": "string" },
+        "avatar": { "type": "string" },
+        "isolation": { "type": "string", "enum": ["in_process", "process"] },
+        "verify_command": { "type": "string" },
+        "verify_cwd": { "type": "string" },
+        "apply_mode": { "type": "string", "enum": ["dry-run", "execute"] },
+        "normalize_doc_title": { "type": "string" },
+        "normalize_sections": { "type": "array", "items": { "type": "string" } },
+        "normalize_fallback": { "type": "string" },
+        "normalize_fallback_sections": { "type": "array", "items": { "type": "string" } },
+        "agent_body": { "type": "string", "description": "Extra markdown body of agents/<id>.md after the frontmatter." }
+      }
+    }
+  }
+}

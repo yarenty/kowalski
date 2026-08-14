@@ -18,6 +18,13 @@ pub struct AppManifestMeta {
     pub id: String,
     #[serde(default)]
     pub display_name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Semver workflow version (used by manifest export; optional in horde.md).
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub capability_prefix: Option<String>,
     pub pipeline: Vec<String>,
     /// Optional scheduling edges; absent or empty → implicit chain along `pipeline` order.
     #[serde(default)]
@@ -27,13 +34,44 @@ pub struct AppManifestMeta {
     pub triggers: Vec<HordeTrigger>,
     #[serde(default)]
     pub default_question: Option<String>,
+    #[serde(default)]
+    pub default_topic: Option<String>,
+    #[serde(default)]
+    pub workdir: Option<String>,
+    #[serde(default)]
+    pub delivery_title: Option<String>,
+    #[serde(default)]
+    pub delivery_note: Option<String>,
+    #[serde(default)]
+    pub delivery_root_rel: Option<String>,
+    #[serde(default)]
+    pub delivery_summary_note: Option<String>,
+    #[serde(default)]
+    pub prompt_tip: Option<String>,
 }
 
 /// One pipeline stage (`agents/<name>.md` frontmatter).
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Default, Deserialize, Clone)]
 pub struct StageAgentMeta {
     pub name: String,
     pub kind: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub capability: Option<String>,
+    #[serde(default)]
+    pub default_agent_id: Option<String>,
+    /// UI avatar id (maps to `ui/src/assets/pinguins/<id>.png`).
+    #[serde(default)]
+    pub avatar: Option<String>,
+    /// Pinned model (omitted = deployment default).
+    #[serde(default)]
+    pub model_id: Option<String>,
+    /// `in_process` (default) or `process` step isolation.
+    #[serde(default)]
+    pub isolation: Option<String>,
     #[serde(default)]
     pub prompt_file: Option<String>,
     /// Relative to **workdir** (e.g. `debug/reports/latest.md`). Required for LLM stages.
@@ -281,18 +319,11 @@ mod tests {
         StageAgentMeta {
             name: "lint".into(),
             kind: "lint".into(),
-            prompt_file: None,
-            output: None,
-            context_paths: vec![],
             normalize_doc_title: Some("Vault paste pack".into()),
             normalize_sections: vec!["TL;DR".into(), "Suggested notes".into()],
             normalize_fallback: Some("SHOULD_NOT_APPEAR".into()),
             normalize_fallback_sections: vec!["TL;DR".into()],
-            inputs: vec![],
-            tool_ids: vec![],
-            verify_command: None,
-            verify_cwd: None,
-            apply_mode: None,
+            ..Default::default()
         }
     }
 

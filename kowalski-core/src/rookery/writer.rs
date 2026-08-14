@@ -61,21 +61,20 @@ fn write_penguin_files(
 ) -> Result<(), KowalskiError> {
     let prefix = capability_prefix(draft);
     let prompt_rel = format!("prompts/{}.md", penguin.name);
-    fs::write(horde_root.join(&prompt_rel), &penguin.prompt_body)?;
+    let has_prompt = !penguin.prompt_body.trim().is_empty();
+    if has_prompt {
+        fs::write(horde_root.join(&prompt_rel), &penguin.prompt_body)?;
+    }
 
-    let capability = format!("{}.{}", prefix, penguin.kind);
-    let default_agent_id = format!(
-        "{}-{}",
-        prefix.replace('.', "-"),
-        penguin.kind
-    );
-    let context_paths = if !penguin.context_paths.is_empty() {
-        penguin.context_paths.clone()
-    } else if graph_step_is_source(draft, &penguin.name) {
-        vec![]
-    } else {
-        vec!["@artifact@".to_string()]
-    };
+    let capability = penguin
+        .capability
+        .clone()
+        .unwrap_or_else(|| format!("{}.{}", prefix, penguin.kind));
+    let default_agent_id = penguin
+        .default_agent_id
+        .clone()
+        .unwrap_or_else(|| format!("{}-{}", prefix.replace('.', "-"), penguin.kind));
+    let context_paths = effective_context_paths(draft, penguin);
 
     let mut fm = String::new();
     fm.push_str("---\n");
@@ -94,21 +93,66 @@ fn write_penguin_files(
         "description = \"{}\"\n",
         escape_toml_str(&penguin.description)
     ));
-    fm.push_str(&format!("prompt_file = \"{prompt_rel}\"\n"));
+    if has_prompt {
+        fm.push_str(&format!("prompt_file = \"{prompt_rel}\"\n"));
+    }
     let output = effective_output(draft, penguin);
     fm.push_str(&format!("output = \"{}\"\n", escape_toml_str(&output)));
-    if !penguin.inputs.is_empty() {
-        for input in &penguin.inputs {
-            write_input_field(&mut fm, input);
-        }
+    if let Some(model_id) = penguin.model_id.as_deref().filter(|s| !s.trim().is_empty()) {
+        fm.push_str(&format!("model_id = \"{}\"\n", escape_toml_str(model_id)));
+    }
+    if let Some(isolation) = penguin.isolation.as_deref().filter(|s| !s.trim().is_empty()) {
+        fm.push_str(&format!("isolation = \"{}\"\n", escape_toml_str(isolation)));
+    }
+    if let Some(cmd) = penguin.verify_command.as_deref() {
+        fm.push_str(&format!("verify_command = \"{}\"\n", escape_toml_str(cmd)));
+    }
+    if let Some(cwd) = penguin.verify_cwd.as_deref() {
+        fm.push_str(&format!("verify_cwd = \"{}\"\n", escape_toml_str(cwd)));
+    }
+    if let Some(mode) = penguin.apply_mode.as_deref() {
+        fm.push_str(&format!("apply_mode = \"{}\"\n", escape_toml_str(mode)));
+    }
+    if let Some(title) = penguin.normalize_doc_title.as_deref() {
+        fm.push_str(&format!(
+            "normalize_doc_title = \"{}\"\n",
+            escape_toml_str(title)
+        ));
+    }
+    if !penguin.normalize_sections.is_empty() {
+        fm.push_str(&format!(
+            "normalize_sections = [{}]\n",
+            toml_string_array(&penguin.normalize_sections)
+        ));
+    }
+    if let Some(fallback) = penguin.normalize_fallback.as_deref() {
+        fm.push_str(&format!(
+            "normalize_fallback = \"{}\"\n",
+            escape_toml_str(fallback)
+        ));
+    }
+    if !penguin.normalize_fallback_sections.is_empty() {
+        fm.push_str(&format!(
+            "normalize_fallback_sections = [{}]\n",
+            toml_string_array(&penguin.normalize_fallback_sections)
+        ));
     }
     if !context_paths.is_empty() {
-        let inner = context_paths
-            .iter()
-            .map(|s| format!("\"{}\"", escape_toml_str(s)))
-            .collect::<Vec<_>>()
-            .join(", ");
-        fm.push_str(&format!("context_paths = [{inner}]\n"));
+        fm.push_str(&format!(
+            "context_paths = [{}]\n",
+            toml_string_array(&context_paths)
+        ));
+    }
+    if !penguin.tool_ids.is_empty() {
+        fm.push_str(&format!(
+            "tool_ids = [{}]\n",
+            toml_string_array(&penguin.tool_ids)
+        ));
+    }
+    // `[[inputs]]` array-of-tables blocks must come last: any bare key emitted after
+    // them would parse as a key of the final inputs table, not the agent frontmatter.
+    for input in &penguin.inputs {
+        write_input_field(&mut fm, input);
     }
     fm.push_str("---\n\n");
 
@@ -122,6 +166,14 @@ fn write_penguin_files(
         format!("{fm}{agent_body}"),
     )?;
     Ok(())
+}
+
+fn toml_string_array(items: &[String]) -> String {
+    items
+        .iter()
+        .map(|s| format!("\"{}\"", escape_toml_str(s)))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn escape_toml_str(s: &str) -> String {
@@ -159,21 +211,32 @@ fn write_input_field(fm: &mut String, input: &OperatorInputField) {
         fm.push_str(&format!("default = \"{}\"\n", escape_toml_str(d)));
     }
     if !input.options.is_empty() {
-        let inner = input
-            .options
-            .iter()
-            .map(|o| format!("\"{}\"", escape_toml_str(o)))
-            .collect::<Vec<_>>()
-            .join(", ");
-        fm.push_str(&format!("options = [{inner}]\n"));
+        fm.push_str(&format!(
+            "options = [{}]\n",
+            toml_string_array(&input.options)
+        ));
     }
 }
 
-fn default_agent_body(penguin: &PenguinSpec) -> String {
+/// The agent-file body the writer emits when a penguin declares none.
+pub(crate) fn default_agent_body(penguin: &PenguinSpec) -> String {
     format!(
         "# {}\n\n{}\n",
         penguin.display_name, penguin.description
     )
+}
+
+/// Context paths the writer would emit for this penguin: the declared paths, or the
+/// `@artifact@` default for non-source graph steps. Shared with the manifest exporter
+/// so exported manifests are self-contained.
+pub(crate) fn effective_context_paths(draft: &RookeryDraft, penguin: &PenguinSpec) -> Vec<String> {
+    if !penguin.context_paths.is_empty() {
+        penguin.context_paths.clone()
+    } else if graph_step_is_source(draft, &penguin.name) {
+        vec![]
+    } else {
+        vec!["@artifact@".to_string()]
+    }
 }
 
 fn graph_step_is_source(draft: &RookeryDraft, step: &str) -> bool {
@@ -187,35 +250,69 @@ fn graph_step_is_source(draft: &RookeryDraft, step: &str) -> bool {
         .unwrap_or_else(|_| draft.pipeline.first().is_some_and(|s| s == step))
 }
 
-fn render_horde_md(draft: &RookeryDraft) -> String {
-    let workdir = draft.workdir.as_deref().unwrap_or("output");
+/// Horde.md field values after applying the writer's defaults. Single owner of those
+/// defaults — the renderer and the manifest exporter both resolve through here.
+#[derive(Debug, Clone)]
+pub struct ResolvedHordeFields {
+    pub capability_prefix: String,
+    pub default_question: String,
+    pub default_topic: String,
+    pub workdir: String,
+    pub delivery_title: String,
+    pub delivery_note: String,
+    pub delivery_root_rel: String,
+    pub delivery_summary_note: String,
+    /// Empty string when unset (omitted from horde.md).
+    pub prompt_tip: String,
+}
+
+/// Resolve every optional horde.md field to the value [`write_horde_tree`] would emit.
+pub fn resolve_horde_fields(draft: &RookeryDraft) -> ResolvedHordeFields {
     let delivery_root_rel = draft
         .delivery_root_rel
         .clone()
         .unwrap_or_else(|| last_penguin_output(draft).unwrap_or_else(|| "HANDOFF.md".into()));
-    let default_question = draft
-        .default_question
-        .clone()
-        .unwrap_or_else(|| "What should we do with the latest output?".into());
-    let default_topic = draft
-        .default_topic
-        .clone()
-        .unwrap_or_else(|| "federation".into());
-    let delivery_title = draft
-        .delivery_title
-        .clone()
-        .unwrap_or_else(|| "Delivery".into());
-    let delivery_note = draft.delivery_note.clone().unwrap_or_else(|| {
-        format!(
-            "When the run finishes, open **`workdir/{delivery_root_rel}`**. Intermediates live under **`workdir/debug/`** per agent `output` paths."
-        )
-    });
-    let delivery_summary = draft
-        .delivery_summary_note
-        .clone()
-        .unwrap_or_else(|| draft.description.clone());
-    let prompt_tip = draft.prompt_tip.clone().unwrap_or_default();
-    let prefix = capability_prefix(draft);
+    ResolvedHordeFields {
+        capability_prefix: capability_prefix(draft),
+        default_question: draft
+            .default_question
+            .clone()
+            .unwrap_or_else(|| "What should we do with the latest output?".into()),
+        default_topic: draft
+            .default_topic
+            .clone()
+            .unwrap_or_else(|| "federation".into()),
+        workdir: draft.workdir.clone().unwrap_or_else(|| "output".into()),
+        delivery_title: draft
+            .delivery_title
+            .clone()
+            .unwrap_or_else(|| "Delivery".into()),
+        delivery_note: draft.delivery_note.clone().unwrap_or_else(|| {
+            format!(
+                "When the run finishes, open **`workdir/{delivery_root_rel}`**. Intermediates live under **`workdir/debug/`** per agent `output` paths."
+            )
+        }),
+        delivery_summary_note: draft
+            .delivery_summary_note
+            .clone()
+            .unwrap_or_else(|| draft.description.clone()),
+        delivery_root_rel,
+        prompt_tip: draft.prompt_tip.clone().unwrap_or_default(),
+    }
+}
+
+fn render_horde_md(draft: &RookeryDraft) -> String {
+    let ResolvedHordeFields {
+        capability_prefix: prefix,
+        default_question,
+        default_topic,
+        workdir,
+        delivery_title,
+        delivery_note,
+        delivery_root_rel,
+        delivery_summary_note: delivery_summary,
+        prompt_tip,
+    } = resolve_horde_fields(draft);
     let pipeline_toml: String = draft
         .pipeline
         .iter()
@@ -234,6 +331,9 @@ fn render_horde_md(draft: &RookeryDraft) -> String {
         "description = \"{}\"\n",
         escape_toml_str(&draft.description)
     ));
+    if let Some(version) = draft.version.as_deref().filter(|s| !s.trim().is_empty()) {
+        out.push_str(&format!("version = \"{}\"\n", escape_toml_str(version)));
+    }
     out.push_str(&format!("capability_prefix = \"{prefix}\"\n"));
     out.push_str(&format!("pipeline = [{pipeline_toml}]\n"));
     out.push_str(&format!(
