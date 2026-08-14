@@ -8,10 +8,17 @@
 //! [`WORKFLOW_MANIFEST_SCHEMA_JSON`]). Manifests never contain credentials, run
 //! history, or run document contents.
 
+mod bundle;
 mod convert;
 mod model;
 mod validate;
 
+pub use bundle::{
+    BUNDLE_ASSETS_PREFIX, BUNDLE_EXTENSION, BUNDLE_EXTENSION_ALIAS, BUNDLE_MANIFEST_ENTRY,
+    BundleImport, MAX_BUNDLE_ENTRIES, MAX_BUNDLE_FILE_BYTES, MAX_ENTRY_BYTES,
+    MAX_TOTAL_UNCOMPRESSED_BYTES, ManifestMigration, PortabilityContext, PortabilityReport,
+    bundle_file_name, export_bundle, export_horde_dir_bundle, import_bundle, portability_report,
+};
 pub use convert::{
     DEFAULT_MANIFEST_VERSION, draft_from_horde_dir, horde_dir_to_manifest, manifest_from_draft,
     manifest_to_draft, write_manifest_tree,
@@ -22,8 +29,8 @@ pub use model::{
     WorkflowManifest, workflow_manifest_schema,
 };
 pub use validate::{
-    DETERMINISTIC_STEP_KINDS, INTERCHANGE_STEP_KINDS, ManifestStrictness, validate_manifest,
-    validate_manifest_with,
+    DETERMINISTIC_STEP_KINDS, INTERCHANGE_STEP_KINDS, ManifestStrictness, is_known_step_kind,
+    validate_manifest, validate_manifest_with,
 };
 
 #[cfg(test)]

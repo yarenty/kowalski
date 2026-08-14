@@ -63,5 +63,31 @@ integrity only (ids, coverage, edges, kind-config exclusivity); `Publish` additi
 requires a name, a semver version, and a non-empty `agent.system_prompt` on every LLM
 step.
 
-Archive packaging (zip bundle + import endpoint) and CLI/UI surfaces build on this
-contract — see the root [`ROADMAP.md`](../ROADMAP.md).
+## Portable bundle (`.kwf.zip`)
+
+A workflow travels as a single zip file: `<identifier>-<version>.kwf.zip`, containing
+`manifest.json` (byte-identical to the stored manifest) plus optional `assets/` files
+(icons, ui samples). Import also accepts the `.bbwf.zip` extension — the identical
+format, kept as an interop alias for externally produced workflow bundles. By
+construction a bundle **never** contains credentials, run history or state,
+watched-directory contents, or server-side trigger-override state.
+
+- **Export** (`export_horde_dir_bundle` / `export_bundle`): validates at Publish
+  strictness, writes `manifest.json` + the horde dir's `assets/` subtree when present.
+- **Import** (`import_bundle`): treats the zip as untrusted — entry allowlist
+  (`manifest.json` + `assets/*` only), zip-slip guard, symlink rejection, and size caps
+  (bundle file, per entry, total uncompressed, entry count). The manifest is then
+  version-gated (`schema_version`: different MAJOR rejected, newer MINOR rejected with
+  an upgrade hint, older MINOR walked through registered migrations), validated, and
+  landed as a draft horde directory through the normal writer.
+- **Never auto-armed:** every imported trigger declaration is rewritten to
+  `enabled = false` in the horde files themselves, so the operator re-enables each
+  trigger deliberately.
+- **Portability report** (returned, not fatal): unknown step kinds, unknown tool
+  providers, locally unavailable builtin tool ids, and unresolved pinned models —
+  checked against a caller-supplied `PortabilityContext` (lists the surface knows;
+  `None` skips a check). An empty report means the workflow is fully portable to this
+  deployment.
+
+CLI/UI surfaces for export/import build on this contract — see the root
+[`ROADMAP.md`](../ROADMAP.md).

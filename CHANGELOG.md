@@ -21,6 +21,23 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Added
 
+- **Portable workflow bundle (#69):** workflows now travel as a single file —
+  `<identifier>-<version>.kwf.zip`, containing `manifest.json` (byte-identical to the
+  stored manifest) plus optional `assets/` files; import also accepts the `.bbwf.zip`
+  extension (identical format, an interop alias for externally produced workflow
+  bundles). `kowalski_core::manifest` gains `export_horde_dir_bundle`/`export_bundle`
+  (Publish-validated; bundles never contain credentials, run history/state,
+  watched-directory contents, or server-side trigger-override state — audited by test)
+  and `import_bundle`, which treats the zip as untrusted: entry allowlist, zip-slip
+  guard, symlink rejection, and size caps, then `schema_version` gating (different
+  MAJOR rejected, newer MINOR rejected with an upgrade hint, older MINOR migrated
+  through registered migration scaffolding), semantic validation, and landing as a
+  **draft** horde directory that is never auto-armed — every imported trigger
+  declaration is rewritten to `enabled = false` so the operator re-enables
+  deliberately. Import returns a **portability report** (unknown step kinds, unknown
+  tool providers, locally unavailable builtin tool ids, unresolved pinned models —
+  checked against a caller-supplied `PortabilityContext`; reported, never fatal), and
+  the full export→import round-trip is equivalence-tested on `examples/coder`.
 - **Portable workflow manifest (#68):** hordes now have a canonical **JSON interchange
   form** next to the markdown authoring format. `kowalski_core::manifest` ships a strict
   `WorkflowManifest` model (`deny_unknown_fields`, `schema_version` 1.0, kebab
