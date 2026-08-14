@@ -829,15 +829,7 @@ mod tests {
             prompt_file: Some("prompts/dev.md".into()),
             output: Some("debug/reports/".into()),
             context_paths: vec!["@artifact@".into()],
-            normalize_doc_title: None,
-            normalize_sections: Vec::new(),
-            normalize_fallback: None,
-            normalize_fallback_sections: Vec::new(),
-            tool_ids: Vec::new(),
-            verify_command: None,
-            verify_cwd: None,
-            apply_mode: None,
-            inputs: Vec::new(),
+            ..Default::default()
         };
         let (out_path, message) = build_llm_stage_request(
             root.path(),

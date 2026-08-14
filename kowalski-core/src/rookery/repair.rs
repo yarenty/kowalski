@@ -34,20 +34,13 @@ pub fn repair_horde_tree_outputs(root: &Path) -> Result<u32, KowalskiError> {
     let draft = RookeryDraft {
         id: meta.id.clone(),
         display_name: meta.display_name.clone().unwrap_or_else(|| meta.id.clone()),
-        description: String::new(),
-        capability_prefix: None,
         pipeline: meta.pipeline.clone(),
         edges: meta.edges.clone(),
         triggers: meta.triggers.clone(),
-        penguins: vec![],
         default_question: meta.default_question.clone(),
-        default_topic: None,
         workdir: Some("output".into()),
-        delivery_title: None,
-        delivery_note: None,
         delivery_root_rel: Some("HANDOFF.md".into()),
-        delivery_summary_note: None,
-        prompt_tip: None,
+        ..Default::default()
     };
 
     let pipeline = meta.pipeline.clone();
@@ -66,15 +59,10 @@ pub fn repair_horde_tree_outputs(root: &Path) -> Result<u32, KowalskiError> {
             name: stage.name.clone(),
             kind: stage.kind.clone(),
             display_name: stage.name.clone(),
-            description: String::new(),
-            prompt_body: String::new(),
-            agent_body: None,
             output: out.to_string(),
             context_paths: stage.context_paths.clone(),
-            tool_ids: vec![],
-            model_id: None,
             inputs: stage.inputs.clone(),
-            avatar: None,
+            ..Default::default()
         };
         let is_first = i == 0;
         let is_last = i == n - 1;

@@ -23,6 +23,7 @@ Use this folder for **design articles**, **architecture notes**, and **long-form
 | Doc | Purpose |
 |-----|---------|
 | [`article_tooling.md`](./article_tooling.md) | Principles for designing tools for **`TemplateAgent`** and the tool chain. |
+| [`WORKFLOW_MANIFEST.md`](./WORKFLOW_MANIFEST.md) | **Portable workflow manifest**: canonical JSON interchange form of a horde (schema, converters, round-trip guarantees). |
 | [`key_technology.md`](./key_technology.md) | Perspectives (technology, business, research) — updated for the **1.1.x** workspace layout. |
 
 ## Architecture snapshots

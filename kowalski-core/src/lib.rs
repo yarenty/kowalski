@@ -10,6 +10,7 @@ pub mod horde_stages;
 pub mod horde_step;
 pub mod horde_trigger;
 pub mod llm;
+pub mod manifest;
 pub mod source_bundle;
 pub mod logging;
 pub mod markdown_pipeline;
@@ -65,6 +66,12 @@ pub use horde_graph::{
 pub use horde_trigger::{
     is_valid_slug, parse_cron, validate_triggers, CronSchedule, HordeTrigger, WatchTrigger,
     WebhookTrigger, DEFAULT_WATCH_DEBOUNCE_MS, DEFAULT_WATCH_EVENTS, WATCH_EVENTS,
+};
+pub use manifest::{
+    horde_dir_to_manifest, manifest_from_draft, manifest_to_draft, validate_manifest,
+    validate_manifest_with, workflow_manifest_schema, write_manifest_tree, ManifestStep,
+    ManifestStrictness, WorkflowManifest, MANIFEST_SCHEMA_VERSION,
+    WORKFLOW_MANIFEST_SCHEMA_JSON,
 };
 pub use markdown_pipeline::{
     maybe_normalize_markdown, parse_app_manifest, parse_stage_agent, render_context_attachments,

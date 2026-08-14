@@ -6,11 +6,14 @@ use crate::operator_input::OperatorInputField;
 use serde::{Deserialize, Serialize};
 
 /// In-memory draft between interview and **Give birth** (linear `pipeline` order only).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct RookeryDraft {
     pub id: String,
     pub display_name: String,
     pub description: String,
+    /// Semver workflow version (`version = "x.y.z"` in horde.md; used by manifest export).
+    #[serde(default)]
+    pub version: Option<String>,
     #[serde(default)]
     pub capability_prefix: Option<String>,
     /// Ordered step names; must match `penguins` keys exactly.
@@ -48,33 +51,19 @@ impl RookeryDraft {
     pub fn empty_draft(id: impl Into<String>) -> Self {
         Self {
             id: id.into(),
-            display_name: String::new(),
-            description: String::new(),
-            capability_prefix: None,
-            pipeline: Vec::new(),
-            edges: Vec::new(),
-            triggers: Vec::new(),
-            penguins: Vec::new(),
-            default_question: None,
-            default_topic: None,
-            workdir: None,
-            delivery_title: None,
-            delivery_note: None,
-            delivery_root_rel: None,
-            delivery_summary_note: None,
-            prompt_tip: None,
+            ..Default::default()
         }
     }
 }
 
 /// One pipeline step (“penguin”).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct PenguinSpec {
     pub name: String,
     pub kind: String,
     pub display_name: String,
     pub description: String,
-    /// Body written to `prompts/<name>.md`.
+    /// Body written to `prompts/<name>.md` (may be empty for deterministic kinds).
     pub prompt_body: String,
     /// Optional extra markdown in `agents/<name>.md` after frontmatter.
     #[serde(default)]
@@ -83,9 +72,10 @@ pub struct PenguinSpec {
     pub output: String,
     #[serde(default)]
     pub context_paths: Vec<String>,
-    /// Reserved for UI / future runtime wiring (not written to agent frontmatter in 1.3.0).
+    /// Tool names allowed for this step (`tool_ids` in agent frontmatter).
     #[serde(default)]
     pub tool_ids: Vec<String>,
+    /// Pinned model (`model_id` in agent frontmatter; omitted = deployment default).
     #[serde(default)]
     pub model_id: Option<String>,
     /// Pre-run operator form fields (`[[inputs]]` in agent frontmatter).
@@ -94,6 +84,32 @@ pub struct PenguinSpec {
     /// UI avatar id (e.g. `ingest`, `mock_builder`); maps to `ui/src/assets/pinguins/<id>.png`.
     #[serde(default)]
     pub avatar: Option<String>,
+    /// Capability override (`capability` in agent frontmatter; default `<prefix>.<kind>`).
+    #[serde(default)]
+    pub capability: Option<String>,
+    /// Worker id override (`default_agent_id` in agent frontmatter; default `<prefix>-<kind>`).
+    #[serde(default)]
+    pub default_agent_id: Option<String>,
+    /// Shell command for `kind = "verify"`.
+    #[serde(default)]
+    pub verify_command: Option<String>,
+    /// Working directory relative to operator `project_path` (verify).
+    #[serde(default)]
+    pub verify_cwd: Option<String>,
+    /// `dry-run` (default) or `execute` for `kind = "apply"`.
+    #[serde(default)]
+    pub apply_mode: Option<String>,
+    /// `in_process` (default) or `process` step isolation.
+    #[serde(default)]
+    pub isolation: Option<String>,
+    #[serde(default)]
+    pub normalize_doc_title: Option<String>,
+    #[serde(default)]
+    pub normalize_sections: Vec<String>,
+    #[serde(default)]
+    pub normalize_fallback: Option<String>,
+    #[serde(default)]
+    pub normalize_fallback_sections: Vec<String>,
 }
 
 /// Options for writing a born horde to disk.

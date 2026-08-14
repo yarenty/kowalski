@@ -278,6 +278,39 @@ docs. Wire-fixture tests live beside each provider; the scripted two-turn exchan
 (declare → structured calls → tool-role follow-up) is `tests/native_tool_calling.rs`;
 schema-on-the-wire round-trips for both providers are `tests/structured_output.rs`.
 
+### Workflow manifest (`src/manifest/`) — JSON interchange format
+
+The markdown horde directory (`horde.md` + `agents/*.md` + `prompts/*.md`) is the
+**authoring** format; the **`WorkflowManifest`** is its canonical **JSON interchange**
+projection for export, import, validation, and consumption by other systems. Runs never
+execute from a manifest directly — import regenerates a horde dir first.
+
+- **Model** (`manifest/model.rs`): strict serde (`deny_unknown_fields` on every struct),
+  `schema_version` (`MAJOR.MINOR`, current `1.0`), kebab `identifier`, semver `version`,
+  `steps[]` (`agent {system_prompt, model?, parameters?}` with prompt files **inlined**,
+  `tool_bindings[] {provider, tools?, overrides?}`, `input {prompt, schema?}`, free-form
+  `ui` — kowalski convention `{"inputs": [...]}` carries the `[[inputs]]` operator form),
+  `pipeline[]`, `edges[]` (reuses `HordeEdge` — 1:1 with `[[edges]]`). Kowalski-only
+  fields ride `kowalski` extension blocks at manifest level (delivery presentation, run
+  defaults, **triggers with every declaration field incl. `overlap`**) and step level
+  (`output`, `context_paths`, verify/apply config, isolation, avatar, agent body).
+  Published contract: **`resources/schemas/workflow-manifest.schema.json`** (draft
+  2020-12, embedded as `WORKFLOW_MANIFEST_SCHEMA_JSON`). Manifests never contain
+  credentials, run history, or run document contents; operator trigger overrides are
+  server state and are never exported.
+- **Validation** (`manifest/validate.rs`): `validate_manifest_with(m, Draft|Publish)` —
+  structural rules always (unique/valid step ids, pipeline↔steps coverage, edge
+  resolution via `resolve_execution_graph`, kind-config exclusivity, trigger rules);
+  Publish additionally requires name/semver/`agent.system_prompt` on LLM kinds. Returns
+  **warnings** for unknown step kinds (import-portability concern, not a crash).
+- **Converters** (`manifest/convert.rs`): `horde_dir_to_manifest` (parse tree →
+  `RookeryDraft` pivot → manifest, writer defaults resolved so manifests are
+  self-contained) and `write_manifest_tree` (validate → draft → the existing rookery
+  writer). Round-trip properties are tested in `manifest/tests.rs`: dir → manifest → dir
+  is semantics-preserving on `examples/coder` and `examples/knowledge-compiler`;
+  manifest → dir → manifest is byte-stable on a DAG fixture with a conditional retry
+  loop.
+
 ### Tool execution model (three sources, one abstraction)
 
 Agents ultimately call **capabilities** that behave like tools. Those capabilities come from **exactly one of three places** (or a deliberate combination), configured per deployment:

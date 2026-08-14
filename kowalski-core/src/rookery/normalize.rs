@@ -247,6 +247,7 @@ mod tests {
                     model_id: None,
                     inputs: vec![],
                     avatar: None,
+                    ..Default::default()
                 },
                 PenguinSpec {
                     name: "Structure".into(),
@@ -261,6 +262,7 @@ mod tests {
                     model_id: None,
                     inputs: vec![],
                     avatar: None,
+                    ..Default::default()
                 },
                 PenguinSpec {
                     name: "Deliver".into(),
@@ -275,16 +277,13 @@ mod tests {
                     model_id: None,
                     inputs: vec![],
                     avatar: None,
+                    ..Default::default()
                 },
             ],
             default_question: None,
             default_topic: None,
             workdir: Some("output".into()),
-            delivery_title: None,
-            delivery_note: None,
-            delivery_root_rel: None,
-            delivery_summary_note: None,
-            prompt_tip: None,
+            ..Default::default()
         };
         normalize_draft(&mut draft);
         assert_eq!(draft.id, "rust-project-scaffolder-1-0");

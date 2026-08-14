@@ -27,10 +27,7 @@ pub fn minimal_linear_draft() -> RookeryDraft {
                 agent_body: None,
                 output: "debug/raw/".into(),
                 context_paths: vec![],
-                tool_ids: vec![],
-                model_id: None,
-                inputs: vec![],
-                avatar: None,
+                ..Default::default()
             },
             PenguinSpec {
                 name: "process".into(),
@@ -41,10 +38,7 @@ pub fn minimal_linear_draft() -> RookeryDraft {
                 agent_body: None,
                 output: "debug/stage-process.md".into(),
                 context_paths: vec!["@artifact@".into()],
-                tool_ids: vec![],
-                model_id: None,
-                inputs: vec![],
-                avatar: None,
+                ..Default::default()
             },
             PenguinSpec {
                 name: "deliver".into(),
@@ -55,10 +49,7 @@ pub fn minimal_linear_draft() -> RookeryDraft {
                 agent_body: None,
                 output: "HANDOFF.md".into(),
                 context_paths: vec!["@artifact@".into()],
-                tool_ids: vec![],
-                model_id: None,
-                inputs: vec![],
-                avatar: None,
+                ..Default::default()
             },
         ],
         default_question: Some("What is the key takeaway?".into()),
@@ -67,8 +58,7 @@ pub fn minimal_linear_draft() -> RookeryDraft {
         delivery_title: Some("Handoff".into()),
         delivery_note: None,
         delivery_root_rel: Some("HANDOFF.md".into()),
-        delivery_summary_note: None,
-        prompt_tip: None,
+        ..Default::default()
     }
 }
 
@@ -113,10 +103,7 @@ pub fn minimal_dag_draft() -> RookeryDraft {
                 agent_body: None,
                 output: "debug/raw/".into(),
                 context_paths: vec![],
-                tool_ids: vec![],
-                model_id: None,
-                inputs: vec![],
-                avatar: None,
+                ..Default::default()
             },
             PenguinSpec {
                 name: "branch-a".into(),
@@ -127,10 +114,7 @@ pub fn minimal_dag_draft() -> RookeryDraft {
                 agent_body: None,
                 output: "debug/stage-branch-a.md".into(),
                 context_paths: vec!["@artifact@".into()],
-                tool_ids: vec![],
-                model_id: None,
-                inputs: vec![],
-                avatar: None,
+                ..Default::default()
             },
             PenguinSpec {
                 name: "branch-b".into(),
@@ -141,10 +125,7 @@ pub fn minimal_dag_draft() -> RookeryDraft {
                 agent_body: None,
                 output: "debug/stage-branch-b.md".into(),
                 context_paths: vec!["@artifact@".into()],
-                tool_ids: vec![],
-                model_id: None,
-                inputs: vec![],
-                avatar: None,
+                ..Default::default()
             },
             PenguinSpec {
                 name: "join".into(),
@@ -155,10 +136,7 @@ pub fn minimal_dag_draft() -> RookeryDraft {
                 agent_body: None,
                 output: "debug/stage-join.md".into(),
                 context_paths: vec![],
-                tool_ids: vec![],
-                model_id: None,
-                inputs: vec![],
-                avatar: None,
+                ..Default::default()
             },
             PenguinSpec {
                 name: "deliver".into(),
@@ -169,10 +147,7 @@ pub fn minimal_dag_draft() -> RookeryDraft {
                 agent_body: None,
                 output: "HANDOFF.md".into(),
                 context_paths: vec!["@artifact@".into()],
-                tool_ids: vec![],
-                model_id: None,
-                inputs: vec![],
-                avatar: None,
+                ..Default::default()
             },
         ],
         default_question: Some("What is the outcome?".into()),
@@ -181,7 +156,6 @@ pub fn minimal_dag_draft() -> RookeryDraft {
         delivery_title: Some("Handoff".into()),
         delivery_note: None,
         delivery_root_rel: Some("HANDOFF.md".into()),
-        delivery_summary_note: None,
-        prompt_tip: None,
+        ..Default::default()
     }
 }

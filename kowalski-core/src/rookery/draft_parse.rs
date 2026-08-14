@@ -209,6 +209,7 @@ fn lenient_penguin_to_spec(p: LenientPenguin, index: usize) -> PenguinSpec {
         model_id: p.model_id,
         inputs: p.inputs,
         avatar: p.avatar,
+        ..Default::default()
     }
 }
 
@@ -271,6 +272,7 @@ fn lenient_to_draft(l: LenientDraft) -> Result<RookeryDraft, KowalskiError> {
         delivery_root_rel: l.delivery_root_rel,
         delivery_summary_note: l.delivery_summary_note,
         prompt_tip: l.prompt_tip,
+        ..Default::default()
     })
 }
 

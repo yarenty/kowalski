@@ -37,7 +37,8 @@ pub use validate::{
     validate_horde_tree_report,
     validate_step_name, validate_workdir_relative_path, DraftStrictness,
 };
-pub use writer::{horde_root_path, write_horde_tree};
+pub use writer::{horde_root_path, resolve_horde_fields, write_horde_tree, ResolvedHordeFields};
+pub(crate) use writer::{default_agent_body, effective_context_paths};
 
 #[cfg(test)]
 mod tests {

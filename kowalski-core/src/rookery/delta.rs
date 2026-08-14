@@ -246,15 +246,7 @@ pub fn apply_op(draft: &mut RookeryDraft, op: &DeltaOp) -> Result<(), KowalskiEr
                 name: step_id.clone(),
                 kind: kind.clone(),
                 display_name: name.clone().unwrap_or_else(|| step_id.clone()),
-                description: String::new(),
-                prompt_body: String::new(),
-                agent_body: None,
-                output: String::new(),
-                context_paths: Vec::new(),
-                tool_ids: Vec::new(),
-                model_id: None,
-                inputs: Vec::new(),
-                avatar: None,
+                ..Default::default()
             };
             penguin.output = default_output_for_penguin(
                 draft.delivery_root_rel.as_deref(),

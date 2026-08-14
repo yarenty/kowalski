@@ -2,6 +2,7 @@
 
 use crate::error::KowalskiError;
 use crate::horde_graph::resolve_execution_graph;
+use crate::horde_step::LLM_STEP_KINDS;
 use crate::horde_trigger::validate_triggers;
 use crate::markdown_pipeline::{parse_app_manifest, parse_stage_agent, resolve_manifest_path};
 use crate::rookery::types::RookeryDraft;
@@ -133,7 +134,11 @@ pub fn validate_draft_with(
         if let Err(e) = validate_step_name(&p.name) {
             errs.push(format!("penguin name: {e}"));
         }
-        if !lenient && p.prompt_body.trim().is_empty() {
+        // Deterministic kinds (verify/apply/ingest/…) run without a prompt file.
+        if !lenient
+            && p.prompt_body.trim().is_empty()
+            && LLM_STEP_KINDS.contains(&p.kind.as_str())
+        {
             errs.push(format!("penguin `{}`: prompt_body must not be empty", p.name));
         }
         if !(lenient && p.output.is_empty())
