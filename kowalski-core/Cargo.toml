@@ -64,6 +64,7 @@ async-openai = { version = "0.41", features = ["native-tls", "chat-completion", 
 async-stream = "0.3"
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros", "tls-native-tls", "chrono"] }
 pgvector = { version = "0.4", optional = true, default-features = false }
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 tempfile = "3.25.0"

@@ -310,6 +310,19 @@ execute from a manifest directly — import regenerates a horde dir first.
   is semantics-preserving on `examples/coder` and `examples/knowledge-compiler`;
   manifest → dir → manifest is byte-stable on a DAG fixture with a conditional retry
   loop.
+- **Portable bundle** (`manifest/bundle.rs`): a workflow travels as
+  `<identifier>-<version>.kwf.zip` — `manifest.json` (byte-identical) + optional
+  `assets/` files; import also accepts the `.bbwf.zip` extension (identical format,
+  interop alias for externally produced bundles). `export_horde_dir_bundle` /
+  `export_bundle` validate at Publish and write only the manifest and assets — a bundle
+  never contains credentials, run state, or server-side trigger overrides (audited by
+  test). `import_bundle` treats the zip as untrusted (entry allowlist, zip-slip guard,
+  symlink rejection, size caps), gates `schema_version` (different MAJOR rejected,
+  newer MINOR rejected, older MINOR walked through registered `MINOR_MIGRATIONS`),
+  validates, lands a **draft** horde dir through the normal writer with every trigger
+  declaration rewritten `enabled = false`, and returns a **`PortabilityReport`**
+  (unknown step kinds / tool providers / builtin tool ids / unresolved pinned models,
+  checked against a caller-supplied `PortabilityContext`; reported, never fatal).
 
 ### Tool execution model (three sources, one abstraction)
 

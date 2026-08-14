@@ -121,16 +121,20 @@ pub fn validate_manifest_with(
     }
 }
 
+/// Whether this deployment recognizes a step kind (executable or interchange).
+pub fn is_known_step_kind(kind: &str) -> bool {
+    LLM_STEP_KINDS.contains(&kind)
+        || DETERMINISTIC_STEP_KINDS.contains(&kind)
+        || INTERCHANGE_STEP_KINDS.contains(&kind)
+}
+
 fn validate_step(
     step: &ManifestStep,
     lenient: bool,
     errs: &mut Vec<String>,
     warnings: &mut Vec<String>,
 ) {
-    let known = LLM_STEP_KINDS.contains(&step.kind.as_str())
-        || DETERMINISTIC_STEP_KINDS.contains(&step.kind.as_str())
-        || INTERCHANGE_STEP_KINDS.contains(&step.kind.as_str());
-    if !known {
+    if !is_known_step_kind(&step.kind) {
         warnings.push(format!(
             "step `{}`: unknown kind `{}` (portability: not executable by this deployment)",
             step.id, step.kind
@@ -197,7 +201,7 @@ fn validate_step(
     }
 }
 
-fn parse_schema_version(v: &str) -> Result<(u32, u32), String> {
+pub(crate) fn parse_schema_version(v: &str) -> Result<(u32, u32), String> {
     let bad = || format!("schema_version `{v}` must be `MAJOR.MINOR`");
     let (major, minor) = v.split_once('.').ok_or_else(bad)?;
     Ok((
