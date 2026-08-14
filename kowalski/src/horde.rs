@@ -2794,30 +2794,8 @@ fn parse_outcome_artifact(outcome: &str) -> Option<String> {
     None
 }
 
-/// Resolve discovery roots for hordes from environment + repo defaults.
-pub fn default_horde_roots(config_dir: Option<&Path>) -> Vec<PathBuf> {
-    let mut roots = Vec::new();
-    if let Ok(env) = std::env::var("KOWALSKI_HORDES_DIR") {
-        for piece in env.split(':') {
-            if !piece.trim().is_empty() {
-                roots.push(PathBuf::from(piece.trim()));
-            }
-        }
-    }
-    if let Some(c) = config_dir {
-        roots.push(c.join("hordes"));
-        if let Some(parent) = c.parent() {
-            roots.push(parent.join("examples"));
-        }
-    }
-    if let Ok(cwd) = std::env::current_dir() {
-        roots.push(cwd.join("examples"));
-    }
-    roots.push(PathBuf::from("/opt/ml/kowalski/examples"));
-    let mut seen = std::collections::HashSet::new();
-    roots.retain(|p| seen.insert(p.clone()));
-    roots
-}
+/// Horde discovery roots — owned by `kowalski_core::config` (shared with the CLI).
+pub use kowalski_core::config::default_horde_roots;
 
 #[cfg(test)]
 mod tests {

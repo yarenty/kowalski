@@ -1512,3 +1512,251 @@ pub fn proof_check(
     );
     Ok(())
 }
+
+/// Resolve an export target: an existing horde directory path, else a horde id
+/// looked up across the shared discovery roots (`kowalski_core::config::default_horde_roots`).
+fn resolve_horde_dir(
+    horde: &str,
+    config_path: Option<&str>,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let as_path = PathBuf::from(horde);
+    if as_path.is_dir() {
+        return Ok(as_path);
+    }
+    let config = crate::ops::mcp_config_path(config_path);
+    let roots = kowalski_core::config::default_horde_roots(config.parent());
+    for root in &roots {
+        let candidate = root.join(horde);
+        if candidate.is_dir() {
+            return Ok(candidate);
+        }
+    }
+    Err(format!(
+        "horde `{horde}` is neither a directory nor an id under the horde roots ({})",
+        roots
+            .iter()
+            .map(|r| r.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+    .into())
+}
+
+/// `agent-app export <horde> [-o out] [--json]`: write `<id>-<version>.kwf.zip`.
+/// `out` ending in `.zip` is the bundle file path; otherwise it is the directory
+/// the canonically named bundle is written into (default: current directory).
+pub fn export_horde(
+    horde: &str,
+    output: Option<&str>,
+    json: bool,
+    config_path: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let horde_root = resolve_horde_dir(horde, config_path)?;
+    let (dest_dir, file_target) = match output {
+        Some(o) if o.ends_with(".zip") => {
+            let target = PathBuf::from(o);
+            let parent = target
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| PathBuf::from("."));
+            (parent, Some(target))
+        }
+        Some(o) => (PathBuf::from(o), None),
+        None => (PathBuf::from("."), None),
+    };
+    let written = kowalski_core::manifest::export_horde_dir_bundle(&horde_root, &dest_dir)?;
+    let bundle_path = match file_target {
+        Some(target) if target != written => {
+            fs::rename(&written, &target)?;
+            target
+        }
+        _ => written,
+    };
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({ "ok": true, "bundle": bundle_path.display().to_string() })
+        );
+    } else {
+        println!("Exported {}", bundle_path.display());
+    }
+    Ok(())
+}
+
+/// What this deployment knows for the import portability report: the tool ids a
+/// `TemplateAgent` built from the CLI config registers, and the models its Ollama
+/// endpoint serves. Either list degrades to "check skipped" when unavailable.
+async fn cli_portability_context(
+    config_path: Option<&str>,
+) -> kowalski_core::manifest::PortabilityContext {
+    let path = crate::ops::mcp_config_path(config_path);
+    let mut context = kowalski_core::manifest::PortabilityContext::default();
+    let Ok(cfg) = crate::ops::load_kowalski_config_for_serve(&path) else {
+        return context;
+    };
+    match TemplateAgent::new(cfg.clone()).await {
+        Ok(agent) => {
+            context.known_tool_ids = Some(
+                agent
+                    .list_tools()
+                    .await
+                    .into_iter()
+                    .map(|(name, _)| name)
+                    .collect(),
+            );
+        }
+        Err(e) => log::warn!("import: tool check skipped (agent init failed: {e})"),
+    }
+    let base_url = kowalski_core::config::ollama_base_url(&cfg);
+    match kowalski_core::model::ModelManager::new(base_url) {
+        Ok(manager) => match manager.list_models().await {
+            Ok(response) => {
+                context.available_models =
+                    Some(response.models.into_iter().map(|m| m.name).collect());
+            }
+            Err(e) => log::warn!("import: model check skipped (Ollama unreachable: {e})"),
+        },
+        Err(e) => log::warn!("import: model check skipped ({e})"),
+    }
+    context
+}
+
+/// Render a [`PortabilityReport`] for operators; empty gaps collapse to one line.
+fn render_portability_report(report: &kowalski_core::manifest::PortabilityReport) -> String {
+    let mut lines = Vec::new();
+    if report.is_empty() {
+        lines.push("Portability: no gaps — fully runnable on this deployment.".to_string());
+    } else {
+        lines.push("Portability gaps (the horde still lands as a draft):".to_string());
+        let mut gap = |label: &str, values: &[String]| {
+            if !values.is_empty() {
+                lines.push(format!("  {label}: {}", values.join(", ")));
+            }
+        };
+        gap("unknown step kinds", &report.unknown_step_kinds);
+        gap("unknown tool providers", &report.unknown_tool_providers);
+        gap("missing builtin tools", &report.unknown_tool_ids);
+        gap("unresolved pinned models", &report.unresolved_models);
+        gap("warnings", &report.warnings);
+    }
+    for note in &report.migrations {
+        lines.push(format!("  migrated: {note}"));
+    }
+    if report.triggers_disabled > 0 {
+        lines.push(format!(
+            "  {} trigger(s) imported disabled — re-enable deliberately",
+            report.triggers_disabled
+        ));
+    }
+    lines.join("\n")
+}
+
+/// `agent-app import <bundle> [--dir <hordes-root>] [--json]`: land a `.kwf.zip`
+/// (or `.bbwf.zip`) bundle as a draft horde and print the portability report.
+/// Default destination is the user hordes root, never `examples/`.
+pub async fn import_horde(
+    bundle: &str,
+    dir: Option<&str>,
+    json: bool,
+    config_path: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let config = crate::ops::mcp_config_path(config_path);
+    let dest_root = match dir {
+        Some(d) => PathBuf::from(d),
+        None => kowalski_core::config::user_hordes_root(config.parent())
+            .ok_or("cannot resolve the user hordes root; pass --dir")?,
+    };
+    let context = cli_portability_context(config_path).await;
+    let import =
+        kowalski_core::manifest::import_bundle(Path::new(bundle), &dest_root, false, &context)?;
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "ok": true,
+                "horde_id": import.manifest.identifier,
+                "horde_root": import.horde_root.display().to_string(),
+                "report": import.report,
+            })
+        );
+    } else {
+        println!(
+            "Imported `{}` -> {}",
+            import.manifest.identifier,
+            import.horde_root.display()
+        );
+        println!("{}", render_portability_report(&import.report));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod export_import_tests {
+    use super::*;
+
+    fn coder_example() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/coder")
+    }
+
+    #[tokio::test]
+    async fn export_then_import_across_roots_reports_json() {
+        let staging = tempfile::tempdir().unwrap();
+        let export_dir = staging.path().join("bundles");
+        let bundle =
+            kowalski_core::manifest::export_horde_dir_bundle(&coder_example(), &export_dir)
+                .unwrap();
+        let name = bundle.file_name().unwrap().to_string_lossy().to_string();
+        assert!(name.ends_with(".kwf.zip"), "canonical name, got {name}");
+
+        let dest_root = staging.path().join("hordes");
+        let import = kowalski_core::manifest::import_bundle(
+            &bundle,
+            &dest_root,
+            false,
+            &kowalski_core::manifest::PortabilityContext::default(),
+        )
+        .unwrap();
+        assert!(import.horde_root.starts_with(&dest_root));
+        assert!(import.horde_root.join("horde.md").is_file());
+
+        let report = serde_json::to_value(&import.report).unwrap();
+        assert_eq!(report["unknown_step_kinds"], serde_json::json!([]));
+        assert_eq!(report["unknown_tool_providers"], serde_json::json!([]));
+        assert_eq!(report["unresolved_models"], serde_json::json!([]));
+        assert!(report["triggers_disabled"].is_u64());
+    }
+
+    #[test]
+    fn export_horde_writes_to_explicit_zip_target() {
+        let staging = tempfile::tempdir().unwrap();
+        let target = staging.path().join("handoff.kwf.zip");
+        export_horde(
+            coder_example().to_str().unwrap(),
+            Some(target.to_str().unwrap()),
+            true,
+            None,
+        )
+        .unwrap();
+        assert!(target.is_file(), "bundle renamed to the -o target");
+    }
+
+    #[test]
+    fn export_rejects_unknown_horde_id() {
+        let err = resolve_horde_dir("definitely-not-a-horde-id", Some("/nonexistent/config.toml"))
+            .unwrap_err();
+        assert!(err.to_string().contains("definitely-not-a-horde-id"));
+    }
+
+    #[test]
+    fn render_report_flags_gaps_and_disabled_triggers() {
+        let report = kowalski_core::manifest::PortabilityReport {
+            unknown_tool_ids: vec!["quantum_tool".into()],
+            triggers_disabled: 2,
+            ..Default::default()
+        };
+        let text = render_portability_report(&report);
+        assert!(text.contains("missing builtin tools: quantum_tool"));
+        assert!(text.contains("2 trigger(s) imported disabled"));
+    }
+}

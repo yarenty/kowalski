@@ -323,6 +323,15 @@ execute from a manifest directly — import regenerates a horde dir first.
   declaration rewritten `enabled = false`, and returns a **`PortabilityReport`**
   (unknown step kinds / tool providers / builtin tool ids / unresolved pinned models,
   checked against a caller-supplied `PortabilityContext`; reported, never fatal).
+  `inspect_bundle` is the dry-run twin: every import gate (including the trigger
+  rewrite and the report) with nothing written — the HTTP import's `?dry_run=true`
+  and the UI's report-then-confirm flow sit on it. `PortabilityReport` serializes
+  (serde) so surfaces return it as JSON verbatim.
+- **Deployment path owners** (`config.rs`): `default_horde_roots` (discovery roots:
+  `HORDES_DIR_ENV` = `KOWALSKI_HORDES_DIR` entries, `<config-dir>/hordes`, example
+  dirs), `user_hordes_root` (where imports land — first env entry, else
+  `<config-dir>/hordes`, never `examples/`), and `ollama_base_url` — shared by the
+  server catalog and the CLI so the two never drift (root Rule 8).
 
 ### Tool execution model (three sources, one abstraction)
 

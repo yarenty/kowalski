@@ -253,6 +253,34 @@ enum AgentAppCommands {
         #[clap(long)]
         config: Option<String>,
     },
+    /// Export a horde as a portable `<id>-<version>.kwf.zip` bundle
+    Export {
+        /// Horde directory path, or a horde id resolved across the horde roots
+        horde: String,
+        /// Bundle file path (`*.zip`) or destination directory (default: current directory)
+        #[clap(short, long)]
+        output: Option<String>,
+        /// Print the result as JSON
+        #[clap(long)]
+        json: bool,
+        /// Config TOML the horde roots resolve against (default: config.toml)
+        #[clap(long)]
+        config: Option<String>,
+    },
+    /// Import a `.kwf.zip` (or `.bbwf.zip`) bundle as a draft horde and print the portability report
+    Import {
+        /// Bundle file to import
+        bundle: String,
+        /// Hordes root to land the draft in (default: the user hordes root, never examples/)
+        #[clap(long)]
+        dir: Option<String>,
+        /// Print the portability report as JSON
+        #[clap(long)]
+        json: bool,
+        /// Config TOML resolving the destination root and the local tool/model checks (default: config.toml)
+        #[clap(long)]
+        config: Option<String>,
+    },
     /// Print reproducible end-to-end federation proof-run checklist
     Proof {
         /// App dir (`horde.md` + `agents/`). Env `KOWALSKI_AGENT_APP_ROOT`, else dev default `examples/knowledge-compiler`.
@@ -697,6 +725,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             AgentAppCommands::ExecStep { config } => {
                 kowalski_cli::agent_app_ops::exec_step(config.as_deref()).await?;
             }
+            AgentAppCommands::Export {
+                horde,
+                output,
+                json,
+                config,
+            } => {
+                kowalski_cli::agent_app_ops::export_horde(
+                    &horde,
+                    output.as_deref(),
+                    json,
+                    config.as_deref(),
+                )?;
+            }
+            AgentAppCommands::Import {
+                bundle,
+                dir,
+                json,
+                config,
+            } => {
+                kowalski_cli::agent_app_ops::import_horde(
+                    &bundle,
+                    dir.as_deref(),
+                    json,
+                    config.as_deref(),
+                )
+                .await?;
+            }
             AgentAppCommands::Proof {
                 path,
                 api,
@@ -902,7 +957,7 @@ async fn repl(manager: AgentManager) -> Result<(), Box<dyn std::error::Error>> {
                 );
                 println!("  kowalski-cli extension list");
                 println!("  kowalski-cli extension run <name> [-- <args...>]");
-                println!("  kowalski-cli agent-app <list|validate|run> [args]");
+                println!("  kowalski-cli agent-app <list|validate|run|export|import> [args]");
                 println!(
                     "  kowalski  — /api/federation/registry, /api/federation/stream (SSE), /api/federation/delegate; with --features postgres + memory.database_url, LISTEN kowalski_federation → broker"
                 );

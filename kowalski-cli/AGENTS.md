@@ -177,6 +177,18 @@ There are **no** standalone `kowalski-academic-agent` / `kowalski-web-agent` cra
   (`message`…, then one `outcome`) on **stdout**, and exits. Diagnostics — including the
   pid the parent logs as isolation evidence — go to stderr. The child never calls the
   server API: LLM kinds talk to the configured provider directly.
+- **Portable bundles — `agent-app export` / `agent-app import`:** thin clients of
+  `kowalski_core::manifest` (`export_horde_dir_bundle` / `import_bundle`).
+  `export <horde> [-o out] [--json]` takes a horde directory path or an id resolved
+  across `kowalski_core::config::default_horde_roots` and writes
+  `<id>-<version>.kwf.zip`; `import <bundle> [--dir <hordes-root>] [--json]` lands the
+  draft in the **user hordes root** (`kowalski_core::config::user_hordes_root` —
+  first `KOWALSKI_HORDES_DIR` entry, else `<config-dir>/hordes`; never `examples/`)
+  and prints the portability report (human or `--json`). Import builds a live
+  `PortabilityContext` from the CLI config — registered tool ids via `TemplateAgent`,
+  models via the Ollama tags endpoint — and degrades to skipped checks when either is
+  unavailable. Invalid bundles (bad extension, traversal, schema MAJOR mismatch, …)
+  exit non-zero with the core validation message. `.bbwf.zip` accepted as interop alias.
 - **Federation worker `--role`:** must match each agent's `kind` in `agents/*.md`. The
   worker is a **thin client of the same step handlers**: each delegation is parsed into
   an `IsolatedStepRequest` and executed via `execute_isolated_request` — there is no
@@ -389,7 +401,7 @@ Legacy notes for pre-1.1.0 crate topology and CLI assumptions were moved to:
 
 - [`../docs/purgatory/legacy_v1.1.0.md`](../docs/purgatory/legacy_v1.1.0.md)
 
-Keep this file focused on the active CLI surface (`run`, `mcp`, `extension`, `agent-app`, config/db/doctor ops).
+Keep this file focused on the active CLI surface (`run`, `mcp`, `extension`, `agent-app` incl. `export`/`import`, config/db/doctor ops).
 
 ---
 

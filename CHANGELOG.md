@@ -21,6 +21,25 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Added
 
+- **Export/import surfaces (#70):** portable bundles are now one command / one click
+  away on every surface. CLI: `kowalski-cli agent-app export <horde> [-o out] [--json]`
+  (horde directory path or an id resolved across the horde discovery roots) and
+  `agent-app import <bundle> [--dir <hordes-root>] [--json]`, both printing the
+  portability report (human or JSON); import rejects invalid bundles with a non-zero
+  exit. HTTP: `GET /api/hordes/{id}/export` streams the `<id>-<version>.kwf.zip`
+  bundle and `POST /api/hordes/import` (multipart upload, `?dry_run=true` for a
+  report-only pass) lands the draft and returns the report + created horde id —
+  auth applies like every `/api/*` route, invalid bundles come back as 400 with the
+  validation message. UI: an **Export** button on each horde card downloads the
+  well-named bundle and an **Import bundle…** action on the hordes view uploads,
+  shows the portability report, and lands the horde on confirm — it appears without
+  a restart via the hot-reload catalog. Imports always land in the **user hordes
+  root** (first `KOWALSKI_HORDES_DIR` entry, else `<config-dir>/hordes`), never in
+  `examples/`; the server and CLI activate the live portability checks by passing
+  their registered tool ids and reachable Ollama models. Shared owners moved to
+  `kowalski_core::config`: `default_horde_roots`, `user_hordes_root`,
+  `ollama_base_url`, `HORDES_DIR_ENV`; `kowalski_core::manifest` gains
+  `inspect_bundle` (every import gate, nothing written) backing the dry-run flow.
 - **Portable workflow bundle (#69):** workflows now travel as a single file —
   `<identifier>-<version>.kwf.zip`, containing `manifest.json` (byte-identical to the
   stored manifest) plus optional `assets/` files; import also accepts the `.bbwf.zip`

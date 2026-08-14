@@ -55,3 +55,6 @@ colored = "3.1"
 toml = "1.1"
 axum-server = { version = "0.8.0", features = ["tls-rustls"] }
 
+[dev-dependencies]
+tempfile = "3.25.0"
+

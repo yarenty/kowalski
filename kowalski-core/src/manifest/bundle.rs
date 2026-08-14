@@ -76,7 +76,7 @@ impl Default for PortabilityContext {
 
 /// What the target machine is missing or should know about an imported workflow.
 /// Reported, never fatal — the horde still lands as a draft.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PortabilityReport {
     /// Step kinds this deployment cannot execute.
     pub unknown_step_kinds: Vec<String>,
@@ -114,6 +114,22 @@ pub struct BundleImport {
     /// The imported manifest (triggers already rewritten to `enabled = false`).
     pub manifest: WorkflowManifest,
     pub report: PortabilityReport,
+}
+
+/// Result of a dry-run bundle inspection: everything an import would do — guards,
+/// migration, validation, trigger rewrite, portability report — without writing.
+#[derive(Debug)]
+pub struct BundleInspection {
+    /// The manifest as an import would land it (triggers rewritten to `enabled = false`).
+    pub manifest: WorkflowManifest,
+    pub report: PortabilityReport,
+}
+
+/// A bundle read into memory with its manifest migrated, validated, and reported on.
+struct LoadedBundle {
+    manifest: WorkflowManifest,
+    assets: Vec<(PathBuf, Vec<u8>)>,
+    report: PortabilityReport,
 }
 
 /// Canonical bundle file name for a manifest: `<identifier>-<version>.kwf.zip`.
@@ -191,6 +207,49 @@ pub fn import_bundle(
     overwrite: bool,
     context: &PortabilityContext,
 ) -> Result<BundleImport, KowalskiError> {
+    let loaded = load_bundle(bundle_path, context)?;
+    let draft = manifest_to_draft(&loaded.manifest)?;
+    let horde_root = write_horde_tree(
+        dest_root,
+        &HordeBirthSpec::new(draft).with_overwrite(overwrite),
+    )?;
+    for (rel, bytes) in &loaded.assets {
+        let path = horde_root.join("assets").join(rel);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|e| {
+                KowalskiError::Validation(format!("create {}: {e}", parent.display()))
+            })?;
+        }
+        fs::write(&path, bytes)
+            .map_err(|e| KowalskiError::Validation(format!("write {}: {e}", path.display())))?;
+    }
+    Ok(BundleImport {
+        horde_root,
+        manifest: loaded.manifest,
+        report: loaded.report,
+    })
+}
+
+/// Dry-run an import: run every gate an import runs (extension, untrusted-zip
+/// guards, schema_version migration, validation, trigger rewrite) and return the
+/// resulting manifest plus portability report without writing anything.
+pub fn inspect_bundle(
+    bundle_path: &Path,
+    context: &PortabilityContext,
+) -> Result<BundleInspection, KowalskiError> {
+    let loaded = load_bundle(bundle_path, context)?;
+    Ok(BundleInspection {
+        manifest: loaded.manifest,
+        report: loaded.report,
+    })
+}
+
+/// Shared import front half: extension + size gates, untrusted-zip entry walk,
+/// manifest migration/validation, trigger rewrite, portability report.
+fn load_bundle(
+    bundle_path: &Path,
+    context: &PortabilityContext,
+) -> Result<LoadedBundle, KowalskiError> {
     let name = bundle_path
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -290,28 +349,12 @@ pub fn import_bundle(
     }
 
     let warnings = validate_manifest(&manifest)?;
-    let draft = manifest_to_draft(&manifest)?;
-    let horde_root = write_horde_tree(
-        dest_root,
-        &HordeBirthSpec::new(draft).with_overwrite(overwrite),
-    )?;
-    for (rel, bytes) in &assets {
-        let path = horde_root.join("assets").join(rel);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|e| {
-                KowalskiError::Validation(format!("create {}: {e}", parent.display()))
-            })?;
-        }
-        fs::write(&path, bytes)
-            .map_err(|e| KowalskiError::Validation(format!("write {}: {e}", path.display())))?;
-    }
-
     let mut report = portability_report(&manifest, &warnings, context);
     report.migrations = migrations;
     report.triggers_disabled = triggers_disabled;
-    Ok(BundleImport {
-        horde_root,
+    Ok(LoadedBundle {
         manifest,
+        assets,
         report,
     })
 }

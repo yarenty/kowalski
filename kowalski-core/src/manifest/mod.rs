@@ -15,9 +15,10 @@ mod validate;
 
 pub use bundle::{
     BUNDLE_ASSETS_PREFIX, BUNDLE_EXTENSION, BUNDLE_EXTENSION_ALIAS, BUNDLE_MANIFEST_ENTRY,
-    BundleImport, MAX_BUNDLE_ENTRIES, MAX_BUNDLE_FILE_BYTES, MAX_ENTRY_BYTES,
+    BundleImport, BundleInspection, MAX_BUNDLE_ENTRIES, MAX_BUNDLE_FILE_BYTES, MAX_ENTRY_BYTES,
     MAX_TOTAL_UNCOMPRESSED_BYTES, ManifestMigration, PortabilityContext, PortabilityReport,
-    bundle_file_name, export_bundle, export_horde_dir_bundle, import_bundle, portability_report,
+    bundle_file_name, export_bundle, export_horde_dir_bundle, import_bundle, inspect_bundle,
+    portability_report,
 };
 pub use convert::{
     DEFAULT_MANIFEST_VERSION, draft_from_horde_dir, horde_dir_to_manifest, manifest_from_draft,
