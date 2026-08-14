@@ -202,6 +202,19 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
   while interrupted runs pend resume). A hot-added horde gets its workdir created on
   first reference; a reload **never** re-runs the clean.
 - Fixed catalogs (`HordeCatalog::fixed`) serve tests/embedded use — no roots, no reloads.
+- **Portable bundles:** `GET /api/hordes/{id}/export` streams the horde's
+  `<id>-<version>.kwf.zip` (built by `kowalski_core::manifest::export_horde_dir_bundle`
+  in a temp dir, `Content-Disposition` carries the canonical name).
+  `POST /api/hordes/import` takes a multipart upload (first file field; body limit =
+  bundle cap + slack), stages it under the upload's file name so the core extension
+  gate applies, and lands the draft in the **user hordes root**
+  (`kowalski_core::config::user_hordes_root` — never `examples/`), where the hot-reload
+  catalog picks it up without a restart; `?dry_run=true` runs every import gate via
+  `inspect_bundle` and returns the report without writing. The response carries
+  `horde_id`, `horde_root` (imports only), and the portability `report`, checked
+  against a **live** `PortabilityContext` (the chat agent's registered tool ids +
+  the models Ollama reports); invalid bundles are `400` with the core validation
+  message. Auth middleware applies as on every `/api/*` route.
 - **Triggers (declaration layer):** `[[triggers]]` from `horde.md` parse into
   `HordeSpec.triggers` (validated at load — invalid cron / duplicate route / unknown keys /
   unknown `overlap` are a load error like any other manifest problem), ride the manifest

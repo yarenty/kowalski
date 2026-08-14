@@ -92,6 +92,15 @@ kowalski/
   per-trigger `overlap` policy (`skip` default / `queue` / `parallel`) decides what a
   firing does while the previous run is still in flight, and every firing (or skip) is
   recorded on the run's event feed.
+- **Portable hordes**: hand a horde to another machine as one file —
+  `<id>-<version>.kwf.zip` (manifest + optional assets; never credentials or run
+  state). Export/import from every surface: `kowalski-cli agent-app export <horde>` /
+  `agent-app import <bundle> [--dir <hordes-root>]` (portability report as text or
+  `--json`), `GET /api/hordes/{id}/export` / `POST /api/hordes/import` (multipart;
+  `?dry_run=true` for a report-only pass), and the UI's per-horde **Export** button +
+  **Import bundle…** action (report → confirm → the horde appears without a restart).
+  Imports land as **drafts** in the user hordes root with all triggers disabled;
+  `.bbwf.zip` is accepted as an interop alias.
 - Build with **`--features postgres`** for SQL memory + pgvector bindings and **`POST /api/graph/cypher`** (Apache AGE) on `serve`.
 
 ### **kowalski-mcp-datafusion**

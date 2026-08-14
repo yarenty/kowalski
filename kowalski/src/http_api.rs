@@ -8,6 +8,7 @@
 use axum::extract::Path as AxumPath;
 use axum::extract::Query;
 use axum::extract::State;
+use axum::extract::{DefaultBodyLimit, Multipart};
 use axum::extract::ws::{WebSocket, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -385,7 +386,14 @@ pub async fn serve(
             post(post_federation_worker_stop),
         )
         .route("/api/hordes", get(get_hordes))
+        .route(
+            "/api/hordes/import",
+            post(post_horde_import).layer(DefaultBodyLimit::max(
+                kowalski_core::manifest::MAX_BUNDLE_FILE_BYTES as usize + 64 * 1024,
+            )),
+        )
         .route("/api/hordes/{horde_id}", get(get_horde_detail))
+        .route("/api/hordes/{horde_id}/export", get(get_horde_export))
         .route("/api/hordes/{horde_id}/workers", get(get_horde_workers))
         .route(
             "/api/hordes/{horde_id}/workers/start",
@@ -1928,6 +1936,174 @@ async fn get_hordes(State(state): State<ApiState>) -> Json<serde_json::Value> {
     Json(json!({ "hordes": hordes }))
 }
 
+/// Live portability context for bundle imports: builtin provider + the chat agent's
+/// registered tool ids + the models the provider reports (plus the configured default).
+async fn live_portability_context(state: &ApiState) -> kowalski_core::manifest::PortabilityContext {
+    let tool_ids: Vec<String> = {
+        let chat = state.chat.lock().await;
+        chat.agent
+            .list_tools()
+            .await
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect()
+    };
+    let ollama_url = state
+        .ollama_url
+        .clone()
+        .unwrap_or_else(|| kowalski_core::config::ollama_base_url(&state.full_config));
+    let mut models = crate::http_ops::list_ollama_models(&ollama_url).await;
+    let available_models = if models.is_empty() {
+        // Provider unreachable — skip the model check rather than flag every pin.
+        None
+    } else {
+        if !models.iter().any(|m| m == &state.model) {
+            models.push(state.model.clone());
+        }
+        Some(models)
+    };
+    kowalski_core::manifest::PortabilityContext {
+        known_tool_ids: Some(tool_ids),
+        available_models,
+        ..Default::default()
+    }
+}
+
+async fn get_horde_export(
+    State(state): State<ApiState>,
+    AxumPath(horde_id): AxumPath<String>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let spec = state.horde_manager.catalog.find(&horde_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("unknown horde id: {}", horde_id),
+        )
+    })?;
+    let staging = std::env::temp_dir().join(format!("kowalski-export-{}", uuid::Uuid::new_v4()));
+    let result = kowalski_core::manifest::export_horde_dir_bundle(&spec.root_path, &staging)
+        .and_then(|path| {
+            let bytes = std::fs::read(&path).map_err(|e| {
+                kowalski_core::error::KowalskiError::Validation(format!(
+                    "read {}: {e}",
+                    path.display()
+                ))
+            })?;
+            let file_name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| format!("{}.kwf.zip", horde_id));
+            Ok((file_name, bytes))
+        });
+    let _ = std::fs::remove_dir_all(&staging);
+    let (file_name, bytes) = result.map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    Ok((
+        [
+            (axum::http::header::CONTENT_TYPE, "application/zip".to_string()),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{}\"", file_name),
+            ),
+        ],
+        bytes,
+    ))
+}
+
+#[derive(Deserialize)]
+struct HordeImportQuery {
+    /// Run every import gate and return the report without writing the horde.
+    #[serde(default)]
+    dry_run: bool,
+}
+
+async fn post_horde_import(
+    State(state): State<ApiState>,
+    Query(query): Query<HordeImportQuery>,
+    mut multipart: Multipart,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let mut upload: Option<(String, Vec<u8>)> = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("multipart: {e}")))?
+    {
+        let file_name = field.file_name().map(|s| s.to_string());
+        let bytes = field
+            .bytes()
+            .await
+            .map_err(|e| (StatusCode::BAD_REQUEST, format!("multipart: {e}")))?;
+        if let Some(name) = file_name {
+            upload = Some((name, bytes.to_vec()));
+            break;
+        }
+    }
+    let (file_name, bytes) = upload.ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            "multipart upload must carry a bundle file field".to_string(),
+        )
+    })?;
+    let dest_root =
+        kowalski_core::config::user_hordes_root(state_config_dir(&state.config_path).as_deref())
+            .ok_or_else(|| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "cannot resolve the user hordes root".to_string(),
+                )
+            })?;
+    let context = live_portability_context(&state).await;
+    import_uploaded_bundle(&file_name, &bytes, &dest_root, query.dry_run, &context)
+        .map(Json)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))
+}
+
+/// Stage uploaded bundle bytes under the client's file name (final path component
+/// only, so the extension gate applies) and inspect or import them.
+fn import_uploaded_bundle(
+    file_name: &str,
+    bytes: &[u8],
+    dest_root: &std::path::Path,
+    dry_run: bool,
+    context: &kowalski_core::manifest::PortabilityContext,
+) -> Result<serde_json::Value, kowalski_core::error::KowalskiError> {
+    use kowalski_core::error::KowalskiError;
+    let safe_name = std::path::Path::new(file_name)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .filter(|n| !n.is_empty())
+        .ok_or_else(|| KowalskiError::Validation("upload has no usable file name".into()))?;
+    let staging = std::env::temp_dir().join(format!("kowalski-import-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&staging)
+        .map_err(|e| KowalskiError::Validation(format!("create {}: {e}", staging.display())))?;
+    let bundle_path = staging.join(&safe_name);
+    let result = std::fs::write(&bundle_path, bytes)
+        .map_err(|e| KowalskiError::Validation(format!("write {}: {e}", bundle_path.display())))
+        .and_then(|_| {
+            if dry_run {
+                kowalski_core::manifest::inspect_bundle(&bundle_path, context).map(|inspection| {
+                    json!({
+                        "ok": true,
+                        "dry_run": true,
+                        "horde_id": inspection.manifest.identifier,
+                        "report": inspection.report,
+                    })
+                })
+            } else {
+                kowalski_core::manifest::import_bundle(&bundle_path, dest_root, false, context)
+                    .map(|import| {
+                        json!({
+                            "ok": true,
+                            "dry_run": false,
+                            "horde_id": import.manifest.identifier,
+                            "horde_root": import.horde_root.display().to_string(),
+                            "report": import.report,
+                        })
+                    })
+            }
+        });
+    let _ = std::fs::remove_dir_all(&staging);
+    result
+}
+
 async fn get_horde_detail(
     State(state): State<ApiState>,
     AxumPath(horde_id): AxumPath<String>,
@@ -2723,4 +2899,85 @@ async fn post_federation_cleanup_stale(
         StatusCode::SERVICE_UNAVAILABLE,
         "Postgres memory URL not configured".into(),
     ))
+}
+
+#[cfg(test)]
+mod import_upload_tests {
+    use super::import_uploaded_bundle;
+    use kowalski_core::manifest::PortabilityContext;
+    use std::path::Path;
+
+    fn coder_bundle_bytes(staging: &Path) -> (String, Vec<u8>) {
+        let example = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/coder");
+        let bundle = kowalski_core::manifest::export_horde_dir_bundle(&example, staging).unwrap();
+        let name = bundle.file_name().unwrap().to_string_lossy().to_string();
+        (name, std::fs::read(&bundle).unwrap())
+    }
+
+    #[test]
+    fn dry_run_reports_without_writing() {
+        let staging = tempfile::tempdir().unwrap();
+        let (name, bytes) = coder_bundle_bytes(staging.path());
+        let dest = staging.path().join("hordes");
+        let value = import_uploaded_bundle(
+            &name,
+            &bytes,
+            &dest,
+            true,
+            &PortabilityContext::default(),
+        )
+        .unwrap();
+        assert_eq!(value["dry_run"], serde_json::json!(true));
+        assert!(value["report"].is_object());
+        assert!(!dest.exists(), "dry run must not create the hordes root");
+    }
+
+    #[test]
+    fn import_lands_draft_and_reports() {
+        let staging = tempfile::tempdir().unwrap();
+        let (name, bytes) = coder_bundle_bytes(staging.path());
+        let dest = staging.path().join("hordes");
+        let value = import_uploaded_bundle(
+            &name,
+            &bytes,
+            &dest,
+            false,
+            &PortabilityContext::default(),
+        )
+        .unwrap();
+        assert_eq!(value["dry_run"], serde_json::json!(false));
+        let horde_root = std::path::PathBuf::from(value["horde_root"].as_str().unwrap());
+        assert!(horde_root.starts_with(&dest));
+        assert!(horde_root.join("horde.md").is_file());
+    }
+
+    #[test]
+    fn invalid_extension_is_a_validation_error() {
+        let staging = tempfile::tempdir().unwrap();
+        let err = import_uploaded_bundle(
+            "workflow.tar.gz",
+            b"not a zip",
+            staging.path(),
+            false,
+            &PortabilityContext::default(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains(".kwf.zip"));
+    }
+
+    #[test]
+    fn traversal_in_upload_name_uses_final_component_only() {
+        let staging = tempfile::tempdir().unwrap();
+        let (name, bytes) = coder_bundle_bytes(staging.path());
+        let dest = staging.path().join("hordes");
+        let value = import_uploaded_bundle(
+            &format!("../../escape/{name}"),
+            &bytes,
+            &dest,
+            true,
+            &PortabilityContext::default(),
+        )
+        .unwrap();
+        assert_eq!(value["ok"], serde_json::json!(true));
+    }
 }

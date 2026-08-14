@@ -232,6 +232,25 @@ export type HordeTriggerStatus = {
   last_fired?: { run_id: string; time: string; status: string };
 };
 
+/** Mirror of the server's bundle-import PortabilityReport (gaps are informational). */
+export type PortabilityReport = {
+  unknown_step_kinds: string[];
+  unknown_tool_providers: string[];
+  unknown_tool_ids: string[];
+  unresolved_models: string[];
+  warnings: string[];
+  migrations: string[];
+  triggers_disabled: number;
+};
+
+export type HordeImportResponse = {
+  ok: boolean;
+  dry_run: boolean;
+  horde_id: string;
+  horde_root?: string;
+  report: PortabilityReport;
+};
+
 export type HordeTriggerFireResponse = {
   ok: boolean;
   fired: boolean;
@@ -407,6 +426,36 @@ export const api = {
       `/api/hordes/${encodeURIComponent(hordeId)}/clean-workdir`,
       { method: "POST", body: "{}" },
     ),
+  /** Download a horde's portable bundle (`<id>-<version>.kwf.zip`). Uses fetch so
+   *  the bearer token rides the Authorization header (a plain <a href> cannot). */
+  hordeExportDownload: async (hordeId: string): Promise<{ fileName: string; blob: Blob }> => {
+    const res = await fetch(`${base}/api/hordes/${encodeURIComponent(hordeId)}/export`, {
+      headers: authHeaders(),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`${res.status} ${res.statusText}: ${text.slice(0, 200)}`);
+    }
+    const disposition = res.headers.get("content-disposition") ?? "";
+    const match = /filename="([^"]+)"/.exec(disposition);
+    return { fileName: match?.[1] ?? `${hordeId}.kwf.zip`, blob: await res.blob() };
+  },
+  /** Upload a `.kwf.zip` / `.bbwf.zip` bundle. `dryRun` runs every import gate and
+   *  returns the portability report without landing the horde. */
+  hordeImport: async (file: File, dryRun: boolean): Promise<HordeImportResponse> => {
+    const form = new FormData();
+    form.append("bundle", file, file.name);
+    const res = await fetch(`${base}/api/hordes/import${dryRun ? "?dry_run=true" : ""}`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: form,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`${res.status} ${res.statusText}: ${text.slice(0, 200)}`);
+    }
+    return res.json() as Promise<HordeImportResponse>;
+  },
   hordeRuns: (hordeId: string) =>
     json<{ horde_id: string; runs: HordeRunRecord[] }>(`/api/hordes/${encodeURIComponent(hordeId)}/runs`),
   hordeTriggers: (hordeId: string) =>

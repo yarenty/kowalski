@@ -23,7 +23,14 @@ Features are **not done** until an operator can complete the primary flows in **
   feed shows every run with a source badge (cron/watch/webhook vs operator) and a
   `resumed ×N` marker on interrupted-then-resumed runs. Trigger definitions are **not**
   editable here — authoring stays in `horde.md` / Rookery.
-- **Federation** tab: registry, worker start/stop, delegate smoke tests.
+- **Federation** tab: registry, worker start/stop, delegate smoke tests. Each horde card
+  has an **Export** button (downloads the portable `<id>-<version>.kwf.zip` bundle via
+  authenticated fetch — a plain link cannot carry the bearer header) and the hordes list
+  has an **Import bundle…** action: the upload runs a server-side dry-run first
+  (`POST /api/hordes/import?dry_run=true`), the portability report is shown, and only
+  **Confirm import** lands the draft (triggers disabled) — the horde then appears through
+  the catalog hot reload / 15 s poll without a restart. Invalid bundles surface the
+  server's 400 message inline.
 
 Backend or `kowalski-core` changes that touch chat, horde, federation, or delivery metadata **must** be smoke-checked here (or documented with a blocking reason). Error copy shown in panels should always reference **current** CLI commands (see [`examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md)), not deprecated wrappers.
 

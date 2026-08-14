@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { api, type FederationRegistryResponse, type FederationWorkerProfile, type HordeCatalogItem } from "../api";
+import {
+  api,
+  type FederationRegistryResponse,
+  type FederationWorkerProfile,
+  type HordeCatalogItem,
+  type PortabilityReport,
+} from "../api";
 import { isDagHorde } from "../hordeGraph";
 
 const emit = defineEmits<{
@@ -16,6 +22,26 @@ const fedRegistry = ref<FederationRegistryResponse | null>(null);
 const fedRegistryErr = ref<string | null>(null);
 const pathAction = ref<string | null>(null);
 const cleanBusyHordeId = ref<string | null>(null);
+const exportBusyHordeId = ref<string | null>(null);
+const importFileInput = ref<HTMLInputElement | null>(null);
+const importPending = ref<File | null>(null);
+const importReport = ref<PortabilityReport | null>(null);
+const importHordeId = ref<string | null>(null);
+const importBusy = ref(false);
+const importAction = ref<string | null>(null);
+const importErr = ref<string | null>(null);
+
+const importGaps = computed(() => {
+  const r = importReport.value;
+  if (!r) return [];
+  const gaps: string[] = [];
+  if (r.unknown_step_kinds.length) gaps.push(`unknown step kinds: ${r.unknown_step_kinds.join(", ")}`);
+  if (r.unknown_tool_providers.length) gaps.push(`unknown tool providers: ${r.unknown_tool_providers.join(", ")}`);
+  if (r.unknown_tool_ids.length) gaps.push(`missing builtin tools: ${r.unknown_tool_ids.join(", ")}`);
+  if (r.unresolved_models.length) gaps.push(`unresolved pinned models: ${r.unresolved_models.join(", ")}`);
+  gaps.push(...r.warnings);
+  return gaps;
+});
 
 const federationAgents = computed(() => fedRegistry.value?.agents ?? []);
 const hordeCards = computed(() =>
@@ -96,6 +122,79 @@ async function cleanHordeWorkdir(hordeId: string) {
   }
 }
 
+async function exportHorde(hordeId: string) {
+  exportBusyHordeId.value = hordeId;
+  pathAction.value = null;
+  try {
+    const { fileName, blob } = await api.hordeExportDownload(hordeId);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+    pathAction.value = `Exported ${fileName}`;
+  } catch (e) {
+    pathAction.value = `Export failed: ${e instanceof Error ? e.message : String(e)}`;
+  } finally {
+    exportBusyHordeId.value = null;
+  }
+}
+
+function pickImportFile() {
+  importErr.value = null;
+  importAction.value = null;
+  importFileInput.value?.click();
+}
+
+async function onImportFileChosen(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  importErr.value = null;
+  importAction.value = null;
+  importReport.value = null;
+  importPending.value = file;
+  importBusy.value = true;
+  try {
+    // Dry run first: every import gate runs, nothing lands until the operator confirms.
+    const res = await api.hordeImport(file, true);
+    importReport.value = res.report;
+    importHordeId.value = res.horde_id;
+  } catch (e) {
+    importPending.value = null;
+    importErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    importBusy.value = false;
+  }
+}
+
+async function confirmImport() {
+  const file = importPending.value;
+  if (!file) return;
+  importBusy.value = true;
+  importErr.value = null;
+  try {
+    const res = await api.hordeImport(file, false);
+    importAction.value = `Imported \`${res.horde_id}\` — it appears below once the catalog picks it up (no restart needed).`;
+    importPending.value = null;
+    importReport.value = null;
+    importHordeId.value = null;
+    await refreshAll();
+  } catch (e) {
+    importErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    importBusy.value = false;
+  }
+}
+
+function cancelImport() {
+  importPending.value = null;
+  importReport.value = null;
+  importHordeId.value = null;
+}
+
 function isWorkerReady(w: FederationWorkerProfile): boolean {
   return Boolean(w.managed_running && w.registered_exact && !w.stale_registration);
 }
@@ -172,6 +271,43 @@ onMounted(() => void refreshAll());
     <p><button type="button" class="primary" @click="refreshAll">Refresh</button></p>
 
     <h3>Hordes</h3>
+    <p class="import-row">
+      <button type="button" :disabled="importBusy" @click="pickImportFile">
+        {{ importBusy && !importReport ? "Checking bundle..." : "Import bundle…" }}
+      </button>
+      <input
+        ref="importFileInput"
+        type="file"
+        accept=".zip"
+        class="hidden-input"
+        @change="onImportFileChosen"
+      />
+      <span class="muted">.kwf.zip or .bbwf.zip — lands as a draft with triggers disabled</span>
+    </p>
+    <div v-if="importReport && importPending" class="card import-report">
+      <header>
+        <strong>Import `{{ importHordeId }}`?</strong>
+        <span class="status-badge" :class="importGaps.length ? 'status-off' : 'status-ok'">
+          {{ importGaps.length ? `${importGaps.length} GAP(S)` : "PORTABLE" }}
+        </span>
+      </header>
+      <p v-if="!importGaps.length" class="muted">No portability gaps — fully runnable on this deployment.</p>
+      <ul v-else class="muted">
+        <li v-for="gap in importGaps" :key="gap">{{ gap }}</li>
+      </ul>
+      <p v-for="note in importReport.migrations" :key="note" class="muted">Migrated: {{ note }}</p>
+      <p v-if="importReport.triggers_disabled" class="muted">
+        {{ importReport.triggers_disabled }} trigger(s) will be imported disabled — re-enable them on the Horde tab.
+      </p>
+      <p>
+        <button type="button" class="primary" :disabled="importBusy" @click="confirmImport">
+          {{ importBusy ? "Importing..." : "Confirm import" }}
+        </button>
+        <button type="button" :disabled="importBusy" @click="cancelImport">Cancel</button>
+      </p>
+    </div>
+    <p v-if="importAction" class="muted">{{ importAction }}</p>
+    <p v-if="importErr" class="err">{{ importErr }}</p>
     <div v-if="hordeCards.length" class="cards">
       <article v-for="card in hordeCards" :key="card.horde.id" class="card">
         <header>
@@ -233,6 +369,14 @@ onMounted(() => void refreshAll());
           >
             {{ workerBusy === `${card.horde.id}:all` ? "Stopping..." : "Stop All" }}
           </button>
+          <button
+            type="button"
+            :disabled="exportBusyHordeId === card.horde.id"
+            title="Download this horde as a portable .kwf.zip bundle"
+            @click="exportHorde(card.horde.id)"
+          >
+            {{ exportBusyHordeId === card.horde.id ? "Exporting..." : "Export" }}
+          </button>
         </p>
         <details open>
           <summary>View internal agents</summary>
@@ -292,4 +436,8 @@ onMounted(() => void refreshAll());
 button { background: #2a3142; border: 1px solid #3d4658; color: #c8cfdd; padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; margin-right: 0.5rem; }
 button.primary { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
 .inline-btn { padding: 0.2rem 0.5rem; font-size: 0.78rem; margin-right: 0; }
+.import-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.hidden-input { display: none; }
+.import-report { margin-bottom: 0.55rem; }
+.import-report ul { margin: 0.35rem 0; padding-left: 1.2rem; }
 </style>

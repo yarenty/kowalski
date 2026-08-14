@@ -25,6 +25,60 @@ pub const RUN_DB_ENV: &str = "KOWALSKI_RUN_DB";
 /// `cargo run -p kowalski-cli` (dev tree).
 pub const CLI_BIN_ENV: &str = "KOWALSKI_CLI_BIN";
 
+/// Env var overriding horde discovery roots: a `:`-separated list of directories
+/// scanned for horde definitions. Its first entry is also the user hordes root
+/// (where imported bundles land).
+pub const HORDES_DIR_ENV: &str = "KOWALSKI_HORDES_DIR";
+
+/// Single source of truth for horde discovery roots, in priority order:
+/// [`HORDES_DIR_ENV`] entries, `<config-dir>/hordes`, `<config-dir>/../examples`,
+/// `<cwd>/examples`, and the packaged examples path. Used by the server catalog
+/// and by CLI horde-id resolution.
+pub fn default_horde_roots(config_dir: Option<&std::path::Path>) -> Vec<std::path::PathBuf> {
+    use std::path::PathBuf;
+    let mut roots = Vec::new();
+    if let Ok(env) = std::env::var(HORDES_DIR_ENV) {
+        for piece in env.split(':') {
+            if !piece.trim().is_empty() {
+                roots.push(PathBuf::from(piece.trim()));
+            }
+        }
+    }
+    if let Some(c) = config_dir {
+        roots.push(c.join("hordes"));
+        if let Some(parent) = c.parent() {
+            roots.push(parent.join("examples"));
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        roots.push(cwd.join("examples"));
+    }
+    roots.push(PathBuf::from("/opt/ml/kowalski/examples"));
+    let mut seen = std::collections::HashSet::new();
+    roots.retain(|p| seen.insert(p.clone()));
+    roots
+}
+
+/// Single source of truth for the user hordes root — where imported bundles land:
+/// the first [`HORDES_DIR_ENV`] entry when set, else `<config-dir>/hordes`.
+/// Never an `examples/` directory.
+pub fn user_hordes_root(config_dir: Option<&std::path::Path>) -> Option<std::path::PathBuf> {
+    if let Ok(env) = std::env::var(HORDES_DIR_ENV) {
+        for piece in env.split(':') {
+            if !piece.trim().is_empty() {
+                return Some(std::path::PathBuf::from(piece.trim()));
+            }
+        }
+    }
+    config_dir.map(|c| c.join("hordes"))
+}
+
+/// Single source of truth for the Ollama base URL a config resolves to:
+/// `http://<ollama.host>:<ollama.port>`.
+pub fn ollama_base_url(config: &Config) -> String {
+    format!("http://{}:{}", config.ollama.host, config.ollama.port)
+}
+
 /// Single source of truth for the model a deployment chats with:
 /// `llm.model` when the `openai` provider declares one, else `ollama.model`.
 pub fn default_model(config: &Config) -> String {

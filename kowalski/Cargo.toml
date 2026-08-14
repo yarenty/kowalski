@@ -36,7 +36,7 @@ serde_json = { workspace = true }
 serde_yaml = "0.9"
 log = { workspace = true }
 futures = { workspace = true }
-axum = { workspace = true, features = ["ws"] }
+axum = { workspace = true, features = ["ws", "multipart"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 tower-http = { workspace = true, features = ["cors", "trace"] }
 reqwest = { workspace = true }
