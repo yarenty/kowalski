@@ -162,11 +162,11 @@ mod tests {
     let headers = header_map(&[
       ("Authorization", "Bearer abc"),
       ("X-Other", "nope"),
-      ("X-Doku-User", "alice"),
+      ("X-Upstream-User", "alice"),
     ]);
-    let fwd = ForwardedHeaders::from_header_map(&headers, &["Authorization", "X-Doku-User"]);
+    let fwd = ForwardedHeaders::from_header_map(&headers, &["Authorization", "X-Upstream-User"]);
     assert_eq!(fwd.authorization(), Some("Bearer abc"));
-    assert_eq!(fwd.get("x-doku-user"), Some("alice"));
+    assert_eq!(fwd.get("x-upstream-user"), Some("alice"));
     assert_eq!(fwd.get("X-Other"), None, "non-allowlisted header must be dropped");
   }
 

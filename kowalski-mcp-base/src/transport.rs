@@ -23,6 +23,7 @@ pub const ACCEPT_STREAMABLE: &str = "application/json, text/event-stream";
 /// Return `Some(reply)` for requests (those with an `id`) and `None` for notifications
 /// (no `id`, e.g. `notifications/initialized`) — notifications must not be answered.
 pub trait McpHandler: Send + Sync + 'static {
+    /// Dispatch one JSON-RPC value. `Some(reply)` for requests, `None` for notifications.
     fn handle(&self, request: Value) -> impl std::future::Future<Output = Option<Value>> + Send;
 }
 

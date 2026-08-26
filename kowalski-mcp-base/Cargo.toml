@@ -2,7 +2,8 @@
 name = "kowalski-mcp-base"
 version = "1.6.0"
 edition = "2024"
-description = "Shared framework for first-party Kowalski MCP servers: transport, framing, credential forwarding, rmcp bootstrap"
+rust-version = "1.85"
+description = "Opinionated MCP server framework: stateless Streamable HTTP transport, output framing, credential forwarding, rmcp bootstrap"
 license = "MIT"
 authors = ["yarenty <yarenty@gmail.com>"]
 repository = "https://github.com/yarenty/kowalski"
@@ -18,7 +19,6 @@ path = "src/lib.rs"
 axum = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
-log = { workspace = true }
 
 # rmcp ServerHandler bootstrap + framing helpers
 rmcp = { version = "1.7", features = [
