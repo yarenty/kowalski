@@ -6,6 +6,8 @@
 
 Single framework crate for all **first-party** Kowalski MCP servers. Replaces `kowalski-mcp-transport`; adds output framing, forwarded headers, and rmcp `serve` bootstrap.
 
+**Extraction in progress:** this crate is graduating to its own repository as **`emperor-mcp`** (tracking: [kowalski#75](https://github.com/yarenty/kowalski/issues/75)). Until the switch-over, it stays fully functional in-tree. Publishable-quality bar applies: `#![warn(missing_docs)]` is on (every public item documented), single logging facade (`tracing` — do not add `log`), MSRV declared (`rust-version = "1.85"`).
+
 ## Modules
 
 | Module | Use |

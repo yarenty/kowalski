@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Changed
+
+- **`kowalski-mcp-base` pre-extraction audit (#77):** the shared MCP server framework is
+  being extracted into its own project, **emperor-mcp** (#75). In-tree preparation:
+  `#![warn(missing_docs)]` with every public item documented, unused `log` dependency
+  dropped (single `tracing` facade), MSRV declared (`rust-version = "1.85"`), neutral
+  standalone crate description, and a README introducing the emperor-mcp identity.
+  No API or behavior changes; `kowalski-mcp-rookery` / `kowalski-mcp-datafusion` unaffected.
+
 ### Security
 
 - **Optional HTTP API auth (#36):** the server can require a locally generated bearer

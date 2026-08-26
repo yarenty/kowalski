@@ -1,13 +1,20 @@
-//! `kowalski-mcp-base` — shared framework for first-party Kowalski MCP servers.
+//! Opinionated framework for building MCP servers: stateless Streamable HTTP,
+//! content-aware output framing, and per-request credential forwarding.
+//!
+//! Extracting from the kowalski workspace as **`emperor-mcp`** — tracking:
+//! <https://github.com/yarenty/kowalski/issues/75>.
 //!
 //! Two server styles share the same conventions (stateless HTTP, output framing, no auth shortcuts):
 //!
 //! 1. **[`transport::McpHandler`]** — hand-rolled JSON-RPC dispatch; use [`transport::run_stdio`]
-//!    or [`transport::serve_http`] (used by `kowalski-mcp-datafusion`, `kowalski-mcp-rookery`).
-//! 2. **[`serve`]** — rmcp [`ServerHandler`] + `#[tool_router]` bootstrap at `/mcp` + `/health`
-//!    (future servers such as Obsidian).
+//!    (local/dev) or [`transport::serve_http`] (examples: `kowalski-mcp-datafusion`,
+//!    `kowalski-mcp-rookery`).
+//! 2. **[`serve::serve`]** — rmcp `ServerHandler` + `#[tool_router]` bootstrap at `/mcp` + `/health`,
+//!    with credential-forwarding middleware for multi-tenant deployments.
 //!
 //! See [`MCP_REQUIREMENTS.md`](./MCP_REQUIREMENTS.md) and [`MANIFEST_SPEC.md`](./MANIFEST_SPEC.md).
+
+#![warn(missing_docs)]
 
 pub mod framing;
 pub mod headers;
