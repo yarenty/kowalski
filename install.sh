@@ -106,9 +106,8 @@ main() {
   cargo_install kowalski "${feat[@]}"
 
   if [[ "$KOWALSKI_INSTALL_MCP" == "1" ]]; then
-    info "Installing optional MCP servers (DataFusion compile is slow)"
+    info "Installing optional MCP servers"
     cargo_install kowalski-mcp-rookery
-    cargo_install kowalski-mcp-datafusion
   fi
 
   ensure_path_hint

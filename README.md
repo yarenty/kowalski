@@ -7,7 +7,7 @@
 > your machine. 1.7.0 ships durable runs, cron/watch/webhook triggers, native tool calling,
 > the guided Rookery builder, and portable workflow bundles.
 
-**Version 1.7.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-datafusion`, `kowalski-mcp-rookery`, Vue `ui/`) — MCP servers build on the standalone [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) framework
+**Version 1.7.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-rookery`, Vue `ui/`) — MCP servers build on the standalone [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) framework
 
 > **Build from git** on `main`. **`cargo install --version 1.7.0`** once published to crates.io.
 
@@ -45,7 +45,6 @@ kowalski/
 ├── kowalski-core/           # Agents, LLM providers, memory, MCP client, federation types
 ├── kowalski-cli/            # REPL, config/db/mcp tools
 ├── kowalski/                # HTTP API server binary (`kowalski`)
-├── kowalski-mcp-datafusion/ # Standalone MCP server: DataFusion SQL over CSV/Parquet
 ├── ui/                      # Vue 3 + Vite operator UI (Chat, MCP, federation, graph status)
 ├── kowalski-core/migrations/# SQLite + Postgres SQL migrations (bundled with kowalski-core for sqlx / crates.io)
 ├── resources/               # Configs, tokenizer, etc.
@@ -103,9 +102,8 @@ kowalski/
   `.bbwf.zip` is accepted as an interop alias.
 - Build with **`--features postgres`** for SQL memory + pgvector bindings and **`POST /api/graph/cypher`** (Apache AGE) on `serve`.
 
-### **kowalski-mcp-datafusion**
-- Optional **MCP** server (Streamable HTTP) for **SQL** over local **CSV/Parquet** via **DataFusion**.
-- See [`kowalski-mcp-datafusion/README.md`](./kowalski-mcp-datafusion/README.md) and Docker assets in that crate.
+### SQL over data files
+- The former in-tree DataFusion MCP server continues as the standalone **`tableski`** project ("every spreadsheet is a table") — SQL over CSV/Excel/Parquet served over MCP, built on `emperor-mcp`. Public at its first release.
 
 ### **ui/**
 - Vue 3 + Vite operator shell: health, MCP ping, **Chat** (SSE including **tool-aware stream**), federation, graph extension status.
@@ -129,7 +127,7 @@ Options via environment variables:
 |----------|--------|
 | `KOWALSKI_VERSION=1.7.0` | Pin crates.io version on install |
 | `KOWALSKI_FEATURES=postgres` | `cargo install --features postgres` for server + CLI |
-| `KOWALSKI_INSTALL_MCP=1` | Also install `kowalski-mcp-rookery` and `kowalski-mcp-datafusion` |
+| `KOWALSKI_INSTALL_MCP=1` | Also install `kowalski-mcp-rookery` |
 | `KOWALSKI_SKIP_RUSTUP=1` | Fail instead of auto-installing Rust |
 | `KOWALSKI_CONFIG_DIR=~/.config/kowalski` | Where sample `config.toml` is written |
 

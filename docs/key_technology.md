@@ -17,7 +17,7 @@ This document outlines the key technological, business, and strategic pillars of
     *   **`kowalski-core`** holds **`TemplateAgent`**, tools, memory tiers, MCP client, and federation types.
     *   **`kowalski-cli`** provides operators (REPL, config, migrations, MCP checks, **extensions**, **`agent-app`**).
     *   **`kowalski`** is the optional HTTP **`/api/*`** server for the Vue UI and programmatic access.
-    *   **`kowalski-mcp-datafusion`** is an optional standalone MCP server (DataFusion). Heavy analytics deps stay isolated there.
+    *   **`tableski`** (standalone project) is the optional MCP server for SQL/DataFusion. Heavy analytics deps stay isolated there.
     *   Personas and specialized behaviors are composed via **config + tools + prompts**, not separate `kowalski-*-agent` binaries.
 
 *   **Key Feature: LLM Agnosticism.** The framework is designed to treat Large Language Models as a swappable component. This prevents vendor lock-in and allows users to choose the best model for their specific needs based on cost, performance, privacy (e.g., local models via Ollama), or capability.

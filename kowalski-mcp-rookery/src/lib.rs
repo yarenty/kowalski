@@ -18,7 +18,7 @@ use emperor_mcp::McpHandler;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
-/// MCP protocol version reported on `initialize` (matches `kowalski-mcp-datafusion`).
+/// MCP protocol version reported on `initialize`.
 pub const PROTOCOL_VERSION: &str = "2025-03-26";
 
 /// [`McpHandler`] over the pure [`dispatch`] fn — drives both the stdio and stateless

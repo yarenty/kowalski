@@ -128,7 +128,6 @@ kowalski/                         # repository root (you are in crate kowalski/)
 ├── kowalski-core/                # TemplateAgent, tools, memory, MCP, federation
 ├── kowalski-cli/                 # REPL, operators, extension, agent-app
 ├── kowalski/                     # This crate: facade `lib` + `kowalski` HTTP binary
-├── kowalski-mcp-datafusion/      # Optional standalone MCP (DataFusion)
 ├── ui/                           # Vue operator UI
 ├── examples/                     # e.g. knowledge-compiler
 ├── docs/, tools/, resources/   # SQL migrations live in `kowalski-core/migrations/`
@@ -143,7 +142,6 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
 - [kowalski-core/AGENTS.md](../kowalski-core/AGENTS.md)
 - [kowalski-cli/AGENTS.md](../kowalski-cli/AGENTS.md)
 - [kowalski/AGENTS.md](./AGENTS.md) (this crate)
-- [kowalski-mcp-datafusion/AGENTS.md](../kowalski-mcp-datafusion/AGENTS.md)
 - [ui/AGENTS.md](../ui/AGENTS.md)
 
 **Rule**: Before making changes to any component, **always read its specific AGENTS.md first** to understand:
@@ -395,7 +393,7 @@ channel only on backends where guided decoding is known-good.
 
 **Server-owned draft (PLAN.md §R1):** the server is the **source of truth** for Rookery sessions. Each session (status, draft, summary, and chat transcript) is persisted as one **YAML** file under the state dir (default `db/rookery/`; override with `KOWALSKI_ROOKERY_STATE`) and reloaded on startup — so sessions survive a server restart **without** the browser re-POSTing the draft. The UI keeps only a thin session-id list and renders draft/status via `GET /api/rookery/sessions/{id}`. The legacy `POST` restore body (`history`/`draft`/…) is still accepted for back-compat but is no longer used by `ui/`.
 
-- **MCP**: client/hub in core; optional **`kowalski-mcp-datafusion`** server for heavy SQL.
+- **MCP**: client/hub in core; standalone servers (e.g. `tableski`) attach for heavy SQL.
 
 ---
 

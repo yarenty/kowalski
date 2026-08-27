@@ -4,7 +4,7 @@
 
 **Shipped:** **1.7.0 — Autonomy** (durable runs, triggers, native tools, guided builder, portable bundles) — see [`CHANGELOG.md`](CHANGELOG.md) **[1.7.0]**.  
 **Published on crates.io:** lags GitHub releases; `cargo install` from git works today.  
-**Per-crate roadmaps:** [`kowalski-core/ROADMAP.md`](kowalski-core/ROADMAP.md), [`kowalski-cli/ROADMAP.md`](kowalski-cli/ROADMAP.md), [`kowalski-mcp-datafusion/ROADMAP.md`](kowalski-mcp-datafusion/ROADMAP.md), [`ui/ROADMAP.md`](ui/ROADMAP.md).
+**Per-crate roadmaps:** [`kowalski-core/ROADMAP.md`](kowalski-core/ROADMAP.md), [`kowalski-cli/ROADMAP.md`](kowalski-cli/ROADMAP.md), [`ui/ROADMAP.md`](ui/ROADMAP.md).
 
 ## Release train (1.7 → 2.0)
 
@@ -13,7 +13,7 @@
 | ~~1.5.0~~ | **Coder (execution)** — *shipped in 1.7.0* | Full working coding horde: project tree ingest, tool-enabled stages, apply/verify, conditional loops |
 | ~~1.6.0~~ | **Fresh install** — *shipped in 1.7.0* | [`install.sh`](install.sh) onboarding — env checks, Ollama hints, Docker MCP suggestions, minimal tool stack |
 | ~~1.7.0~~ | **Autonomy** — *shipped 2026-08-27* | Durable runs (resume, cancel), cron/watch/webhook triggers, native tool calling, structured output, guided Rookery builder, hot reload, portable manifests/bundles, process isolation, API auth |
-| **1.7.x** | **Standalone MCP crates** | The shared MCP framework continues as the standalone [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) crate (kowalski now consumes it from crates.io — done); the DataFusion server follows |
+| ~~1.7.x~~ | **Standalone MCP crates** — *done* | Shared framework → [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) (consumed from crates.io); DataFusion server → **`tableski`** (standalone project, public at first release) |
 | **1.7.x** | **Obsidian MCP** (intermediate) | Reusable MCP catalog doc; an Obsidian server on `emperor-mcp` (filesystem vault v0); survey existing Obsidian MCPs before building |
 | **1.8.0** | **Support** | Chat tab becomes **Support**: Kowalski-aware helper (install gaps, Rookery + horde intro) |
 | **1.9.0** | **Vision & docs** | Marketing-quality articles; evolution 0.5 → 1.0 → hordes → Rookery; consolidated vision |
@@ -66,7 +66,7 @@ The builder shipped, but the UI absorbed core responsibilities. Pay down before 
 - [x] **R1** Server owns the Rookery draft — dropped the `localStorage` draft round-trip; sessions persist as YAML under `db/rookery/` and reload on startup. UI is render + dispatch only.
 - [x] **R2** Rookery as an **in-repo MCP server** (`kowalski-mcp-rookery`, stdio) over `kowalski-core::rookery`; `/api/rookery/*` and the new server share the same core primitives (any MCP client can build hordes). LLM-free — the calling agent drives the interview.
 - [x] **R3** **Docker MCP gateway** as one stdio MCP server (`docker mcp gateway run`); dynamic mode + `--servers`/`--profile` direct mode. `tools/internal/*` stay the dependency-light fallback, shadowed by the gateway when present.
-- [x] **Transport** Shared MCP framework, now [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) (stdio + **stateless Streamable HTTP**, no `Mcp-Session-Id`) — adopted by `kowalski-mcp-rookery` (`--transport stdio|http`) and `kowalski-mcp-datafusion` (now sessionless), so every in-repo MCP server is reachable over stateless HTTP.
+- [x] **Transport** Shared MCP framework, now [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) (stdio + **stateless Streamable HTTP**, no `Mcp-Session-Id`) — adopted by `kowalski-mcp-rookery` (`--transport stdio|http`) and the DataFusion server (now the standalone `tableski` project), so every first-party MCP server is reachable over stateless HTTP.
 
 ## Planned: DAG horde pipelines — **shipped in 1.4.0**
 
@@ -174,7 +174,7 @@ Workspace layout:
 - **kowalski-core**: `TemplateAgent`, LLM providers, memory, MCP client/hub, federation types; optional **Postgres** + **pgvector** + **Apache AGE** helpers.
 - **kowalski-cli**: REPL and operator commands (`run`, `config`, `db`, `doctor`, `mcp`, **`extension`**, **`agent-app`**).
 - **kowalski**: HTTP API server binary (`kowalski`, default `127.0.0.1:3456`) — **`/api/*`** for the Vue UI and integrations.
-- **kowalski-mcp-datafusion**: standalone **MCP** Streamable HTTP server (DataFusion over CSV/Parquet).
+- DataFusion MCP server (now the standalone **`tableski`** project): **MCP** Streamable HTTP, SQL over CSV/Parquet.
 - **ui**: Vue 3 + Vite operator UI (Chat / MCP / federation / graph status).
 - **Legacy prompts**: `migrations/legacy_prompts/` (staged).
 

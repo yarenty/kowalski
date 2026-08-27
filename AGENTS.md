@@ -56,7 +56,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 
 **Name**: Kowalski  
 **Release line**: **1.7.0 — Autonomy** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).
-**Purpose**: A Rust-native multi-agent framework: **`kowalski-core`** (agents, LLM, memory, MCP client), **`kowalski-cli`** (REPL + operators, extensions, **`agent-app`**), **`kowalski`** (HTTP **`/api/*`** server), optional **`kowalski-mcp-datafusion`**, Vue **`ui/`**, optional PostgreSQL (**pgvector**, **Apache AGE**).  
+**Purpose**: A Rust-native multi-agent framework: **`kowalski-core`** (agents, LLM, memory, MCP client), **`kowalski-cli`** (REPL + operators, extensions, **`agent-app`**), **`kowalski`** (HTTP **`/api/*`** server), Vue **`ui/`**, optional PostgreSQL (**pgvector**, **Apache AGE**).  
 **Core Value Proposition**: Modular, extensible deployment with MCP-first tools and federation-oriented APIs.  
 **Primary Mechanism**: `TemplateAgent` + pluggable tools (built-in + MCP), Ollama/OpenAI-compatible providers.  
 **Target Users**: Developers building operator-run or embedded agent systems on CPU-friendly stacks.  
@@ -87,7 +87,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 
 All “do something with the outside world” behavior should align with **one model**, documented in [`kowalski-core/AGENTS.md`](kowalski-core/AGENTS.md) (**Tool execution model**):
 
-1. **In-repo MCP servers** you ship and register (e.g. [`kowalski-mcp-datafusion`](kowalski-mcp-datafusion/)).
+1. **Standalone MCP servers** you ship and register (e.g. the `tableski` DataFusion server, built on `emperor-mcp`).
 2. **External MCP** reached via gateways or catalogs (e.g. [Docker MCP Toolkit](https://docs.docker.com/ai/mcp-catalog-and-toolkit/toolkit/) — profiles, OAuth, catalog).
 3. **`kowalski-core` internal tools** — small in-process modules under [`kowalski-core/src/tools/internal/`](kowalski-core/src/tools/internal/) (GitHub-aware fetch, web, filesystem) with **config toggles** (planned) to disable or replace with MCP without rewriting apps.
 
@@ -142,7 +142,6 @@ kowalski/                         # repository root
 ├── kowalski-core/                # TemplateAgent, tools, memory, MCP client, federation types
 ├── kowalski-cli/                 # REPL, operators, extension run, agent-app
 ├── kowalski/                     # Facade crate + HTTP server binary (`kowalski` → `/api/*`)
-├── kowalski-mcp-datafusion/      # Optional standalone MCP server (DataFusion over files)
 ├── ui/                           # Vue 3 operator UI (Vite)
 ├── examples/                     # App patterns (knowledge-compiler: see examples/knowledge-compiler/AGENTS.md)
 ├── kowalski-core/migrations/     # SQL migrations (SQLite + Postgres), bundled with kowalski-core for sqlx + crates.io
@@ -159,7 +158,6 @@ Personas and specialized behaviors are composed via **config + `TemplateAgent` +
 - [kowalski-core/AGENTS.md](kowalski-core/AGENTS.md)
 - [kowalski-cli/AGENTS.md](kowalski-cli/AGENTS.md)
 - [kowalski/AGENTS.md](kowalski/AGENTS.md) (facade + HTTP server crate)
-- [kowalski-mcp-datafusion/AGENTS.md](kowalski-mcp-datafusion/AGENTS.md)
 - [ui/AGENTS.md](ui/AGENTS.md)
 
 **Rule**: Before making changes to any component, **always read its specific AGENTS.md first** to understand:
@@ -172,7 +170,7 @@ Personas and specialized behaviors are composed via **config + `TemplateAgent` +
 ### Service Architecture
 - **Agent workers**: `TemplateAgent` + configured tools (built-in and MCP-backed).
 - **HTTP API**: `kowalski` binary exposes `/api/*` for the Vue UI and integrations.
-- **Optional MCP**: in-process client/hub in `kowalski-core`; optional **`kowalski-mcp-datafusion`** standalone server for SQL/DataFusion.
+- **Optional MCP**: in-process client/hub in `kowalski-core`; standalone servers (e.g. `tableski` for SQL/DataFusion) attach via config.
 
 ---
 

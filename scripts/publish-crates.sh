@@ -20,7 +20,6 @@ cd "$ROOT"
 CRATES=(
   kowalski-core
   kowalski-cli
-  kowalski-mcp-datafusion
   kowalski-mcp-rookery
   kowalski
 )
