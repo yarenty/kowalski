@@ -1,15 +1,15 @@
 # Kowalski
 
 > [!IMPORTANT]
-> ## WIP 1.1.x - Horde & Hardening Phase
-> Kowalski is currently in an active refactoring and hardening phase.
-> The project is moving from an original proof-of-concept/proof-of-knowledge stage toward a near-production release line.
-> During this transition, some modules, commands, and docs may still evolve quickly.
-> We are focused on stability, clearer module boundaries, production-ready operator workflows, and robust multi-agent federation.
+> ## 1.7.0 — Autonomy
+> Kowalski agents are triggered by time, files, and events — not just prompts; they run as
+> bounded, verified DAGs — not unattended loops; they survive reboots; and they never leave
+> your machine. 1.7.0 ships durable runs, cron/watch/webhook triggers, native tool calling,
+> the guided Rookery builder, and portable workflow bundles.
 
-**Version 1.5.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-datafusion`, `kowalski-mcp-rookery`, `kowalski-mcp-base`, Vue `ui/`)
+**Version 1.7.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-datafusion`, `kowalski-mcp-rookery`, `kowalski-mcp-base`, Vue `ui/`)
 
-> **Build from git** on branch `feat/coder` or `main` after merge. **`cargo install --version 1.5.0`** once published to crates.io.
+> **Build from git** on `main`. **`cargo install --version 1.7.0`** once published to crates.io.
 
 > "AI agents are like pets – they're cute, but they make a mess."  
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"
@@ -127,7 +127,7 @@ Options via environment variables:
 
 | Variable | Effect |
 |----------|--------|
-| `KOWALSKI_VERSION=1.5.0` | Pin crates.io version on install |
+| `KOWALSKI_VERSION=1.7.0` | Pin crates.io version on install |
 | `KOWALSKI_FEATURES=postgres` | `cargo install --features postgres` for server + CLI |
 | `KOWALSKI_INSTALL_MCP=1` | Also install `kowalski-mcp-rookery` and `kowalski-mcp-datafusion` |
 | `KOWALSKI_SKIP_RUSTUP=1` | Fail instead of auto-installing Rust |

@@ -1,6 +1,6 @@
 [package]
 name = "kowalski-mcp-base"
-version = "1.6.0"
+version = "1.7.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Opinionated MCP server framework: stateless Streamable HTTP transport, output framing, credential forwarding, rmcp bootstrap"

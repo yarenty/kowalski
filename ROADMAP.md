@@ -1,22 +1,36 @@
-# Kowalski Roadmap & Features (1.5.0+)
+# Kowalski Roadmap & Features (1.7.0+)
 
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"
 
-**In progress:** **1.5.0 — Coder (execution tier)** on branch `feat/coder` — see [`CHANGELOG.md`](CHANGELOG.md) **[Unreleased]**.  
-**Published:** **1.4.0** on crates.io (DAG pipelines + planning-tier coding horde).  
+**Shipped:** **1.7.0 — Autonomy** (durable runs, triggers, native tools, guided builder, portable bundles) — see [`CHANGELOG.md`](CHANGELOG.md) **[1.7.0]**.  
+**Published on crates.io:** lags GitHub releases; `cargo install` from git works today.  
 **Per-crate roadmaps:** [`kowalski-core/ROADMAP.md`](kowalski-core/ROADMAP.md), [`kowalski-cli/ROADMAP.md`](kowalski-cli/ROADMAP.md), [`kowalski-mcp-datafusion/ROADMAP.md`](kowalski-mcp-datafusion/ROADMAP.md), [`ui/ROADMAP.md`](ui/ROADMAP.md).
 
-## Release train (1.5 → 2.0)
+## Release train (1.7 → 2.0)
 
 | Version | Theme | Goal |
 |---------|--------|------|
-| **1.5.0** | **Coder (execution)** | Full working coding horde: project tree ingest, tool-enabled stages, apply/verify, conditional loops |
-| **1.6.0** | **Fresh install** | [`install.sh`](install.sh) onboarding — env checks, Ollama hints, Docker MCP suggestions, minimal tool stack |
-| **1.6.x** | **Obsidian MCP** (intermediate) | Reusable MCP catalog doc; **`kowalski-mcp-obsidian`** (filesystem vault v0); survey existing Obsidian MCPs before building |
-| **1.7.0** | **Support** | Chat tab becomes **Support**: Kowalski-aware helper (install gaps, Rookery + horde intro) |
-| **1.8.0** | **Vision & docs** | Marketing-quality articles; evolution 0.5 → 1.0 → hordes → Rookery; consolidated vision |
-| **1.9.0** | **Trading horde** | Web monitor + scheduled market analysis; buy/sell/wait suggestions (details TBD) |
+| ~~1.5.0~~ | **Coder (execution)** — *shipped in 1.7.0* | Full working coding horde: project tree ingest, tool-enabled stages, apply/verify, conditional loops |
+| ~~1.6.0~~ | **Fresh install** — *shipped in 1.7.0* | [`install.sh`](install.sh) onboarding — env checks, Ollama hints, Docker MCP suggestions, minimal tool stack |
+| ~~1.7.0~~ | **Autonomy** — *shipped 2026-08-27* | Durable runs (resume, cancel), cron/watch/webhook triggers, native tool calling, structured output, guided Rookery builder, hot reload, portable manifests/bundles, process isolation, API auth |
+| **1.7.x** | **Standalone MCP crates** | `kowalski-mcp-base` continues as the standalone [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) framework; the DataFusion server follows; kowalski consumes the published crate |
+| **1.7.x** | **Obsidian MCP** (intermediate) | Reusable MCP catalog doc; an Obsidian server on `emperor-mcp` (filesystem vault v0); survey existing Obsidian MCPs before building |
+| **1.8.0** | **Support** | Chat tab becomes **Support**: Kowalski-aware helper (install gaps, Rookery + horde intro) |
+| **1.9.0** | **Vision & docs** | Marketing-quality articles; evolution 0.5 → 1.0 → hordes → Rookery; consolidated vision |
+| **1.10.0** | **Trading horde** | Web monitor + scheduled market analysis; buy/sell/wait suggestions (details TBD) |
 | **2.0.0** | **Production polish** | Mac + Ubuntu from-scratch installs; pre-built hordes usable out of the box |
+
+## Shipped in 1.7.0 — **Autonomy** (2026-08-27)
+
+See [`CHANGELOG.md`](CHANGELOG.md) (**[1.7.0]**). Consolidates the untagged 1.5.0/1.6.0 in-tree milestones. Highlights:
+
+- **Durable runs** — SQLite-backed run store, write-through transitions, resume after restart, cooperative cancellation
+- **Triggers** — cron / file-watch / webhook declarations in `horde.md`, overlap policies, operator enable/disable/fire UI
+- **Native tool calling + structured output** — structured calls on the wire with ReAct fallback; schema-constrained generation (opt-in)
+- **Guided Rookery builder** — one small schema-constrained delta op per turn, reliable on 7B-class local models
+- **Portable workflows** — JSON manifest + `.kwf.zip` bundles with portability report; export/import via CLI, HTTP, and UI
+- **Coder execution tier** (was 1.5.0) — project tree ingest, tool-enabled stages, verify/apply, conditional loop edges
+- **`install.sh`** (was 1.6.0), **`kowalski-mcp-base`** framework crate, opt-in **API auth**, opt-in **process isolation**
 
 ## Shipped in 1.4.0 — **DAG + planning Coder** (2026-06-15, published)
 
