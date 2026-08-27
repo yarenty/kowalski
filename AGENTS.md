@@ -87,7 +87,12 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 
 All “do something with the outside world” behavior should align with **one model**, documented in [`kowalski-core/AGENTS.md`](kowalski-core/AGENTS.md) (**Tool execution model**):
 
-1. **Standalone MCP servers** you ship and register (e.g. the `tableski` DataFusion server, built on `emperor-mcp`).
+1. **Standalone first-party MCP servers**, each its own repository built on the
+   [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) framework (e.g.
+   [`tableski`](https://github.com/yarenty/tableski) for SQL over data files), registered in
+   config. Exception: **`kowalski-mcp-rookery`** stays in this workspace — it is coupled to
+   `kowalski-core` by design. **Policy: this repo stays framework-only; new servers get their
+   own repos.**
 2. **External MCP** reached via gateways or catalogs (e.g. [Docker MCP Toolkit](https://docs.docker.com/ai/mcp-catalog-and-toolkit/toolkit/) — profiles, OAuth, catalog).
 3. **`kowalski-core` internal tools** — small in-process modules under [`kowalski-core/src/tools/internal/`](kowalski-core/src/tools/internal/) (GitHub-aware fetch, web, filesystem) with **config toggles** (planned) to disable or replace with MCP without rewriting apps.
 

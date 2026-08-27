@@ -102,8 +102,19 @@ kowalski/
   `.bbwf.zip` is accepted as an interop alias.
 - Build with **`--features postgres`** for SQL memory + pgvector bindings and **`POST /api/graph/cypher`** (Apache AGE) on `serve`.
 
-### SQL over data files
-- The former in-tree DataFusion MCP server continues as the standalone **`tableski`** project ("every spreadsheet is a table") — SQL over CSV/Excel/Parquet served over MCP, built on `emperor-mcp`. Public at its first release.
+### Ecosystem
+
+Kowalski's MCP layer lives as standalone projects it consumes and pairs with:
+
+| Project | What it is | Reach for it when |
+|---|---|---|
+| [**emperor-mcp**](https://github.com/yarenty/emperor-mcp) ([crates.io](https://crates.io/crates/emperor-mcp)) | The enterprise MCP server framework: stateless Streamable HTTP, credential forwarding, output framing, versioned deployment profile ([Emperor Profile P1](https://github.com/yarenty/emperor-mcp/blob/main/PROFILE.md)) | You're building an MCP server that has to survive production |
+| [**tableski**](https://github.com/yarenty/tableski) ([crates.io](https://crates.io/crates/tableski)) | "Every spreadsheet is a table" — Excel/CSV/Parquet/NDJSON as SQL tables over MCP, results exported back to .csv/.xlsx | Your agents need real SQL over data files — attach it to kowalski via `[[mcp.servers]]` |
+
+Kowalski consumes `emperor-mcp` from crates.io; **`kowalski-mcp-rookery` stays in this
+workspace** because it is coupled to `kowalski-core` (the Rookery horde-builder) by design.
+**Policy:** future first-party MCP servers are their own repositories built on `emperor-mcp` —
+this repo stays framework-only.
 
 ### **ui/**
 - Vue 3 + Vite operator shell: health, MCP ping, **Chat** (SSE including **tool-aware stream**), federation, graph extension status.
