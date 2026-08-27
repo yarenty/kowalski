@@ -1,6 +1,6 @@
 # kowalski-mcp-rookery
 
-**Version 1.5.0** — standalone **MCP** server exposing the **Rookery** horde-builder primitives from `kowalski-core`. Runs over **stdio** *or* **stateless Streamable HTTP** (shared [`kowalski-mcp-base`](../kowalski-mcp-base/)).
+**Version 1.7.0** — standalone **MCP** server exposing the **Rookery** horde-builder primitives from `kowalski-core`. Runs over **stdio** *or* **stateless Streamable HTTP** (shared [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) framework).
 
 This is an **in-repo MCP server** (tool *source 1* in [`kowalski-core/AGENTS.md`](../kowalski-core/AGENTS.md)). It lets any MCP client — the Kowalski agent, the CLI, or an external client such as Claude Desktop — build hordes ("penguins") without going through the Vue UI or the HTTP `/api/rookery/*` surface.
 

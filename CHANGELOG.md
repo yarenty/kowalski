@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Changed
+
+- **MCP framework extracted (#80):** `kowalski-mcp-base` now lives on as the standalone
+  [**emperor-mcp**](https://github.com/yarenty/emperor-mcp) crate
+  ([crates.io](https://crates.io/crates/emperor-mcp)); the in-tree copy is removed and
+  `kowalski-mcp-rookery` / `kowalski-mcp-datafusion` depend on the published `emperor-mcp 0.1`.
+  Same API (crate rename only), no behavior changes.
+
 ## [1.7.0] - 2026-08-27 — **Autonomy**
 
 > Consolidates the untagged in-tree milestones 1.5.0 (Coder execution tier) and 1.6.0

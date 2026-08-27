@@ -1,6 +1,6 @@
 # kowalski-mcp-datafusion
 
-**Version 1.5.0** — standalone **MCP** server (**stateless** Streamable HTTP: JSON + SSE) exposing **DataFusion** tools over a registered **CSV** (or similar) table. HTTP plumbing is the shared [`kowalski-mcp-base`](../kowalski-mcp-base/); this crate is just the DataFusion tool dispatch.
+**Version 1.7.0** — standalone **MCP** server (**stateless** Streamable HTTP: JSON + SSE) exposing **DataFusion** tools over a registered **CSV** (or similar) table. HTTP plumbing is the shared [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) framework (crates.io); this crate is just the DataFusion tool dispatch.
 
 ## Horde changes in 1.1.0 (since 1.0.0)
 

@@ -7,7 +7,7 @@
 > your machine. 1.7.0 ships durable runs, cron/watch/webhook triggers, native tool calling,
 > the guided Rookery builder, and portable workflow bundles.
 
-**Version 1.7.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-datafusion`, `kowalski-mcp-rookery`, `kowalski-mcp-base`, Vue `ui/`)
+**Version 1.7.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-datafusion`, `kowalski-mcp-rookery`, Vue `ui/`) — MCP servers build on the standalone [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) framework
 
 > **Build from git** on `main`. **`cargo install --version 1.7.0`** once published to crates.io.
 
