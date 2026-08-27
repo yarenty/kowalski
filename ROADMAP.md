@@ -1,8 +1,8 @@
-# Kowalski Roadmap & Features (1.7.0+)
+# Kowalski Roadmap & Features (1.8.0+)
 
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"
 
-**Shipped:** **1.7.0 — Autonomy** (durable runs, triggers, native tools, guided builder, portable bundles) — see [`CHANGELOG.md`](CHANGELOG.md) **[1.7.0]**.  
+**Shipped:** **1.8.0 — Ecosystem** (MCP layer extracted: emperor-mcp + tableski; slim 4-crate workspace) and **1.7.0 — Autonomy** — see [`CHANGELOG.md`](CHANGELOG.md).  
 **Published on crates.io:** lags GitHub releases; `cargo install` from git works today.  
 **Per-crate roadmaps:** [`kowalski-core/ROADMAP.md`](kowalski-core/ROADMAP.md), [`kowalski-cli/ROADMAP.md`](kowalski-cli/ROADMAP.md), [`ui/ROADMAP.md`](ui/ROADMAP.md).
 
@@ -13,12 +13,20 @@
 | ~~1.5.0~~ | **Coder (execution)** — *shipped in 1.7.0* | Full working coding horde: project tree ingest, tool-enabled stages, apply/verify, conditional loops |
 | ~~1.6.0~~ | **Fresh install** — *shipped in 1.7.0* | [`install.sh`](install.sh) onboarding — env checks, Ollama hints, Docker MCP suggestions, minimal tool stack |
 | ~~1.7.0~~ | **Autonomy** — *shipped 2026-08-27* | Durable runs (resume, cancel), cron/watch/webhook triggers, native tool calling, structured output, guided Rookery builder, hot reload, portable manifests/bundles, process isolation, API auth |
-| ~~1.7.x~~ | **Standalone MCP crates** — *done* | Shared framework → [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) (consumed from crates.io); DataFusion server → **`tableski`** (standalone project, public at first release) |
+| ~~1.8.0~~ | **Ecosystem** (standalone MCP crates) — *shipped 2026-08-27* | Shared framework → [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) (consumed from crates.io); DataFusion server → **`tableski`** (standalone project, public at first release) |
 | **1.7.x** | **Obsidian MCP** (intermediate) | Reusable MCP catalog doc; an Obsidian server on `emperor-mcp` (filesystem vault v0); survey existing Obsidian MCPs before building |
-| **1.8.0** | **Support** | Chat tab becomes **Support**: Kowalski-aware helper (install gaps, Rookery + horde intro) |
-| **1.9.0** | **Vision & docs** | Marketing-quality articles; evolution 0.5 → 1.0 → hordes → Rookery; consolidated vision |
-| **1.10.0** | **Trading horde** | Web monitor + scheduled market analysis; buy/sell/wait suggestions (details TBD) |
+| **1.9.0** | **Support** | Chat tab becomes **Support**: Kowalski-aware helper (install gaps, Rookery + horde intro) |
+| **1.10.0** | **Vision & docs** | Marketing-quality articles; evolution 0.5 → 1.0 → hordes → Rookery; consolidated vision |
+| **1.11.0** | **Trading horde** | Web monitor + scheduled market analysis; buy/sell/wait suggestions (details TBD) |
 | **2.0.0** | **Production polish** | Mac + Ubuntu from-scratch installs; pre-built hordes usable out of the box |
+
+## Shipped in 1.8.0 — **Ecosystem** (2026-08-27)
+
+See [`CHANGELOG.md`](CHANGELOG.md) (**[1.8.0]**). The MCP layer graduated to standalone projects:
+
+- **[emperor-mcp](https://github.com/yarenty/emperor-mcp)** — the enterprise MCP server framework (stateless Streamable HTTP, credential forwarding, output framing, versioned deployment profile); kowalski consumes it from crates.io
+- **[tableski](https://github.com/yarenty/tableski)** — "every spreadsheet is a table": Excel/CSV/Parquet/NDJSON as SQL tables over MCP, hardened for real-world workbooks, binaries for 4 platforms
+- Workspace slimmed to `kowalski`, `kowalski-core`, `kowalski-cli`, `kowalski-mcp-rookery` (in-tree by design: core-coupled); `install.sh` updated; README Ecosystem section + framework-only policy
 
 ## Shipped in 1.7.0 — **Autonomy** (2026-08-27)
 

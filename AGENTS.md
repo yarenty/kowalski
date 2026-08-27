@@ -55,7 +55,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: Kowalski  
-**Release line**: **1.7.0 — Autonomy** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).
+**Release line**: **1.8.0 — Ecosystem** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).
 **Purpose**: A Rust-native multi-agent framework: **`kowalski-core`** (agents, LLM, memory, MCP client), **`kowalski-cli`** (REPL + operators, extensions, **`agent-app`**), **`kowalski`** (HTTP **`/api/*`** server), Vue **`ui/`**, optional PostgreSQL (**pgvector**, **Apache AGE**).  
 **Core Value Proposition**: Modular, extensible deployment with MCP-first tools and federation-oriented APIs.  
 **Primary Mechanism**: `TemplateAgent` + pluggable tools (built-in + MCP), Ollama/OpenAI-compatible providers.  
@@ -392,6 +392,12 @@ If you can answer these questions, your context management is solid:
 
 ### Current Status
 **1.7.0 — Autonomy** ships **durable horde runs** (SQLite-backed state, resume after restart, cancellation), **event-driven triggers** (cron / file-watch / webhook with operator controls), **native LLM tool calling** with ReAct fallback, **constrained structured output**, the **guided-delta Rookery builder**, **horde hot reload**, **portable workflow manifests + bundles** (export/import via CLI, HTTP, UI), opt-in **process isolation**, and opt-in **API auth**. It consolidates the untagged 1.5.0 (Coder execution tier: tree ingest, tool stages, verify/apply, conditional loops) and 1.6.0 (**`install.sh`**, the shared MCP framework crate — since extracted as [`emperor-mcp`](https://github.com/yarenty/emperor-mcp)) milestones — see [`ROADMAP.md`](ROADMAP.md) and `CHANGELOG.md` **[1.7.0]**.
+
+**1.8.0 — Ecosystem** extracts the MCP layer into standalone projects: the shared framework is
+[`emperor-mcp`](https://github.com/yarenty/emperor-mcp) (consumed from crates.io) and the
+DataFusion server is [`tableski`](https://github.com/yarenty/tableski); the workspace slims to
+four crates, with `kowalski-mcp-rookery` staying in-tree (core-coupled). See `CHANGELOG.md`
+**[1.8.0]** and the README **Ecosystem** section.
 
 ### Roadmap
 See [`ROADMAP.md`](ROADMAP.md) (root and per-crate **`ROADMAP.md`** where present).

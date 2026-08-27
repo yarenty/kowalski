@@ -1,15 +1,21 @@
 # Kowalski
 
 > [!IMPORTANT]
-> ## 1.7.0 — Autonomy
+> ## 1.8.0 — Ecosystem
+> The MCP layer now lives as standalone projects: [emperor-mcp](https://github.com/yarenty/emperor-mcp)
+> (the enterprise MCP server framework, consumed from crates.io) and
+> [tableski](https://github.com/yarenty/tableski) (SQL over spreadsheets/data files). See the
+> Ecosystem section below.
+>
+> ### 1.7.0 — Autonomy
 > Kowalski agents are triggered by time, files, and events — not just prompts; they run as
 > bounded, verified DAGs — not unattended loops; they survive reboots; and they never leave
 > your machine. 1.7.0 ships durable runs, cron/watch/webhook triggers, native tool calling,
 > the guided Rookery builder, and portable workflow bundles.
 
-**Version 1.7.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-rookery`, Vue `ui/`) — MCP servers build on the standalone [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) framework
+**Version 1.8.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-rookery`, Vue `ui/`) — MCP servers build on the standalone [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) framework
 
-> **Build from git** on `main`. **`cargo install --version 1.7.0`** once published to crates.io.
+> **Build from git** on `main`. **`cargo install --version 1.8.0`** once published to crates.io.
 
 > "AI agents are like pets – they're cute, but they make a mess."  
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"
@@ -136,7 +142,7 @@ Options via environment variables:
 
 | Variable | Effect |
 |----------|--------|
-| `KOWALSKI_VERSION=1.7.0` | Pin crates.io version on install |
+| `KOWALSKI_VERSION=1.8.0` | Pin crates.io version on install |
 | `KOWALSKI_FEATURES=postgres` | `cargo install --features postgres` for server + CLI |
 | `KOWALSKI_INSTALL_MCP=1` | Also install `kowalski-mcp-rookery` |
 | `KOWALSKI_SKIP_RUSTUP=1` | Fail instead of auto-installing Rust |
