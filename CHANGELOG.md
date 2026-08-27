@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-08-27 — **Ecosystem**
+
+> The extraction release: the MCP layer graduates into standalone projects and the workspace
+> slims to four crates (`kowalski`, `kowalski-core`, `kowalski-cli`, `kowalski-mcp-rookery`).
+
 ### Changed
 
 - **DataFusion MCP server extracted:** `kowalski-mcp-datafusion` continues as the standalone
