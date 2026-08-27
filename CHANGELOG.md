@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-08-27 — **Autonomy**
+
+> Consolidates the untagged in-tree milestones 1.5.0 (Coder execution tier) and 1.6.0
+> (fresh install + mcp-base) with the durable-autonomy line: everything below is new
+> since the 1.4.0 release.
+
 ### Changed
 
 - **`kowalski-mcp-base` pre-extraction audit (#77):** the shared MCP server framework is
