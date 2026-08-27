@@ -11,7 +11,7 @@ readme = "README.md"
 
 [dependencies]
 kowalski-core = { path = "../kowalski-core", version = "1.7.0" }
-kowalski-mcp-base = { path = "../kowalski-mcp-base", version = "1.7.0" }
+emperor-mcp = "0.1"
 clap = { version = "4.5", features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

@@ -51,7 +51,7 @@ async fn main() -> std::io::Result<()> {
                 "kowalski-mcp-rookery: stdio transport (output_root={})",
                 cli.output_root.display()
             );
-            kowalski_mcp_base::run_stdio(handler).await
+            emperor_mcp::run_stdio(handler).await
         }
         Transport::Http => {
             let addr: SocketAddr = cli.bind.parse().map_err(|e| {
@@ -66,9 +66,9 @@ async fn main() -> std::io::Result<()> {
             );
             eprintln!(
                 "Accept header for clients: `{}`",
-                kowalski_mcp_base::ACCEPT_STREAMABLE
+                emperor_mcp::ACCEPT_STREAMABLE
             );
-            kowalski_mcp_base::serve_http(addr, handler).await
+            emperor_mcp::serve_http(addr, handler).await
         }
     }
 }

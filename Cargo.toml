@@ -4,12 +4,11 @@ members = [
     "kowalski",
     "kowalski-core",
     "kowalski-cli",
-    "kowalski-mcp-base",
     "kowalski-mcp-datafusion",
     "kowalski-mcp-rookery",
 ]
 # Core agent stack only; MCP servers build with `cargo build -p kowalski-mcp-<name>`.
-default-members = ["kowalski", "kowalski-core", "kowalski-cli", "kowalski-mcp-base", "kowalski-mcp-rookery"]
+default-members = ["kowalski", "kowalski-core", "kowalski-cli", "kowalski-mcp-rookery"]
 
 
 [workspace.package]

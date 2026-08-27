@@ -13,7 +13,7 @@
 | ~~1.5.0~~ | **Coder (execution)** — *shipped in 1.7.0* | Full working coding horde: project tree ingest, tool-enabled stages, apply/verify, conditional loops |
 | ~~1.6.0~~ | **Fresh install** — *shipped in 1.7.0* | [`install.sh`](install.sh) onboarding — env checks, Ollama hints, Docker MCP suggestions, minimal tool stack |
 | ~~1.7.0~~ | **Autonomy** — *shipped 2026-08-27* | Durable runs (resume, cancel), cron/watch/webhook triggers, native tool calling, structured output, guided Rookery builder, hot reload, portable manifests/bundles, process isolation, API auth |
-| **1.7.x** | **Standalone MCP crates** | `kowalski-mcp-base` continues as the standalone [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) framework; the DataFusion server follows; kowalski consumes the published crate |
+| **1.7.x** | **Standalone MCP crates** | The shared MCP framework continues as the standalone [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) crate (kowalski now consumes it from crates.io — done); the DataFusion server follows |
 | **1.7.x** | **Obsidian MCP** (intermediate) | Reusable MCP catalog doc; an Obsidian server on `emperor-mcp` (filesystem vault v0); survey existing Obsidian MCPs before building |
 | **1.8.0** | **Support** | Chat tab becomes **Support**: Kowalski-aware helper (install gaps, Rookery + horde intro) |
 | **1.9.0** | **Vision & docs** | Marketing-quality articles; evolution 0.5 → 1.0 → hordes → Rookery; consolidated vision |
@@ -30,7 +30,7 @@ See [`CHANGELOG.md`](CHANGELOG.md) (**[1.7.0]**). Consolidates the untagged 1.5.
 - **Guided Rookery builder** — one small schema-constrained delta op per turn, reliable on 7B-class local models
 - **Portable workflows** — JSON manifest + `.kwf.zip` bundles with portability report; export/import via CLI, HTTP, and UI
 - **Coder execution tier** (was 1.5.0) — project tree ingest, tool-enabled stages, verify/apply, conditional loop edges
-- **`install.sh`** (was 1.6.0), **`kowalski-mcp-base`** framework crate, opt-in **API auth**, opt-in **process isolation**
+- **`install.sh`** (was 1.6.0), the shared MCP framework crate (since extracted as **`emperor-mcp`**), opt-in **API auth**, opt-in **process isolation**
 
 ## Shipped in 1.4.0 — **DAG + planning Coder** (2026-06-15, published)
 
@@ -44,7 +44,7 @@ See [`CHANGELOG.md`](CHANGELOG.md) (**[1.4.0]**). Highlights:
 
 ## Shipped in 1.3.0 (2026-06-14)
 
-See [`CHANGELOG.md`](CHANGELOG.md) (**[1.3.0]**). Highlights: **Rookery** horde builder (core + `/api/rookery/*` + Vue tab), **`kowalski-mcp-rookery`** + **`kowalski-mcp-base`** (stateless Streamable HTTP), Docker MCP gateway, server-owned Rookery sessions (YAML), penguin avatars, server-validated horde operator forms, A2A federation-edge design note (implementation 1.4/1.5).
+See [`CHANGELOG.md`](CHANGELOG.md) (**[1.3.0]**). Highlights: **Rookery** horde builder (core + `/api/rookery/*` + Vue tab), **`kowalski-mcp-rookery`** + the shared MCP framework crate, now [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) (stateless Streamable HTTP), Docker MCP gateway, server-owned Rookery sessions (YAML), penguin avatars, server-validated horde operator forms, A2A federation-edge design note (implementation 1.4/1.5).
 
 ## Shipped in 1.2.0 (2026-05-03)
 
@@ -66,7 +66,7 @@ The builder shipped, but the UI absorbed core responsibilities. Pay down before 
 - [x] **R1** Server owns the Rookery draft — dropped the `localStorage` draft round-trip; sessions persist as YAML under `db/rookery/` and reload on startup. UI is render + dispatch only.
 - [x] **R2** Rookery as an **in-repo MCP server** (`kowalski-mcp-rookery`, stdio) over `kowalski-core::rookery`; `/api/rookery/*` and the new server share the same core primitives (any MCP client can build hordes). LLM-free — the calling agent drives the interview.
 - [x] **R3** **Docker MCP gateway** as one stdio MCP server (`docker mcp gateway run`); dynamic mode + `--servers`/`--profile` direct mode. `tools/internal/*` stay the dependency-light fallback, shadowed by the gateway when present.
-- [x] **Transport** Shared `kowalski-mcp-base` (stdio + **stateless Streamable HTTP**, no `Mcp-Session-Id`) — adopted by `kowalski-mcp-rookery` (`--transport stdio|http`) and `kowalski-mcp-datafusion` (now sessionless), so every in-repo MCP server is reachable over stateless HTTP.
+- [x] **Transport** Shared MCP framework, now [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) (stdio + **stateless Streamable HTTP**, no `Mcp-Session-Id`) — adopted by `kowalski-mcp-rookery` (`--transport stdio|http`) and `kowalski-mcp-datafusion` (now sessionless), so every in-repo MCP server is reachable over stateless HTTP.
 
 ## Planned: DAG horde pipelines — **shipped in 1.4.0**
 

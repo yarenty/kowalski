@@ -43,4 +43,5 @@ TODO.md
 PLAN.md
 
 # Private multi-task planning (exec-task / sync-plan ledgers) — never committed
-/plans//examples/coder/output/
+/plans/
+/examples/coder/output/

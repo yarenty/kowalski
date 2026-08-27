@@ -18,7 +18,6 @@ cd "$ROOT"
 
 # Dependency order: each crate's path deps must already be on the index.
 CRATES=(
-  kowalski-mcp-base
   kowalski-core
   kowalski-cli
   kowalski-mcp-datafusion
@@ -71,8 +70,8 @@ run_checks() {
   echo "==> cargo build (default-members)"
   cargo build
 
-  echo "==> cargo test -p kowalski-core -p kowalski-cli -p kowalski-mcp-base"
-  cargo test -p kowalski-core -p kowalski-cli -p kowalski-mcp-base
+  echo "==> cargo test -p kowalski-core -p kowalski-cli"
+  cargo test -p kowalski-core -p kowalski-cli
 
   if command -v cargo-deny >/dev/null 2>&1; then
     echo "==> cargo deny check licenses"
