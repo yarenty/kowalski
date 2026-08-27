@@ -8,6 +8,11 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Changed
 
+- **DataFusion MCP server extracted:** `kowalski-mcp-datafusion` continues as the standalone
+  **tableski** project ("every spreadsheet is a table" — SQL over CSV/Excel/Parquet via MCP,
+  built on `emperor-mcp`; public at its first release). The in-tree crate is removed;
+  `install.sh` no longer offers it (`KOWALSKI_INSTALL_MCP=1` now installs
+  `kowalski-mcp-rookery` only).
 - **MCP framework extracted (#80):** `kowalski-mcp-base` now lives on as the standalone
   [**emperor-mcp**](https://github.com/yarenty/emperor-mcp) crate
   ([crates.io](https://crates.io/crates/emperor-mcp)); the in-tree copy is removed and

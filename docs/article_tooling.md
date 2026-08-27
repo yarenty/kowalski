@@ -47,7 +47,7 @@ This is the core function of a **well-designed data tool**: it does not dump the
 
 **Optional: SQL-oriented paths with DataFusion**
 
-For heavier tabular work, operators can attach the optional **`kowalski-mcp-datafusion`** MCP server so the agent issues **SQL** against registered files; see that crate’s README. The pattern is the same: **small structured results** back into **`TemplateAgent`**, not whole files into the prompt.
+For heavier tabular work, operators can attach the optional **`tableski`** MCP server (standalone project) so the agent issues **SQL** against registered files. The pattern is the same: **small structured results** back into **`TemplateAgent`**, not whole files into the prompt.
 
 **Example flow (illustrative):**
 1.  **Agent:** needs the average salary for Engineering.

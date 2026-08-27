@@ -126,7 +126,6 @@ kowalski/                         # repository root (you are in kowalski-cli/)
 ├── kowalski-core/                # TemplateAgent, tools, memory, MCP, federation
 ├── kowalski-cli/                 # This crate: REPL, operators, extension, agent-app
 ├── kowalski/                     # Facade + HTTP server binary (not this crate)
-├── kowalski-mcp-datafusion/      # Optional MCP server (DataFusion)
 ├── ui/, examples/, docs/, tools/, resources/   # SQL migrations: `kowalski-core/migrations/`
 ```
 
@@ -139,7 +138,6 @@ There are **no** standalone `kowalski-academic-agent` / `kowalski-web-agent` cra
 - [kowalski-core/AGENTS.md](../kowalski-core/AGENTS.md)
 - [kowalski-cli/AGENTS.md](./AGENTS.md) (this crate)
 - [kowalski/AGENTS.md](../kowalski/AGENTS.md)
-- [kowalski-mcp-datafusion/AGENTS.md](../kowalski-mcp-datafusion/AGENTS.md)
 - [ui/AGENTS.md](../ui/AGENTS.md)
 
 **Rule**: Before making changes to any component, **always read its specific AGENTS.md first** to understand:

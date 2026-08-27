@@ -26,13 +26,13 @@ episodic_path = "db/episodic_buffer"
 clean_on_startup = true
 
 # MCP servers (optional) — used by agents and: cargo run -p kowalski-cli -- mcp ping
-# In-repo MCP servers (kowalski-mcp-datafusion, kowalski-mcp-rookery) run over the shared
+# First-party MCP servers (kowalski-mcp-rookery; tableski as a standalone project) run over the shared
 # kowalski-mcp-transport: stdio OR stateless Streamable HTTP (no Mcp-Session-Id; every POST
 # independent, so the server is restartable / horizontally scalable).
 #
-# DataFusion MCP (stateless HTTP; Docker): docker compose -f kowalski-mcp-datafusion/docker-compose.yml up
+# tableski MCP (stateless HTTP; standalone project): SQL over CSV/Excel/Parquet
 # [[mcp.servers]]
-# name = "datafusion"
+# name = "tableski"
 # url = "http://127.0.0.1:8080/"
 # transport = "http"   # or "sse" — both use Streamable HTTP + optional SSE responses
 # headers = { Authorization = "Bearer your-token" }

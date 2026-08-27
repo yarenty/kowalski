@@ -26,6 +26,6 @@ Release **1.1.0** introduced **horde-style app workflows** (current workspace li
 - **`kowalski-cli`**: REPL, config/db/MCP operators, extensions, `agent-app`.
 - **`kowalski`**: HTTP server for **`/api/*`** (chat, stream, MCP, federation, graph when built with Postgres).
 - **`ui/`**: Vue shell calling the HTTP API (proxied in dev).
-- **`kowalski-mcp-datafusion`**: optional standalone MCP server for DataFusion/SQL over files.
+- DataFusion/SQL MCP server: now the standalone `tableski` project.
 
 For historical articles that predate this layout, see [`purgatory/README.md`](./purgatory/README.md).
