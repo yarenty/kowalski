@@ -122,7 +122,10 @@ pub struct Config {
 pub struct LLMConfig {
     /// The provider to use: `ollama` (local) or `openai` (Chat Completions API — OpenAI or compatible).
     pub provider: String,
-    /// API key for `openai` provider (OpenAI, Groq, etc.). Many servers omit this; use `""` in TOML if needed.
+    /// API key for `openai` provider (OpenAI, Groq, etc.). When the TOML omits it, the
+    /// `OPENAI_API_KEY` environment variable is used, so keys stay out of config files; many
+    /// servers need none, use `""` in TOML for those.
+    #[serde(default = "openai_key_from_env")]
     pub openai_api_key: Option<String>,
     /// Base URL for OpenAI-compatible Chat Completions (e.g. `https://api.openai.com/v1`, or
     /// `http://127.0.0.1:1234/v1` for LM Studio). If unset, the official OpenAI API base is used.
@@ -169,6 +172,10 @@ pub enum ToolCallingMode {
     React,
 }
 
+fn openai_key_from_env() -> Option<String> {
+    std::env::var("OPENAI_API_KEY").ok().filter(|k| !k.is_empty())
+}
+
 fn default_embeddings_provider() -> String {
     "llm".to_string()
 }
@@ -177,7 +184,7 @@ impl Default for LLMConfig {
     fn default() -> Self {
         Self {
             provider: "ollama".to_string(),
-            openai_api_key: std::env::var("OPENAI_API_KEY").ok(),
+            openai_api_key: openai_key_from_env(),
             openai_api_base: None,
             model: None,
             embeddings_provider: "llm".to_string(),
