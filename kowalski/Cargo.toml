@@ -2,7 +2,7 @@
 name = "kowalski"
 version = "1.8.0"
 edition = "2024"
-description = "Kowalski: A Rust-based agent for interacting with Ollama models"
+description = "HTTP server and UI host of Kowalski, a Rust multi-agent framework: agents with MCP tools and memory, and hordes (step pipelines with triggers) over Ollama or OpenAI-compatible models"
 license = "MIT"
 authors = ["yarenty <yarenty@gmail.com>"]
 repository = "https://github.com/yarenty/kowalski"

@@ -2074,6 +2074,7 @@ impl HordeManager {
         Some(verify_output_excerpt(&body, 1_200))
     }
 
+    #[allow(clippy::too_many_arguments)] // one event, many fields; a params struct is a later refactor
     async fn publish_step_routed(
         &self,
         spec: &HordeSpec,
@@ -2117,10 +2118,10 @@ impl HordeManager {
         }
         let kind = spec.sub_agent(step).map(|s| s.kind.as_str()).unwrap_or("");
         if matches!(kind, "verify" | "apply") {
-            if let Some(path) = artifact {
-                if let Some(body) = Self::read_artifact_text(spec, path) {
-                    return parse_stage_status_from_artifact(&body).unwrap_or(StageStatus::Fail);
-                }
+            if let Some(path) = artifact
+                && let Some(body) = Self::read_artifact_text(spec, path)
+            {
+                return parse_stage_status_from_artifact(&body).unwrap_or(StageStatus::Fail);
             }
             return StageStatus::Fail;
         }
@@ -2133,11 +2134,11 @@ impl HordeManager {
             if s.status != StepStatus::Succeeded {
                 continue;
             }
-            if let Some(ref o) = s.outcome {
-                if let Some(parsed) = StageStatus::parse(o) {
-                    map.insert(s.step.clone(), parsed);
-                    continue;
-                }
+            if let Some(ref o) = s.outcome
+                && let Some(parsed) = StageStatus::parse(o)
+            {
+                map.insert(s.step.clone(), parsed);
+                continue;
             }
             map.insert(
                 s.step.clone(),

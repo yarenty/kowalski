@@ -161,7 +161,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("big.txt");
         let mut f = fs::File::create(&p).unwrap();
-        f.write_all(&vec![b'x'; 100]).unwrap();
+        f.write_all(&[b'x'; 100]).unwrap();
         assert!(read_file_bounded(&p, 50).is_err());
     }
 

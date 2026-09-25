@@ -31,7 +31,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fs::OpenOptions;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
@@ -1272,7 +1272,12 @@ fn repo_root_from_state(state: &ApiState) -> PathBuf {
         }
         p = parent.to_path_buf();
     }
-    PathBuf::from("/opt/ml/kowalski")
+    // no source tree around (installed binary): the config directory is the working root
+    state
+        .config_path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 fn worker_profiles(state: &ApiState) -> Vec<WorkerProfile> {

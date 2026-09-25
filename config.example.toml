@@ -1,0 +1,54 @@
+# Kowalski configuration. Copy to ~/.config/kowalski/config.toml (install.sh does this) and edit.
+# Keys never go in this file: an OpenAI-compatible key is read from the OPENAI_API_KEY environment
+# variable when `openai_api_key` is not set.
+
+# ---- Model --------------------------------------------------------------------------------
+# Local and free: Ollama (https://ollama.com), then `ollama pull llama3.2`.
+[ollama]
+host = "localhost"
+port = 11434
+model = "llama3.2"
+
+# Hosted instead: any OpenAI-compatible Chat Completions endpoint (OpenAI, Groq, LM Studio, vLLM, ...).
+# Uncomment, set the base URL and model, and export OPENAI_API_KEY in your shell.
+# [llm]
+# provider = "openai"
+# openai_api_base = "https://api.openai.com/v1"   # or "http://127.0.0.1:1234/v1" for LM Studio
+# model = "gpt-4o-mini"
+
+[chat]
+temperature = 0.7
+max_tokens = 512
+stream = true
+
+[memory]
+episodic_path = "db/episodic_buffer"
+
+[horde]
+clean_on_startup = true
+
+# ---- MCP servers (optional): tools for agents and hordes -----------------------------------
+# Check with: kowalski-cli mcp ping -c ~/.config/kowalski/config.toml
+#
+# tableski: your spreadsheets as SQL tables (https://tableski.io). Hosted with a token from
+# https://tableski.io/app/tokens, or local `tableski --file your.xlsx` on 127.0.0.1:8080 (no token).
+# Five-minute walkthrough: https://github.com/yarenty/tableski/tree/main/demo
+# [[mcp.servers]]
+# name = "tableski"
+# url = "https://mcp.tableski.io/"
+# transport = "http"
+# headers = { Authorization = "Bearer tsk_your_token" }
+
+# Docker MCP gateway: one stdio connection to the Docker MCP Toolkit catalog
+# (needs Docker Desktop + MCP Toolkit; `docker mcp version`).
+# [[mcp.servers]]
+# name = "docker-mcp"
+# transport = "stdio"
+# command = ["docker", "mcp", "gateway", "run"]
+# Specific servers only: command = ["docker", "mcp", "gateway", "run", "--servers", "github"]
+
+# Rookery: the horde builder as MCP tools (validate and give birth to hordes).
+# [[mcp.servers]]
+# name = "rookery"
+# transport = "stdio"
+# command = ["kowalski-mcp-rookery", "--transport", "stdio", "--output-root", "examples"]

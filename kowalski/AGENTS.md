@@ -370,7 +370,7 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
 | `POST` | `/api/rookery/sessions/{id}/validate` | Validate draft without birth |
 | `GET` | `/api/models` | Ollama model list + server default |
 
-Builder system prompt: [`../resources/prompts/rookery/builder.md`](../resources/prompts/rookery/builder.md). Default birth directory: `examples/` (`KOWALSKI_ROOKERY_OUTPUT`).
+Builder system prompt: [`resources/prompts/rookery/builder.md`](resources/prompts/rookery/builder.md) (compiled into the binary; an override file at `resources/prompts/rookery/builder.md` next to the config wins). Default birth directory: `examples/` (`KOWALSKI_ROOKERY_OUTPUT`).
 
 **Guided interview (per-turn deltas):** every chat turn runs two channels. The **ops phase**
 (`kowalski_core::rookery::run_ops_phase`) asks the model for a small `DeltaBatch` — under

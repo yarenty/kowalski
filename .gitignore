@@ -45,3 +45,6 @@ PLAN.md
 # Private multi-task planning (exec-task / sync-plan ledgers) — never committed
 /plans/
 /examples/coder/output/
+
+# personal configuration (keys, endpoints): the committed sample is config.example.toml
+config.toml

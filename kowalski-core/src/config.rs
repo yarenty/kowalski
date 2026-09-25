@@ -32,8 +32,7 @@ pub const HORDES_DIR_ENV: &str = "KOWALSKI_HORDES_DIR";
 
 /// Single source of truth for horde discovery roots, in priority order:
 /// [`HORDES_DIR_ENV`] entries, `<config-dir>/hordes`, `<config-dir>/../examples`,
-/// `<cwd>/examples`, and the packaged examples path. Used by the server catalog
-/// and by CLI horde-id resolution.
+/// and `<cwd>/examples`. Used by the server catalog and by CLI horde-id resolution.
 pub fn default_horde_roots(config_dir: Option<&std::path::Path>) -> Vec<std::path::PathBuf> {
     use std::path::PathBuf;
     let mut roots = Vec::new();
@@ -53,7 +52,6 @@ pub fn default_horde_roots(config_dir: Option<&std::path::Path>) -> Vec<std::pat
     if let Ok(cwd) = std::env::current_dir() {
         roots.push(cwd.join("examples"));
     }
-    roots.push(PathBuf::from("/opt/ml/kowalski/examples"));
     let mut seen = std::collections::HashSet::new();
     roots.retain(|p| seen.insert(p.clone()));
     roots

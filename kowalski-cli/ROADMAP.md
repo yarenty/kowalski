@@ -19,7 +19,7 @@ Crate version **1.5.0** (see `Cargo.toml`). Workspace overview: **[`../ROADMAP.m
 
 ## Done (1.0.0 baseline)
 
-- [x] Interactive / legacy orchestrator entry points (`--interactive`, `create`, `chat` by agent name) where still exposed.
+- [x] Legacy entry points (`--interactive`, `create`, `chat <agent>`, `list`, `agents`) retired; `chat` and a bare `kowalski-cli` start the config-driven chat (`run`).
 
 ## HTTP API note
 
