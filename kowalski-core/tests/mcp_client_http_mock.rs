@@ -146,6 +146,7 @@ async fn mcp_client_sends_mcp_server_config_headers() {
         transport: McpTransport::Http,
         headers,
         command: Vec::new(),
+        oauth: None,
     };
 
     let client = McpClient::connect_server(&cfg)

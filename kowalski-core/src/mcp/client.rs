@@ -26,6 +26,8 @@ pub struct McpClient {
     init: Arc<InitializeResult>,
     /// From `Mcp-Session-Id` on `initialize` and subsequent streamable HTTP responses.
     session_id: Arc<Mutex<Option<String>>>,
+    /// OAuth sign-in: a refreshed bearer token per request (servers configured with `oauth`).
+    oauth: Option<Arc<crate::mcp::oauth::OAuthSession>>,
 }
 
 fn build_http_client(headers: &HashMap<String, String>) -> Result<reqwest::Client, KowalskiError> {
@@ -59,6 +61,10 @@ impl McpClient {
         }
         let base_url = Url::parse(&server.url)?;
         let http = build_http_client(&server.headers)?;
+        let oauth = match &server.oauth {
+            Some(o) => Some(Arc::new(crate::mcp::oauth::OAuthSession::open(&o.token_file)?)),
+            None => None,
+        };
 
         if matches!(server.transport, McpTransport::Sse) {
             debug!(
@@ -74,6 +80,7 @@ impl McpClient {
             id_counter: Arc::new(AtomicU64::new(1)),
             init: Arc::new(InitializeResult::default()),
             session_id: Arc::new(Mutex::new(None)),
+            oauth,
         };
 
         match client.initialize().await {
@@ -92,6 +99,7 @@ impl McpClient {
             transport: McpTransport::Http,
             headers: HashMap::new(),
             command: Vec::new(),
+            oauth: None,
         })
         .await
     }
@@ -123,6 +131,29 @@ impl McpClient {
             req = req.header(HEADER_MCP_SESSION_ID, v);
         }
         req
+    }
+
+    /// POST one JSON-RPC payload with the streamable headers and, for OAuth servers, a current
+    /// bearer token; a 401 triggers one refresh and one retry.
+    async fn post_payload(&self, payload: &serde_json::Value) -> Result<Response, KowalskiError> {
+        let build = |bearer: Option<&str>| {
+            let mut req = self.apply_streamable_headers(self.http.post(self.base_url.clone()).json(payload));
+            if let Some(b) = bearer {
+                req = req.bearer_auth(b);
+            }
+            req
+        };
+        let Some(oauth) = &self.oauth else {
+            return build(None).send().await.map_err(KowalskiError::Request);
+        };
+        let token = oauth.bearer().await?;
+        let response = build(Some(&token)).send().await.map_err(KowalskiError::Request)?;
+        if response.status() != reqwest::StatusCode::UNAUTHORIZED {
+            return Ok(response);
+        }
+        debug!("MCP '{}' answered 401; refreshing the OAuth token once", self.name);
+        let token = oauth.force_refresh().await?;
+        build(Some(&token)).send().await.map_err(KowalskiError::Request)
     }
 
     fn capture_session_from_response(&self, response: &Response) {
@@ -182,11 +213,7 @@ impl McpClient {
             self.name, method, payload
         );
 
-        let response = self
-            .apply_streamable_headers(self.http.post(self.base_url.clone()).json(&payload))
-            .send()
-            .await
-            .map_err(KowalskiError::Request)?;
+        let response = self.post_payload(&payload).await?;
 
         self.capture_session_from_response(&response);
 
@@ -239,11 +266,7 @@ impl McpClient {
 
         debug!("MCP {} -> {} payload: {}", self.name, method, payload);
 
-        let response = self
-            .apply_streamable_headers(self.http.post(self.base_url.clone()).json(&payload))
-            .send()
-            .await
-            .map_err(KowalskiError::Request)?;
+        let response = self.post_payload(&payload).await?;
 
         self.capture_session_from_response(&response);
 

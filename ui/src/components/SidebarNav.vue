@@ -7,7 +7,8 @@ type TabId =
   | "federation-management"
   | "federation-run"
   | "graph"
-  | "about";
+  | "about"
+  | "setup";
 type ConversationItem = {
   id: string;
   title: string;
@@ -154,6 +155,7 @@ function timeAgo(ts: number): string {
       <section class="admin">
         <p class="admin-title">Administrator</p>
         <div class="admin-nav">
+          <button :class="{ active: activeTab === 'setup' }" @click="emit('select-tab', 'setup')">Setup</button>
           <button :class="{ active: activeTab === 'home' }" @click="emit('select-tab', 'home')">Dashboard</button>
           <button :class="{ active: activeTab === 'federation-management' }" @click="emit('select-tab', 'federation-management')">Federation</button>
           <button :class="{ active: activeTab === 'about' }" @click="emit('select-tab', 'about')">About</button>

@@ -16,7 +16,9 @@ pub const TOKEN_ENV: &str = kowalski_core::config::API_TOKEN_ENV;
 /// Token file name under the server state dir (`<config-dir>/db/`, beside `db/rookery/`).
 const TOKEN_FILE_NAME: &str = "api_token";
 /// Routes reachable without a token (liveness only).
-const OPEN_PATHS: &[&str] = &["/api/health"];
+/// Reachable without the token: health, and the OAuth callback (a browser redirect carrying a
+/// one-time `state` that only this server issued).
+const OPEN_PATHS: &[&str] = &["/api/health", "/api/setup/tableski/callback"];
 /// Browser origins allowed by default: the Vite dev UI (`ui/vite.config.ts`).
 pub const DEFAULT_CORS_ORIGINS: &[&str] = &["http://localhost:5173", "http://127.0.0.1:5173"];
 
