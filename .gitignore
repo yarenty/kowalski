@@ -48,3 +48,6 @@ PLAN.md
 
 # personal configuration (keys, endpoints): the committed sample is config.example.toml
 config.toml
+
+# built-in hordes the server writes beside the config on start
+builtin-hordes/

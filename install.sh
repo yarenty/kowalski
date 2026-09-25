@@ -123,12 +123,15 @@ Kowalski installed.
   export PATH="\${HOME}/.cargo/bin:\${PATH}"
   kowalski-cli doctor
   kowalski-cli config check "${cfg_file}"
-  kowalski -c "${cfg_file}"    # HTTP API (default 127.0.0.1:3456)
+  kowalski                     # server on http://127.0.0.1:3456/ (finds ${cfg_file} by itself)
 
 Config: ${cfg_file}
 Docs:   ${KOWALSKI_REPO}
 
-UI (optional): clone the repo and run \`cd ui && bun install && bun run dev\`
+UI: a crates.io build carries no UI. For the full app in one binary, build it from a clone:
+  git clone ${KOWALSKI_REPO} && cd kowalski
+  (cd ui && bun install && bun run build) && cargo install --path kowalski
+Then \`kowalski\` opens the UI in your browser.
 EOF
 }
 

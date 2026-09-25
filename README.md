@@ -196,10 +196,13 @@ Tools and MCP are driven by **`TemplateAgent`** + config, not separate `kowalski
 # Chat with an agent: your config's model plus its MCP tools (same as `kowalski-cli chat` or no command)
 ./target/release/kowalski-cli run -c config.toml
 
-# HTTP API for the Vue UI (default bind 127.0.0.1:3456)
-# Auth is off by default (single-user local tool). Optional bearer-token auth:
+# The server with the UI inside (default bind 127.0.0.1:3456); opens your browser when started
+# from a terminal (--no-open to skip). Build the UI first so it gets compiled in:
+#   (cd ui && bun install && bun run build) && cargo build --release -p kowalski
+# Built-in hordes (url-summarizer, knowledge-compiler) appear in the Horde tab on first start.
+# Auth is off by default (single-user local tool). Optional bearer-token auth for /api/*:
 # start with --auth (token printed at first start, persisted 0600 at <config-dir>/db/api_token).
-./target/release/kowalski -c config.toml
+./target/release/kowalski
 
 # MCP servers from config: initialize + tools/list
 ./target/release/kowalski-cli mcp ping -c config.toml

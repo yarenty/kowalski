@@ -94,6 +94,7 @@ pub async fn serve(
     ollama_url: Option<String>,
     tls: Option<(PathBuf, PathBuf)>,
     security: SecurityOptions,
+    open_browser: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let config_path = crate::http_ops::mcp_config_path(config.as_deref());
     let full_config = crate::http_ops::load_kowalski_config_for_serve(&config_path)?;
@@ -213,7 +214,24 @@ pub async fn serve(
         model
     );
 
-    let horde_roots = crate::horde::default_horde_roots(state_config_dir(&config_path).as_deref());
+    let mut horde_roots =
+        crate::horde::default_horde_roots(state_config_dir(&config_path).as_deref());
+    // Built-in hordes ship inside the binary: written beside the config on every start and
+    // scanned last, so a user's own horde with the same id takes precedence.
+    {
+        let base = state_config_dir(&config_path)
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        let builtin = base.join(crate::embedded::BUILTIN_HORDES_DIR);
+        match crate::embedded::install_builtin_hordes(&builtin) {
+            Ok(n) if n > 0 => {
+                log::info!("built-in hordes: {n} at {}", builtin.display());
+                horde_roots.push(builtin);
+            }
+            Ok(_) => {}
+            Err(e) => log::warn!("built-in hordes not installed at {}: {e}", builtin.display()),
+        }
+    }
     let horde_catalog = Arc::new(crate::horde::HordeCatalog::with_roots(horde_roots.clone()));
     {
         let entries = horde_catalog.list();
@@ -367,6 +385,20 @@ pub async fn serve(
             .await?;
     } else {
         let listener = tokio::net::TcpListener::bind(addr).await?;
+        let local = listener.local_addr()?;
+        let url = format!(
+            "http://{}:{}/",
+            if local.ip().is_unspecified() { "127.0.0.1".to_string() } else { local.ip().to_string() },
+            local.port()
+        );
+        if crate::embedded::has_ui() {
+            println!("\n  kowalski is up: {url}\n");
+        } else {
+            println!("\n  kowalski API is up: {url}api/health (this build has no UI inside)\n");
+        }
+        if open_browser {
+            open_in_browser(&url);
+        }
         axum::serve(listener, app).await?;
     }
     Ok(())
@@ -382,6 +414,7 @@ fn build_app(
     cors_origins: &[String],
 ) -> Router {
     let router = Router::new()
+        .fallback(crate::embedded::serve_ui)
         .route("/api/health", get(get_health))
         .route("/api/agents", get(get_agents))
         .route("/api/sessions", get(get_sessions))
@@ -528,6 +561,19 @@ fn build_app(
     };
     // CORS outermost so browser preflights (no Authorization header) never hit the auth check.
     app.layer(crate::auth::cors_layer(!auth_enabled, cors_origins))
+}
+
+/// Open `url` in the default browser (best effort; a headless box just logs).
+fn open_in_browser(url: &str) {
+    #[cfg(target_os = "macos")]
+    let spawned = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(target_os = "windows")]
+    let spawned = std::process::Command::new("cmd").args(["/C", "start", "", url]).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let spawned = std::process::Command::new("xdg-open").arg(url).spawn();
+    if let Err(e) = spawned {
+        log::info!("could not open a browser ({e}); visit {url}");
+    }
 }
 
 fn federation_postgres_notify_bridge(state: &ApiState) -> bool {
@@ -3213,6 +3259,71 @@ mod api_tests {
         assert!(fired.to_string().contains("run"), "{fired}");
         let (status, _) = call(&app, "POST", "/api/triggers/no-such-route", Some(json!({})), None).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    async fn get_raw(app: &Router, uri: &str, token: Option<&str>) -> (StatusCode, String, String) {
+        let mut req = Request::builder().uri(uri);
+        if let Some(t) = token {
+            req = req.header("authorization", format!("Bearer {t}"));
+        }
+        let res = app.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+        let status = res.status();
+        let ct = res
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        let bytes = axum::body::to_bytes(res.into_body(), 4 << 20).await.unwrap();
+        (status, ct, String::from_utf8_lossy(&bytes).into_owned())
+    }
+
+    #[tokio::test]
+    async fn the_ui_is_served_from_the_binary() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = fixture(dir.path(), Some("s3cret")).await;
+        // the page itself needs no token (only /api/* does)
+        let (status, ct, body) = get_raw(&app, "/", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(ct.starts_with("text/html"), "{ct}");
+        assert!(body.to_lowercase().contains("<html") || body.contains("kowalski"), "{body}");
+        // an app route without an extension falls back to the page
+        let (status, _, body2) = get_raw(&app, "/some/app/route", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, body2);
+        // unknown API paths stay errors, and still need the token
+        let (status, _, _) = get_raw(&app, "/api/nope", None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        let (status, _, _) = get_raw(&app, "/api/nope", Some("s3cret")).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        if crate::embedded::has_ui() {
+            let asset = crate::embedded::UI_FILES
+                .iter()
+                .map(|(p, _)| *p)
+                .find(|p| p.starts_with("assets/") && p.ends_with(".js"))
+                .expect("a js asset");
+            let (status, ct, _) = get_raw(&app, &format!("/{asset}"), None).await;
+            assert_eq!(status, StatusCode::OK);
+            assert!(ct.starts_with("text/javascript"), "{ct}");
+        }
+    }
+
+    #[tokio::test]
+    async fn builtin_hordes_install_and_are_listed() {
+        let dir = tempfile::tempdir().unwrap();
+        let builtin = dir.path().join(crate::embedded::BUILTIN_HORDES_DIR);
+        let n = crate::embedded::install_builtin_hordes(&builtin).unwrap();
+        assert!(n >= 2, "built-in hordes embedded: {n}");
+        assert!(builtin.join("url-summarizer/horde.md").is_file());
+        // a second install changes nothing and leaves run output alone
+        std::fs::create_dir_all(builtin.join("url-summarizer/output")).unwrap();
+        std::fs::write(builtin.join("url-summarizer/output/HANDOFF.md"), "mine").unwrap();
+        crate::embedded::install_builtin_hordes(&builtin).unwrap();
+        assert_eq!(std::fs::read_to_string(builtin.join("url-summarizer/output/HANDOFF.md")).unwrap(), "mine");
+        let catalog = crate::horde::HordeCatalog::with_roots(vec![builtin]);
+        let ids: Vec<String> = catalog.list().iter().map(|e| e.spec.id.clone()).collect();
+        assert!(ids.contains(&"url-summarizer".to_string()) && ids.contains(&"knowledge-compiler".to_string()), "{ids:?}");
+        assert!(catalog.list().iter().all(|e| e.load_error.is_none()));
     }
 
     #[tokio::test]

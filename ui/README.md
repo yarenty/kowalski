@@ -35,7 +35,9 @@ bun install
 bun run build
 ```
 
-Static output is written to `dist/` (suitable for any static host or reverse proxy).
+Static output is written to `dist/`. The next `cargo build -p kowalski` compiles it into the
+server binary, which then serves the UI itself at `http://127.0.0.1:3456/` (no Node, no second
+terminal). `bun run dev` with the Vite proxy remains the fast loop while editing the UI.
 
 ## Backend (HTTP API)
 

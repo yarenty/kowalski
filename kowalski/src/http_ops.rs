@@ -15,10 +15,11 @@ fn load_mcp_config_from_file(path: &Path) -> Result<McpConfig, Box<dyn std::erro
     Ok(section.mcp)
 }
 
+/// The config file to read: `-c` when given, else [`kowalski_core::config::default_config_path`].
 pub fn mcp_config_path(config_path: Option<&str>) -> PathBuf {
     config_path
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("config.toml"))
+        .unwrap_or_else(kowalski_core::config::default_config_path)
 }
 
 pub fn load_kowalski_config_for_serve(path: &Path) -> Result<Config, Box<dyn std::error::Error>> {

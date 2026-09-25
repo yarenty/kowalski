@@ -67,7 +67,9 @@ fn write_token_file(path: &Path, token: &str) -> std::io::Result<()> {
 /// Middleware: allow `OPEN_PATHS`, otherwise require `Authorization: Bearer <token>` —
 /// or `?token=<token>` for SSE/WebSocket clients that cannot set headers.
 pub async fn require_token(token: std::sync::Arc<String>, req: Request<Body>, next: Next) -> Response {
-    if OPEN_PATHS.contains(&req.uri().path()) || request_authorized(&req, &token) {
+    // Only the API is guarded: the embedded UI's static files carry no data.
+    let path = req.uri().path();
+    if !path.starts_with("/api/") || OPEN_PATHS.contains(&path) || request_authorized(&req, &token) {
         return next.run(req).await;
     }
     (
