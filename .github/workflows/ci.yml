@@ -46,15 +46,19 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        # pinned so new clippy lints arrive with a deliberate toolchain bump, not a random push
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.98"
+          components: clippy
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Clippy (default features)
-        run: cargo clippy -p kowalski-core -p kowalski-cli
+      - name: Clippy (whole workspace, all targets, warnings are errors)
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Test (default features)
-        run: cargo test -p kowalski-core -p kowalski-cli
+      - name: "Test (whole workspace: core, CLI, server with horde runner, triggers and HTTP API, rookery MCP)"
+        run: cargo test --workspace
 
       - name: Test kowalski-core with postgres + pgvector
         env:
@@ -62,8 +66,8 @@ jobs:
         run: |
           cargo test -p kowalski-core --features postgres -- --nocapture
 
-      - name: Build kowalski-cli with postgres (graph Cypher route)
-        run: cargo build -p kowalski-cli --features postgres
+      - name: Build CLI and server with postgres (the graph Cypher route lives in the server)
+        run: cargo build -p kowalski-cli -p kowalski --features postgres
 
       - name: SQL migrations against CI Postgres
         env:
@@ -93,7 +97,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.98"
 
       - uses: Swatinem/rust-cache@v2
 
@@ -101,3 +107,22 @@ jobs:
         env:
           DATABASE_URL: postgres://kowalski:kowalski@127.0.0.1:5432/kowalski
         run: cargo test -p kowalski-core --features postgres age_cypher -- --nocapture
+
+  # The operator UI: dependencies from the lockfile, production build must succeed.
+  ui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.21"
+
+      - name: Install (frozen lockfile)
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bun run build

@@ -4,7 +4,8 @@ use crate::error::KowalskiError;
 use crate::tools::internal::file_system::try_canonicalize;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::io::Read;
+use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 /// Default cap on combined stdout+stderr captured from verify commands.
@@ -86,11 +87,14 @@ fn clip_output(text: &str, max_bytes: usize, truncated: &mut bool) -> String {
     String::from_utf8_lossy(&text.as_bytes()[..max_bytes]).into_owned()
 }
 
-fn run_shell_command(command: &str, cwd: &Path) -> Result<Output, String> {
+fn spawn_shell_command(command: &str, cwd: &Path) -> Result<Child, String> {
     #[cfg(unix)]
     let mut cmd = {
+        use std::os::unix::process::CommandExt;
         let mut c = Command::new("sh");
         c.arg("-c").arg(command);
+        // own process group, so a timeout or cancel can stop the command's children too
+        c.process_group(0);
         c
     };
     #[cfg(windows)]
@@ -103,54 +107,106 @@ fn run_shell_command(command: &str, cwd: &Path) -> Result<Output, String> {
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    cmd.output().map_err(|e| format!("spawn failed: {e}"))
+    cmd.spawn().map_err(|e| format!("spawn failed: {e}"))
+}
+
+/// Stop the command and everything it started.
+fn kill_command(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        // negative pid = the whole process group created in `spawn_shell_command`
+        let pgid = child.id() as i32;
+        unsafe {
+            libc::kill(-pgid, libc::SIGKILL);
+        }
+    }
+    let _ = child.kill();
+}
+
+/// Read a pipe to the end on its own thread, so a chatty command cannot block on a full pipe.
+fn drain<R: Read + Send + 'static>(pipe: Option<R>) -> std::thread::JoinHandle<Vec<u8>> {
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(mut p) = pipe {
+            let _ = p.read_to_end(&mut buf);
+        }
+        buf
+    })
 }
 
 /// Run `command` in `cwd`, capturing stdout/stderr (truncated at `max_output_bytes` each).
+/// The command is killed when it runs past `timeout`.
 pub fn run_verify_command(
     command: &str,
     cwd: &Path,
     max_output_bytes: usize,
     timeout: Duration,
 ) -> VerifyRunResult {
+    run_verify_command_cancellable(command, cwd, max_output_bytes, timeout, &|| false)
+}
+
+/// [`run_verify_command`] that also stops (kills the command) as soon as `cancelled()` is true.
+pub fn run_verify_command_cancellable(
+    command: &str,
+    cwd: &Path,
+    max_output_bytes: usize,
+    timeout: Duration,
+    cancelled: &dyn Fn() -> bool,
+) -> VerifyRunResult {
     let started = Instant::now();
     let command = command.trim();
     let mut timed_out = false;
+    let mut was_cancelled = false;
     let mut truncated = false;
 
-    let output = match run_shell_command(command, cwd) {
-        Ok(o) => o,
-        Err(e) => {
-            return VerifyRunResult {
-                command: command.to_string(),
-                cwd: cwd.to_path_buf(),
-                exit_code: None,
-                success: false,
-                stdout: String::new(),
-                stderr: e,
-                duration_ms: started.elapsed().as_millis() as u64,
-                timed_out: false,
-                truncated: false,
-            };
-        }
+    let failed = |stderr: String| VerifyRunResult {
+        command: command.to_string(),
+        cwd: cwd.to_path_buf(),
+        exit_code: None,
+        success: false,
+        stdout: String::new(),
+        stderr,
+        duration_ms: started.elapsed().as_millis() as u64,
+        timed_out: false,
+        truncated: false,
     };
-
-    if started.elapsed() > timeout {
-        timed_out = true;
+    let mut child = match spawn_shell_command(command, cwd) {
+        Ok(c) => c,
+        Err(e) => return failed(e),
+    };
+    let out = drain(child.stdout.take());
+    let err = drain(child.stderr.take());
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break Some(status),
+            Ok(None) => {}
+            Err(e) => return failed(format!("wait failed: {e}")),
+        }
+        if started.elapsed() > timeout {
+            timed_out = true;
+            kill_command(&mut child);
+            break child.wait().ok();
+        }
+        if cancelled() {
+            was_cancelled = true;
+            kill_command(&mut child);
+            break child.wait().ok();
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    let stdout_bytes = out.join().unwrap_or_default();
+    let mut stderr_text = String::from_utf8_lossy(&err.join().unwrap_or_default()).into_owned();
+    if timed_out {
+        stderr_text.push_str(&format!("\n[kowalski] killed after {}s (verify timeout)", timeout.as_secs()));
+    }
+    if was_cancelled {
+        stderr_text.push_str("\n[kowalski] killed: run cancelled");
     }
 
-    let exit_code = output.status.code();
-    let success = output.status.success() && !timed_out;
-    let stdout = clip_output(
-        &String::from_utf8_lossy(&output.stdout),
-        max_output_bytes,
-        &mut truncated,
-    );
-    let stderr = clip_output(
-        &String::from_utf8_lossy(&output.stderr),
-        max_output_bytes,
-        &mut truncated,
-    );
+    let exit_code = status.and_then(|s| s.code());
+    let success = status.is_some_and(|s| s.success()) && !timed_out && !was_cancelled;
+    let stdout = clip_output(&String::from_utf8_lossy(&stdout_bytes), max_output_bytes, &mut truncated);
+    let stderr = clip_output(&stderr_text, max_output_bytes, &mut truncated);
 
     VerifyRunResult {
         command: command.to_string(),
@@ -372,6 +428,30 @@ mod tests {
         );
         assert!(result.success, "{:?}", result);
         assert!(result.stdout.contains("verify-ok"));
+    }
+
+    #[test]
+    fn verify_command_is_killed_at_the_timeout_with_its_children() {
+        let dir = tempfile::tempdir().unwrap();
+        let started = std::time::Instant::now();
+        // a compound command: the sleep is a child of sh, so only a group kill stops it
+        let result = run_verify_command("echo before; sleep 30; echo after", dir.path(), 4096, Duration::from_millis(300));
+        assert!(started.elapsed() < Duration::from_secs(5), "killed promptly");
+        assert!(result.timed_out && !result.success);
+        assert!(result.stdout.contains("before") && !result.stdout.contains("after"), "{result:?}");
+        assert!(result.stderr.contains("verify timeout"), "{result:?}");
+    }
+
+    #[test]
+    fn verify_command_stops_when_cancelled() {
+        let dir = tempfile::tempdir().unwrap();
+        let started = std::time::Instant::now();
+        let result = run_verify_command_cancellable("sleep 30", dir.path(), 4096, Duration::from_secs(60), &|| {
+            started.elapsed() > Duration::from_millis(200)
+        });
+        assert!(started.elapsed() < Duration::from_secs(5), "stopped promptly");
+        assert!(!result.success && !result.timed_out);
+        assert!(result.stderr.contains("run cancelled"), "{result:?}");
     }
 
     #[test]
