@@ -124,9 +124,10 @@ impl StepContext<'_> {
         {
             return Ok(p);
         }
-        Err(KowalskiError::Validation(
-            "verify/apply: missing operator project_path (set on ingest form)".into(),
-        ))
+        Err(KowalskiError::Validation(format!(
+            "step `{}` needs a project folder: give the run a folder path (a `project_path` field on the horde's intake form, or the path in the run input)",
+            self.step.name
+        )))
     }
 
     /// Resolve `StepSpec::output` under the workdir, creating parent directories.
@@ -344,7 +345,22 @@ impl StepHandler for VerifyStepHandler {
                 ))
             })?
             .to_string();
-        let project = ctx.require_project()?;
+        // a check without a project (a smoke test, a script) runs in the horde's own workdir
+        let project = match ctx.require_project() {
+            Ok(p) => p,
+            Err(_) => {
+                std::fs::create_dir_all(ctx.workdir).map_err(|e| {
+                    KowalskiError::Validation(format!("create {}: {e}", ctx.workdir.display()))
+                })?;
+                ctx.events
+                    .message(&format!(
+                        "No project folder given; running the check in the horde's output folder {}",
+                        ctx.workdir.display()
+                    ))
+                    .await;
+                ctx.workdir.to_path_buf()
+            }
+        };
         let cwd = resolve_verify_cwd(&project, ctx.step.verify_cwd.as_deref())?;
         let out_path = ctx.artifact_path()?;
 
@@ -777,6 +793,32 @@ mod tests {
         let ctx = make_ctx(&step, dir.path(), None, None, None, &cancel);
         let err = VerifyStepHandler.execute(&ctx).await.unwrap_err();
         assert!(err.to_string().contains("verify_command"));
+    }
+
+    #[tokio::test]
+    async fn verify_without_a_project_runs_in_the_workdir() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let mut step = spec("verify", "smoke");
+        step.verify_command = Some("pwd".into());
+        let ctx = make_ctx(&step, dir.path(), None, None, None, &cancel);
+        let StepOutcome::Completed { artifact, status, .. } = VerifyStepHandler.execute(&ctx).await.unwrap();
+        assert_eq!(status, StageStatus::Pass);
+        let body = std::fs::read_to_string(artifact.unwrap()).unwrap();
+        let here = std::fs::canonicalize(dir.path()).unwrap();
+        assert!(body.contains(here.to_str().unwrap()) || body.contains(dir.path().to_str().unwrap()), "{body}");
+    }
+
+    #[tokio::test]
+    async fn apply_without_a_project_says_what_it_needs() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let prev = dir.path().join("dev.md");
+        std::fs::write(&prev, "plan\n").unwrap();
+        let step = spec("apply", "write-it");
+        let ctx = make_ctx(&step, dir.path(), None, None, Some(&prev), &cancel);
+        let err = ApplyStepHandler.execute(&ctx).await.unwrap_err().to_string();
+        assert!(err.contains("`write-it` needs a project folder"), "{err}");
     }
 
     #[tokio::test]

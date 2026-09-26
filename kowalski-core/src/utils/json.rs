@@ -18,15 +18,29 @@ pub fn strip_markdown_code_fences(s: &str) -> String {
 
 /// True if the model output still looks like it tried to emit a tool JSON object but we could not parse any [`ToolCall`].
 /// Used to send one self-correction hint in the ReAct loop.
+///
+/// An ordinary answer that contains a code block (a shell command, a JSON example) is *not* an
+/// attempt: only an object naming a tool with its arguments, or a broken object with a `name`
+/// key where a tool call would go, counts.
 pub fn looks_like_tool_json_attempt(s: &str) -> bool {
     if !extract_tool_calls(s).is_empty() {
         return false;
     }
     let trimmed = s.trim();
-    if trimmed.contains("```") {
+    let has_name = trimmed.contains("\"name\"") || trimmed.contains("'name'");
+    if !has_name {
+        return false;
+    }
+    let has_args = ["\"parameters\"", "\"arguments\"", "'parameters'", "'arguments'"]
+        .iter()
+        .any(|k| trimmed.contains(k));
+    if has_args {
         return true;
     }
-    trimmed.contains('{') && (trimmed.contains("\"name\"") || trimmed.contains("'name'"))
+    // the reply (or its first json/untagged fence) is an object that does not parse
+    let body = strip_markdown_code_fences(trimmed);
+    let body = body.trim();
+    body.starts_with('{') && serde_json::from_str::<serde_json::Value>(body).is_err()
 }
 
 fn extract_tool_calls_inner(input: &str) -> Vec<ToolCall> {
@@ -191,6 +205,14 @@ mod tests {
 { "name": "oops"
 ```"#;
         assert!(looks_like_tool_json_attempt(s));
+    }
+
+    #[test]
+    fn an_answer_with_a_code_block_is_not_a_tool_attempt() {
+        let s = "- A rookery is where penguins breed.\n\nTo list files:\n\n```bash\nls -la\n```";
+        assert!(!looks_like_tool_json_attempt(s));
+        let example = "A person record looks like this:\n\n```json\n{\"name\": \"Ada\", \"age\": 36}\n```";
+        assert!(!looks_like_tool_json_attempt(example), "a valid JSON example is an answer");
     }
 
     #[test]

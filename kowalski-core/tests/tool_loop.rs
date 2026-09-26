@@ -318,9 +318,33 @@ async fn react_fallback_when_model_not_capable() {
 }
 
 #[tokio::test]
-async fn react_breaker_on_repeated_call() {
+async fn react_repeated_call_gets_one_nudge_to_answer() {
     let provider = MockProvider::new(false);
     provider.script_replies([
+        r#"{"name": "echo_tool", "parameters": {"x": "same"}}"#,
+        r#"{"name": "echo_tool", "parameters": {"x": "same"}}"#,
+        "answer after the nudge",
+    ]);
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let (mut agent, conv) = agent_with(provider.clone(), ToolCallingMode::Auto, log.clone()).await;
+
+    let result = agent
+        .chat_with_tools_with_policy(&conv, "loop forever", false, None)
+        .await
+        .unwrap();
+
+    assert_eq!(result, "answer after the nudge");
+    assert_eq!(provider.chat_requests().len(), 3);
+    assert_eq!(log.lock().unwrap().len(), 1, "the repeated call is not executed again");
+    let last = provider.chat_requests().last().unwrap().last().unwrap().content.clone();
+    assert!(last.contains("Do not call a tool again"), "{last}");
+}
+
+#[tokio::test]
+async fn react_repeating_after_the_nudge_returns_the_tool_result_not_nothing() {
+    let provider = MockProvider::new(false);
+    provider.script_replies([
+        r#"{"name": "echo_tool", "parameters": {"x": "same"}}"#,
         r#"{"name": "echo_tool", "parameters": {"x": "same"}}"#,
         r#"{"name": "echo_tool", "parameters": {"x": "same"}}"#,
         "never reached",
@@ -333,9 +357,26 @@ async fn react_breaker_on_repeated_call() {
         .await
         .unwrap();
 
-    assert_eq!(result, "", "ReAct breaker returns without a final answer");
-    assert_eq!(provider.chat_requests().len(), 2);
+    assert!(result.contains("`echo_tool`") && result.contains("echo-result"), "{result}");
+    assert_eq!(provider.chat_requests().len(), 3);
     assert_eq!(log.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn react_answer_with_a_code_block_is_returned_as_is() {
+    let provider = MockProvider::new(false);
+    provider.script_replies(["To list files:\n\n```bash\nls -la\n```"]);
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let (mut agent, conv) = agent_with(provider.clone(), ToolCallingMode::Auto, log.clone()).await;
+
+    let result = agent
+        .chat_with_tools_with_policy(&conv, "how do I list files?", false, None)
+        .await
+        .unwrap();
+
+    assert!(result.contains("ls -la"), "{result}");
+    assert_eq!(provider.chat_requests().len(), 1, "no tool-call correction turn");
+    assert!(log.lock().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -354,7 +395,7 @@ async fn react_loop_respects_iteration_cap() {
         .await
         .unwrap();
 
-    assert_eq!(result, "");
+    assert!(result.contains("`echo_tool`"), "the cap ends with the last result, not an empty reply: {result}");
     assert_eq!(provider.chat_requests().len(), MAX_TOOL_ITERATIONS);
     assert_eq!(log.lock().unwrap().len(), MAX_TOOL_ITERATIONS);
 }
