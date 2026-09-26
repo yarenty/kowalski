@@ -155,10 +155,10 @@ function cardFor(name: string): PenguinCard {
 
 <style scoped>
 .penguin-canvas {
-  border: 1px solid #2a2e38;
-  border-radius: 8px;
-  padding: 0.65rem;
-  background: #10141b;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  background: var(--sunk);
   min-height: 5.5rem;
 }
 .penguin-canvas.empty {
@@ -201,10 +201,10 @@ function cardFor(name: string): PenguinCard {
   padding-top: 0.35rem;
 }
 .dag-layer.parallel {
-  border: 1px dashed #3d4658;
+  border: 1px dashed var(--muted);
   border-radius: 8px;
   padding: 0.45rem 0.55rem 0.55rem;
-  background: #121820;
+  background: var(--surface);
 }
 .fork-hint {
   position: absolute;
@@ -216,11 +216,12 @@ function cardFor(name: string): PenguinCard {
   letter-spacing: 0.05em;
   padding: 0.05rem 0.4rem;
   border-radius: 4px;
-  background: #1e2838;
-  color: #8b9ec4;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-mono);
 }
 .layer-down {
-  color: #5a7ab8;
+  color: var(--muted);
   font-size: 1rem;
   line-height: 1;
   padding: 0.1rem 0;
@@ -229,33 +230,36 @@ function cardFor(name: string): PenguinCard {
   flex: 0 0 auto;
   width: min(11rem, 42vw);
   text-align: left;
-  background: #171b22;
-  border: 1px solid #3d4658;
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0.55rem 0.6rem;
   cursor: pointer;
-  color: #d2d9e8;
+  color: var(--body);
+  font-weight: 400;
+  white-space: normal;
   display: grid;
   gap: 0.25rem;
   transition: border-color 0.15s ease, transform 0.2s ease, box-shadow 0.2s ease;
   animation: slide-in 0.35s ease-out both;
 }
-.penguin-card:hover {
-  border-color: #5a7ab8;
+.penguin-card:hover:not(:disabled) {
+  border-color: var(--muted);
+  background: var(--surface);
 }
 .penguin-card.selected {
-  border-color: #6f9fd4;
-  box-shadow: 0 0 0 1px #3d5a8c;
+  border-color: var(--red);
+  box-shadow: inset 0 0 0 1px var(--red);
 }
 .penguin-card.chip-ready {
-  border-left: 3px solid #3d7a58;
+  border-left: 3px solid var(--ok);
 }
 .penguin-card.chip-draft {
-  border-left: 3px solid #5a606f;
+  border-left: 3px solid var(--line);
   opacity: 0.92;
 }
 .penguin-card.chip-missing-tool {
-  border-left: 3px solid #9a6b3d;
+  border-left: 3px solid var(--warn);
 }
 @keyframes slide-in {
   from {
@@ -290,34 +294,38 @@ function cardFor(name: string): PenguinCard {
   gap: 0.35rem;
 }
 .name {
-  font-size: 0.88rem;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--ink);
 }
 .chip {
-  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   padding: 0.1rem 0.35rem;
   border-radius: 4px;
-  background: #2a3142;
-  color: #9aa8c0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--muted);
   flex-shrink: 0;
 }
 .chip-ready .chip {
-  background: #2a4a3a;
-  color: #b8e6c8;
+  border-color: var(--ok);
+  color: var(--ok);
 }
 .chip-missing-tool .chip {
-  background: #4a3a2a;
-  color: #e6d4b8;
+  border-color: var(--warn);
+  color: var(--warn);
 }
 .kind {
-  font-size: 0.72rem;
-  color: #8b92a5;
+  font-size: 0.7rem;
+  color: var(--muted);
 }
 .desc {
-  font-size: 0.78rem;
-  color: #a8b4c8;
+  font-size: 0.8rem;
+  color: var(--body);
   line-height: 1.35;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -326,7 +334,7 @@ function cardFor(name: string): PenguinCard {
 }
 .out {
   font-size: 0.7rem;
-  color: #6a7285;
+  color: var(--muted);
 }
 .tools {
   display: flex;
@@ -337,21 +345,22 @@ function cardFor(name: string): PenguinCard {
   font-size: 0.65rem;
   padding: 0.05rem 0.3rem;
   border-radius: 4px;
-  background: #252c3b;
-  color: #c8cfdd;
+  background: var(--steel-soft);
+  color: var(--steel);
+  font-family: var(--font-mono);
 }
 .arrow {
   align-self: center;
-  color: #5a7ab8;
+  color: var(--muted);
   font-size: 1.1rem;
   flex-shrink: 0;
   padding: 0 0.1rem;
 }
 .mono {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .muted {
-  color: #6a7285;
+  color: var(--muted);
 }
 @media (prefers-reduced-motion: reduce) {
   .penguin-card {

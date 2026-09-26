@@ -24,15 +24,20 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="panel">
-    <h2>About Kowalski</h2>
+  <section class="page-narrow about">
+    <header class="page-head">
+      <div>
+        <p class="eyebrow">Admin // about</p>
+        <h1>About Kowalski</h1>
+      </div>
+    </header>
     <img class="logo" :src="logo" alt="Kowalski logo" />
     <p>
       Kowalski is a Rust-native multi-agent framework focused on practical operator workflows:
       chat orchestration, MCP integrations, optional Postgres graph/federation features, and a
       lightweight Vue operator interface.
     </p>
-    <p class="muted">
+    <p class="muted facts">
       Current build: <strong>{{ health?.version ?? "unknown" }}</strong>
       <span v-if="health?.model"> · model: {{ health.model }}</span>
     </p>
@@ -47,19 +52,12 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.panel {
-  max-width: 52rem;
-  margin: 0 auto;
-  text-align: center;
-}
-.panel h2 { margin-top: 0; font-size: 1.1rem; }
+.about { text-align: left; }
 .logo {
   width: min(320px, 100%);
-  border-radius: 12px;
-  border: 1px solid #2a2e38;
-  margin: 0.35rem auto 0.7rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  margin: 0 0 1.25rem;
   display: block;
 }
-.muted { color: #8b92a5; }
-.err { color: #e88; font-size: 0.9rem; }
 </style>

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
 import {
   api,
   openFederationEventSource,
@@ -10,11 +12,13 @@ import {
 } from "../api";
 import HordeRunForm from "../components/HordeRunForm.vue";
 import PenguinAvatar from "../components/PenguinAvatar.vue";
+import PipelineStepper, { type StepState, type StepperItem } from "../components/PipelineStepper.vue";
 import { inferPenguinAvatarId } from "../penguins";
 import { isDagHorde } from "../hordeGraph";
 const props = defineProps<{ activeThreadId: string | null }>();
 const emit = defineEmits<{
   (e: "new-chat-session"): void;
+  (e: "open-build"): void;
   (e: "thread-upsert", item: { id: string; title: string; updatedAt: number }): void;
   (e: "new-thread-from-suggestion", payload: { prompt: string; hordeId: string }): void;
   (e: "thread-create-from-run", payload: {
@@ -36,7 +40,11 @@ const hordes = ref<HordeCatalogItem[]>([]);
 const selectedHordeId = ref<string>("");
 const runBusy = ref(false);
 const runId = ref<string | null>(null);
-const runMessages = ref<Array<{ role: "orchestrator" | "worker" | "system" | "user"; speaker: string; text: string; step?: string }>>([]);
+const runMessages = ref<
+  Array<{ role: "orchestrator" | "worker" | "system" | "user"; speaker: string; text: string; step?: string; at?: number }>
+>([]);
+/** Live per-step state from federation events for the current run (overlays run history). */
+const stepLive = ref<Record<string, StepState>>({});
 const runResult = ref<string | null>(null);
 const runErr = ref<string | null>(null);
 const runWatchdog = ref<number | null>(null);
@@ -79,6 +87,16 @@ function approvalFromRun(r: HordeRunRecord): PendingApproval | null {
     command: ev.command != null ? String(ev.command) : null,
   };
 }
+/**
+ * The approval shown in the big box: the live one, else the first parked run of this horde
+ * that waits before a command step.
+ */
+const shownApproval = computed(
+  (): PendingApproval | null =>
+    approval.value ?? resumableRuns.value.map(approvalFromRun).find((a) => a !== null) ?? null,
+);
+/** Interrupted runs listed in the calm banner (the one in the approval box is not repeated). */
+const bannerRuns = computed(() => resumableRuns.value.filter((r) => r.run_id !== shownApproval.value?.runId));
 const activeRunFromHistory = computed(() =>
   runId.value ? runHistory.value.find((r) => r.run_id === runId.value) ?? null : null,
 );
@@ -100,6 +118,123 @@ const runCompleted = computed(
     finalDelivery.value?.kind === "run_finished" ||
     activeRunFromHistory.value?.status === "completed",
 );
+/** Tool ids served by tableski (SQL over the operator's spreadsheets). */
+const TABLESKI_TOOLS = new Set(["list_tables", "get_schema", "column_statistics", "query_sql"]);
+const TABLESKI_KINDS = new Set(["table_profile", "sql_batch"]);
+
+/** Picker summary: what a horde needs and what it hands back (display only). */
+function hordeBrief(h: HordeCatalogItem): { needs: string[]; delivers: string[]; triggers: string[] } {
+  const needs = new Set<string>();
+  const delivers: string[] = [];
+  for (const a of h.sub_agents) {
+    if (TABLESKI_KINDS.has(a.kind)) needs.add("tableski");
+    for (const t of a.tool_ids ?? []) needs.add(TABLESKI_TOOLS.has(t) ? "tableski" : t);
+    const out = (a.output ?? "").trim();
+    if (out && !out.startsWith("debug/") && !out.endsWith("/")) delivers.push(out);
+  }
+  const triggers = (h.triggers ?? []).map((t) => t.kind);
+  return { needs: [...needs], delivers, triggers };
+}
+
+function subAgentFor(step: string) {
+  return selectedHorde.value?.sub_agents.find((a) => a.name === step) ?? null;
+}
+
+function historyStepState(status: string | undefined): StepState | null {
+  switch (status) {
+    case "success":
+    case "succeeded":
+      return "done";
+    case "failed":
+      return "failed";
+    case "running":
+    case "delegating":
+      return "running";
+    case "cancelled":
+      return "cancelled";
+    case "skipped":
+      return "skipped";
+    case "pending":
+      return "pending";
+    default:
+      return null;
+  }
+}
+
+/** Pipeline stepper: live federation events first, then the stored run record. */
+const stepperItems = computed((): StepperItem[] => {
+  const h = selectedHorde.value;
+  if (!h) return [];
+  const record = activeRunFromHistory.value;
+  const waitingStep =
+    shownApproval.value && shownApproval.value.runId === runId.value ? shownApproval.value.step : null;
+  return h.pipeline.map((name) => {
+    const agent = subAgentFor(name);
+    let state: StepState =
+      stepLive.value[name] ??
+      historyStepState(record?.steps.find((s) => s.step === name)?.status) ??
+      "pending";
+    if (waitingStep === name) state = "waiting";
+    return { name, label: agent?.display_name || titleCase(name), kind: agent?.kind, state };
+  });
+});
+const stepperHeadline = computed(() => {
+  const items = stepperItems.value;
+  if (!items.length) return "";
+  const cur = items.findIndex((s) => s.state === "running" || s.state === "waiting" || s.state === "failed");
+  if (cur >= 0) return `Step ${cur + 1} of ${items.length}`;
+  const done = items.filter((s) => s.state === "done").length;
+  if (done === items.length) return `All ${items.length} steps done`;
+  if (done > 0) return `${done} of ${items.length} steps done`;
+  return `${items.length} steps`;
+});
+const hasRunActivity = computed(() => runMessages.value.length > 0 || !!runId.value);
+
+/** The file the run delivered: the last step's artifact (e.g. HANDOFF.md, report.xlsx, BRIEF.md). */
+const primaryArtifact = computed((): { step: string; path: string; name: string } | null => {
+  const list = finalArtifacts.value;
+  if (!list.length) return null;
+  const [step, path] = list[list.length - 1];
+  return { step, path, name: path.split(/[\\/]/).pop() || path };
+});
+const otherArtifacts = computed(() => finalArtifacts.value.slice(0, -1));
+
+function isAbsolutePath(p: string): boolean {
+  return p.startsWith("/") || /^[A-Za-z]:[\\/]/.test(p);
+}
+
+function clockTime(ts?: number): string {
+  if (!ts) return "";
+  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+/** One readable line from a run prompt (drops the markdown operator-input heading and emphasis). */
+function promptLine(text?: string | null): string {
+  const lines = (text ?? "")
+    .split("\n")
+    .map((l) => l.replace(/\*\*/g, "").trim())
+    .filter((l) => l && !l.startsWith("#"));
+  return lines.join(" · ");
+}
+
+function speakerLabel(speaker: string): string {
+  return speaker.replace(/^Agent:\s*/, "");
+}
+
+function roleTag(role: string): string {
+  if (role === "orchestrator") return "Boss";
+  if (role === "worker") return "Penguin";
+  if (role === "user") return "You";
+  return "System";
+}
+
+function runStatusBadge(status: string): string {
+  if (status === "completed") return "badge-ok";
+  if (status === "running" || status === "pending") return "badge-red badge-running";
+  if (status === "awaiting_input" || status === "failed") return "badge-red";
+  return "badge-muted";
+}
+
 const progressText = ref("idle");
 const copyPasteErr = ref<string | null>(null);
 async function copyPasteToClipboard() {
@@ -116,6 +251,13 @@ async function copyPasteToClipboard() {
   }
 }
 const finalShortSummary = computed(() => selectedHorde.value?.delivery_summary_note || "Run completed.");
+const deliveryNoteHtml = computed(() =>
+  DOMPurify.sanitize(marked.parseInline(selectedHorde.value?.delivery_note ?? "") as string),
+);
+/** The hand-off rendered for reading (sanitised; the raw Markdown stays one click away). */
+const handoffHtml = computed(() =>
+  handoffMarkdown.value ? DOMPurify.sanitize(marked.parse(handoffMarkdown.value, { gfm: true }) as string) : "",
+);
 const handoffMarkdown = computed(() => {
   if (!runResult.value) return "";
   try {
@@ -174,6 +316,7 @@ function feed(
       speaker: speaker || (role === "orchestrator" ? "Agent: Boss" : "System"),
       text,
       ...(step ? { step } : {}),
+      at: Date.now(),
     },
   ];
 }
@@ -224,10 +367,12 @@ function processFederationEvent(data: string) {
   if (kind === "task_assigned") {
     const step = String(payload.step ?? "?");
     progressText.value = `assigned ${step}`;
+    setStep(step, "running");
     feed("orchestrator", `${step} assigned to ${String(payload.to ?? "?")}`, "Agent: Boss");
   } else if (kind === "task_started") {
     const step = String(payload.step ?? "?");
     progressText.value = `${step} running`;
+    setStep(step, "running");
     feed("worker", `${step} started by ${String(payload.agent ?? "?")}`, speakerNameFromStep(step), step);
   } else if (kind === "agent_message") {
     const step = String(payload.step ?? "");
@@ -238,6 +383,7 @@ function processFederationEvent(data: string) {
     const ok = Boolean(payload.success);
     const outcome = payload.outcome != null ? String(payload.outcome) : "";
     progressText.value = ok ? `${step} completed` : `${step} failed`;
+    setStep(step, ok ? "done" : "failed");
     const outcomeNote = outcome ? ` (outcome: ${outcome})` : "";
     feed(
       "worker",
@@ -288,6 +434,7 @@ function processFederationEvent(data: string) {
   } else if (kind === "run_failed") {
     runResult.value = JSON.stringify(payload, null, 2);
     progressText.value = "failed";
+    settleSteps("failed");
     feed("system", "run failed", "System");
     runBusy.value = false;
     clearRunWatchdog();
@@ -301,12 +448,14 @@ function processFederationEvent(data: string) {
       command: payload.command != null ? String(payload.command) : null,
     };
     progressText.value = `${step} waiting for your approval`;
+    setStep(step, "waiting");
     feed("orchestrator", String(payload.text ?? `${step} waits for approval`), "Agent: Boss", step);
     runBusy.value = false;
     clearRunWatchdog();
     void loadRunHistory();
   } else if (kind === "run_cancelled") {
     progressText.value = "cancelled";
+    settleSteps("cancelled");
     feed("system", `run cancelled${payload.reason ? `: ${String(payload.reason)}` : ""}`, "System");
     runBusy.value = false;
     clearRunWatchdog();
@@ -314,15 +463,35 @@ function processFederationEvent(data: string) {
   }
 }
 
+function setStep(step: string, state: StepState) {
+  if (!step || step === "?") return;
+  stepLive.value = { ...stepLive.value, [step]: state };
+}
+
+/** Run ended early: whatever was still in flight takes the final state. */
+function settleSteps(state: StepState) {
+  const next = { ...stepLive.value };
+  for (const [k, v] of Object.entries(next)) {
+    if (v === "running" || v === "waiting") next[k] = state;
+  }
+  stepLive.value = next;
+}
+
 function connectStream() {
   fedEs.value?.close();
   fedEs.value = openFederationEventSource(fedTopic.value, processFederationEvent);
 }
 
+const hordesLoaded = ref(false);
 async function loadHordes() {
   const res = await api.hordes();
   hordes.value = res.hordes ?? [];
-  if (!selectedHordeId.value && hordes.value.length) selectedHordeId.value = hordes.value[0].id;
+  hordesLoaded.value = true;
+  if (!selectedHordeId.value && hordes.value.length) {
+    // `?horde=<id>` deep link, else the first horde.
+    const linked = new URLSearchParams(window.location.search).get("horde");
+    selectedHordeId.value = hordes.value.find((h) => h.id === linked)?.id ?? hordes.value[0].id;
+  }
 }
 
 async function loadProfiles() {
@@ -499,6 +668,7 @@ function resetDraftState() {
   followupInput.value = "";
   progressText.value = "idle";
   runPromotedToHistory.value = false;
+  stepLive.value = {};
 }
 
 function saveActiveThreadState() {
@@ -652,6 +822,7 @@ async function runHordeWithPayload(payload: {
   runPromotedToHistory.value = false;
   runId.value = null;
   runMessages.value = [];
+  stepLive.value = {};
   clearRunWatchdog();
   connectStream();
   feed("user", prompt || "(operator form submitted)", "You");
@@ -675,7 +846,7 @@ async function runHordeWithPayload(payload: {
       progressText.value = "timeout";
       feed("system", "timeout: no progress events within 60s", "System");
       runResult.value =
-        "Run created, but no worker progress arrived in 60s. Check sub-agent worker status in Federation Management.";
+        "Run created, but no worker progress arrived in 60s. Check sub-agent worker status under Admin → Federation.";
     }, 60_000);
   } catch (e) {
     runBusy.value = false;
@@ -746,7 +917,7 @@ async function resumeInterruptedRun(run: { run_id: string; prompt: string }) {
     if (selectedHordeWorkers.value.length) {
       const ready = await ensureSelectedHordeReady();
       if (!ready) {
-        runErr.value = "Sub-agent workers are not ready — start them in Federation Management, then resume again.";
+        runErr.value = "Sub-agent workers are not ready — start them under Admin → Federation, then resume again.";
         return;
       }
     }
@@ -841,52 +1012,63 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="panel">
-    <div class="panel-top">
-      <h2>Horde Run</h2>
-      <button type="button" class="icon-btn" title="Refresh all" aria-label="Refresh all" @click="refreshAll">
-        ↻
-      </button>
-    </div>
-    <p class="muted">
-      Talk to a whole horde. The orchestrator coordinates all internal sub-agents and streams their collaboration.
-    </p>
-    <p>
-      <label class="lbl">Horde</label>
-      <select v-model="selectedHordeId" class="inp">
-        <option v-for="h in hordes" :key="h.id" :value="h.id">
-          {{ h.display_name }}{{ h.load_error ? " ⚠" : "" }}
-        </option>
-      </select>
-    </p>
-    <section v-if="resumableRuns.length" class="resume-banner">
+  <section class="page hordes">
+    <header class="page-head">
+      <div>
+        <p class="eyebrow">Hordes // {{ hordes.length }} on standby</p>
+        <h1>Send in a horde</h1>
+        <p class="lead">Pick a horde, tell it what you need, and watch the penguins work it step by step.</p>
+      </div>
+      <div class="page-head-actions">
+        <button type="button" class="icon-btn" title="Refresh" aria-label="Refresh hordes and runs" @click="refreshAll">↻</button>
+      </div>
+    </header>
+
+    <section v-if="shownApproval" class="approval-box" role="alert" aria-live="assertive">
+      <p class="eyebrow plain approval-tag">Waiting for you // step {{ shownApproval.step }}</p>
+      <h2>Approve before the horde continues</h2>
+      <p class="approval-text">{{ shownApproval.text }}</p>
+      <pre v-if="shownApproval.command" class="approval-cmd"><span class="prompt" aria-hidden="true">$ </span>{{ shownApproval.command }}</pre>
+      <div class="btn-row">
+        <button type="button" class="primary" :disabled="approvalBusy" @click="approvePending(shownApproval)">
+          {{ approvalBusy ? "Working…" : "Approve and continue" }}
+        </button>
+        <button type="button" class="danger" :disabled="approvalBusy" @click="rejectPending(shownApproval)">Cancel run</button>
+      </div>
+      <p class="muted small approval-foot">Approval covers this step for the rest of the run.</p>
+    </section>
+
+    <section v-if="bannerRuns.length" class="resume-banner note note-warn">
       <h3>Interrupted runs</h3>
-      <p class="muted">
+      <p class="small">
         These runs did not finish (server restart or awaiting input). Completed steps are kept —
         Resume continues from the next ready step.
       </p>
-      <article v-for="r in resumableRuns" :key="r.run_id" class="resume-item">
+      <article v-for="r in bannerRuns" :key="r.run_id" class="resume-item">
         <div class="resume-meta">
-          <code>{{ r.run_id }}</code>
-          <span class="muted">{{ r.status }}{{ (r.resume_count ?? 0) > 0 ? ` · ${r.resume_count} resume attempt(s)` : "" }}</span>
-          <span class="muted resume-prompt">{{ r.prompt || r.question }}</span>
+          <span class="resume-prompt">{{ promptLine(r.prompt) || r.question || "(no prompt)" }}</span>
+          <span class="mono muted tiny">
+            {{ r.run_id }} · {{ r.status }}{{ (r.resume_count ?? 0) > 0 ? ` · ${r.resume_count} resume attempt(s)` : "" }}
+          </span>
         </div>
         <template v-if="approvalFromRun(r)">
           <span class="resume-approval">{{ approvalFromRun(r)?.text }}</span>
-          <button
-            type="button"
-            class="primary"
-            :disabled="approvalBusy || runBusy"
-            @click="approvePending(approvalFromRun(r)!)"
-          >
-            Approve
-          </button>
-          <button type="button" :disabled="approvalBusy" @click="rejectPending(approvalFromRun(r)!)">Cancel run</button>
+          <div class="btn-row">
+            <button
+              type="button"
+              class="primary sm"
+              :disabled="approvalBusy || runBusy"
+              @click="approvePending(approvalFromRun(r)!)"
+            >
+              Approve
+            </button>
+            <button type="button" class="sm" :disabled="approvalBusy" @click="rejectPending(approvalFromRun(r)!)">Cancel run</button>
+          </div>
         </template>
         <button
           v-else
           type="button"
-          class="primary"
+          class="sm"
           :disabled="resumeBusyId !== null || runBusy"
           @click="resumeInterruptedRun(r)"
         >
@@ -894,408 +1076,650 @@ onUnmounted(() => {
         </button>
       </article>
     </section>
-    <div v-if="selectedHorde" class="horde-box">
-      <p v-if="selectedHorde.load_error" class="load-error">
-        ⚠ Definition edit failed to load — running the last good version. {{ selectedHorde.load_error }}
-      </p>
-      <p class="muted">{{ selectedHorde.description }}</p>
-      <p v-if="selectedHordeIsDag" class="dag-note muted">
-        <strong>DAG horde.</strong> The orchestrator runs fork/join layers in order; steps sharing a layer run when all
-        upstream steps finish (workers may execute in parallel when ready).
-      </p>
-      <p class="muted workdir-row">
-        Workdir: <code>{{ selectedHorde.workdir || selectedHorde.root_path }}</code>
-        <button type="button" class="inline-btn" @click="openOutputFolder(selectedHorde.workdir || selectedHorde.root_path)">
-          Open output folder
-        </button>
-      </p>
-      <p class="muted workdir-row">
-        <span>
-          Clean on startup:
-          <strong>{{ (selectedHorde.config_on_startup_effective ?? selectedHorde.config_on_startup) ? "true" : "false" }}</strong>
-        </span>
-        <button
-          type="button"
-          class="inline-btn"
-          :disabled="cleanWorkdirBusy"
-          title="Delete workdir debug tree, legacy raw/wiki/scratch, agents_log, and PASTE_ME.md (same paths as server clean-on-startup)"
-          @click="cleanSelectedWorkdir"
-        >
-          {{ cleanWorkdirBusy ? "…" : "FORCE Clean" }}
-        </button>
-      </p>
-    </div>
-    <section v-if="triggerRows.length" class="trigger-box">
-      <h3>Triggers</h3>
-      <p class="muted">
-        Declared in this horde's <code>horde.md</code>. The toggle is a server-side operator
-        override (survives restarts, never edits the file); Fire now starts the trigger's run
-        immediately — the overlap policy still applies.
-      </p>
-      <article v-for="t in triggerRows" :key="t.index" class="trigger-item">
-        <div class="trigger-meta">
-          <div>
-            <span class="trigger-badge" :class="t.effective_enabled ? 'trigger-on' : 'trigger-off'">
-              {{ t.kind }}
-            </span>
-            <code>{{ t.detail }}</code>
-            <span class="muted">
-              {{ t.effective_enabled ? "armed" : "disabled" }}{{ t.overridden ? " · operator override" : "" }} · overlap={{ t.overlap }}
-            </span>
-          </div>
-          <div class="muted trigger-times">
-            <span v-if="t.next_fire">next fire {{ shortTime(t.next_fire) }}</span>
-            <span v-if="t.last_fired">
-              last fired {{ shortTime(t.last_fired.time) }} ·
-              <a
-                href="#"
-                :title="`Highlight run ${t.last_fired.run_id} in Recent runs`"
-                @click.prevent="highlightRunId = t.last_fired?.run_id ?? null"
-              >{{ t.last_fired.run_id }}</a>
-              ({{ t.last_fired.status }})
-            </span>
-            <span v-else>never fired</span>
-          </div>
-        </div>
-        <div class="trigger-actions">
-          <button type="button" class="inline-btn" :disabled="triggerBusy !== null" @click="toggleTrigger(t)">
-            {{ triggerBusy === t.index ? "…" : t.effective_enabled ? "Disable" : "Enable" }}
-          </button>
+
+    <div class="hordes-layout">
+      <aside class="picker" aria-label="Choose a horde">
+        <p class="eyebrow">Pick a horde</p>
+        <div v-if="hordes.length" class="picker-list" role="radiogroup" aria-label="Hordes">
           <button
+            v-for="h in hordes"
+            :key="h.id"
             type="button"
-            class="inline-btn"
-            :disabled="triggerBusy !== null"
-            title="Start this trigger's run immediately (works while disabled; overlap policy still applies)"
-            @click="fireTriggerNow(t)"
+            role="radio"
+            class="horde-card"
+            :class="{ selected: h.id === selectedHordeId }"
+            :aria-checked="h.id === selectedHordeId"
+            @click="selectedHordeId = h.id"
           >
-            Fire now
+            <span class="hc-head">
+              <span class="hc-name">{{ h.display_name }}</span>
+              <span v-if="h.load_error" class="badge badge-warn no-dot" title="Latest edit failed to load">⚠ edit failed</span>
+            </span>
+            <span class="hc-desc">{{ h.description }}</span>
+            <span class="hc-meta">
+              <span class="chip" :title="`${h.pipeline.length} steps`">{{ h.pipeline.length }} penguins</span>
+              <span v-for="n in hordeBrief(h).needs" :key="n" class="chip chip-steel" :title="`Needs ${n}`">needs {{ n }}</span>
+              <span v-for="t in hordeBrief(h).triggers" :key="t" class="chip" :title="`Has a ${t} trigger`">{{ t }}</span>
+            </span>
+            <span v-if="hordeBrief(h).delivers.length" class="hc-delivers">
+              → {{ hordeBrief(h).delivers.join(", ") }}
+            </span>
           </button>
         </div>
-      </article>
-      <p v-if="triggerNote" class="muted">{{ triggerNote }}</p>
-    </section>
-    <section v-if="runHistory.length" class="runs-feed">
-      <h3>Recent runs</h3>
-      <article
-        v-for="r in runHistory.slice(0, 15)"
-        :key="r.run_id"
-        class="run-row"
-        :class="{ 'run-highlight': r.run_id === highlightRunId }"
-      >
-        <span
-          class="trigger-badge"
-          :class="runSourceBadge(r).isTrigger ? 'badge-trigger' : 'badge-operator'"
-          :title="runSourceBadge(r).isTrigger ? `Fired by a ${runSourceBadge(r).label} trigger` : 'Started by an operator'"
-        >
-          {{ runSourceBadge(r).label }}
-        </span>
-        <code>{{ r.run_id }}</code>
-        <span class="muted">{{ r.status }}</span>
-        <span class="muted">{{ shortTime(r.started_at) }}</span>
-        <span
-          v-if="(r.resume_count ?? 0) > 0"
-          class="resumed-marker"
-          title="This run was interrupted and resumed"
-        >resumed ×{{ r.resume_count }}</span>
-      </article>
-    </section>
-    <p v-if="pathAction" class="muted">{{ pathAction }}</p>
-    <div v-if="isProcessing" class="processing-inline" aria-live="polite" aria-busy="true">
-      <div class="orbital-loader orbital-loader-inline" aria-hidden="true">
-        <span class="ring ring-a"></span>
-        <span class="ring ring-b"></span>
-        <span class="ring ring-c"></span>
-        <span class="core"></span>
-      </div>
-      <p class="muted thinking processing-inline-text">{{ processingLabel }}</p>
-      <button
-        v-if="runBusy && runId"
-        type="button"
-        class="inline-btn cancel-btn"
-        :disabled="cancelBusy"
-        title="Cancel this run: the in-flight step stops, remaining steps are skipped"
-        @click="cancelActiveRun"
-      >
-        {{ cancelBusy ? "Cancelling…" : "Cancel run" }}
-      </button>
-    </div>
-    <section v-if="approval" class="approval-box" role="alert">
-      <h3>Waiting for your approval</h3>
-      <p>{{ approval.text }}</p>
-      <pre v-if="approval.command" class="approval-cmd">{{ approval.command }}</pre>
-      <p>
-        <button type="button" class="primary" :disabled="approvalBusy" @click="approvePending(approval)">
-          {{ approvalBusy ? "Working…" : "Approve and continue" }}
-        </button>
-        <button type="button" :disabled="approvalBusy" @click="rejectPending(approval)">Cancel run</button>
-      </p>
-      <p class="muted">Approval covers this step for the rest of the run.</p>
-    </section>
-    <p v-if="runId" class="muted">Run ID: {{ runId }}</p>
-
-    <div class="chat-feed">
-      <article v-for="(m, i) in runMessages" :key="i" class="msg" :class="`msg-${m.role}`">
-        <header class="msg-head">
-          <PenguinAvatar
-            v-if="avatarForRunMessage(m)"
-            :avatar="avatarForRunMessage(m)!.avatar"
-            :kind="avatarForRunMessage(m)!.kind"
-            :name="avatarForRunMessage(m)!.name"
-            variant="inline"
-            :alt="m.speaker"
-          />
-          <span>{{ m.speaker }}</span>
-        </header>
-        <pre>{{ m.text }}</pre>
-      </article>
-    </div>
-
-    <section v-if="runCompleted && runResult" class="delivery">
-      <h3 style="margin:0 0 0.35rem;">Output</h3>
-      <div>
-        <p class="muted">
-          {{ finalDelivery?.text || "Run completed." }}
-        </p>
-        <p class="muted"><strong>Summary:</strong> {{ finalShortSummary }}</p>
-        <p class="muted"><strong>{{ selectedHorde?.delivery_title || "Final delivery" }}</strong></p>
-        <p class="muted">{{ selectedHorde?.delivery_note || "" }}</p>
-        <template v-if="handoffMarkdown">
-          <h4 style="margin: 0.75rem 0 0.35rem">Markdown hand-off</h4>
-          <p class="muted">
-            Copy this block into your documentation or tracker. Wording at the top comes from this horde’s
-            <code>horde.md</code> when configured.
-          </p>
-          <textarea
-            readonly
-            class="inp paste-handoff-markdown"
-            rows="22"
-            spellcheck="false"
-            :value="handoffMarkdown"
-          />
-          <p>
-            <button type="button" class="primary" @click="copyPasteToClipboard">Copy to clipboard</button>
-          </p>
-          <p v-if="copyPasteErr" class="err">{{ copyPasteErr }}</p>
-        </template>
-        <p v-else class="muted">
-          No markdown hand-off in this run (e.g. pipeline ended before <code>lint</code>, or run failed). Intermediates
-          live under <code>workdir/debug/</code>; the same content may exist as <code>PASTE_ME.md</code> at the workdir
-          root when the pipeline wrote it.
-        </p>
-        <div v-if="finalArtifacts.length" class="artifact-list">
-          <article v-for="a in finalArtifacts" :key="`${a[0]}-${a[1]}`" class="artifact-item">
-            <strong>{{ a[0] }}</strong>
-            <code>{{ a[1] }}</code>
-          </article>
+        <p v-else-if="!hordesLoaded" class="muted">Loading hordes…</p>
+        <div v-else class="empty-state">
+          <h3>No hordes yet</h3>
+          <p>Build your first horde by describing the job in plain words.</p>
+          <button type="button" class="primary" @click="emit('open-build')">Build a horde</button>
         </div>
-        <details>
-          <summary>Raw run_finished payload</summary>
-          <pre class="json">{{ runResult }}</pre>
-        </details>
-      </div>
-    </section>
-    <p v-if="runErr" class="err">{{ runErr }}</p>
-    <section v-if="hasCompletedRun" class="delivery">
-      <div class="chat-feed followup-feed">
-        <article
-          v-for="(m, i) in followupMsgs"
-          :key="`f-${i}`"
-          class="msg"
-          :class="m.role === 'user' ? 'msg-user' : m.role === 'orchestrator' ? 'msg-system' : 'msg-worker'"
-        >
-          <header>{{ m.speaker }}</header>
-          <pre>{{ m.text }}</pre>
+      </aside>
+
+      <div class="mission">
+        <article v-if="selectedHorde" class="card accent briefing">
+          <p class="eyebrow plain">Squad // {{ selectedHorde.id }}</p>
+          <h2>{{ selectedHorde.display_name }}</h2>
+          <p class="briefing-desc">{{ selectedHorde.description }}</p>
+          <p v-if="selectedHorde.load_error" class="note note-warn small">
+            ⚠ Definition edit failed to load — running the last good version. {{ selectedHorde.load_error }}
+          </p>
+          <p v-if="selectedHordeIsDag" class="note note-info small">
+            <strong>Branching horde.</strong> Steps that share a layer run when all earlier steps finish (they may run in
+            parallel).
+          </p>
+          <ul class="squad" aria-label="Penguins in this horde">
+            <li v-for="a in selectedHorde.sub_agents" :key="a.name" class="squad-member" :title="a.description">
+              <PenguinAvatar
+                :avatar="a.avatar ?? inferPenguinAvatarId(a.kind, a.name)"
+                :kind="a.kind"
+                :name="a.name"
+                variant="inline"
+                :alt="a.display_name || a.name"
+              />
+              <span class="sm-text">
+                <span class="sm-name">{{ a.display_name || a.name }}</span>
+                <span class="sm-kind">{{ a.kind }}</span>
+              </span>
+            </li>
+          </ul>
+          <details class="briefing-details">
+            <summary>Output folder and housekeeping</summary>
+            <div class="workdir-row">
+              <span class="lbl">Output folder</span>
+              <code>{{ selectedHorde.workdir || selectedHorde.root_path }}</code>
+              <button type="button" class="sm" @click="openOutputFolder(selectedHorde.workdir || selectedHorde.root_path)">
+                Open output folder
+              </button>
+            </div>
+            <div class="workdir-row">
+              <span class="lbl">Clean on startup</span>
+              <strong>{{ (selectedHorde.config_on_startup_effective ?? selectedHorde.config_on_startup) ? "true" : "false" }}</strong>
+              <button
+                type="button"
+                class="sm danger"
+                :disabled="cleanWorkdirBusy"
+                title="Delete workdir debug tree, legacy raw/wiki/scratch, agents_log, and PASTE_ME.md (same paths as server clean-on-startup)"
+                @click="cleanSelectedWorkdir"
+              >
+                {{ cleanWorkdirBusy ? "…" : "FORCE Clean" }}
+              </button>
+            </div>
+          </details>
         </article>
+
+        <section v-if="selectedHorde && stepperItems.length && hasRunActivity" class="card flat progress-card">
+          <div class="progress-head">
+            <p class="eyebrow">Pipeline // {{ stepperHeadline }}</p>
+            <span v-if="runId" class="mono muted tiny">run {{ runId }}</span>
+          </div>
+          <PipelineStepper :steps="stepperItems" />
+          <div v-if="isProcessing" class="processing" aria-live="polite" aria-busy="true">
+            <span class="dot-running" aria-hidden="true"></span>
+            <span class="processing-text">{{ processingLabel }}</span>
+            <button
+              v-if="runBusy && runId"
+              type="button"
+              class="sm danger"
+              :disabled="cancelBusy"
+              title="Cancel this run: the in-flight step stops, remaining steps are skipped"
+              @click="cancelActiveRun"
+            >
+              {{ cancelBusy ? "Cancelling…" : "Cancel run" }}
+            </button>
+          </div>
+        </section>
+
+        <section v-if="selectedHorde && !hasCompletedRun" class="card orders">
+          <p class="eyebrow">Your request</p>
+          <HordeRunForm
+            :horde="selectedHorde"
+            :disabled="!selectedHordeId"
+            :busy="runBusy || followupBusy"
+            :follow-up-mode="false"
+            @submit="onHordeFormSubmit"
+          />
+        </section>
+
+        <p v-if="runErr" class="note note-err">{{ runErr }}</p>
+
+        <section v-if="runMessages.length" class="feed-wrap">
+          <p class="eyebrow">Live feed</p>
+          <ol class="feed">
+            <li v-for="(m, i) in runMessages" :key="i" class="msg" :class="`msg-${m.role}`">
+              <span class="msg-avatar" aria-hidden="true">
+                <PenguinAvatar
+                  v-if="avatarForRunMessage(m)"
+                  :avatar="avatarForRunMessage(m)!.avatar"
+                  :kind="avatarForRunMessage(m)!.kind"
+                  :name="avatarForRunMessage(m)!.name"
+                  variant="inline"
+                  :alt="m.speaker"
+                />
+                <span v-else class="avatar-fallback">{{ m.role === "user" ? "You" : "•" }}</span>
+              </span>
+              <div class="msg-body">
+                <header class="msg-head">
+                  <span class="msg-speaker">{{ speakerLabel(m.speaker) }}</span>
+                  <span class="msg-role">{{ roleTag(m.role) }}</span>
+                  <time v-if="m.at" class="msg-time">{{ clockTime(m.at) }}</time>
+                </header>
+                <pre class="msg-text">{{ m.text }}</pre>
+              </div>
+            </li>
+          </ol>
+        </section>
+
+        <section v-if="runCompleted && runResult" class="card delivery">
+          <p class="eyebrow">Delivered</p>
+          <div v-if="primaryArtifact" class="deliverable">
+            <div class="deliverable-file">
+              <span class="file-glyph" aria-hidden="true">▤</span>
+              <div class="file-text">
+                <span class="file-name">{{ primaryArtifact.name }}</span>
+                <code class="file-path">{{ primaryArtifact.path }}</code>
+              </div>
+            </div>
+            <div class="btn-row">
+              <button
+                v-if="selectedHorde"
+                type="button"
+                class="primary"
+                @click="openOutputFolder(selectedHorde.workdir || selectedHorde.root_path)"
+              >
+                Open output folder
+              </button>
+              <button
+                v-if="isAbsolutePath(primaryArtifact.path)"
+                type="button"
+                @click="openOutputFolder(primaryArtifact.path)"
+              >
+                Open file
+              </button>
+            </div>
+          </div>
+          <div v-else class="btn-row">
+            <button
+              v-if="selectedHorde"
+              type="button"
+              class="primary"
+              @click="openOutputFolder(selectedHorde.workdir || selectedHorde.root_path)"
+            >
+              Open output folder
+            </button>
+          </div>
+          <p v-if="pathAction" class="muted small">{{ pathAction }}</p>
+          <h3 class="delivery-title">{{ selectedHorde?.delivery_title || "Final delivery" }}</h3>
+          <p>{{ finalShortSummary }}</p>
+          <p v-if="selectedHorde?.delivery_note" class="muted small" v-html="deliveryNoteHtml" />
+
+          <template v-if="handoffMarkdown">
+            <div class="handoff-rendered" v-html="handoffHtml" />
+            <details class="handoff-raw">
+              <summary>Markdown source</summary>
+              <textarea
+                readonly
+                class="paste-handoff-markdown"
+                rows="14"
+                spellcheck="false"
+                :value="handoffMarkdown"
+              />
+            </details>
+            <div class="btn-row">
+              <button type="button" @click="copyPasteToClipboard">Copy as Markdown</button>
+            </div>
+            <p v-if="copyPasteErr" class="err">{{ copyPasteErr }}</p>
+          </template>
+          <p v-else class="muted small">
+            This run finished without a hand-off file. Its working files are in the output folder, under
+            <code>debug/</code>.
+          </p>
+          <details v-if="otherArtifacts.length">
+            <summary>Intermediate files ({{ otherArtifacts.length }})</summary>
+            <ul class="artifact-list">
+              <li v-for="a in otherArtifacts" :key="`${a[0]}-${a[1]}`">
+                <span class="chip">{{ a[0] }}</span>
+                <code>{{ a[1] }}</code>
+              </li>
+            </ul>
+          </details>
+          <details>
+            <summary>Raw run_finished payload</summary>
+            <pre class="json">{{ runResult }}</pre>
+          </details>
+        </section>
+
+        <section v-if="hasCompletedRun" class="card followups">
+          <p class="eyebrow">Follow-up</p>
+          <ol v-if="followupMsgs.length" class="feed followup-feed">
+            <li
+              v-for="(m, i) in followupMsgs"
+              :key="`f-${i}`"
+              class="msg"
+              :class="m.role === 'user' ? 'msg-user' : m.role === 'orchestrator' ? 'msg-system' : 'msg-worker'"
+            >
+              <div class="msg-body">
+                <header class="msg-head"><span class="msg-speaker">{{ m.speaker }}</span></header>
+                <pre class="msg-text">{{ m.text }}</pre>
+              </div>
+            </li>
+          </ol>
+          <HordeRunForm
+            :horde="selectedHorde"
+            :disabled="!selectedHordeId"
+            :busy="runBusy || followupBusy"
+            :follow-up-mode="true"
+            @submit="onHordeFormSubmit"
+          />
+          <div class="btn-row redo">
+            <button type="button" class="ghost" :disabled="runBusy || followupBusy" @click="redefineAndStartAgain">
+              Redefine and start again
+            </button>
+          </div>
+        </section>
+
+        <p v-if="pathAction && !(runCompleted && runResult)" class="muted small">{{ pathAction }}</p>
+
+        <section v-if="triggerRows.length" class="card flat">
+          <p class="eyebrow">Triggers</p>
+          <p class="muted small">
+            Declared in this horde's <code>horde.md</code>. The toggle is a server-side operator
+            override (survives restarts, never edits the file); Fire now starts the trigger's run
+            immediately — the overlap policy still applies.
+          </p>
+          <article v-for="t in triggerRows" :key="t.index" class="row-item">
+            <div class="row-meta">
+              <div class="row-line">
+                <span class="badge" :class="t.effective_enabled ? 'badge-ok' : 'badge-muted'">{{ t.kind }}</span>
+                <code>{{ t.detail }}</code>
+                <span class="muted small">
+                  {{ t.effective_enabled ? "armed" : "disabled" }}{{ t.overridden ? " · operator override" : "" }} · overlap={{ t.overlap }}
+                </span>
+              </div>
+              <div class="muted small row-line">
+                <span v-if="t.next_fire">next fire {{ shortTime(t.next_fire) }}</span>
+                <span v-if="t.last_fired">
+                  last fired {{ shortTime(t.last_fired.time) }} ·
+                  <a
+                    href="#"
+                    :title="`Highlight run ${t.last_fired.run_id} in Recent runs`"
+                    @click.prevent="highlightRunId = t.last_fired?.run_id ?? null"
+                  >{{ t.last_fired.run_id }}</a>
+                  ({{ t.last_fired.status }})
+                </span>
+                <span v-else>never fired</span>
+              </div>
+            </div>
+            <div class="btn-row">
+              <button type="button" class="sm" :disabled="triggerBusy !== null" @click="toggleTrigger(t)">
+                {{ triggerBusy === t.index ? "…" : t.effective_enabled ? "Disable" : "Enable" }}
+              </button>
+              <button
+                type="button"
+                class="sm"
+                :disabled="triggerBusy !== null"
+                title="Start this trigger's run immediately (works while disabled; overlap policy still applies)"
+                @click="fireTriggerNow(t)"
+              >
+                Fire now
+              </button>
+            </div>
+          </article>
+          <p v-if="triggerNote" class="muted small">{{ triggerNote }}</p>
+        </section>
+
+        <section v-if="runHistory.length" class="card flat">
+          <p class="eyebrow">Recent runs</p>
+          <ol class="runs">
+            <li
+              v-for="r in runHistory.slice(0, 15)"
+              :key="r.run_id"
+              class="run-row"
+              :class="{ 'run-highlight': r.run_id === highlightRunId }"
+            >
+              <span class="badge" :class="runStatusBadge(r.status)">{{ r.status }}</span>
+              <span class="run-prompt" :title="r.prompt">{{ promptLine(r.prompt) || r.question || r.run_id }}</span>
+              <span
+                class="chip"
+                :title="runSourceBadge(r).isTrigger ? `Fired by a ${runSourceBadge(r).label} trigger` : 'Started by an operator'"
+              >{{ runSourceBadge(r).label }}</span>
+              <span
+                v-if="(r.resume_count ?? 0) > 0"
+                class="chip"
+                title="This run was interrupted and resumed"
+              >resumed ×{{ r.resume_count }}</span>
+              <span class="run-time mono">{{ shortTime(r.started_at) }}</span>
+              <code class="run-id">{{ r.run_id }}</code>
+            </li>
+          </ol>
+        </section>
       </div>
-    </section>
-    <section class="followup-composer">
-      <HordeRunForm
-        :horde="selectedHorde"
-        :disabled="!selectedHordeId"
-        :busy="runBusy || followupBusy"
-        :follow-up-mode="hasCompletedRun"
-        @submit="onHordeFormSubmit"
-      />
-      <p v-if="hasCompletedRun">
-        <button
-          type="button"
-          :disabled="runBusy || followupBusy"
-          @click="redefineAndStartAgain"
-        >
-          Redefine and start again
-        </button>
-      </p>
-    </section>
+    </div>
   </section>
 </template>
 
 <style scoped>
-.panel { position: relative; }
-.panel h2 { margin-top: 0; font-size: 1.1rem; }
-.panel-top { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
-.muted { color: #6a7285; font-size: 0.9rem; }
-.workdir-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+.tiny { font-size: 0.72rem; }
+
+/* ---------- approval: unmissable ---------- */
+.approval-box {
+  background: var(--red-soft);
+  border: 1px solid var(--red);
+  border-left: 8px solid var(--red);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem 1rem;
+  margin: 0 0 1.25rem;
 }
-.clean-on-row {
+.approval-box h2 { font-size: 1.3rem; margin: 0 0 0.4rem; }
+.approval-tag { color: var(--red-ink); }
+.approval-text { color: var(--ink); }
+.approval-cmd {
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.9rem;
+  margin: 0 0 0.9rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.approval-cmd .prompt { color: var(--red); font-weight: 600; }
+.approval-foot { margin: 0.6rem 0 0; color: var(--body); }
+
+/* ---------- interrupted runs: calm ---------- */
+.resume-banner h3 { margin: 0 0 0.25rem; font-size: 1rem; }
+.resume-item {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.7rem;
+  margin-top: 0.45rem;
 }
-.err { color: #e88; font-size: 0.9rem; }
-.lbl { display: block; font-size: 0.8rem; color: #8b92a5; margin-bottom: 0.25rem; }
-.inp { width: 100%; max-width: 48rem; box-sizing: border-box; background: #1a1d26; border: 1px solid #3d4658; color: #e8e8ec; border-radius: 6px; padding: 0.4rem 0.55rem; font: inherit; }
-.paste-handoff-markdown {
-  max-width: 100%;
-  width: 100%;
-  min-height: 14rem;
-  font-size: 0.82rem;
-  line-height: 1.45;
-  resize: vertical;
-  white-space: pre;
+.resume-meta { display: grid; gap: 0.1rem; min-width: 0; flex: 1 1 16rem; }
+.resume-prompt { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.resume-approval { flex: 1 1 12rem; font-size: 0.9rem; color: var(--ink); }
+
+/* ---------- hand-off ---------- */
+.handoff-rendered {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--ink);
+  border-radius: 6px;
+  padding: 0.4rem 1.2rem 0.8rem;
+  line-height: 1.6;
   overflow-x: auto;
 }
-.chat-feed { border: 1px solid #2a2e38; border-radius: 8px; background: #141820; padding: 0.6rem; display: grid; gap: 0.45rem; max-height: 55vh; overflow: auto; }
-.followup-feed { max-height: none; overflow: visible; }
-.horde-box { border: 1px solid #2a2e38; border-radius: 8px; background: #161b22; padding: 0.55rem 0.65rem; margin-bottom: 0.55rem; }
-/* Sits above the sticky follow-up composer (z-index 5) so interrupted runs stay actionable at top scroll. */
-.resume-banner { position: relative; z-index: 6; border: 1px solid #8a6d3b; border-radius: 8px; background: #221c10; padding: 0.55rem 0.65rem; margin-bottom: 0.55rem; }
-.resume-banner h3 { margin: 0 0 0.25rem; font-size: 0.95rem; color: #e0c284; }
-.load-error { color: #e0a184; font-size: 0.85rem; }
-.approval-box { border: 1px solid #b04a3a; border-radius: 8px; background: #2a1512; padding: 0.6rem 0.75rem; margin: 0.55rem 0; }
-.approval-box h3 { margin: 0 0 0.3rem; }
-.approval-cmd { background: #120b0a; padding: 0.4rem 0.55rem; border-radius: 6px; overflow-x: auto; }
-.resume-approval { flex: 1; font-size: 0.9em; }
-.resume-item { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; border: 1px solid #3a3324; border-radius: 6px; background: #1a1712; padding: 0.4rem 0.55rem; margin-top: 0.35rem; }
-.resume-meta { display: grid; gap: 0.1rem; min-width: 0; }
-.resume-prompt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 34rem; }
-.dag-note { font-size: 0.85rem; margin: 0.35rem 0 0; padding: 0.35rem 0.45rem; border-radius: 6px; background: #1a2230; border: 1px solid #2a3548; }
-.trigger-box, .runs-feed { border: 1px solid #2a2e38; border-radius: 8px; background: #161b22; padding: 0.55rem 0.65rem; margin-bottom: 0.55rem; }
-.trigger-box h3, .runs-feed h3 { margin: 0 0 0.25rem; font-size: 0.95rem; }
-.trigger-item { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; border: 1px solid #2a2e38; border-radius: 6px; background: #12161d; padding: 0.4rem 0.55rem; margin-top: 0.35rem; }
-.trigger-meta { display: grid; gap: 0.15rem; min-width: 0; }
-.trigger-meta > div { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }
-.trigger-times { display: flex; gap: 0.75rem; flex-wrap: wrap; }
-.trigger-times a { color: #9cc2ff; }
-.trigger-actions { display: flex; gap: 0.35rem; flex: 0 0 auto; }
-.trigger-badge { border-radius: 999px; font-size: 0.72rem; padding: 0.12rem 0.45rem; border: 1px solid #555f74; color: #b0b7c7; background: #2a3142; text-transform: uppercase; letter-spacing: 0.03em; }
-.trigger-on { border-color: #2f7c47; color: #8de3a8; background: #153323; }
-.trigger-off { border-color: #8a4b3b; color: #e0a184; background: #2b1c15; }
-.badge-trigger { border-color: #5a7ab8; color: #9cc2ff; background: #1d2a42; }
-.badge-operator { border-color: #555f74; color: #b0b7c7; background: #2a3142; }
-.run-row { display: flex; align-items: center; gap: 0.55rem; border: 1px solid #2a2e38; border-radius: 6px; background: #12161d; padding: 0.35rem 0.55rem; margin-top: 0.35rem; flex-wrap: wrap; }
-.run-highlight { border-color: #5a7ab8; box-shadow: 0 0 0 1px #5a7ab8; }
-.resumed-marker { border-radius: 999px; font-size: 0.72rem; padding: 0.12rem 0.45rem; border: 1px solid #8a6d3b; color: #e0c284; background: #221c10; }
-.delivery { border: 1px solid #2a2e38; border-radius: 8px; background: #151922; padding: 0.55rem 0.65rem; margin-top: 0.45rem; }
-.followup-composer {
-  position: sticky;
-  bottom: 0;
-  z-index: 5;
-  border: 1px solid #2a2e38;
-  border-radius: 10px;
-  background: #171b22;
-  padding: 0.65rem 0.75rem;
-  margin-top: 0.55rem;
-  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.35);
+.handoff-rendered :deep(h1) { font-size: 1.35rem; margin: 0.7rem 0 0.4rem; }
+.handoff-rendered :deep(h2) { font-size: 1.12rem; margin: 1.1rem 0 0.35rem; }
+.handoff-rendered :deep(h3) { font-size: 1rem; margin: 1rem 0 0.3rem; }
+.handoff-rendered :deep(table) { border-collapse: collapse; margin: 0.5rem 0; font-size: 0.92rem; }
+.handoff-rendered :deep(th), .handoff-rendered :deep(td) { border: 1px solid var(--hair); padding: 0.3rem 0.6rem; text-align: left; }
+.handoff-rendered :deep(th) { background: var(--sunk); }
+.handoff-rendered :deep(code) { background: var(--sunk); padding: 0.05rem 0.3rem; border-radius: 3px; }
+.handoff-raw { margin-top: 0.6rem; }
+
+/* ---------- layout ---------- */
+.hordes-layout {
+  display: grid;
+  grid-template-columns: minmax(15rem, 19rem) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
 }
-.artifact-list { display: grid; gap: 0.35rem; margin-top: 0.45rem; }
-.artifact-item { border: 1px solid #2a2e38; border-radius: 6px; background: #12161d; padding: 0.45rem 0.55rem; display: grid; gap: 0.25rem; }
-.msg { border: 1px solid #2a2e38; border-radius: 8px; background: #171b22; padding: 0.5rem 0.65rem; }
-.msg header,
-.msg-head { color: #9aa8c0; font-size: 0.8rem; margin-bottom: 0.2rem; text-transform: capitalize; }
-.msg-head { display: flex; align-items: center; gap: 0.4rem; text-transform: none; }
-.msg pre { margin: 0; white-space: pre-wrap; word-break: break-word; color: #d2d9e8; font-size: 0.85rem; }
-.msg-orchestrator { border-color: #5a7ab8; }
-.msg-user { border-color: #5a7ab8; margin-left: auto; max-width: 80%; background: #1d2a42; }
-.msg-worker { border-color: #2f7c47; }
-.msg-system { border-color: #555f74; }
-.json { background: #1a1d26; border: 1px solid #2a2e38; border-radius: 6px; padding: 0.75rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.45; color: #c8cfdd; }
-.thinking { color: #9cc2ff; }
-.processing-inline {
-  display: inline-flex;
+.mission { display: grid; gap: 1rem; min-width: 0; }
+.mission > * { margin: 0; min-width: 0; }
+
+/* ---------- picker ---------- */
+.picker { position: sticky; top: 0; }
+.picker-list { display: grid; gap: 0.5rem; }
+.horde-card {
+  display: grid;
+  gap: 0.35rem;
+  justify-items: start;
+  text-align: left;
+  white-space: normal;
+  width: 100%;
+  padding: 0.75rem 0.85rem 0.75rem 0.95rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid transparent;
+  border-radius: var(--radius);
+  color: var(--body);
+  font-weight: 400;
+}
+.horde-card:hover:not(:disabled) { background: var(--surface); border-color: var(--muted); border-left-color: var(--line); }
+.horde-card.selected { border-color: var(--ink); border-left-color: var(--red); }
+.hc-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.hc-name { font-family: var(--font-display); font-weight: 700; font-size: 1rem; color: var(--ink); }
+.hc-desc {
+  font-size: 0.86rem;
+  color: var(--muted);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.hc-meta { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.hc-meta .chip { font-size: 0.68rem; }
+.hc-delivers { font-family: var(--font-mono); font-size: 0.72rem; color: var(--body); overflow-wrap: anywhere; }
+
+/* ---------- briefing ---------- */
+.briefing h2 { margin: 0 0 0.35rem; }
+.briefing-desc { max-width: 48rem; }
+.squad {
+  list-style: none;
+  padding: 0;
+  margin: 0.75rem 0 0.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.squad-member {
+  display: flex;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.15rem 0;
+  gap: 0.45rem;
+  padding: 0.3rem 0.65rem 0.3rem 0.3rem;
+  background: var(--sunk);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius);
 }
-.processing-inline-text {
+.sm-text { display: grid; line-height: 1.15; }
+.sm-name { font-weight: 600; font-size: 0.86rem; color: var(--ink); }
+.sm-kind { font-family: var(--font-mono); font-size: 0.66rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.briefing-details { margin: 0.75rem 0 0; }
+.workdir-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+.workdir-row .lbl { min-width: 8.5rem; }
+
+/* ---------- progress ---------- */
+.progress-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.75rem; flex-wrap: wrap; }
+.processing {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--hair);
+}
+.processing-text { color: var(--ink); font-weight: 500; }
+.idle-hint { margin: 0.6rem 0 0; }
+
+/* ---------- live feed ---------- */
+.feed {
+  list-style: none;
   margin: 0;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  max-height: 60vh;
+  overflow-y: auto;
 }
-.orbital-loader {
-  position: relative;
-  width: 64px;
-  height: 64px;
+.msg {
+  display: grid;
+  grid-template-columns: 2.4rem minmax(0, 1fr);
+  gap: 0.65rem;
+  padding: 0.65rem 0.9rem;
+  border-bottom: 1px solid var(--hair);
 }
-.orbital-loader-inline {
-  width: 22px;
-  height: 22px;
+.msg:last-child { border-bottom: 0; }
+.msg-avatar { display: flex; justify-content: center; padding-top: 0.1rem; }
+.avatar-fallback {
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 600;
+  background: var(--sunk);
+  color: var(--muted);
+}
+.msg-user .avatar-fallback { background: var(--ink); color: var(--paper); }
+.msg-body { min-width: 0; }
+.msg-head { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.15rem; }
+.msg-speaker { font-weight: 600; color: var(--ink); font-size: 0.92rem; }
+.msg-role {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.msg-time { margin-left: auto; font-family: var(--font-mono); font-size: 0.7rem; color: var(--muted); }
+.msg-text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--body);
+}
+.msg-user { background: var(--sunk); }
+.msg-user .msg-text { color: var(--ink); }
+.msg-system .msg-text { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); }
+.msg-orchestrator .msg-speaker::before {
+  content: "";
+  display: inline-block;
+  width: 0.6rem;
+  height: 3px;
+  background: var(--red);
+  margin-right: 0.4rem;
+  vertical-align: middle;
+}
+.followup-feed { max-height: none; margin-bottom: 1rem; }
+.followup-feed .msg { grid-template-columns: minmax(0, 1fr); }
+
+/* ---------- delivery ---------- */
+.delivery { border-top-color: var(--ok); }
+.deliverable {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.9rem 1rem;
+  margin: 0.25rem 0 0.9rem;
+  background: var(--ok-soft);
+  border: 1px solid var(--ok);
+  border-radius: var(--radius);
+}
+.deliverable-file { display: flex; align-items: center; gap: 0.8rem; min-width: 0; }
+.file-glyph {
+  width: 2.6rem;
+  height: 2.6rem;
+  display: inline-grid;
+  place-items: center;
+  font-size: 1.3rem;
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  color: var(--paper);
   flex: 0 0 auto;
 }
-.ring {
-  position: absolute;
-  inset: 0;
-  border-radius: 999px;
-  border: 2px solid transparent;
+.file-text { display: grid; gap: 0.2rem; min-width: 0; }
+.file-name { font-family: var(--font-display); font-weight: 800; font-size: 1.25rem; color: var(--ink); letter-spacing: -0.01em; }
+.file-path { background: transparent; border: 0; padding: 0; font-size: 0.76rem; color: var(--body); }
+.delivery-title { margin-top: 0.5rem; }
+.handoff-title { margin: 1rem 0 0.35rem; }
+.paste-handoff-markdown {
+  width: 100%;
+  min-height: 12rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  background: var(--sunk);
+  white-space: pre;
+  overflow-x: auto;
+  margin-bottom: 0.6rem;
 }
-.ring-a {
-  border-top-color: #8fb4ff;
-  animation: spin-cw 1.3s linear infinite;
+.artifact-list { list-style: none; padding: 0; margin: 0.4rem 0 0; display: grid; gap: 0.35rem; }
+.artifact-list li { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.redo { margin-top: 0.6rem; }
+
+/* ---------- triggers / runs ---------- */
+.row-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--hair);
 }
-.ring-b {
-  inset: 7px;
-  border-right-color: #7fd5b4;
-  animation: spin-ccw 1s linear infinite;
+.row-meta { display: grid; gap: 0.25rem; min-width: 0; }
+.row-line { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.runs { list-style: none; padding: 0; margin: 0; }
+.run-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.4rem;
+  border-top: 1px solid var(--hair);
 }
-.ring-c {
-  inset: 14px;
-  border-bottom-color: #c79cff;
-  animation: spin-cw 0.8s linear infinite;
+.run-prompt { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.9rem; }
+.run-time { font-size: 0.72rem; color: var(--muted); }
+.run-id { grid-column: 2 / -1; font-size: 0.7rem; background: transparent; border: 0; padding: 0; color: var(--muted); }
+.run-highlight { background: var(--red-soft); box-shadow: inset 3px 0 0 var(--red); }
+
+@media (max-width: 1180px) {
+  .hordes-layout { grid-template-columns: minmax(0, 1fr); }
+  .picker { position: static; }
+  .picker-list { grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); }
 }
-.core {
-  position: absolute;
-  inset: 24px;
-  border-radius: 999px;
-  background: radial-gradient(circle at 35% 35%, #dbe7ff, #5f88da);
-  box-shadow: 0 0 14px rgba(143, 180, 255, 0.65);
+@media (max-width: 700px) {
+  .run-row { grid-template-columns: auto minmax(0, 1fr); }
+  .run-time { grid-column: 2; }
 }
-.orbital-loader-inline .ring {
-  border-width: 1.5px;
-}
-.orbital-loader-inline .ring-b {
-  inset: 4px;
-}
-.orbital-loader-inline .ring-c {
-  inset: 8px;
-}
-.orbital-loader-inline .core {
-  inset: 10px;
-  box-shadow: 0 0 8px rgba(143, 180, 255, 0.55);
-}
-@keyframes spin-cw {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-@keyframes spin-ccw {
-  from { transform: rotate(360deg); }
-  to { transform: rotate(0deg); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .ring-a,
-  .ring-b,
-  .ring-c {
-    animation-duration: 0s;
-    animation-iteration-count: 1;
-  }
-}
-button { background: #2a3142; border: 1px solid #3d4658; color: #c8cfdd; padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; margin-right: 0.5rem; }
-button.primary { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
-.icon-btn { width: 34px; height: 34px; padding: 0; font-size: 1rem; line-height: 1; margin-right: 0; }
-.inline-btn {
-  padding: 0.2rem 0.5rem;
-  font-size: 0.78rem;
-  margin-right: 0;
-}
-.cancel-btn { border-color: #8a4b3b; color: #e0a184; }
 </style>

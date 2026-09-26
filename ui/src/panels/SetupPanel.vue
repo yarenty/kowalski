@@ -175,33 +175,53 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="setup">
-    <header>
-      <h2>Setup</h2>
-      <p class="muted">Three answers and the rookery is ready. Everything lands in <code>{{ status?.write_path ?? "config.toml" }}</code>; edit it by hand any time.</p>
+  <section class="page-narrow setup">
+    <header class="page-head">
+      <div>
+        <p class="eyebrow">Setup // 3 steps</p>
+        <h1>Get the rookery ready</h1>
+        <p class="lead">
+          Three answers and your penguins can work. Everything lands in
+          <code>{{ status?.write_path ?? "config.toml" }}</code>; you can edit it by hand any time.
+        </p>
+      </div>
     </header>
 
-    <p v-if="notice" class="notice">{{ notice }}</p>
-    <p v-if="err" class="err">{{ err }}</p>
+    <p v-if="notice" class="note note-info" role="status">{{ notice }}</p>
+    <p v-if="err" class="note note-err" role="alert">{{ err }}</p>
 
-    <ol class="steps" v-if="status">
-      <li>
-        <h3><span class="n">1</span> Which brain?</h3>
-        <div class="choices">
-          <label :class="{ on: provider === 'ollama' }">
+    <ol v-if="status" class="steps">
+      <li class="step card">
+        <div class="step-head">
+          <span class="n" aria-hidden="true">1</span>
+          <div>
+            <p class="eyebrow plain">Step 1 of 3 · Model</p>
+            <h2>Which brain?</h2>
+          </div>
+        </div>
+        <div class="choices" role="radiogroup" aria-label="Model provider">
+          <label class="choice" :class="{ on: provider === 'ollama' }">
             <input v-model="provider" type="radio" value="ollama" />
-            <b>Local, free</b> — Ollama on this machine
-            <small>{{ status.ollama.reachable ? `running at ${status.ollama.url}, ${status.ollama.models.length} model(s)` : "not running (install from ollama.com)" }}</small>
+            <span class="choice-text">
+              <b>Local, free</b> — Ollama on this machine
+              <small>
+                <span class="status-dot" :class="status.ollama.reachable ? 'dot-ok' : 'dot-off'" aria-hidden="true"></span>
+                {{ status.ollama.reachable ? `running at ${status.ollama.url}, ${status.ollama.models.length} model(s)` : "not running (install from ollama.com)" }}
+              </small>
+            </span>
           </label>
-          <label :class="{ on: provider === 'openai' }">
+          <label class="choice" :class="{ on: provider === 'openai' }">
             <input v-model="provider" type="radio" value="openai" />
-            <b>Hosted</b> — any OpenAI-compatible endpoint, your own key
-            <small>stronger answers; the provider bills you per use</small>
+            <span class="choice-text">
+              <b>Hosted</b> — any OpenAI-compatible endpoint, your own key
+              <small>stronger answers; the provider bills you per use</small>
+            </span>
           </label>
         </div>
 
         <div v-if="provider === 'ollama'" class="fields">
-          <label>Model
+          <label class="field">
+            <span>Model</span>
             <select v-if="status.ollama.models.length" v-model="ollamaModel">
               <option v-for="m in status.ollama.models" :key="m" :value="m">{{ m }}</option>
             </select>
@@ -211,85 +231,140 @@ onMounted(async () => {
         </div>
 
         <div v-else class="fields">
-          <label>Provider
+          <label class="field">
+            <span>Provider</span>
             <select v-model="preset" @change="applyPreset">
               <option v-for="(p, k) in PRESETS" :key="k" :value="k">{{ p.label }}</option>
             </select>
           </label>
-          <label>Endpoint <input v-model="baseUrl" placeholder="https://…/v1" spellcheck="false" /></label>
-          <label>Model <input v-model="hostedModel" spellcheck="false" /></label>
-          <label>API key
+          <label class="field"><span>Endpoint</span><input v-model="baseUrl" placeholder="https://…/v1" spellcheck="false" /></label>
+          <label class="field"><span>Model</span><input v-model="hostedModel" spellcheck="false" /></label>
+          <label class="field">
+            <span>API key</span>
             <input v-model="apiKey" type="password" autocomplete="off" :placeholder="status.has_api_key ? 'saved; leave empty to keep it' : 'sk-…'" />
           </label>
           <p class="muted small">The key is stored in your config file with owner-only permissions (or set <code>OPENAI_API_KEY</code> and leave this empty).</p>
         </div>
 
         <div class="row">
-          <button class="ghost" :disabled="busy !== null" @click="testModel">{{ busy === "check" ? "Checking…" : "Check" }}</button>
-          <span v-if="check" :class="check.ok ? 'ok' : 'err'">{{ check.message }}</span>
+          <button type="button" :disabled="busy !== null" @click="testModel">{{ busy === "check" ? "Checking…" : "Check the model" }}</button>
+          <span v-if="check" class="check-result" :class="check.ok ? 'check-ok' : 'check-err'" role="status">
+            <span aria-hidden="true">{{ check.ok ? "✓" : "✕" }}</span> {{ check.message }}
+          </span>
         </div>
       </li>
 
-      <li>
-        <h3><span class="n">2</span> Files and the web</h3>
+      <li class="step card">
+        <div class="step-head">
+          <span class="n" aria-hidden="true">2</span>
+          <div>
+            <p class="eyebrow plain">Step 2 of 3 · Files folder</p>
+            <h2>Files and the web</h2>
+          </div>
+        </div>
         <div class="fields">
-          <label>Folder <input v-model="filesDir" placeholder="~/Documents/kowalski" spellcheck="false" /></label>
+          <label class="field"><span>Folder</span><input v-model="filesDir" placeholder="~/Documents/kowalski" spellcheck="false" /></label>
         </div>
         <p class="muted small">Chat's file tool reads and writes only inside this folder. Leave empty to decide per chat.</p>
-        <div class="fields" style="margin-top:0.8rem">
-          <label>Web search (optional)
+        <div class="fields two">
+          <label class="field">
+            <span>Web search (optional)</span>
             <select v-model="searchProvider">
               <option value="brave">Brave Search</option>
               <option value="staan">Staan (European index)</option>
             </select>
           </label>
-          <label>Search API key
+          <label class="field">
+            <span>Search API key</span>
             <input v-model="searchKey" type="password" autocomplete="off" :placeholder="status.web_search ? 'web search is on; leave empty to keep it' : (searchProvider === 'staan' ? 'Staan API key' : 'Brave Search API key')" />
           </label>
         </div>
         <p class="muted small">Agents can always read a web page you give them. To let them search too, paste a <a href="https://brave.com/search/api/" target="_blank" rel="noopener">Brave Search</a> or <a href="https://staan.ai/" target="_blank" rel="noopener">Staan</a> key; both have a free monthly allowance.</p>
       </li>
 
-      <li>
-        <h3><span class="n">3</span> Spreadsheets as SQL (tableski)</h3>
-        <p v-if="status.tableski.connected" class="ok">Connected{{ status.tableski.signed_in ? " (signed in)" : "" }}: {{ status.tableski.url }}</p>
-        <p v-else class="muted">Optional. Sign in to tableski.io and your agents can query your uploaded spreadsheets with SQL. Free plan, no card.</p>
+      <li class="step card">
+        <div class="step-head">
+          <span class="n" :class="{ done: status.tableski.connected }" aria-hidden="true">{{ status.tableski.connected ? "✓" : "3" }}</span>
+          <div>
+            <p class="eyebrow plain">Step 3 of 3 · tableski (optional)</p>
+            <h2>Spreadsheets as SQL</h2>
+          </div>
+        </div>
+        <p v-if="status.tableski.connected" class="note note-ok">
+          <strong>Connected</strong>{{ status.tableski.signed_in ? " (signed in)" : "" }}: {{ status.tableski.url }}
+        </p>
+        <p v-else>Sign in to tableski.io and your agents can query your uploaded spreadsheets with SQL. Free plan, no card.</p>
         <div class="row">
-          <button v-if="!status.tableski.connected" class="ghost" :disabled="busy !== null" @click="connectTableski">{{ busy === "tableski" ? "Opening tableski…" : "Connect tableski" }}</button>
-          <button v-else class="ghost" :disabled="busy !== null" @click="disconnectTableski">Disconnect</button>
+          <button v-if="!status.tableski.connected" type="button" :disabled="busy !== null" @click="connectTableski">{{ busy === "tableski" ? "Opening tableski…" : "Connect tableski" }}</button>
+          <button v-else type="button" class="danger" :disabled="busy !== null" @click="disconnectTableski">Disconnect</button>
         </div>
       </li>
     </ol>
+    <p v-else-if="!err" class="muted">Loading your current settings…</p>
 
-    <div class="save" v-if="status">
-      <button :disabled="busy !== null" @click="saveAll">{{ busy === "save" || busy === "restart" ? "Working…" : "Save and restart" }}</button>
+    <div v-if="status" class="save">
+      <p class="muted small">Saving restarts kowalski so every agent picks up the new settings.</p>
+      <button type="button" class="primary" :disabled="busy !== null" @click="saveAll">{{ busy === "save" || busy === "restart" ? "Working…" : "Save and restart" }}</button>
     </div>
   </section>
 </template>
 
 <style scoped>
-.setup { max-width: 46rem; margin: 0 auto; }
-header h2 { margin: 0 0 0.3rem; font-size: 1.2rem; }
-.muted { color: #9aa3b2; }
-.small { font-size: 0.85rem; }
-code { background: #1c1f27; border: 1px solid #2a2e38; border-radius: 4px; padding: 0 0.3rem; }
-.notice { border-left: 3px solid #7aa2f7; background: #1a1d25; padding: 0.6rem 0.8rem; border-radius: 4px; }
-.err { color: #f7768e; }
-.ok { color: #9ece6a; }
-.steps { list-style: none; padding: 0; margin: 1.2rem 0; display: grid; gap: 1rem; }
-.steps > li { border: 1px solid #2a2e38; border-radius: 10px; padding: 1rem 1.1rem; background: #15171e; }
-h3 { margin: 0 0 0.7rem; font-size: 1rem; display: flex; align-items: center; gap: 0.5rem; }
-.n { display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem; border-radius: 50%; background: #7aa2f7; color: #0f1117; font-size: 0.8rem; font-weight: 700; }
-.choices { display: grid; gap: 0.5rem; margin-bottom: 0.8rem; }
-.choices label { border: 1px solid #2a2e38; border-radius: 8px; padding: 0.6rem 0.8rem; cursor: pointer; display: block; }
-.choices label.on { border-color: #7aa2f7; background: #1a1f2e; }
-.choices small { display: block; color: #9aa3b2; margin: 0.2rem 0 0 1.4rem; }
-.fields { display: grid; gap: 0.6rem; }
-.fields label { display: grid; gap: 0.25rem; font-size: 0.9rem; }
-.fields input, .fields select { background: #0f1117; color: inherit; border: 1px solid #2a2e38; border-radius: 6px; padding: 0.5rem 0.6rem; font: inherit; }
-.row { display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap; margin-top: 0.7rem; }
-button { background: #7aa2f7; color: #0f1117; border: 0; border-radius: 6px; padding: 0.55rem 1rem; font-weight: 600; cursor: pointer; }
-button.ghost { background: transparent; color: #c0caf5; border: 1px solid #3b4252; }
-button:disabled { opacity: 0.5; cursor: default; }
-.save { display: flex; justify-content: flex-end; }
+.steps { list-style: none; padding: 0; margin: 0 0 1.25rem; display: grid; gap: 1rem; }
+.step { padding: 1.25rem 1.35rem; }
+.step-head { display: flex; align-items: center; gap: 0.9rem; margin-bottom: 1rem; }
+.step-head h2 { margin: 0; font-size: 1.25rem; }
+.step-head .eyebrow { margin: 0 0 0.15rem; }
+.n {
+  width: 2.4rem;
+  height: 2.4rem;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.15rem;
+}
+.n.done { background: var(--ok); color: var(--surface); }
+.choices { display: grid; gap: 0.5rem; margin-bottom: 1rem; }
+.choice {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.75rem 0.9rem;
+  cursor: pointer;
+  background: var(--surface);
+}
+.choice:hover { border-color: var(--muted); }
+.choice.on { border-color: var(--ink); box-shadow: inset 4px 0 0 var(--red); }
+.choice input { margin-top: 0.25rem; }
+.choice-text small { display: flex; align-items: center; gap: 0.4rem; color: var(--muted); margin-top: 0.2rem; font-size: 0.85rem; }
+.status-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; flex: 0 0 auto; }
+.dot-ok { background: var(--ok); }
+.dot-off { background: var(--muted); }
+.fields { display: grid; gap: 0.8rem; margin-bottom: 0.4rem; }
+.fields.two { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); margin-top: 1rem; }
+.row { display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap; margin-top: 0.8rem; }
+.check-result { font-weight: 500; padding: 0.35rem 0.6rem; border-radius: var(--radius-sm); }
+.check-ok { color: var(--ok); background: var(--surface); border: 1px solid var(--ok); }
+.check-err { color: var(--red-ink); background: var(--red-soft); border: 1px solid var(--red); }
+.save {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding-top: 1rem;
+  border-top: 2px solid var(--ink);
+}
+.save p { margin: 0; }
+.save .primary { padding: 0.7rem 1.5rem; font-size: 1rem; }
+@media (max-width: 720px) {
+  .fields.two { grid-template-columns: 1fr; }
+}
 </style>

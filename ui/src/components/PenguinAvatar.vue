@@ -70,8 +70,9 @@ function onImgError() {
   max-width: var(--penguin-avatar-size);
   max-height: var(--penguin-avatar-size);
   object-fit: contain;
-  border-radius: 6px;
+  border-radius: var(--radius);
   flex-shrink: 0;
-  background: #12161f;
+  /* the artwork carries its own outline; no tile behind it */
+  background: transparent;
 }
 </style>

@@ -27,7 +27,7 @@ episodic_path = "db/episodic_buffer"
 [horde]
 clean_on_startup = true
 # Steps that run commands (`verify`) or write into your project (`apply`) wait for your
-# approval in the Horde tab. Set to false only for hordes you trust completely.
+# approval in the Hordes screen. Set to false only for hordes you trust completely.
 # confirm_commands = true
 
 # Auth: off on 127.0.0.1 (single user). Binding kowalski to any other address (--bind 0.0.0.0:3456)

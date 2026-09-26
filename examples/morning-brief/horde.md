@@ -1,7 +1,7 @@
 ---
 id = "morning-brief"
 display_name = "Morning Brief"
-description = "A one-page brief from the pages you follow: what changed, why it matters to you, and the links. Run it now, or switch on the weekday 7:00 schedule in the Horde tab."
+description = "A one-page brief from the pages you follow: what changed, why it matters to you, and the links. Run it now, or switch on the weekday 7:00 schedule in the Hordes screen."
 capability_prefix = "morning-brief"
 pipeline = ["ingest", "brief"]
 default_question = "Write my morning brief."
@@ -33,5 +33,5 @@ for what you told it you care about, and a link to each.
 ## Schedule
 
 The `[[triggers]]` entry runs it at 7:00 on weekdays with the pages above. It ships switched off:
-turn it on in the Horde tab. To follow your own pages on the schedule, copy this folder into your
+turn it on in the Hordes screen. To follow your own pages on the schedule, copy this folder into your
 hordes folder, change `input`, and the copy replaces the built-in one.

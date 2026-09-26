@@ -142,53 +142,33 @@ function save() {
 
 <style scoped>
 .penguin-editor {
-  border: 1px solid #3d5a8c;
-  border-radius: 8px;
-  padding: 0.65rem;
-  background: #1a2230;
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--red);
+  border-radius: var(--radius);
+  padding: 0.9rem;
+  background: var(--surface);
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.65rem;
   max-height: min(70vh, 640px);
   overflow: auto;
 }
-.editor-head {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-}
-.editor-head h4 { margin: 0; font-size: 0.95rem; }
-.tabs { display: flex; gap: 0.35rem; }
+.editor-head { display: flex; align-items: center; gap: 0.6rem; }
+.editor-head h4 { margin: 0; font-size: 1rem; }
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--line); }
 .tabs button {
-  background: #2a3142;
-  border: 1px solid #3d4658;
-  color: #c8cfdd;
-  padding: 0.25rem 0.55rem;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.8rem;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  background: transparent;
 }
-.tabs button.active { background: #3d6cb5; border-color: #5a8fd4; color: #fff; }
-.markdown-pane { display: flex; flex-direction: column; gap: 0.5rem; }
-.field { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.82rem; }
-.field span { color: #8b92a5; }
-.field textarea {
-  background: #12161f;
-  border: 1px solid #2e3648;
-  border-radius: 4px;
-  color: #e2e8f4;
-  padding: 0.35rem 0.45rem;
-  font: inherit;
-}
-.editor-ta { font-size: 0.78rem; line-height: 1.35; resize: vertical; }
+.tabs button:hover:not(:disabled) { background: var(--sunk); color: var(--ink); }
+.tabs button.active { color: var(--ink); border-bottom-color: var(--red); }
+.markdown-pane { display: flex; flex-direction: column; gap: 0.6rem; }
+.field { font-size: 0.85rem; }
+.editor-ta { font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.45; }
 .actions { margin: 0.25rem 0 0; }
-.actions .primary {
-  background: #3d6cb5;
-  border: none;
-  color: #fff;
-  padding: 0.35rem 0.75rem;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.actions .primary:disabled { opacity: 0.6; cursor: default; }
 </style>

@@ -146,37 +146,17 @@ function removeToolId(id: string) {
 </template>
 
 <style scoped>
-.penguin-form { display: flex; flex-direction: column; gap: 0.5rem; }
-.field { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.82rem; }
-.field span { color: #8b92a5; }
-.field input,
-.field textarea,
-.field select {
-  background: #12161f;
-  border: 1px solid #2e3648;
-  border-radius: 4px;
-  color: #e2e8f4;
-  padding: 0.35rem 0.45rem;
-  font: inherit;
-}
+.penguin-form { display: flex; flex-direction: column; gap: 0.65rem; }
+.field { font-size: 0.85rem; }
 .chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.25rem; }
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  background: #2a3142;
-  border-radius: 4px;
-  padding: 0.15rem 0.4rem;
-  font-size: 0.75rem;
-  font-family: ui-monospace, monospace;
-}
 .chip-x {
   border: none;
   background: transparent;
-  color: #8b92a5;
-  cursor: pointer;
-  padding: 0;
+  color: var(--muted);
+  padding: 0 0.1rem;
+  font-weight: 400;
 }
-.tool-add { display: flex; gap: 0.35rem; margin: 0.35rem 0 0; }
+.chip-x:hover:not(:disabled) { color: var(--red-ink); background: transparent; }
+.tool-add { display: flex; gap: 0.4rem; margin: 0.35rem 0 0; }
 .tool-add input { flex: 1; }
 </style>

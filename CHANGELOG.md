@@ -6,6 +6,17 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Fixed
+- The finished-run payload carries the horde's declared hand-off (`HANDOFF.md`, `BRIEF.md`, `NOTE.md`) instead of only a legacy `PASTE_ME.md`, so the Hordes screen shows the answers; the screen renders them as formatted Markdown.
+- A long pipeline no longer widens the Hordes screen past the window; penguin avatars sit on a transparent background.
+- Spreadsheet analyst prompts: "who has the most" questions aggregate and select the measure; the answers may only quote numbers present in the results.
+
+### Changed
+- Operator UI redesigned in the "Commando" theme: penguin black and snow white with one signal-red accent, light and dark modes (with a light / dark / auto toggle), readable type (Archivo, IBM Plex Sans, JetBrains Mono) and WCAG AA contrast; all colours are design tokens in one stylesheet.
+- Plainer navigation: **Hordes** (now the landing screen), **Chat**, **Build** and **Setup**, with the technical screens folded under **Admin**.
+- The Hordes screen shows horde cards (what each needs and delivers), a pipeline stepper, a timestamped live feed and the delivered file with **Open output folder**; a run waiting for approval gets an unmissable approval box, including runs parked before a restart.
+- Setup is a numbered three-step form with clear success and error states; Chat shows distinct message bubbles and the tools used as chips.
+
 ### Documentation
 - New architecture page (`docs/architecture.html`) with diagrams of the system, one run and the run lifecycle; the README carries the new system map.
 - README rewritten around what kowalski does for you; release history lives in the CHANGELOG only.

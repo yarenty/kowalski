@@ -2250,7 +2250,14 @@ impl HordeManager {
                 .filter_map(|s| s.artifact.clone().map(|a| (s.step.clone(), a)))
                 .collect()
         };
-        let paste_path = spec.workdir.join("PASTE_ME.md");
+        // the horde's declared delivery (HANDOFF.md, BRIEF.md, …) when it is Markdown and exists;
+        // hordes that paste their result into PASTE_ME.md keep working
+        let declared = spec.workdir.join(&spec.delivery_root_rel);
+        let paste_path = if spec.delivery_root_rel.ends_with(".md") && declared.is_file() {
+            declared
+        } else {
+            spec.workdir.join("PASTE_ME.md")
+        };
         let handoff_markdown = std::fs::read_to_string(&paste_path).ok().map(|s| {
             const MAX: usize = 48_000;
             if s.len() <= MAX {
@@ -2270,7 +2277,7 @@ impl HordeManager {
                 horde: spec.id.clone(),
                 artifacts: artifacts.clone(),
                 text: Some(format!(
-                    "{} run completed; {} artifact(s). Markdown hand-off: `handoff_markdown` in this event; file `{}`.",
+                    "{} run completed; {} artifact(s). Hand-off: {}.",
                     spec.display_name,
                     artifacts.len(),
                     paste_path.display()

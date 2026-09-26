@@ -36,11 +36,21 @@ Backend or `kowalski-core` changes that touch chat, horde, federation, or delive
 
 ## Conventions
 
+- **Theme (Commando)**: every colour is a design token defined once on `:root` in
+  `src/styles/theme.css` (light, dark via `prefers-color-scheme`, and `data-theme` overrides).
+  Components use only `var(--…)` — no hex literals, gradients or glows. Shared building blocks
+  (buttons, inputs, `.card`, `.badge`, `.chip`, `.note-*`, `.eyebrow`, `.page-head`,
+  `.empty-state`) live there too; scoped styles only add layout. Keep text/background pairs
+  WCAG AA.
+- **Navigation labels**: the rail shows **Hordes** (`federation-run`, default landing tab),
+  **Chat**, **Build** (`rookery`), **Setup**, and an **Admin** group (Federation, MCP servers,
+  Graph, Diagnostics = `home`, About). Help text must use these names.
+
 - Prefer **`fetch`** and small composables; keep `App.vue` readable—extract new tabs into components if they grow.
 - API helpers live in **`src/api.ts`**; extend `ChatStreamEvent` only when the backend adds event types.
 - **API token (only for servers started with `--auth` — auth is off by default):** `src/api.ts` sends `Authorization: Bearer <token>`
   on every call (`?token=` on `EventSource` URLs, which cannot set headers). The token comes
-  from `localStorage` (`kowalski.api_token`, set via **Home tab → API token** or the first-run
+  from `localStorage` (`kowalski.api_token`, set via **Admin → Diagnostics → API token** or the first-run
   prompt in `App.vue`) with a `VITE_API_TOKEN` env fallback for dev. New fetch paths must go
   through `json()` / `streamSse` helpers or add `authHeaders()` themselves.
 - **Tool-aware stream**: checkbox binds to `chatToolsStream` and passes `{ toolsStream: true }` into `chatStream()`.

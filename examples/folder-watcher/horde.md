@@ -1,7 +1,7 @@
 ---
 id = "folder-watcher"
 display_name = "Folder Watcher"
-description = "Drop a document into the inbox folder and get a short note: what it is, the key facts (amounts, dates, people), and what you need to do by when. Switch the watcher on in the Horde tab."
+description = "Drop a document into the inbox folder and get a short note: what it is, the key facts (amounts, dates, people), and what you need to do by when. Switch the watcher on in the Hordes screen."
 capability_prefix = "folder-watcher"
 pipeline = ["ingest", "note"]
 default_question = "Summarise the new document."
@@ -32,5 +32,5 @@ with their deadlines.
 
 ## Switching it on
 
-The watcher ships switched off: turn it on in the Horde tab, then drop files into `inbox/`. A run
+The watcher ships switched off: turn it on in the Hordes screen, then drop files into `inbox/`. A run
 can also be started by hand with one or more file paths.

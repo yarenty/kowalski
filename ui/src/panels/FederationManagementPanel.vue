@@ -55,9 +55,11 @@ const hordeCards = computed(() =>
   })),
 );
 
+const hordesLoaded = ref(false);
 async function loadHordes() {
   const res = await api.hordes();
   hordes.value = res.hordes ?? [];
+  hordesLoaded.value = true;
 }
 
 async function loadRegistry() {
@@ -263,14 +265,19 @@ onMounted(() => void refreshAll());
 </script>
 
 <template>
-  <section class="panel">
-    <h2>Federation Management</h2>
-    <p class="muted">
-      One card per horde. Each horde contains its own internal sub-agent workers.
-    </p>
-    <p><button type="button" class="primary" @click="refreshAll">Refresh</button></p>
+  <section class="page">
+    <header class="page-head">
+      <div>
+        <p class="eyebrow">Admin // federation</p>
+        <h1>Federation</h1>
+        <p class="lead">One card per horde, with its sub-agent workers. Start or stop workers, export or import horde bundles.</p>
+      </div>
+      <div class="page-head-actions">
+        <button type="button" class="primary" @click="refreshAll">Refresh</button>
+      </div>
+    </header>
 
-    <h3>Hordes</h3>
+    <h2 class="section-title">Hordes</h2>
     <p class="import-row">
       <button type="button" :disabled="importBusy" @click="pickImportFile">
         {{ importBusy && !importReport ? "Checking bundle..." : "Import bundle…" }}
@@ -297,12 +304,12 @@ onMounted(() => void refreshAll());
       </ul>
       <p v-for="note in importReport.migrations" :key="note" class="muted">Migrated: {{ note }}</p>
       <p v-if="importReport.triggers_disabled" class="muted">
-        {{ importReport.triggers_disabled }} trigger(s) will be imported disabled — re-enable them on the Horde tab.
+        {{ importReport.triggers_disabled }} trigger(s) will be imported disabled — re-enable them on the Hordes screen.
       </p>
       <p v-if="importReport.steps_isolated" class="muted">
         {{ importReport.steps_isolated }} step(s) will run in a separate process, so a faulty step cannot affect the server.
       </p>
-      <p>
+      <p class="btn-row">
         <button type="button" class="primary" :disabled="importBusy" @click="confirmImport">
           {{ importBusy ? "Importing..." : "Confirm import" }}
         </button>
@@ -310,7 +317,7 @@ onMounted(() => void refreshAll());
       </p>
     </div>
     <p v-if="importAction" class="muted">{{ importAction }}</p>
-    <p v-if="importErr" class="err">{{ importErr }}</p>
+    <p v-if="importErr" class="note note-err">{{ importErr }}</p>
     <div v-if="hordeCards.length" class="cards">
       <article v-for="card in hordeCards" :key="card.horde.id" class="card">
         <header>
@@ -328,9 +335,9 @@ onMounted(() => void refreshAll());
           <span
             v-for="t in card.horde.triggers"
             :key="t.index"
-            class="trigger-badge"
-            :class="t.effective_enabled ? 'trigger-on' : 'trigger-off'"
-            :title="`${t.detail} — ${t.effective_enabled ? 'armed' : 'disabled'}${t.overridden ? ' (operator override)' : ''}; manage on the Horde tab`"
+            class="badge"
+            :class="t.effective_enabled ? 'badge-ok' : 'badge-muted'"
+            :title="`${t.detail} — ${t.effective_enabled ? 'armed' : 'disabled'}${t.overridden ? ' (operator override)' : ''}; manage on the Hordes screen`"
           >
             {{ t.detail }}{{ t.effective_enabled ? "" : " · off" }}
           </span>
@@ -348,7 +355,7 @@ onMounted(() => void refreshAll());
           </span>
           <button
             type="button"
-            class="inline-btn"
+            class="inline-btn danger"
             :disabled="cleanBusyHordeId === card.horde.id"
             title="Delete workdir debug tree, legacy paths, agents_log, and PASTE_ME.md for this horde"
             @click="cleanHordeWorkdir(card.horde.id)"
@@ -356,7 +363,7 @@ onMounted(() => void refreshAll());
             {{ cleanBusyHordeId === card.horde.id ? "…" : "FORCE Clean" }}
           </button>
         </p>
-        <p>
+        <p class="btn-row">
           <button
             type="button"
             class="primary"
@@ -399,12 +406,13 @@ onMounted(() => void refreshAll());
         </details>
       </article>
     </div>
-    <p v-else class="muted">No horde cards found.</p>
+    <p v-else-if="!hordesLoaded" class="muted">Loading hordes…</p>
+    <div v-else class="empty-state"><p>No hordes found. Build one on the Build screen or import a bundle above.</p></div>
     <p v-if="workerAction" class="muted">{{ workerAction }}</p>
     <p v-if="pathAction" class="muted">{{ pathAction }}</p>
-    <p v-if="workerErr" class="err">{{ workerErr }}</p>
+    <p v-if="workerErr" class="note note-err">{{ workerErr }}</p>
 
-    <h3>Registry (Active Agents)</h3>
+    <h2 class="section-title">Registry (active agents)</h2>
     <div v-if="federationAgents.length" class="cards">
       <article v-for="agent in federationAgents" :key="agent.id" class="card">
         <header><strong>{{ agent.id }}</strong><span class="status-badge status-ok">ACTIVE</span></header>
@@ -417,30 +425,23 @@ onMounted(() => void refreshAll());
 </template>
 
 <style scoped>
-.panel h2 { margin-top: 0; font-size: 1.1rem; }
-.panel h3 { font-size: 1rem; margin-top: 1.1rem; }
-.cards { display: grid; gap: 0.45rem; }
-.card { border: 1px solid #2a2e38; border-radius: 8px; background: #171b22; padding: 0.55rem 0.65rem; }
-.sub-list { display: grid; gap: 0.35rem; margin-top: 0.45rem; }
-.sub-card { border: 1px solid #2a2e38; border-radius: 6px; background: #13171e; padding: 0.45rem 0.55rem; }
-.card details { margin-top: 0.35rem; }
-.card summary { color: #9aa8c0; cursor: pointer; font-size: 0.86rem; }
-.card header { display: flex; justify-content: space-between; align-items: center; }
-.status-badge { border-radius: 999px; font-size: 0.72rem; padding: 0.12rem 0.45rem; border: 1px solid #2f7c47; color: #8de3a8; background: #153323; }
-.status-off { border-color: #555f74; color: #b0b7c7; background: #2a3142; }
+.cards { gap: 1rem; }
+.card p { margin: 0.25rem 0; }
+.card details { margin-top: 0.6rem; }
+.sub-list { display: grid; gap: 0.4rem; margin-top: 0.5rem; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); }
+.sub-card {
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-sm);
+  background: var(--sunk);
+  padding: 0.5rem 0.65rem;
+}
+.sub-card header { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.sub-card p { margin: 0.2rem 0 0; font-size: 0.85rem; }
 .trigger-row { display: flex; gap: 0.35rem; flex-wrap: wrap; }
-.trigger-badge { border-radius: 999px; font-size: 0.72rem; padding: 0.12rem 0.45rem; border: 1px solid #555f74; color: #b0b7c7; background: #2a3142; }
-.trigger-on { border-color: #5a7ab8; color: #9cc2ff; background: #1d2a42; }
-.trigger-off { border-color: #8a4b3b; color: #e0a184; background: #2b1c15; }
-.muted { color: #6a7285; font-size: 0.9rem; }
 .workdir-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
-.clean-on-row { align-items: center; justify-content: space-between; gap: 0.75rem; }
-.err { color: #e88; font-size: 0.9rem; }
-button { background: #2a3142; border: 1px solid #3d4658; color: #c8cfdd; padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; margin-right: 0.5rem; }
-button.primary { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
-.inline-btn { padding: 0.2rem 0.5rem; font-size: 0.78rem; margin-right: 0; }
-.import-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.import-row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 .hidden-input { display: none; }
-.import-report { margin-bottom: 0.55rem; }
+.import-report { margin-bottom: 0.75rem; border-top-color: var(--steel); }
 .import-report ul { margin: 0.35rem 0; padding-left: 1.2rem; }
+.btn-row { margin-top: 0.6rem; }
 </style>

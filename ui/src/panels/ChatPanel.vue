@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import PenguinAvatar from "../components/PenguinAvatar.vue";
@@ -33,6 +33,27 @@ const emit = defineEmits<{
 }>();
 
 const chatIn = ref("");
+
+/** Tool names called in the last inspected payload ("View sent messages"), shown as chips. */
+const toolCalls = computed((): string[] => {
+  if (!props.chatMessagesView) return [];
+  try {
+    const payload = JSON.parse(props.chatMessagesView) as {
+      messages?: Array<{ role?: string; tool_calls?: unknown[] | null }>;
+    };
+    const names: string[] = [];
+    for (const m of payload.messages ?? []) {
+      for (const call of m.tool_calls ?? []) {
+        const c = call as { name?: string; function?: { name?: string } };
+        const name = c.function?.name ?? c.name;
+        if (name) names.push(name);
+      }
+    }
+    return names;
+  } catch {
+    return [];
+  }
+});
 const transcriptEl = ref<HTMLElement | null>(null);
 
 async function revealLatestAssistantTurn() {
@@ -108,14 +129,25 @@ function send(stream: boolean) {
 </script>
 
 <template>
-  <section class="panel chat-layout">
-    <h2>Chat</h2>
-    <p class="hint">
-      Ask follow-ups in the same session. Use <strong>New conversation</strong> to start a fresh one.
-    </p>
-    <div class="meta">
-      <p v-if="activeConversation?.sessionId" class="muted">Session: {{ activeConversation.sessionId }}</p>
-      <p v-if="activeConversation?.chatMeta" class="muted">{{ activeConversation.chatMeta }}</p>
+  <section class="page chat-layout">
+    <header class="page-head">
+      <div>
+        <p class="eyebrow">Chat // one penguin, your tools</p>
+        <h1>Chat</h1>
+        <p class="lead">
+          Ask anything; follow-ups stay in the same conversation. Start a <strong>New conversation</strong> for a fresh topic.
+        </p>
+      </div>
+      <div class="page-head-actions">
+        <button type="button" :disabled="resetBusy" @click="emit('new-conversation')">
+          {{ resetBusy ? "Resetting…" : "New conversation" }}
+        </button>
+      </div>
+    </header>
+
+    <div v-if="activeConversation?.sessionId || activeConversation?.chatMeta" class="meta">
+      <span v-if="activeConversation?.sessionId" class="chip" title="Session id">{{ activeConversation.sessionId }}</span>
+      <span v-if="activeConversation?.chatMeta" class="chip">{{ activeConversation.chatMeta }}</span>
     </div>
 
     <div ref="transcriptEl" class="chat-history" @click="onTranscriptClick">
@@ -132,196 +164,176 @@ function send(stream: boolean) {
             variant="inline"
             alt="Assistant"
           />
-          <span>{{ turn.role === "user" ? "You" : "Assistant" }}</span>
+          <span class="turn-who">{{ turn.role === "user" ? "You" : "Kowalski" }}</span>
         </header>
         <pre v-if="turn.role === 'user'" class="chat-turn-content">{{ turn.content }}</pre>
         <div
           v-else
           class="chat-turn-content md-content"
+          :class="{ 'is-error': turn.content.startsWith('[error]') }"
           v-html="renderAssistantMarkdown(turn.content)"
         />
       </article>
-      <p v-if="!(activeConversation?.turns?.length)" class="muted">
-        Select conversation from left or start a new one.
-      </p>
+      <div v-if="!(activeConversation?.turns?.length)" class="empty-state chat-empty">
+        <h3>Start a conversation</h3>
+        <p>Type a question below — for example “Summarise https://example.com in five bullet points”.</p>
+      </div>
+      <p v-if="chatBusy" class="typing" aria-live="polite"><span class="dot-running" aria-hidden="true"></span> Kowalski is thinking…</p>
     </div>
 
     <div class="composer">
-      <label class="chk">
-        <input
-          :checked="chatToolsStream"
-          type="checkbox"
-          @change="emit('toggle-tools-stream', ($event.target as HTMLInputElement).checked)"
+      <div v-if="toolCalls.length" class="tools-used" aria-label="Tools used in this conversation">
+        <span class="lbl">Tools used</span>
+        <span v-for="(t, i) in toolCalls" :key="`${t}-${i}`" class="chip tool-chip">⚙ {{ t }}</span>
+      </div>
+      <label class="field composer-field">
+        <span class="sr-only">Message</span>
+        <textarea
+          v-model="chatIn"
+          rows="3"
+          class="ta"
+          placeholder="Type your message…  (Ctrl/Cmd + Enter to send)"
+          @keydown.enter.ctrl.prevent="send(false)"
+          @keydown.enter.meta.prevent="send(false)"
         />
-        Tool-aware stream (<code>tools_stream</code>)
       </label>
-      <label class="chk">
-        <input
-          :checked="chatUseMemory"
-          type="checkbox"
-          @change="emit('toggle-use-memory', ($event.target as HTMLInputElement).checked)"
-        />
-        Use memory (<code>use_memory</code>)
-      </label>
-      <textarea
-        v-model="chatIn"
-        rows="3"
-        class="ta"
-        placeholder="Type your message..."
-      />
-      <p class="actions">
-        <button type="button" class="primary" :disabled="chatBusy" @click="send(false)">
-          {{ chatBusy ? "Sending..." : "Send" }}
-        </button>
-        <button type="button" :disabled="chatBusy" @click="send(true)">
-          {{ chatBusy ? "Sending..." : "Send (SSE)" }}
-        </button>
-        <button type="button" :disabled="resetBusy" @click="emit('new-conversation')">
-          {{ resetBusy ? "Resetting..." : "New conversation" }}
-        </button>
-        <button type="button" :disabled="chatMessagesBusy" @click="emit('inspect-chat-messages')">
-          {{ chatMessagesBusy ? "Loading..." : "View sent messages" }}
-        </button>
-      </p>
+      <div class="composer-row">
+        <div class="toggles">
+          <label class="chk">
+            <input
+              :checked="chatToolsStream"
+              type="checkbox"
+              @change="emit('toggle-tools-stream', ($event.target as HTMLInputElement).checked)"
+            />
+            Use tools <code>tools_stream</code>
+          </label>
+          <label class="chk">
+            <input
+              :checked="chatUseMemory"
+              type="checkbox"
+              @change="emit('toggle-use-memory', ($event.target as HTMLInputElement).checked)"
+            />
+            Use memory <code>use_memory</code>
+          </label>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="ghost sm" :disabled="chatMessagesBusy" @click="emit('inspect-chat-messages')">
+            {{ chatMessagesBusy ? "Loading…" : "View sent messages" }}
+          </button>
+          <button type="button" :disabled="chatBusy" @click="send(true)">
+            {{ chatBusy ? "Sending…" : "Send (SSE)" }}
+          </button>
+          <button type="button" class="primary" :disabled="chatBusy" @click="send(false)">
+            {{ chatBusy ? "Sending…" : "Send" }}
+          </button>
+        </div>
+      </div>
       <details v-if="chatMessagesView" class="raw-messages">
         <summary>Last sent messages payload</summary>
-        <pre>{{ chatMessagesView }}</pre>
+        <pre class="json">{{ chatMessagesView }}</pre>
       </details>
-      <p v-if="chatErr" class="err">{{ chatErr }}</p>
+      <p v-if="chatErr" class="note note-err">{{ chatErr }}</p>
     </div>
   </section>
 </template>
 
 <style scoped>
-.panel h2 { margin-top: 0; font-size: 1.1rem; }
-.hint { font-size: 0.9rem; color: #8b92a5; margin-bottom: 0.5rem; }
-.muted { color: #6a7285; font-size: 0.9rem; margin: 0; }
-.chat-layout { display: flex; flex-direction: column; gap: 0.5rem; min-height: calc(100vh - 12rem); }
-.meta { min-height: 1.2rem; }
+.chat-layout { display: flex; flex-direction: column; min-height: calc(100vh - 4.5rem); max-width: 60rem; }
+.chat-layout .page-head { margin-bottom: 0.9rem; }
+.meta { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+.meta .chip { font-size: 0.7rem; color: var(--muted); }
 .chat-history {
   flex: 1;
-  min-height: 0;
-  max-height: calc(100vh - 25rem);
-  overflow: auto;
-  display: grid;
-  align-content: start;
-  gap: 0.5rem;
-  border: 1px solid #2a2e38;
-  border-radius: 8px;
-  padding: 0.6rem 0.6rem 5.5rem;
-  background: #141820;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0.5rem 0 1.5rem;
 }
-.chat-turn {
-  align-self: start;
-  border: 1px solid #2a2e38;
-  border-radius: 8px;
-  padding: 0.55rem 0.65rem;
-  background: #171b22;
-  width: fit-content;
-  max-width: 100%;
+.chat-turn { max-width: min(46rem, 92%); }
+.turn-head { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.3rem; }
+.turn-who {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
-.turn-user {
-  border-color: #6f8fc7;
-  max-width: 80%;
-}
-.turn-user { justify-self: end; }
-.chat-turn header { color: #9aa8c0; font-size: 0.8rem; margin-bottom: 0.2rem; }
-.turn-head { display: flex; align-items: center; gap: 0.4rem; }
 .chat-turn-content {
   margin: 0;
-  white-space: pre-wrap;
+  font-size: 0.98rem;
+  line-height: 1.6;
+  color: var(--body);
   word-break: break-word;
-  color: #d2d9e8;
-  font-size: 0.85rem;
-  line-height: 1.4;
 }
-.md-content {
-  white-space: normal;
+.turn-user { align-self: flex-end; }
+.turn-user .turn-head { justify-content: flex-end; }
+.turn-user .chat-turn-content {
+  white-space: pre-wrap;
+  font-family: var(--font-body);
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0.7rem 0.95rem;
+  border-radius: var(--radius-lg) var(--radius-lg) 2px var(--radius-lg);
 }
-.md-content :deep(p) {
-  margin: 0.35rem 0;
+.turn-assistant .chat-turn-content {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--red);
+  padding: 0.6rem 1rem;
+  border-radius: 2px var(--radius-lg) var(--radius-lg) var(--radius-lg);
 }
-.md-content :deep(pre) {
-  background: #10141b;
-  border: 1px solid #2a3142;
-  border-radius: 6px;
-  padding: 0.75rem 0.5rem 0.5rem;
-  overflow-x: auto;
-  margin: 0;
-}
-.md-content :deep(.code-block-wrap) {
-  margin: 0.45rem 0;
-  position: relative;
-}
+.turn-assistant .chat-turn-content.is-error { border-left-color: var(--red); background: var(--red-soft); color: var(--ink); }
+.md-content :deep(.code-block-wrap) { position: relative; margin: 0.5rem 0; }
+.md-content :deep(.code-block-wrap pre) { margin: 0; padding-right: 2.4rem; }
 .md-content :deep(.copy-code-btn) {
   position: absolute;
-  top: 0.35rem;
-  right: 0.35rem;
-  width: 1.5rem;
-  height: 1.5rem;
-  background: #2a3142;
-  border: 1px solid #3d4658;
-  color: #c8cfdd;
-  border-radius: 5px;
+  top: 0.4rem;
+  right: 0.4rem;
+  width: 1.7rem;
+  height: 1.7rem;
   padding: 0;
-  line-height: 1;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--body);
+  border-radius: var(--radius-sm);
+  font-weight: 400;
 }
-.md-content :deep(.copy-code-btn)::before {
-  content: "⧉";
-  font-size: 0.9rem;
-}
-.md-content :deep(.copy-code-btn.copied) {
-  border-color: #2f7c47;
-  color: #8de3a8;
-  background: #153323;
-}
-.md-content :deep(code) {
-  background: #2a3142;
-  border-radius: 4px;
-  padding: 0.1rem 0.3rem;
-}
-.md-content :deep(ul),
-.md-content :deep(ol) {
-  margin: 0.35rem 0 0.35rem 1.1rem;
-}
+.md-content :deep(.copy-code-btn)::before { content: "⧉"; font-size: 0.9rem; }
+.md-content :deep(.copy-code-btn.copied) { border-color: var(--ok); color: var(--ok); }
+.md-content :deep(.copy-code-btn.copied)::before { content: "✓"; }
+.chat-empty { margin-top: 1rem; }
+.typing { display: flex; align-items: center; gap: 0.5rem; color: var(--muted); font-size: 0.9rem; margin: 0; }
 .composer {
   position: sticky;
-  bottom: 0;
-  margin-top: auto;
-  background: #12141a;
-  border-top: 1px solid #2a2e38;
-  padding-top: 0.5rem;
+  bottom: -2.5rem;
+  background: var(--paper);
+  border-top: 2px solid var(--ink);
+  padding: 0.9rem 0 1.25rem;
 }
-.chk { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.9rem; color: #b8c0d0; }
-.ta {
-  width: 100%;
-  box-sizing: border-box;
-  background: #1a1d26;
-  border: 1px solid #3d4658;
-  color: #e8e8ec;
-  border-radius: 6px;
-  padding: 0.5rem 0.65rem;
-  font: inherit;
-  margin-top: 0.45rem;
+.tools-used { display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
+.tools-used .lbl { margin-right: 0.25rem; }
+.tool-chip { background: var(--steel-soft); color: var(--steel); border-color: transparent; }
+.ta { min-height: 5rem; font-size: 1rem; }
+.composer-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
 }
-.actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0 0; }
-.raw-messages { margin-top: 0.5rem; }
-.raw-messages pre {
-  margin: 0.35rem 0 0;
-  padding: 0.55rem;
-  background: #10141b;
-  border: 1px solid #2a3142;
-  border-radius: 6px;
-  max-height: 16rem;
-  overflow: auto;
+.toggles { display: flex; gap: 1rem; flex-wrap: wrap; }
+.toggles code { font-size: 0.72rem; color: var(--muted); }
+.raw-messages { margin-top: 0.75rem; }
+.raw-messages .json { max-height: 16rem; }
+.note { margin-top: 0.75rem; }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
-button { background: #2a3142; border: 1px solid #3d4658; color: #c8cfdd; padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; }
-button.primary { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
-button:disabled { opacity: 0.6; cursor: not-allowed; }
-.err { color: #e88; font-size: 0.9rem; }
-code { background: #2a3142; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.88em; }
 </style>

@@ -132,21 +132,27 @@ function send() {
 </script>
 
 <template>
-  <section class="panel rookery-layout">
-    <header class="rookery-head">
+  <section class="page rookery-layout">
+    <header class="page-head">
       <div>
-        <h2>Rookery</h2>
-        <p class="hint">Describe a workflow; propose a horde (linear or fork/join DAG); give birth to markdown on disk.</p>
+        <p class="eyebrow">Build // the Rookery</p>
+        <h1>Build a horde</h1>
+        <p class="lead">
+          Describe the job in plain words. The builder asks questions, proposes a team of penguins (in a line or
+          with parallel branches), and writes it to disk when you give birth.
+        </p>
       </div>
-      <div class="head-actions">
-        <button type="button" class="secondary" :disabled="newBusy" @click="emit('new-session')">
+      <div class="page-head-actions">
+        <button type="button" class="primary" :disabled="newBusy" @click="emit('new-session')">
           {{ newBusy ? "Starting…" : "New session" }}
         </button>
       </div>
     </header>
 
-    <div v-if="!activeSession" class="empty muted">
-      Select a session in the sidebar or start a new one.
+    <div v-if="!activeSession" class="empty-state">
+      <h3>No build session open</h3>
+      <p>Start a session and describe the work you want a horde to do, step by step.</p>
+      <button type="button" class="primary" :disabled="newBusy" @click="emit('new-session')">Start building</button>
     </div>
 
     <div v-else class="split">
@@ -155,7 +161,7 @@ function send() {
           <span class="badge" :class="`status-${activeSession.status}`">{{
             statusLabel(activeSession.status)
           }}</span>
-          <span class="muted mono">{{ activeSession.serverSessionId }}</span>
+          <span class="chip">{{ activeSession.serverSessionId }}</span>
         </p>
 
         <div ref="transcriptEl" class="chat-history">
@@ -181,7 +187,7 @@ function send() {
               v-html="renderMarkdown(turn.content)"
             />
           </article>
-          <p v-if="!activeSession.turns.length" class="muted">
+          <p v-if="!activeSession.turns.length" class="muted example">
             Example: “Build a 3-step pipeline that ingests URLs, summarizes them, and writes a handoff file.”
           </p>
         </div>
@@ -216,7 +222,7 @@ function send() {
       </div>
 
       <div class="summary-col">
-        <h3>Proposed pipeline</h3>
+        <p class="eyebrow">Proposed pipeline</p>
         <PenguinCanvas
           :pipeline="activeSession.pipeline"
           :edges="draftEdges"
@@ -251,8 +257,8 @@ function send() {
           Run <strong>Propose horde</strong> after the interview to see the plan here.
         </p>
 
-        <p v-if="activeSession.parseError" class="warn">{{ activeSession.parseError }}</p>
-        <p v-if="validateNote" class="ok-note">{{ validateNote }}</p>
+        <p v-if="activeSession.parseError" class="note note-warn small">{{ activeSession.parseError }}</p>
+        <p v-if="validateNote" class="note note-ok small">{{ validateNote }}</p>
 
         <div
           v-if="activeSession.draft && (activeSession.status === 'proposed' || activeSession.status === 'born')"
@@ -278,18 +284,17 @@ function send() {
         </div>
 
         <div v-if="activeSession.status === 'born'" class="born-box">
-          <p class="ok">Horde written to disk.</p>
+          <p class="ok born-title">✓ Horde written to disk.</p>
           <p v-if="activeSession.hordeRoot" class="mono path">{{ activeSession.hordeRoot }}</p>
           <p v-if="activeSession.birthNote" class="muted">{{ activeSession.birthNote }}</p>
           <p class="actions">
             <button type="button" :disabled="saveHordeBusy" @click="emit('save-horde')">
               {{ saveHordeBusy ? "Saving…" : "Save horde to disk" }}
             </button>
-            <button type="button" @click="emit('open-horde')">Open Horde tab</button>
+            <button type="button" class="primary" @click="emit('open-horde')">Open in Hordes</button>
           </p>
           <p class="muted small">
-            New hordes appear in the catalog after server restart or when discovery paths include
-            <code>examples/</code>.
+            The Hordes screen picks up new hordes from its horde folders without a restart; if yours does not appear, check that it was saved inside one of them.
           </p>
         </div>
 
@@ -299,165 +304,107 @@ function send() {
       </div>
     </div>
 
-    <p v-if="err" class="err">{{ err }}</p>
+    <p v-if="err" class="note note-err">{{ err }}</p>
   </section>
 </template>
 
 <style scoped>
-.panel h2 { margin: 0; font-size: 1.1rem; }
-.hint { font-size: 0.9rem; color: #8b92a5; margin: 0.25rem 0 0; }
-.rookery-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 1rem;
-  margin-bottom: 0.75rem;
-}
-.head-actions button.secondary {
-  background: #2a3142;
-  border: 1px solid #3d4658;
-  color: #c8cfdd;
-  padding: 0.35rem 0.65rem;
-  border-radius: 6px;
-  cursor: pointer;
-}
 .split {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
-  gap: 1rem;
-  min-height: calc(100vh - 10rem);
+  gap: 1.25rem;
+  align-items: start;
 }
-.chat-col, .summary-col {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  min-height: 0;
-}
+.chat-col, .summary-col { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
 .summary-col {
-  border: 1px solid #2a2e38;
-  border-radius: 8px;
-  padding: 0.75rem;
-  background: #141820;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--ink);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
 }
-.summary-col h3 { margin: 0 0 0.35rem; font-size: 1rem; }
+.summary-col > * { margin: 0; }
 .edges-box {
-  margin-top: 0.5rem;
-  padding: 0.5rem 0.6rem;
-  border: 1px solid #2a3548;
-  border-radius: 6px;
-  background: #121820;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius);
+  background: var(--sunk);
 }
-.edges-box h4 { margin: 0 0 0.25rem; font-size: 0.85rem; color: #9aa8c0; }
-.edge-list {
-  margin: 0.35rem 0 0;
-  padding-left: 1.1rem;
-  font-size: 0.78rem;
-  color: #b8c4d8;
-}
+.edges-box h4 { margin: 0 0 0.2rem; font-size: 0.9rem; }
+.edge-list { margin: 0.35rem 0 0; padding-left: 1.1rem; font-size: 0.8rem; color: var(--ink); }
 .edge-list li { margin: 0.15rem 0; }
 .status-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 0; }
-.badge {
-  font-size: 0.75rem;
-  padding: 0.15rem 0.45rem;
-  border-radius: 4px;
-  border: 1px solid #3d4658;
-}
-.status-interviewing { background: #2a3142; color: #c8cfdd; }
-.status-proposed { background: #2a4a3a; border-color: #3d7a58; color: #b8e6c8; }
-.status-born { background: #3d3a2a; border-color: #7a6f3d; color: #e6dcb8; }
-.mono { font-family: ui-monospace, monospace; font-size: 0.78rem; }
+.badge.status-interviewing::before { background: var(--steel); }
+.badge.status-interviewing { border-color: var(--steel); }
+.badge.status-proposed { border-color: var(--warn); }
+.badge.status-proposed::before { background: var(--warn); }
+.badge.status-born { border-color: var(--ok); }
+.badge.status-born::before { background: var(--ok); }
+.mono { font-family: var(--font-mono); font-size: 0.8rem; }
 .chat-history {
-  flex: 1;
-  min-height: 12rem;
-  max-height: calc(100vh - 22rem);
+  min-height: 14rem;
+  max-height: calc(100vh - 24rem);
   overflow: auto;
-  display: grid;
-  align-content: start;
-  gap: 0.5rem;
-  border: 1px solid #2a2e38;
-  border-radius: 8px;
-  padding: 0.6rem;
-  background: #141820;
-}
-.chat-turn {
-  border: 1px solid #2a2e38;
-  border-radius: 8px;
-  padding: 0.55rem 0.65rem;
-  background: #171b22;
-  max-width: 95%;
-}
-.turn-user { border-color: #6f8fc7; justify-self: end; margin-left: auto; }
-.chat-turn header { color: #9aa8c0; font-size: 0.8rem; margin-bottom: 0.2rem; }
-.turn-head,
-.msg-head {
   display: flex;
-  align-items: center;
-  gap: 0.4rem;
+  flex-direction: column;
+  gap: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.9rem;
+  background: var(--surface);
 }
-.chat-turn-content { margin: 0; white-space: pre-wrap; word-break: break-word; color: #d2d9e8; font-size: 0.85rem; }
-.md-content :deep(p) { margin: 0.35rem 0; }
-.md-content :deep(ul), .md-content :deep(ol) { margin: 0.35rem 0 0.35rem 1.1rem; }
-.composer .ta {
-  width: 100%;
-  box-sizing: border-box;
-  background: #171b22;
-  border: 1px solid #3d4658;
-  color: #e8e8ec;
-  border-radius: 6px;
-  padding: 0.5rem;
-  resize: vertical;
+.chat-turn { max-width: 92%; }
+.turn-head { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.25rem; }
+.turn-head span {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
-.actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.35rem 0 0; }
-.actions button {
-  background: #2a3142;
-  border: 1px solid #3d4658;
-  color: #c8cfdd;
-  padding: 0.35rem 0.65rem;
-  border-radius: 6px;
-  cursor: pointer;
+.chat-turn-content { margin: 0; word-break: break-word; font-size: 0.94rem; line-height: 1.55; color: var(--body); }
+.turn-user { align-self: flex-end; }
+.turn-user .turn-head { justify-content: flex-end; }
+.turn-user .chat-turn-content {
+  white-space: pre-wrap;
+  font-family: var(--font-body);
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--radius-lg) var(--radius-lg) 2px var(--radius-lg);
 }
-.actions button.primary { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
-.actions button:disabled { opacity: 0.5; cursor: not-allowed; }
-.penguin-detail {
-  border: 1px solid #3d5a8c;
-  border-radius: 8px;
-  padding: 0.6rem 0.65rem;
-  background: #1a2230;
+.turn-assistant .chat-turn-content {
+  background: var(--sunk);
+  border-left: 3px solid var(--red);
+  padding: 0.5rem 0.85rem;
+  border-radius: 2px var(--radius) var(--radius) var(--radius);
 }
-.penguin-detail h4 { margin: 0 0 0.25rem; font-size: 0.95rem; }
-.detail-grid {
+.example { font-style: italic; }
+.composer .ta { min-height: 4.5rem; }
+.actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0 0; }
+.summary-md { max-height: 12rem; overflow: auto; }
+.validate-row { margin: 0; }
+.birth-box {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.2rem 0.65rem;
-  margin: 0.5rem 0 0;
-  font-size: 0.82rem;
+  gap: 0.6rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--hair);
 }
-.detail-grid dt { color: #8b92a5; margin: 0; }
-.detail-grid dd { margin: 0; color: #d2d9e8; }
-.editor-hint { margin: 0.5rem 0 0; }
-.summary-md { margin: 0.5rem 0 0; max-height: 8rem; overflow: auto; }
-.birth-box { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #2a2e38; }
-.birth-btn { width: 100%; margin-top: 0.5rem; }
-.chk { display: flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; color: #8b92a5; }
-.born-box { margin-top: 0.5rem; }
-.ok { color: #8de3a8; margin: 0; }
+.birth-btn { width: 100%; padding: 0.7rem; font-size: 1rem; }
+.born-box {
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--ok);
+  border-radius: var(--radius);
+  background: var(--ok-soft);
+  color: var(--ink);
+}
+.born-box > * { margin: 0 0 0.4rem; }
+.born-box .muted { color: var(--body); }
+.born-title { color: var(--ink); font-weight: 600; }
 .path { word-break: break-all; }
-.warn { color: #f2b8c1; font-size: 0.85rem; }
-.ok-note { color: #7dcea0; font-size: 0.85rem; margin: 0.35rem 0; }
-.validate-row { margin: 0.35rem 0; }
-.validate-row button {
-  background: #2a3142;
-  border: 1px solid #3d4658;
-  color: #c8cfdd;
-  padding: 0.3rem 0.6rem;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.muted { color: #6a7285; font-size: 0.9rem; }
-.small { font-size: 0.8rem; }
-.err { color: #f2b8c1; margin-top: 0.5rem; }
-.empty { padding: 2rem 0; text-align: center; }
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
   .split { grid-template-columns: 1fr; }
+  .chat-history { max-height: 60vh; }
 }
 </style>
