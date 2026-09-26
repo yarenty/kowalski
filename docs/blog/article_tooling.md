@@ -1,3 +1,4 @@
+<!-- post: date=2025-07-05; slug=agent-tools; summary=An agent is only as good as its tools: what makes a tool easy for a model to use correctly. -->
 # Your Agent Is Only as Good as Its Tools: A Guide to Crafting High-Quality Instruments for AI
 
 We are in the Cambrian explosion of AI agents. Every day, new frameworks and models emerge, promising more sophisticated reasoning, planning, and autonomous capabilities. But in the race to build smarter agents, we often overlook the most critical component determining their success or failure: **the quality of their tools.**
