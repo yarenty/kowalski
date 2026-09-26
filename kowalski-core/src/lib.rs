@@ -8,6 +8,7 @@ pub mod graph;
 pub mod horde_graph;
 pub mod horde_stages;
 pub mod horde_step;
+pub mod horde_table_steps;
 pub mod horde_trigger;
 pub mod llm;
 pub mod manifest;

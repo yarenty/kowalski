@@ -40,6 +40,8 @@ reqwest = { workspace = true, features = ["blocking"] }
 tokio = {workspace = true}
 thiserror = {workspace = true}
 uuid = { version = "1.7", features = ["v4", "serde"] }
+# Report workbooks from query results (horde step `xlsx_report`)
+rust_xlsxwriter = "0.99"
 # OAuth for MCP servers (PKCE)
 sha2 = "0.10"
 base64 = "0.22"

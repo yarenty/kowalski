@@ -16,6 +16,7 @@ const hostedModel = ref("gpt-4o-mini");
 const apiKey = ref("");
 const filesDir = ref("");
 const searchKey = ref("");
+const searchProvider = ref<"brave" | "staan">("brave");
 
 const check = ref<{ ok: boolean; message: string } | null>(null);
 const busy = ref<string | null>(null);
@@ -38,7 +39,7 @@ function applyPreset() {
 
 const choice = computed<ModelChoice>(() =>
   provider.value === "ollama"
-    ? { provider: "ollama", model: ollamaModel.value.trim(), files_dir: filesDir.value.trim() || undefined, search_api_key: searchKey.value.trim() || undefined }
+    ? { provider: "ollama", model: ollamaModel.value.trim(), files_dir: filesDir.value.trim() || undefined, search_api_key: searchKey.value.trim() || undefined, search_provider: searchProvider.value }
     : {
         provider: "openai",
         model: hostedModel.value.trim(),
@@ -46,6 +47,7 @@ const choice = computed<ModelChoice>(() =>
         api_key: apiKey.value.trim() || undefined,
         files_dir: filesDir.value.trim() || undefined,
         search_api_key: searchKey.value.trim() || undefined,
+        search_provider: searchProvider.value,
       },
 );
 
@@ -235,11 +237,17 @@ onMounted(async () => {
         </div>
         <p class="muted small">Chat's file tool reads and writes only inside this folder. Leave empty to decide per chat.</p>
         <div class="fields" style="margin-top:0.8rem">
-          <label>Web search key (optional)
-            <input v-model="searchKey" type="password" autocomplete="off" :placeholder="status.web_search ? 'web search is on; leave empty to keep it' : 'Brave Search API key'" />
+          <label>Web search (optional)
+            <select v-model="searchProvider">
+              <option value="brave">Brave Search</option>
+              <option value="staan">Staan (European index)</option>
+            </select>
+          </label>
+          <label>Search API key
+            <input v-model="searchKey" type="password" autocomplete="off" :placeholder="status.web_search ? 'web search is on; leave empty to keep it' : (searchProvider === 'staan' ? 'Staan API key' : 'Brave Search API key')" />
           </label>
         </div>
-        <p class="muted small">Agents can always read a web page you give them. To let them search too, paste a <a href="https://brave.com/search/api/" target="_blank" rel="noopener">Brave Search API</a> key (free tier available).</p>
+        <p class="muted small">Agents can always read a web page you give them. To let them search too, paste a <a href="https://brave.com/search/api/" target="_blank" rel="noopener">Brave Search</a> or <a href="https://staan.ai/" target="_blank" rel="noopener">Staan</a> key; both have a free monthly allowance.</p>
       </li>
 
       <li>

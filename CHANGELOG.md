@@ -17,7 +17,9 @@ All notable changes to this project will be documented in this file, or at least
 - First-run Setup screen: on a fresh install the UI opens it (also under Administrator → Setup). Three steps: the model (local Ollama with the installed models listed, or any OpenAI-compatible endpoint with your key; a Check button verifies without spending tokens), the files folder chat's file tool is confined to, and tableski. Save writes the config (previous file kept as `.bak`, owner-only when a key is inside) and the server restarts itself so every agent picks it up.
 - OAuth for MCP servers: an `[[mcp.servers]]` entry can carry `oauth = { token_file = "…" }`; the client sends a bearer token from that file, refreshes it before expiry and once after a 401, and saves rotated refresh tokens. The Setup screen's "Connect tableski" uses it: discovery from the server's metadata, dynamic client registration with a loopback redirect, PKCE sign-in in the browser, no token to copy.
 - One binary: the build compiles the operator UI (`ui/dist`) into `kowalski`, which serves it at `/` (app routes fall back to the page, hashed assets cached) and opens the browser when started from a terminal (`--no-open` to skip). A build without the UI still starts and says how to add it.
-- Built-in hordes (`url-summarizer`, `knowledge-compiler`) ship inside the binary and are written to `builtin-hordes/` beside the config on every start, scanned last so a user's own horde with the same id wins.
+- Spreadsheet analyst, a built-in horde: ask questions about your spreadsheets in plain words (through tableski) and get `HANDOFF.md` answers plus `report.xlsx`, one sheet per question and an index. The model only writes SQL; every number comes from the query engine, and a question the data cannot answer is reported as such with the reason.
+- Data step kinds for hordes, run without a model: `table_profile` (every table's source, columns, types and statistics from the data tool), `sql_batch` (each fenced SQL block of the previous step's plan run through `query_sql`; results as Markdown plus a JSON sidecar) and `xlsx_report` (that sidecar as a workbook, numbers typed as numbers).
+- Built-in hordes (`spreadsheet-analyst`, `url-summarizer`, `knowledge-compiler`) ship inside the binary and are written to `builtin-hordes/` beside the config on every start, scanned last so a user's own horde with the same id wins.
 - Config lookup shared by the server and the CLI: `-c`, else `$KOWALSKI_CONFIG`, else `./config.toml`, else `~/.config/kowalski/config.toml` (where `install.sh` writes it), so an installed `kowalski` finds its config from any directory.
 
 ### Changed
@@ -25,6 +27,7 @@ All notable changes to this project will be documented in this file, or at least
 - With auth on, only `/api/*` needs the token; the UI's static files are open (they carry no data).
 
 ### Fixed
+- A step's context token pointing at a folder output (such as `@step:ingest@`, whose output is `debug/raw/`) attaches that folder's newest Markdown file, the current run's input; before, it attached an empty section, so later steps never saw the operator's input.
 - A `verify` step's command is killed when it passes the verify timeout (before, the timeout was only noticed after the command ended, so a hung command hung the run) and when its run is cancelled; the whole process group goes, so `sh -c` children do not linger.
 
 ### CI
