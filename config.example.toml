@@ -32,6 +32,10 @@ clean_on_startup = true
 # [search]
 # provider = "brave"        # https://brave.com/search/api/ (free tier); or set BRAVE_API_KEY
 # api_key = "..."
+# or Staan, the European web index (https://staan.ai; 1,000 free requests a month; or STAAN_API_KEY):
+# provider = "staan"
+# api_key = "..."
+# market = "en-us"          # optional: de-de, fr-fr, ...
 # or your own SearXNG instance with the JSON format enabled:
 # provider = "searxng"
 # url = "https://searx.example.org"
