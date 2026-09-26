@@ -1,3 +1,4 @@
+<!-- post: date=2026-09-26; summary=From a weekend Ollama wrapper to one binary that answers questions about your spreadsheets: eighteen months of diagrams, and why almost every good change removed something. -->
 # Eighteen months of Kowalski: an architecture that kept getting smaller
 
 *September 2026*

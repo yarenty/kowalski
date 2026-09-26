@@ -1,3 +1,4 @@
+<!-- post: date=2025-07-12; slug=agent-memory; summary=Working, episodic and semantic memory for agents in Rust, and why the stack ended up on SQLite. -->
 # Beyond Chat History: Building Human-Like Memory for AI Agents in `kowalski-core`
 
 How do you give an AI agent a memory that’s more than just a chat log? In Kowalski **1.1.x**, that capability lives in **`kowalski-core`** (`memory/` modules): a Rust-native, multi-tiered memory stack for agentic AI. This article walks through the philosophy, architecture, and practical trade-offs—without pretending there is a separate `kowalski-memory` crate.
