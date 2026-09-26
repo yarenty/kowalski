@@ -26,6 +26,7 @@ system, one run, and the run lifecycle. Operational entry points stay in the rep
 
 | Article | About |
 |---|---|
+| [`architecture-history.md`](blog/architecture-history.md) | Eighteen months of kowalski: how the architecture kept getting smaller |
 | [`article_memory.md`](blog/article_memory.md) | Building human-like memory for agents |
 | [`article_tooling.md`](blog/article_tooling.md) | Your agent is only as good as its tools |
 

@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file, or at least
 ### Documentation
 - New architecture page (`docs/architecture.html`) with diagrams of the system, one run and the run lifecycle; the README carries the new system map.
 - README rewritten around what kowalski does for you; release history lives in the CHANGELOG only.
+- Article: eighteen months of kowalski's architecture (`docs/blog/architecture-history.md`); the 0.x changelog dates corrected to 2025.
 - `docs/` reorganised: `dev/` (technical, kept current), `blog/` (articles), `concepts/` (unbuilt ideas), `purgatory/` (superseded).
 
 ## [2.1.0] - 2026-09-26 — **Standing Orders**
@@ -556,7 +557,7 @@ All notable changes to this project will be documented in this file, or at least
 [1.1.0]: https://github.com/yarenty/kowalski/releases/tag/1.1.0
 [1.0.0]: https://github.com/yarenty/kowalski/releases/tag/1.0.0
 
-## [0.5.2] - 2024-07-06
+## [0.5.2] - 2025-07-06
 
 > "Version 0.5.2: Now with a memory like an elephant (but less likely to trample your data)."
 
@@ -579,7 +580,7 @@ All notable changes to this project will be documented in this file, or at least
 - Documentation updates for the new memory module and benchmarking process.
 - Minor bug fixes and performance tweaks (because every release needs a few of these).
 
-## [0.5.1] - 2024-07-01
+## [0.5.1] - 2025-07-01
 
 > "Version 0.5.1: Now with 42% more reactivity and a filesystem that actually listens to you."
 
@@ -604,7 +605,7 @@ All notable changes to this project will be documented in this file, or at least
 - Unified tool API across all agent modules for easier extension and maintenance.
 - Documentation updates for new tools and agent capabilities.
 
-## [0.5.0] - 2024-06-29
+## [0.5.0] - 2025-06-29
 
 > "Version 0.5.0: The Great Kowalski Restructurization. Now with 100% more modules!"
 
@@ -643,7 +644,7 @@ All notable changes to this project will be documented in this file, or at least
 
 ---
 
-## [0.3.0] - 2024-03-10
+## [0.3.0] - 2025-03-10
 
 > "Version 0.3.0: Because 0.2.0 wasn't confusing enough." - A Version Control Enthusiast
 
@@ -683,7 +684,7 @@ All notable changes to this project will be documented in this file, or at least
 - Updated other dependencies (because old code is like old milk - it smells bad)
 - Removed deprecated dependencies (they served us well, but it's time to move on)
 
-## [0.2.0] - 2024-03-09
+## [0.2.0] - 2025-03-09
 
 > "The best time to write a changelog is when you make the changes. The second best time is right before a release when you've forgotten everything you did." - Ancient Developer Proverb
 
@@ -737,7 +738,7 @@ All notable changes to this project will be documented in this file, or at least
 - Added more crates (because why solve problems yourself?)
 - Removed deprecated dependencies (they served us well)
 
-## [0.1.0] - 2024-03-07
+## [0.1.0] - 2025-03-07
 
 ### Added
 - Initial release
