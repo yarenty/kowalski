@@ -6,11 +6,18 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-26 — **Out of the Box**
+
+> The product release: download one binary, answer three setup questions, ask your spreadsheets
+> questions and get a report workbook back.
+
 ### Changed
 - `kowalski-cli chat` and a bare `kowalski-cli` start the config-driven agent chat (`run`): your model plus MCP tools.
 - The sample configuration is now `config.example.toml` (what `install.sh` downloads); `config.toml` is git-ignored so personal endpoints and keys never reach the repository.
 - The Rookery builder prompt is compiled into the server, so an installed `kowalski` builds hordes without a source checkout; an override file next to the config still wins.
 - Crate descriptions and version strings brought up to date.
+- The UI's chat is tool-aware by default (remembered per browser), so connected tools such as tableski, web and files are used without ticking a box.
+- With auth on, only `/api/*` needs the token; the UI's static files are open (they carry no data).
 
 ### Added
 - Web tools for agents: `web_fetch` (one public page as readable Markdown; private, loopback, link-local and cloud-metadata addresses refused, every redirect re-checked) always, and `web_search` (top results with title, URL and snippet) when `[search]` names Brave Search (key in config or `BRAVE_API_KEY`), Staan, the European web index (`STAAN_API_KEY`, optional `market`), or a SearXNG instance. The Setup screen takes an optional Brave or Staan key.
@@ -21,10 +28,6 @@ All notable changes to this project will be documented in this file, or at least
 - Data step kinds for hordes, run without a model: `table_profile` (every table's source, columns, types and statistics from the data tool), `sql_batch` (each fenced SQL block of the previous step's plan run through `query_sql`; results as Markdown plus a JSON sidecar) and `xlsx_report` (that sidecar as a workbook, numbers typed as numbers).
 - Built-in hordes (`spreadsheet-analyst`, `url-summarizer`, `knowledge-compiler`) ship inside the binary and are written to `builtin-hordes/` beside the config on every start, scanned last so a user's own horde with the same id wins.
 - Config lookup shared by the server and the CLI: `-c`, else `$KOWALSKI_CONFIG`, else `./config.toml`, else `~/.config/kowalski/config.toml` (where `install.sh` writes it), so an installed `kowalski` finds its config from any directory.
-
-### Changed
-- The UI's chat is tool-aware by default (remembered per browser), so connected tools such as tableski, web and files are used without ticking a box.
-- With auth on, only `/api/*` needs the token; the UI's static files are open (they carry no data).
 
 ### Fixed
 - A step's context token pointing at a folder output (such as `@step:ingest@`, whose output is `debug/raw/`) attaches that folder's newest Markdown file, the current run's input; before, it attached an empty section, so later steps never saw the operator's input.
@@ -39,7 +42,7 @@ All notable changes to this project will be documented in this file, or at least
 ### Removed
 - Legacy agent-manager commands (`create`, `chat <agent>`, `list`, `agents`, `--interactive`): their agents lived only for one process and ignored the config.
 - Hardcoded `/opt/ml/kowalski` fallbacks for hordes, the builder prompt and the worker root.
-- The unused `[search]` configuration section, the disabled MCP and Graph tabs in the UI, and the `dag-demo` stub.
+- The disabled MCP and Graph tabs in the UI, and the `dag-demo` stub.
 
 ## [1.8.0] - 2026-08-27 — **Ecosystem**
 
@@ -393,7 +396,7 @@ All notable changes to this project will be documented in this file, or at least
 - **Tool-enabled horde stages:** `tool_ids` on `agents/*.md`; federation worker calls `POST /api/chat` with `use_tools`, allowlist, and `sandbox_root` from operator `project_path`. Built-in **`fs_tool`** (`list_dir`, `read_file`, `write_file`, …) registered on the HTTP agent.
 - **Verify / apply stages:** `kind = "verify"` runs `verify_command` in `project_path` and writes a artifact with `status: pass|fail`. `kind = "apply"` dry-runs ```diff blocks; execute gated by `KOWALSKI_HORDE_APPLY=1`.
 - **Conditional edges:** `[[edges]]` support `when = "pass"|"fail"` and loop-back edges with `max_loops`. Orchestrator and local `agent-app run` route on verify outcome, reset the retry span, and cap loops. Coder example: `test-verify` fail → `dev-1` (max 2), pass → `review`.
-- **MCP framework:** Renamed **`kowalski-mcp-transport` → `kowalski-mcp-base`**; added output framing, credential forwarding, and rmcp `serve` bootstrap. Authoring rules: [`kowalski-mcp-base/MCP_REQUIREMENTS.md`](kowalski-mcp-base/MCP_REQUIREMENTS.md), manifests: [`kowalski-mcp-base/MANIFEST_SPEC.md`](kowalski-mcp-base/MANIFEST_SPEC.md). MCP server crates are optional workspace members (`default-members` = core only). Added `manifest.yaml` to `kowalski-mcp-datafusion` and `kowalski-mcp-rookery`. Removed staging `mcp-base/`.
+- **MCP framework:** Renamed **`kowalski-mcp-transport` → `kowalski-mcp-base`**; added output framing, credential forwarding, and rmcp `serve` bootstrap. Authoring rules: `kowalski-mcp-base/MCP_REQUIREMENTS.md`, manifests: `kowalski-mcp-base/MANIFEST_SPEC.md`. MCP server crates are optional workspace members (`default-members` = core only). Added `manifest.yaml` to `kowalski-mcp-datafusion` and `kowalski-mcp-rookery`. Removed staging `mcp-base/`.
 
 ## [1.4.0] - 2026-06-15 — **DAG pipelines + planning Coder**
 
@@ -420,10 +423,10 @@ All notable changes to this project will be documented in this file, or at least
 ### Added
 
 - **A2A federation-edge design:** [`docs/DESIGN_A2A_FEDERATION_EDGE.md`](docs/DESIGN_A2A_FEDERATION_EDGE.md) — decision + mapping for adopting [A2A](https://a2a-protocol.org/) **only** at the node↔node boundary (Agent Card derived from `AgentRegistry` + horde catalog; A2A Task lifecycle mapped onto existing `AclMessage` variants; transport reused from `kowalski-mcp-base`). Explicitly **no penguin-to-penguin A2A**; implementation deferred to 1.4/1.5.
-- **Stateless Streamable HTTP for in-repo MCP servers:** new shared crate **`kowalski-mcp-base`** provides one `McpHandler` trait and two runners — **stdio** and **stateless Streamable HTTP** (no `Mcp-Session-Id` issued or required; every POST independent → restartable / horizontally scalable). Both **`kowalski-mcp-rookery`** (`--transport stdio|http`, `--bind`) and **`kowalski-mcp-datafusion`** now run on it, so every in-repo MCP server is reachable over stateless HTTP. The Kowalski MCP client already tolerates sessionless servers (captures `Mcp-Session-Id` only if present). See [`kowalski-mcp-base/README.md`](kowalski-mcp-base/README.md).
+- **Stateless Streamable HTTP for in-repo MCP servers:** new shared crate **`kowalski-mcp-base`** provides one `McpHandler` trait and two runners — **stdio** and **stateless Streamable HTTP** (no `Mcp-Session-Id` issued or required; every POST independent → restartable / horizontally scalable). Both **`kowalski-mcp-rookery`** (`--transport stdio|http`, `--bind`) and **`kowalski-mcp-datafusion`** now run on it, so every in-repo MCP server is reachable over stateless HTTP. The Kowalski MCP client already tolerates sessionless servers (captures `Mcp-Session-Id` only if present). See `kowalski-mcp-base/README.md`.
 - **Rookery MCP server:** new in-repo crate **`kowalski-mcp-rookery`** — an MCP server (stdio **or** stateless HTTP) that exposes the horde builder so any MCP client (the Kowalski agent, CLI, or external clients like Claude Desktop) can build hordes, not only the Vue tab. Tools: **`rookery_example_draft`**, **`rookery_validate_draft`**, **`rookery_parse_draft`**, **`rookery_give_birth`** — all delegate to `kowalski_core::rookery` (same primitives as `/api/rookery/*`, no duplicated orchestration). The server is **LLM-free**: the calling agent drives the interview; this server validates/parses/writes. Wire it via `config.toml` and verify with `kowalski-cli mcp ping`/`mcp tools`. See [`kowalski-mcp-rookery/README.md`](kowalski-mcp-rookery/README.md).
-- **Docker MCP gateway support:** Kowalski connects to the [Docker MCP Toolkit](https://docs.docker.com/ai/mcp-catalog-and-toolkit/toolkit/) catalog through **one** stdio MCP server (`command = ["docker", "mcp", "gateway", "run"]`) instead of wiring many individual servers — verified via `kowalski-cli mcp ping`/`mcp tools`. Default (no flags) exposes the gateway's **dynamic** management tools (`mcp-find`, `mcp-exec`, `code-mode`); `--servers <name>` / `--profile <id>` expose a specific server's tools by name (after it is configured in Docker Desktop). `tools/internal/*` remain the dependency-light fallback and are shadowed by the gateway when present. Documented in [`config.toml`](config.toml) and [`kowalski-core/AGENTS.md`](kowalski-core/AGENTS.md).
-- **Rookery horde builder:** `kowalski-core::rookery` — linear draft validation and `write_horde_tree` for born hordes; builder prompt at [`resources/prompts/rookery/builder.md`](resources/prompts/rookery/builder.md). HTTP API on the `kowalski` server: `POST/GET/DELETE /api/rookery/sessions`, `POST .../chat` (optional SSE via `"stream": true`), `POST .../propose`, `POST .../give-birth`. Vue **Rookery** tab: interview chat, pipeline summary, **Give birth**. Default output root: `examples/` (override with `KOWALSKI_ROOKERY_OUTPUT` or `give-birth.output_root`).
+- **Docker MCP gateway support:** Kowalski connects to the [Docker MCP Toolkit](https://docs.docker.com/ai/mcp-catalog-and-toolkit/toolkit/) catalog through **one** stdio MCP server (`command = ["docker", "mcp", "gateway", "run"]`) instead of wiring many individual servers — verified via `kowalski-cli mcp ping`/`mcp tools`. Default (no flags) exposes the gateway's **dynamic** management tools (`mcp-find`, `mcp-exec`, `code-mode`); `--servers <name>` / `--profile <id>` expose a specific server's tools by name (after it is configured in Docker Desktop). `tools/internal/*` remain the dependency-light fallback and are shadowed by the gateway when present. Documented in [`config.toml`](config.example.toml) and [`kowalski-core/AGENTS.md`](kowalski-core/AGENTS.md).
+- **Rookery horde builder:** `kowalski-core::rookery` — linear draft validation and `write_horde_tree` for born hordes; builder prompt at [`resources/prompts/rookery/builder.md`](kowalski/resources/prompts/rookery/builder.md). HTTP API on the `kowalski` server: `POST/GET/DELETE /api/rookery/sessions`, `POST .../chat` (optional SSE via `"stream": true`), `POST .../propose`, `POST .../give-birth`. Vue **Rookery** tab: interview chat, pipeline summary, **Give birth**. Default output root: `examples/` (override with `KOWALSKI_ROOKERY_OUTPUT` or `give-birth.output_root`).
 - **Penguin avatars in UI:** per-step mascot images from [`ui/src/assets/pinguins/`](ui/src/assets/pinguins/) — auto-assigned on **Propose** from `kind` + step `name` (`kowalski-core::rookery::infer_penguin_avatar`), persisted in born horde `agents/*.md` frontmatter as `avatar = "…"`, editable per penguin in **PenguinEditor** (avatar picker). Shown on **PenguinCanvas**, Rookery/Chat/Federation run feeds.
 
 ### Changed
