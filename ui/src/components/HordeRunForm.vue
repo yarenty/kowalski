@@ -95,7 +95,7 @@ function submit() {
     />
 
     <template v-if="!followUpMode">
-      <p v-if="!runForm" class="muted small">
+      <p v-if="!runForm" class="small">
         {{ horde?.prompt_tip || "Provide a source URL and/or text for the horde to process." }}
       </p>
       <p v-else class="muted small">Optional: add a reference URL or extra notes below the form.</p>
@@ -155,27 +155,9 @@ function submit() {
 </template>
 
 <style scoped>
-.horde-run-form { display: flex; flex-direction: column; gap: 0.65rem; }
-.field { display: flex; flex-direction: column; gap: 0.25rem; }
-.field span { font-size: 0.8rem; color: #8b92a5; }
-.inp {
-  width: 100%;
-  box-sizing: border-box;
-  background: #1a1d26;
-  border: 1px solid #3d4658;
-  color: #e8e8ec;
-  border-radius: 6px;
-  padding: 0.4rem 0.55rem;
-  font: inherit;
-}
-.actions { margin: 0.25rem 0 0; }
-.primary {
-  background: #3d6cb5;
-  border: none;
-  color: #fff;
-  padding: 0.4rem 0.85rem;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.primary:disabled { opacity: 0.55; cursor: default; }
+.horde-run-form { display: flex; flex-direction: column; gap: 0.9rem; }
+.horde-run-form > p { margin: 0; }
+.field .muted { text-transform: none; letter-spacing: 0; font-family: var(--font-body); font-size: 0.8rem; font-weight: 400; }
+.actions { margin: 0.1rem 0 0; }
+.actions .primary { padding: 0.65rem 1.4rem; font-size: 1rem; }
 </style>

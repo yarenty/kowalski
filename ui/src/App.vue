@@ -22,8 +22,26 @@ import {
 
 const tab = ref<
   "home" | "mcp" | "chat" | "rookery" | "federation-management" | "federation-run" | "graph" | "about" | "setup"
->("chat");
-const sidebarCollapsed = ref(false);
+>("federation-run");
+// Narrow windows start with the icon-only rail so the work area keeps its width.
+const sidebarCollapsed = ref(typeof window !== "undefined" && window.innerWidth < 1000);
+const TAB_IDS = [
+  "home",
+  "mcp",
+  "chat",
+  "rookery",
+  "federation-management",
+  "federation-run",
+  "graph",
+  "about",
+  "setup",
+] as const;
+type TabId = (typeof TAB_IDS)[number];
+/** `?tab=<id>` deep link (e.g. `?tab=chat`); unknown values are ignored. */
+function tabFromQuery(): TabId | null {
+  const q = new URLSearchParams(window.location.search).get("tab");
+  return q && (TAB_IDS as readonly string[]).includes(q) ? (q as TabId) : null;
+}
 
 type ChatTurn = { role: "user" | "assistant"; content: string };
 type Conversation = {
@@ -54,6 +72,15 @@ const chatErr = ref<string | null>(null);
 // operator's choice is remembered per browser.
 const CHAT_TOOLS_KEY = "kowalski.ui.chat.tools.v1";
 const chatToolsStream = ref(localStorage.getItem(CHAT_TOOLS_KEY) !== "off");
+/** Template handlers cannot reach `localStorage` (not a template global), so persist here. */
+function setChatToolsStream(v: boolean) {
+  chatToolsStream.value = v;
+  try {
+    localStorage.setItem(CHAT_TOOLS_KEY, v ? "on" : "off");
+  } catch {
+    /* storage unavailable */
+  }
+}
 const chatUseMemory = ref(true);
 const chatMessagesView = ref<string>("");
 const chatMessagesBusy = ref(false);
@@ -434,7 +461,7 @@ async function sendChat(payload: { message: string; stream: boolean }) {
         r = await runChat();
       }
       conv.chatMeta = `${r.mode} · ${r.model} · memory=${r.memory_source}:${r.memory_items_count}`;
-      conv.turns.push({ role: "assistant", content: r.reply });
+      conv.turns.push({ role: "assistant", content: r.reply || "(no assistant output)" });
     }
     if (!conv.title || conv.title === "New conversation") {
       conv.title = msg.slice(0, 42) || "Conversation";
@@ -769,7 +796,7 @@ async function ensureApiToken() {
   }
   const entered = window.prompt(
     "Kowalski API token required (see the server log for the db/api_token file path — " +
-      "you can also set it later on the Home tab):",
+      "you can also set it later under Admin → Diagnostics):",
     getApiToken(),
   );
   if (entered?.trim()) setApiToken(entered.trim());
@@ -785,6 +812,8 @@ onMounted(async () => {
   await ensureApiToken();
   // first run (no config yet) or returning from the tableski sign-in: the setup screen
   const fromOAuth = new URLSearchParams(window.location.search).has("setup");
+  const linked = tabFromQuery();
+  if (linked) tab.value = linked;
   try {
     const s = await api.setupStatus();
     if (!s.configured || fromOAuth) tab.value = "setup";
@@ -854,7 +883,7 @@ onMounted(async () => {
         :chat-use-memory="chatUseMemory"
         :chat-messages-view="chatMessagesView"
         :chat-messages-busy="chatMessagesBusy"
-        @toggle-tools-stream="(v: boolean) => { chatToolsStream = v; localStorage.setItem(CHAT_TOOLS_KEY, v ? 'on' : 'off'); }"
+        @toggle-tools-stream="setChatToolsStream"
         @toggle-use-memory="chatUseMemory = $event"
         @inspect-chat-messages="inspectChatMessages"
         @send-chat="sendChat"
@@ -871,6 +900,7 @@ onMounted(async () => {
         @new-thread-from-suggestion="newHordeInteractionFromSuggestion"
         @thread-create-from-run="createHordeInteractionFromRun"
         @new-chat-session="newConversation"
+        @open-build="tab = 'rookery'"
       />
       <GraphPanel v-else-if="tab === 'graph'" />
       <AboutPanel v-else-if="tab === 'about'" />
@@ -879,14 +909,6 @@ onMounted(async () => {
 </template>
 
 <style>
-:root {
-  font-family: system-ui, sans-serif;
-  color: #e8e8ec;
-  background: #12141a;
-}
-body {
-  margin: 0;
-}
 .app {
   min-height: 100vh;
 }
@@ -895,15 +917,15 @@ body {
 }
 .main {
   flex: 1;
-  padding: 1.25rem 1.5rem;
   min-width: 0;
   height: 100vh;
   overflow-y: auto;
+  padding: 1.75rem 2.25rem 2.5rem;
+  background: var(--paper);
 }
-code {
-  background: #2a3142;
-  padding: 0.15rem 0.4rem;
-  border-radius: 4px;
-  font-size: 0.88em;
+@media (max-width: 1100px) {
+  .main {
+    padding: 1.25rem 1.25rem 2rem;
+  }
 }
 </style>

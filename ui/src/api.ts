@@ -180,6 +180,8 @@ export type HordeSubAgent = {
   description: string;
   output?: string | null;
   avatar?: string | null;
+  /** Tools this step may call (MCP / built-in ids); empty for model-only steps. */
+  tool_ids?: string[];
 };
 
 export type OperatorInputField = {

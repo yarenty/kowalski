@@ -203,7 +203,7 @@ async function runKnowledgeCompiler() {
     if (!out.delegated_to) {
       runBusy.value = false;
       runResult.value =
-        "No federation worker matched capability `kc.run`.\n\nHow to fix:\n- **Preferred (operator UI):** open the **Horde** tab → select **Knowledge Sucking Swarm** → **Start All** workers → use **Horde Run** (four-step pipeline; matches what the UI expects).\n- **Legacy single worker:** `cargo run -p kowalski-cli -- agent-app worker <id> --path examples/knowledge-compiler --api http://127.0.0.1:3456` (omit `--role` so the process accepts `kc.run`; see examples/knowledge-compiler README).\n- Click **Refresh registry** and confirm an agent lists `kc.run`.\n- Retry this run.";
+        "No federation worker matched capability `kc.run`.\n\nHow to fix:\n- **Preferred (operator UI):** open **Hordes** → select **Knowledge Sucking Swarm** → **Run horde** (workers start automatically; manage them under **Admin → Federation**) (four-step pipeline; matches what the UI expects).\n- **Legacy single worker:** `cargo run -p kowalski-cli -- agent-app worker <id> --path examples/knowledge-compiler --api http://127.0.0.1:3456` (omit `--role` so the process accepts `kc.run`; see examples/knowledge-compiler README).\n- Click **Refresh registry** and confirm an agent lists `kc.run`.\n- Retry this run.";
       runTimeline.value = [
         ...runTimeline.value,
         "blocked: no target worker available for capability kc.run",
@@ -429,23 +429,23 @@ onUnmounted(() => {
 .panel h2 { margin-top: 0; font-size: 1.1rem; }
 .panel h3 { font-size: 1rem; margin-top: 1.25rem; }
 .cards { display: grid; gap: 0.45rem; }
-.card { border: 1px solid #2a2e38; border-radius: 8px; background: #171b22; padding: 0.55rem 0.65rem; }
+.card { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 0.55rem 0.65rem; }
 .card header { display: flex; justify-content: space-between; align-items: center; }
-.status-badge { border-radius: 999px; font-size: 0.72rem; padding: 0.12rem 0.45rem; border: 1px solid #2f7c47; color: #8de3a8; background: #153323; }
-.status-off { border-color: #555f74; color: #b0b7c7; background: #2a3142; }
-.json { background: #1a1d26; border: 1px solid #2a2e38; border-radius: 6px; padding: 0.75rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.45; color: #c8cfdd; }
+.status-badge { border-radius: 999px; font-size: 0.72rem; padding: 0.12rem 0.45rem; border: 1px solid var(--ok); color: var(--ok); background: var(--ok-soft); }
+.status-off { border-color: var(--line); color: var(--muted); background: var(--sunk); }
+.json { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 0.75rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.45; color: var(--ink); }
 .json-scroll { max-height: 18rem; overflow: auto; }
 .row { margin: 0.35rem 0 0.5rem; }
-.lbl { display: block; font-size: 0.8rem; color: #8b92a5; margin-bottom: 0.25rem; }
-.inp { width: 100%; max-width: 28rem; box-sizing: border-box; background: #1a1d26; border: 1px solid #3d4658; color: #e8e8ec; border-radius: 6px; padding: 0.4rem 0.55rem; font: inherit; }
-.muted { color: #6a7285; font-size: 0.9rem; }
-.err { color: #e88; font-size: 0.9rem; }
-.fed-events { max-height: min(50vh, 28rem); overflow-y: auto; border: 1px solid #2a2e38; border-radius: 6px; padding: 0.35rem 0.5rem; }
+.lbl { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.25rem; }
+.inp { width: 100%; max-width: 28rem; box-sizing: border-box; background: var(--surface); border: 1px solid var(--line); color: var(--ink); border-radius: 6px; padding: 0.4rem 0.55rem; font: inherit; }
+.muted { color: var(--muted); font-size: 0.9rem; }
+.err { color: var(--red-ink); font-size: 0.9rem; }
+.fed-events { max-height: min(50vh, 28rem); overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; padding: 0.35rem 0.5rem; }
 .fed-event { margin: 0.35rem 0; }
-.fed-event summary { cursor: pointer; color: #9aa8c0; font-size: 0.85rem; }
+.fed-event summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; }
 .fed-line { margin: 0.35rem 0 0; padding: 0.5rem; font-size: 0.78rem; }
 details { margin: 0.45rem 0; }
-details > summary { cursor: pointer; color: #9aa8c0; font-size: 0.86rem; }
-button { background: #2a3142; border: 1px solid #3d4658; color: #c8cfdd; padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; margin-right: 0.5rem; }
-button.primary { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
+details > summary { cursor: pointer; color: var(--muted); font-size: 0.86rem; }
+button { background: var(--sunk); border: 1px solid var(--line); color: var(--ink); padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; margin-right: 0.5rem; }
+button.primary { background: var(--red); border-color: var(--red); color: var(--on-red); }
 </style>

@@ -44,15 +44,21 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="panel">
-    <h2>MCP</h2>
-    <p>
-      <button type="button" class="primary" @click="loadServers">Reload server list</button>
-      <button type="button" :disabled="pingBusy" @click="runMcpPing">
-        {{ pingBusy ? "Pinging..." : "Ping all (initialize + tools/list)" }}
-      </button>
-    </p>
-    <p v-if="serversErr" class="err">{{ serversErr }}</p>
+  <section class="page">
+    <header class="page-head">
+      <div>
+        <p class="eyebrow">Admin // tool servers</p>
+        <h1>MCP servers</h1>
+        <p class="lead">External tool servers your penguins can call (for example tableski for spreadsheets).</p>
+      </div>
+      <div class="page-head-actions">
+        <button type="button" @click="loadServers">Reload server list</button>
+        <button type="button" class="primary" :disabled="pingBusy" @click="runMcpPing">
+          {{ pingBusy ? "Pinging…" : "Ping all (initialize + tools/list)" }}
+        </button>
+      </div>
+    </header>
+    <p v-if="serversErr" class="note note-err">{{ serversErr }}</p>
     <div v-if="servers.length" class="cards">
       <article v-for="s in servers" :key="`${s.name}-${s.url}`" class="card">
         <header>
@@ -62,13 +68,13 @@ onMounted(() => {
         <p class="muted">{{ s.url }}</p>
       </article>
     </div>
-    <p v-else-if="!serversErr" class="muted">No servers or empty config.</p>
+    <div v-else-if="!serversErr" class="empty-state"><p>No MCP servers configured yet. Connect tableski on the Setup screen, or add servers to your config file.</p></div>
     <details>
       <summary>Raw MCP servers JSON</summary>
       <pre v-if="servers.length" class="json json-scroll">{{ JSON.stringify(servers, null, 2) }}</pre>
     </details>
 
-    <h3>Ping results</h3>
+    <h2 class="section-title">Ping results</h2>
     <div v-if="pingResults?.length" class="cards">
       <article v-for="r in pingResults" :key="`${r.name}-${r.url}`" class="card">
         <header>
@@ -84,26 +90,12 @@ onMounted(() => {
       <summary>Raw MCP ping JSON</summary>
       <pre v-if="pingResults" class="json json-scroll">{{ JSON.stringify(pingResults, null, 2) }}</pre>
     </details>
-    <p v-if="pingErr" class="err">{{ pingErr }}</p>
+    <p v-if="pingErr" class="note note-err">{{ pingErr }}</p>
   </section>
 </template>
 
 <style scoped>
-.panel h2 { margin-top: 0; font-size: 1.1rem; }
-.panel h3 { font-size: 1rem; margin-top: 1.25rem; }
-.cards { display: grid; gap: 0.45rem; }
-.card { border: 1px solid #2a2e38; border-radius: 8px; background: #171b22; padding: 0.55rem 0.65rem; }
-.card header { display: flex; align-items: center; justify-content: space-between; }
-.status-badge { border-radius: 999px; font-size: 0.72rem; padding: 0.12rem 0.45rem; border: 1px solid transparent; }
-.status-ok { color: #8de3a8; border-color: #2f7c47; background: #153323; }
-.status-error { color: #ffb0b0; border-color: #8d3a3a; background: #381b1b; }
-.status-neutral { color: #b9c8ef; border-color: #41598e; background: #1c2844; }
-.json { background: #1a1d26; border: 1px solid #2a2e38; border-radius: 6px; padding: 0.75rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.45; color: #c8cfdd; }
-.json-scroll { max-height: 18rem; overflow: auto; }
-.muted { color: #6a7285; font-size: 0.9rem; }
-.err { color: #e88; font-size: 0.9rem; }
-details { margin: 0.45rem 0; }
-details > summary { cursor: pointer; color: #9aa8c0; font-size: 0.86rem; }
-button { background: #2a3142; border: 1px solid #3d4658; color: #c8cfdd; padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; margin-right: 0.5rem; }
-button.primary { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
+.cards { grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr)); }
+.card { border-top-color: var(--steel); }
+.card p { margin: 0.15rem 0; overflow-wrap: anywhere; }
 </style>

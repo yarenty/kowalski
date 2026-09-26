@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import type { HordeRunFormSpec, OperatorInputField } from "../api";
+import type { HordeRunFormSpec } from "../api";
 
 const props = defineProps<{
   form: HordeRunFormSpec;
@@ -116,30 +116,19 @@ defineExpose({ missingRequired, answers });
 
 <style scoped>
 .horde-input-form {
-  border: 1px solid #4a6fa5;
-  border-radius: 8px;
-  padding: 0.75rem;
-  background: linear-gradient(180deg, #1a2438 0%, #151a24 100%);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--ink);
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+  background: var(--sunk);
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.8rem;
 }
-.form-head h4 { margin: 0; font-size: 0.95rem; color: #d8e4ff; }
-.field { display: flex; flex-direction: column; gap: 0.25rem; }
-.field span { font-size: 0.82rem; color: #9aa3b8; }
-.field.required span { color: #c8d4ef; }
-.req { color: #f2a07c; margin-left: 0.15rem; }
-.inp {
-  width: 100%;
-  box-sizing: border-box;
-  background: #12161f;
-  border: 1px solid #3d4658;
-  color: #e8e8ec;
-  border-radius: 6px;
-  padding: 0.4rem 0.55rem;
-  font: inherit;
-}
-.mono { font-family: ui-monospace, monospace; }
-.mono-path { font-family: ui-monospace, monospace; font-size: 0.88rem; }
+.form-head h4 { margin: 0 0 0.1rem; font-size: 1rem; }
+.form-head p { margin: 0; }
+.field.required > span:first-child { color: var(--ink); }
+.req { color: var(--red-ink); margin-left: 0.15rem; }
+.mono-path { font-family: var(--font-mono); font-size: 0.88rem; }
 .path-hint { margin: 0.15rem 0 0; }
 </style>

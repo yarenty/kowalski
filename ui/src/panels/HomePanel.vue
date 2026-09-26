@@ -129,14 +129,27 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="panel">
-    <h2>API status</h2>
-    <p class="hint">
-      Run <code>kowalski</code> (default <code>127.0.0.1:3456</code>), then
-      <code>bun run dev</code> in <code>ui/</code>.
-    </p>
+  <section class="page">
+    <header class="page-head">
+      <div>
+        <p class="eyebrow">Admin // diagnostics</p>
+        <h1>Diagnostics</h1>
+        <p class="lead">Server health, memory, agents and sessions — for troubleshooting.</p>
+      </div>
+      <div class="page-head-actions">
+        <label class="chk">
+          <input v-model="autoRefresh" type="checkbox" />
+          Auto-refresh every
+        </label>
+        <input v-model.number="autoRefreshSecs" class="inp tiny" type="number" min="3" aria-label="Auto-refresh seconds" />
+        <span class="muted small">s</span>
+        <button type="button" class="primary" @click="refreshAll">Refresh all</button>
+      </div>
+    </header>
+
+    <h2 class="section-title">API token</h2>
     <p class="row">
-      <label class="muted" for="api-token">API token</label>
+      <label class="lbl" for="api-token">API token</label>
       <input
         id="api-token"
         v-model="apiToken"
@@ -147,23 +160,15 @@ onUnmounted(() => {
         @keyup.enter="saveApiToken"
       />
       <button type="button" @click="saveApiToken">Save</button>
-      <span v-if="tokenSaved" class="muted">saved</span>
+      <span v-if="tokenSaved" class="ok small">✓ saved</span>
     </p>
     <p class="hint">
-      The server requires this bearer token on <code>/api/*</code> (generated at first start;
-      the token file path is in the server log). Stored in this browser only.
-    </p>
-    <p class="row">
-      <button type="button" class="primary" @click="refreshAll">Refresh all</button>
-      <label class="chk">
-        <input v-model="autoRefresh" type="checkbox" />
-        Auto-refresh
-      </label>
-      <input v-model.number="autoRefreshSecs" class="inp tiny" type="number" min="3" />
-      <span class="muted">seconds</span>
+      Only needed when the server runs with <code>--auth</code> (off by default): it then requires this
+      bearer token on <code>/api/*</code> (generated at first start; the token file path is in the server
+      log). Stored in this browser only.
     </p>
 
-    <h3>Memory</h3>
+    <h2 class="section-title">Memory</h2>
     <article v-if="memoryStatus" class="card">
       <header>
         <strong>Embeddings</strong>
@@ -186,21 +191,21 @@ onUnmounted(() => {
     </details>
     <p v-if="healthErr" class="err">{{ healthErr }}</p>
 
-    <h3>Agents</h3>
+    <h2 class="section-title">Agents</h2>
     <details>
       <summary>Raw agents JSON</summary>
       <pre v-if="agents" class="json json-scroll">{{ JSON.stringify(agents, null, 2) }}</pre>
     </details>
     <p v-if="agentsErr" class="err">{{ agentsErr }}</p>
 
-    <h3>Sessions</h3>
+    <h2 class="section-title">Sessions</h2>
     <details>
       <summary>Raw sessions JSON</summary>
       <pre v-if="sessions" class="json json-scroll">{{ JSON.stringify(sessions, null, 2) }}</pre>
     </details>
     <p v-if="sessionsErr" class="err">{{ sessionsErr }}</p>
 
-    <h3>Ollama probe</h3>
+    <h2 class="section-title">Ollama probe</h2>
     <details>
       <summary>Raw doctor JSON</summary>
       <pre v-if="doctor" class="json json-scroll">{{ JSON.stringify(doctor, null, 2) }}</pre>
@@ -210,26 +215,9 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.panel h2 { margin-top: 0; font-size: 1.1rem; }
-.panel h3 { font-size: 1rem; margin-top: 1.25rem; }
-.hint { font-size: 0.9rem; color: #8b92a5; }
-.row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
-.chk { display: inline-flex; align-items: center; gap: 0.4rem; color: #b8c0d0; }
-.inp { background: #1a1d26; border: 1px solid #3d4658; color: #e8e8ec; border-radius: 6px; padding: 0.35rem 0.5rem; }
+.row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 .inp.tiny { width: 4.5rem; }
-.inp.token { width: 20rem; max-width: 100%; }
-.muted { color: #6a7285; font-size: 0.9rem; }
-.json { background: #1a1d26; border: 1px solid #2a2e38; border-radius: 6px; padding: 0.75rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.45; color: #c8cfdd; }
-.json-scroll { max-height: 18rem; overflow: auto; }
-.err { color: #e88; font-size: 0.9rem; }
-.card { border: 1px solid #2a2e38; border-radius: 8px; background: #171b22; padding: 0.55rem 0.65rem; }
-.card header { display: flex; justify-content: space-between; align-items: center; }
-.status-badge { border-radius: 999px; font-size: 0.72rem; padding: 0.12rem 0.45rem; border: 1px solid transparent; }
-.status-ok { color: #8de3a8; border-color: #2f7c47; background: #153323; }
-.status-error { color: #ffb0b0; border-color: #8d3a3a; background: #381b1b; }
-details { margin: 0.45rem 0; }
-details > summary { cursor: pointer; color: #9aa8c0; font-size: 0.86rem; }
-code { background: #2a3142; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.88em; }
-button { background: #2a3142; border: 1px solid #3d4658; color: #c8cfdd; padding: 0.35rem 0.7rem; border-radius: 6px; cursor: pointer; }
-button.primary { background: #3d5a8c; border-color: #5a7ab8; color: #fff; }
+.inp.token { width: 22rem; max-width: 100%; }
+.card { margin-bottom: 0.5rem; }
+.card p { margin: 0.15rem 0; }
 </style>

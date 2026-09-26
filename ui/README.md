@@ -4,6 +4,29 @@
 
 Features: health, MCP ping, **Chat** (`POST /api/chat`, SSE **`POST /api/chat/stream`** with optional **Tool-aware stream** / `tools_stream`), federation, graph extension status. See [`ROADMAP.md`](./ROADMAP.md).
 
+## Look and navigation (Commando theme)
+
+- **Navigation** (left rail): **Hordes** (run a horde — the default screen once Setup is done),
+  **Chat**, **Build** (the Rookery horde builder) and **Setup**. Technical screens sit under the
+  collapsible **Admin** group: **Federation**, **MCP servers**, **Graph**, **Diagnostics** (the
+  former Home/API status screen, including the API token) and **About**. Internal tab ids are
+  unchanged.
+- **Hordes screen**: horde picker cards (name, description, step count, what the horde needs —
+  e.g. tableski — and which file it delivers), the request form, a pipeline stepper
+  (done ✓ / current red / pending / failed ✕), the live feed with timestamps, and a
+  **Delivered** panel that highlights the output file with **Open output folder**. A run waiting
+  before a command step shows a red approval box (Approve / Cancel run); interrupted runs sit in a
+  calm banner.
+- **Deep links**: `?tab=<id>` opens a tab (`federation-run`, `chat`, `rookery`, `setup`,
+  `federation-management`, `mcp`, `graph`, `home`, `about`), `?horde=<id>` preselects a horde on
+  the Hordes screen, `?theme=light|dark|system` overrides the theme for that page load.
+- **Theme**: light / dark / auto toggle at the bottom of the rail (stored in `localStorage`
+  under `kowalski.ui.theme.v1`; auto follows the OS). All colours are design tokens defined once
+  in [`src/styles/theme.css`](./src/styles/theme.css) — components use only `var(--…)`, never
+  hex literals. Text/background pairs are chosen for WCAG AA contrast.
+- **Fonts**: Archivo (headings), IBM Plex Sans (body), JetBrains Mono (labels, ids, code), loaded
+  from Google Fonts with system fallbacks, so the UI stays readable offline.
+
 ## Horde changes in 1.1.0 (since 1.0.0)
 
 - Federation panel now supports clearer horde run observability with task progress events.
@@ -49,7 +72,7 @@ cargo run -p kowalski -- -c config.toml
 
 This binds **`127.0.0.1:3456`** and serves JSON under `/api` (`/api/health`, `/api/doctor`, `/api/mcp/servers`, `POST /api/mcp/ping`, **`POST /api/chat`**, **`POST /api/chat/stream`** (body may include **`tools_stream`: true**), **`POST /api/chat/reset`**). With **`kowalski --features postgres`** and a Postgres memory URL, graph routes may include **`POST /api/graph/cypher`** (Apache AGE on the server). Use `-c` / `--ollama-url` as needed (see `kowalski --help`).
 
-**API token (only when the server runs with auth enabled):** auth is **off by default** — no token needed. If the server was started with `--auth` (or `[server] auth = true` / `KOWALSKI_API_TOKEN` set), everything under `/api/*` except `/api/health` requires a bearer token generated at first server start (printed once; persisted at `<config-dir>/db/api_token`, path in the server log). In the UI, paste it into **Home tab → API token** (stored in this browser's `localStorage`) or answer the first-run prompt; for dev you can also set `VITE_API_TOKEN`.
+**API token (only when the server runs with auth enabled):** auth is **off by default** — no token needed. If the server was started with `--auth` (or `[server] auth = true` / `KOWALSKI_API_TOKEN` set), everything under `/api/*` except `/api/health` requires a bearer token generated at first server start (printed once; persisted at `<config-dir>/db/api_token`, path in the server log). In the UI, paste it into **Admin → Diagnostics → API token** (stored in this browser's `localStorage`) or answer the first-run prompt; for dev you can also set `VITE_API_TOKEN`.
 
 ## API proxy
 
@@ -68,16 +91,16 @@ Use this after any change to **`kowalski`**, **`kowalski-core`**, or **`ui/`** t
 
 | # | Sidebar tab | What to do | Pass criteria |
 |---|-------------|------------|-----------------|
-| 1 | **Home** | Open once. Only if the server runs with `--auth`: paste its API token into **API token** → **Save** (first run only) | No blank crash; **Refresh all** shows agents/sessions (no 401 errors). |
+| 1 | **Admin → Diagnostics** | Open once. Only if the server runs with `--auth`: paste its API token into **API token** → **Save** (first run only) | No blank crash; **Refresh all** shows agents/sessions (no 401 errors). |
 | 2 | **Chat** | Send one short message | **Optional** if `[llm]` / Ollama is configured: you get a normal reply or a **clear** error in the thread (not a silent hang). Skip if you have no LLM. |
-| 3 | **Federation** | Scroll to **Knowledge Sucking Swarm** (Knowledge Compiler horde) → **Start All** | Workers move toward ready; no permanent red error. If workers never become ready, start matching `agent-app worker … --role …` processes from [`examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md). |
-| 4 | **Horde** | **Knowledge Sucking Swarm**: URL + question form → **Run Horde**. **Rust Project Scaffolder** (`examples/rust-project-scaffolder`): operator form (project name, goals, crate shape) then **Run Horde** | Stream shows pipeline steps or explicit failure. Scaffolder ingest needs valid `output` paths (auto-repaired on birth/repair). |
-| 5 | **Rookery** (1.3.0+) | **New session** → describe a 3-step workflow → **Propose horde** → **Give birth** | Summary + pipeline on the right (horizontal track, or layered **DAG** canvas when `edges[]` is present); birth shows path under `examples/<id>/`. Run `cargo run -p kowalski-cli -- agent-app validate --path examples/<id>` to confirm. Requires live LLM for chat/propose. |
-| 5b | **Horde — Coder** | Restart server; select **Coder (planning tier)** → **Start All** → run | DAG canvas; project path + task form; `HANDOFF.md` under `examples/coder/output/`. |
-| 5c | **Horde — resume** | Kill the server mid-run; restart; reselect the horde | **Interrupted runs** banner lists the run (status + resume attempts); **Resume** continues from the next ready step (completed steps keep artifacts) and the feed shows a "run resumed" marker. |
-| 5d | **Horde — cancel** | Start a run; click **Cancel run** next to the progress spinner | Feed shows "run cancelled"; run history lists the run as `cancelled`; remaining steps are skipped. No worker processes are involved — steps run in-process. |
-| 5e | **Horde — triggers** | Select a horde with `[[triggers]]` → **Triggers** panel: toggle one **Disable/Enable**, click **Fire now**; restart the server and reselect | Toggle flips armed/disabled (marked "operator override") and **survives the restart**; Fire now reports the started run and highlights it in **Recent runs**; trigger-fired runs carry a cron/watch/webhook badge there (operator runs say `operator`). Trigger cards also badge on **Federation**. |
-| 6 | **Federation** (optional extra) | Lower on the same panel: **Refresh registry** if you use raw delegate / `kc.run` smoke | Registry JSON loads; see [`examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md) for legacy worker commands. |
+| 3 | **Admin → Federation** | Scroll to **Knowledge Sucking Swarm** (Knowledge Compiler horde) → **Start All** | Workers move toward ready; no permanent red error. If workers never become ready, start matching `agent-app worker … --role …` processes from [`examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md). |
+| 4 | **Hordes** | **Knowledge Sucking Swarm**: URL + question form → **Run horde**. **Rust Project Scaffolder** (`examples/rust-project-scaffolder`): operator form (project name, goals, crate shape) then **Run horde** | The pipeline stepper advances and the live feed shows each step, or an explicit failure. Scaffolder ingest needs valid `output` paths (auto-repaired on birth/repair). |
+| 5 | **Build** (Rookery) | **New session** → describe a 3-step workflow → **Propose horde** → **Give birth** | Summary + pipeline on the right (horizontal track, or layered **DAG** canvas when `edges[]` is present); birth shows path under `examples/<id>/`. Run `cargo run -p kowalski-cli -- agent-app validate --path examples/<id>` to confirm. Requires live LLM for chat/propose. |
+| 5b | **Hordes — Coder** | Restart server; select **Coder (planning tier)** → **Start All** → run | DAG canvas; project path + task form; `HANDOFF.md` under `examples/coder/output/`. |
+| 5c | **Hordes — resume** | Kill the server mid-run; restart; reselect the horde | **Interrupted runs** banner lists the run (status + resume attempts); **Resume** continues from the next ready step (completed steps keep artifacts) and the feed shows a "run resumed" marker. |
+| 5d | **Hordes — cancel** | Start a run; click **Cancel run** under the pipeline stepper | Feed shows "run cancelled"; run history lists the run as `cancelled`; remaining steps are skipped. No worker processes are involved — steps run in-process. |
+| 5e | **Hordes — triggers** | Select a horde with `[[triggers]]` → **Triggers** panel: toggle one **Disable/Enable**, click **Fire now**; restart the server and reselect | Toggle flips armed/disabled (marked "operator override") and **survives the restart**; Fire now reports the started run and highlights it in **Recent runs**; trigger-fired runs carry a cron/watch/webhook badge there (operator runs say `operator`). Trigger cards also badge on **Admin → Federation**. |
+| 6 | **Admin → Federation** (optional extra) | Lower on the same panel: **Refresh registry** if you use raw delegate / `kc.run` smoke | Registry JSON loads; see [`examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md) for legacy worker commands. |
 
 
 
