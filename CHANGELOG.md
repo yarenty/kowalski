@@ -12,6 +12,15 @@ All notable changes to this project will be documented in this file, or at least
 - The Rookery builder prompt is compiled into the server, so an installed `kowalski` builds hordes without a source checkout; an override file next to the config still wins.
 - Crate descriptions and version strings brought up to date.
 
+### Fixed
+- A `verify` step's command is killed when it passes the verify timeout (before, the timeout was only noticed after the command ended, so a hung command hung the run) and when its run is cancelled; the whole process group goes, so `sh -c` children do not linger.
+
+### CI
+- Clippy (warnings are errors) and tests cover the whole workspace, including the server crate (horde runner, triggers, auth, HTTP API) and the rookery MCP server; toolchain pinned to 1.98.
+- The server is built with `--features postgres` (where the graph Cypher route lives).
+- New UI job: frozen-lockfile install and production build.
+- New HTTP-level tests drive real horde folders through the server's router: list, run to completion, run lookup across hordes, cancel, webhook routing, and auth on every route.
+
 ### Removed
 - Legacy agent-manager commands (`create`, `chat <agent>`, `list`, `agents`, `--interactive`): their agents lived only for one process and ignored the config.
 - Hardcoded `/opt/ml/kowalski` fallbacks for hordes, the builder prompt and the worker root.

@@ -48,7 +48,7 @@ pub use logging::*;
 pub use horde_stages::{
     apply_patches_dry_run, extract_unified_diffs, format_apply_artifact, format_verify_artifact,
     verify_output_excerpt,
-    parse_stage_status_from_artifact, resolve_verify_cwd, run_verify_command, ApplyDryRunResult,
+    parse_stage_status_from_artifact, resolve_verify_cwd, run_verify_command, run_verify_command_cancellable, ApplyDryRunResult,
     StageStatus, VerifyRunResult, DEFAULT_VERIFY_MAX_OUTPUT_BYTES, DEFAULT_VERIFY_TIMEOUT_SECS,
 };
 pub use horde_step::{

@@ -19,7 +19,7 @@ use crate::error::KowalskiError;
 use crate::horde_stages::{
     DEFAULT_VERIFY_MAX_OUTPUT_BYTES, DEFAULT_VERIFY_TIMEOUT_SECS, StageStatus,
     apply_patches_dry_run, format_apply_artifact, format_verify_artifact,
-    resolve_verify_cwd, run_verify_command, verify_output_excerpt, verify_status,
+    resolve_verify_cwd, run_verify_command_cancellable, verify_output_excerpt, verify_status,
 };
 use crate::llm::provider::LLMProvider;
 use crate::source_bundle::{
@@ -348,16 +348,19 @@ impl StepHandler for VerifyStepHandler {
         let cwd = resolve_verify_cwd(&project, ctx.step.verify_cwd.as_deref())?;
         let out_path = ctx.artifact_path()?;
 
+        let cancel = ctx.cancel.clone();
         let result = tokio::task::spawn_blocking(move || {
-            run_verify_command(
+            run_verify_command_cancellable(
                 &command,
                 &cwd,
                 DEFAULT_VERIFY_MAX_OUTPUT_BYTES,
                 Duration::from_secs(DEFAULT_VERIFY_TIMEOUT_SECS),
+                &|| cancel.is_cancelled(),
             )
         })
         .await
         .map_err(|e| KowalskiError::Validation(format!("verify task join: {e}")))?;
+        ctx.check_cancelled()?;
 
         let status = verify_status(&result);
         let doc = format_verify_artifact(&result);

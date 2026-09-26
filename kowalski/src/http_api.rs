@@ -358,6 +358,29 @@ pub async fn serve(
         federation_pg_notify,
     };
 
+    let app = build_app(state, rookery, api_token, auth_enabled, &cors_origins);
+
+    if let Some((cert, key)) = tls {
+        let rustls_config = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key).await?;
+        axum_server::bind_rustls(addr, rustls_config)
+            .serve(app.into_make_service())
+            .await?;
+    } else {
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        axum::serve(listener, app).await?;
+    }
+    Ok(())
+}
+
+/// The whole HTTP surface: every `/api/*` route, the rookery extension, tracing, the optional
+/// bearer-token check and CORS. Serving and the API tests build the app the same way.
+fn build_app(
+    state: ApiState,
+    rookery: Arc<Mutex<crate::rookery::RookeryStore>>,
+    api_token: Option<Arc<String>>,
+    auth_enabled: bool,
+    cors_origins: &[String],
+) -> Router {
     let router = Router::new()
         .route("/api/health", get(get_health))
         .route("/api/agents", get(get_agents))
@@ -504,18 +527,7 @@ pub async fn serve(
         app
     };
     // CORS outermost so browser preflights (no Authorization header) never hit the auth check.
-    let app = app.layer(crate::auth::cors_layer(!auth_enabled, &cors_origins));
-
-    if let Some((cert, key)) = tls {
-        let rustls_config = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key).await?;
-        axum_server::bind_rustls(addr, rustls_config)
-            .serve(app.into_make_service())
-            .await?;
-    } else {
-        let listener = tokio::net::TcpListener::bind(addr).await?;
-        axum::serve(listener, app).await?;
-    }
-    Ok(())
+    app.layer(crate::auth::cors_layer(!auth_enabled, cors_origins))
 }
 
 fn federation_postgres_notify_bridge(state: &ApiState) -> bool {
@@ -2984,5 +2996,236 @@ mod import_upload_tests {
         )
         .unwrap();
         assert_eq!(value["ok"], serde_json::json!(true));
+    }
+}
+
+/// The HTTP surface end to end: real horde folders on disk, loaded by the server's catalog,
+/// driven through the same router `serve` builds (no model, no workers: deterministic steps
+/// run in-process).
+#[cfg(test)]
+mod api_tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use kowalski_core::federation::AgentRegistry;
+    use tower::ServiceExt;
+
+    fn write_horde(root: &Path, id: &str, verify_command: &str, extra_front_matter: &str) {
+        let dir = root.join(id);
+        std::fs::create_dir_all(dir.join("agents")).unwrap();
+        std::fs::create_dir_all(dir.join("prompts")).unwrap();
+        std::fs::write(
+            dir.join("horde.md"),
+            format!(
+                "---\nid = \"{id}\"\ndisplay_name = \"{id}\"\ndescription = \"api test horde\"\ncapability_prefix = \"{id}\"\npipeline = [\"ingest\", \"check\"]\nworkdir = \"output\"\n{extra_front_matter}---\n\n# {id}\n"
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("agents/ingest.md"),
+            format!("---\nname = \"ingest\"\nkind = \"ingest\"\ncapability = \"{id}.ingest\"\ndefault_agent_id = \"{id}-ingest\"\ndisplay_name = \"Ingest\"\nprompt_file = \"prompts/ingest.md\"\noutput = \"debug/raw/\"\n---\n\n# Ingest\n"),
+        )
+        .unwrap();
+        std::fs::write(dir.join("prompts/ingest.md"), "Collect the source.\n").unwrap();
+        std::fs::write(
+            dir.join("agents/check.md"),
+            format!("---\nname = \"check\"\nkind = \"verify\"\ncapability = \"{id}.check\"\ndefault_agent_id = \"{id}-check\"\ndisplay_name = \"Check\"\nverify_command = \"{verify_command}\"\noutput = \"debug/check.md\"\n---\n\n# Check\n"),
+        )
+        .unwrap();
+    }
+
+    async fn fixture(dir: &Path, api_token: Option<&str>) -> Router {
+        let hordes = dir.join("hordes");
+        write_horde(&hordes, "api-horde", "true", "\n[[triggers]]\nwebhook = { route = \"api-hook\" }\n");
+        write_horde(&hordes, "slow-horde", "sleep 30", "");
+
+        let config = Config::default();
+        let config_path = dir.join("config.toml");
+        let broker = Arc::new(MpscBroker::new());
+        let registry = Arc::new(AgentRegistry::new());
+        let federation = Arc::new(FederationOrchestrator::new(registry, broker.clone()));
+        let store = kowalski_core::db::run_store::RunStore::open("sqlite::memory:")
+            .await
+            .unwrap();
+        let mut manager =
+            crate::horde::HordeManager::new(Vec::new(), broker.clone(), federation.clone(), store);
+        manager.catalog = Arc::new(crate::horde::HordeCatalog::with_roots(vec![hordes]));
+        manager.step_handlers =
+            Arc::new(kowalski_core::StepHandlerRegistry::with_builtin_deterministic());
+        crate::horde::spawn_orchestrator_loop(manager.clone());
+        let trigger_manager = crate::triggers::TriggerManager::new(manager.clone());
+        trigger_manager.rearm().await;
+        let rookery = crate::rookery::new_rookery_store(&config, &config_path)
+            .await
+            .unwrap();
+        let agent = TemplateAgent::new(config.clone()).await.unwrap();
+        let state = ApiState {
+            config_path,
+            ollama_url: None,
+            model: "test".into(),
+            full_config: config,
+            chat: Arc::new(Mutex::new(ChatState {
+                agent,
+                conv_id: String::new(),
+            })),
+            federation_broker: broker,
+            federation,
+            managed_workers: Arc::new(Mutex::new(HashMap::new())),
+            managed_worker_last_exit: Arc::new(Mutex::new(HashMap::new())),
+            horde_manager: manager,
+            trigger_manager,
+            api_url: "http://127.0.0.1:0".into(),
+            api_token: api_token.map(|t| Arc::new(t.to_string())),
+            #[cfg(feature = "postgres")]
+            federation_pg_notify: None,
+        };
+        build_app(
+            state,
+            rookery,
+            api_token.map(|t| Arc::new(t.to_string())),
+            api_token.is_some(),
+            &[],
+        )
+    }
+
+    async fn call(
+        app: &Router,
+        method: &str,
+        uri: &str,
+        body: Option<serde_json::Value>,
+        token: Option<&str>,
+    ) -> (StatusCode, serde_json::Value) {
+        let mut req = Request::builder().method(method).uri(uri);
+        if let Some(t) = token {
+            req = req.header("authorization", format!("Bearer {t}"));
+        }
+        let req = match body {
+            Some(b) => req
+                .header("content-type", "application/json")
+                .body(Body::from(b.to_string()))
+                .unwrap(),
+            None => req.body(Body::empty()).unwrap(),
+        };
+        let res = app.clone().oneshot(req).await.unwrap();
+        let status = res.status();
+        let bytes = axum::body::to_bytes(res.into_body(), 1 << 20).await.unwrap();
+        let value = serde_json::from_slice(&bytes)
+            .unwrap_or_else(|_| json!({ "text": String::from_utf8_lossy(&bytes) }));
+        (status, value)
+    }
+
+    async fn wait_for(app: &Router, horde: &str, run_id: &str, want: &[&str]) -> serde_json::Value {
+        for _ in 0..200 {
+            let (_, v) = call(app, "GET", &format!("/api/hordes/{horde}/runs/{run_id}"), None, None).await;
+            let status = v["run"]["status"].as_str().unwrap_or("").to_string();
+            if want.contains(&status.as_str()) {
+                return v["run"].clone();
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+        let (_, v) = call(app, "GET", &format!("/api/hordes/{horde}/runs/{run_id}"), None, None).await;
+        panic!("run {run_id} never reached {want:?}: {}", v["run"]);
+    }
+
+    fn run_id(v: &serde_json::Value) -> String {
+        v["run_id"]
+            .as_str()
+            .or_else(|| v["run"]["run_id"].as_str())
+            .unwrap_or_else(|| panic!("no run id in {v}"))
+            .to_string()
+    }
+
+    #[tokio::test]
+    async fn list_run_and_finish_a_horde_over_http() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let app = fixture(dir.path(), None).await;
+
+        let (status, list) = call(&app, "GET", "/api/hordes", None, None).await;
+        assert_eq!(status, StatusCode::OK);
+        let ids: Vec<&str> = list["hordes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|h| h["id"].as_str())
+            .collect();
+        assert!(ids.contains(&"api-horde") && ids.contains(&"slow-horde"), "{list}");
+
+        let (status, started) = call(
+            &app,
+            "POST",
+            "/api/hordes/api-horde/run",
+            Some(json!({ "prompt": "check it", "source": project.path().display().to_string() })),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{started}");
+        let id = run_id(&started);
+        // the HTTP API keeps the legacy vocabulary the UI reads: completed / failed / cancelled
+        let run = wait_for(&app, "api-horde", &id, &["completed", "failed"]).await;
+        assert_eq!(run["status"], "completed", "{run}");
+
+        let (status, runs) = call(&app, "GET", "/api/hordes/api-horde/runs", None, None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(runs.to_string().contains(&id), "{runs}");
+
+        let (status, _) = call(&app, "GET", "/api/hordes/api-horde/runs/nope", None, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let (status, _) = call(&app, "GET", &format!("/api/hordes/slow-horde/runs/{id}"), None, None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "a run is only visible under its own horde");
+    }
+
+    #[tokio::test]
+    async fn cancel_a_running_horde_over_http() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let app = fixture(dir.path(), None).await;
+        let (_, started) = call(
+            &app,
+            "POST",
+            "/api/hordes/slow-horde/run",
+            Some(json!({ "prompt": "wait", "source": project.path().display().to_string() })),
+            None,
+        )
+        .await;
+        let id = run_id(&started);
+        // let the sleeping verify step start, then cancel
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        let (status, cancelled) = call(
+            &app,
+            "POST",
+            &format!("/api/hordes/slow-horde/runs/{id}/cancel"),
+            Some(json!({ "reason": "test" })),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{cancelled}");
+        let run = wait_for(&app, "slow-horde", &id, &["cancelled", "completed", "failed"]).await;
+        assert_eq!(run["status"], "cancelled", "{run}");
+    }
+
+    #[tokio::test]
+    async fn webhook_route_fires_and_unknown_routes_are_404() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = fixture(dir.path(), None).await;
+        let (status, fired) = call(&app, "POST", "/api/triggers/api-hook", Some(json!({ "ticket": 7 })), None).await;
+        assert_eq!(status, StatusCode::OK, "{fired}");
+        assert!(fired.to_string().contains("run"), "{fired}");
+        let (status, _) = call(&app, "POST", "/api/triggers/no-such-route", Some(json!({})), None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn auth_guards_every_api_route_when_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = fixture(dir.path(), Some("s3cret")).await;
+        let (status, _) = call(&app, "GET", "/api/hordes", None, None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        let (status, _) = call(&app, "GET", "/api/hordes", None, Some("wrong")).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        let (status, _) = call(&app, "POST", "/api/triggers/api-hook", Some(json!({})), None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "webhooks need the token too");
+        let (status, _) = call(&app, "GET", "/api/hordes", None, Some("s3cret")).await;
+        assert_eq!(status, StatusCode::OK);
     }
 }
