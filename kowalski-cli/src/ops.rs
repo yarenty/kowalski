@@ -6,10 +6,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Default path for `[mcp]` and full config TOML (CLI and HTTP API).
+/// The config file to read: `-c` when given, else [`kowalski_core::config::default_config_path`].
 pub fn mcp_config_path(config_path: Option<&str>) -> PathBuf {
     config_path
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("config.toml"))
+        .unwrap_or_else(kowalski_core::config::default_config_path)
 }
 
 /// Load full [`Config`] for `kowalski` server mode (HTTP chat + MCP). Missing file → [`Config::default`].

@@ -16,7 +16,7 @@ struct Cli {
     #[clap(subcommand)]
     command: Option<Commands>,
 
-    /// Config TOML for the default chat (default ./config.toml)
+    /// Config TOML for the default chat (default: $KOWALSKI_CONFIG, ./config.toml, then ~/.config/kowalski/config.toml)
     #[clap(short, long)]
     config: Option<String>,
 }
@@ -27,7 +27,7 @@ enum Commands {
     Consolidate {
         #[clap(long)]
         delete: bool,
-        /// Config TOML (default ./config.toml)
+        /// Config TOML (default: $KOWALSKI_CONFIG, ./config.toml, then ~/.config/kowalski/config.toml)
         #[clap(short, long)]
         config: Option<String>,
     },
@@ -55,7 +55,7 @@ enum Commands {
     /// Chat with an agent that uses your config's model and MCP tools (also: `chat`, or no command)
     #[clap(alias = "chat")]
     Run {
-        /// Config TOML (default ./config.toml)
+        /// Config TOML (default: $KOWALSKI_CONFIG, ./config.toml, then ~/.config/kowalski/config.toml)
         #[clap(short, long)]
         config: Option<String>,
     },
@@ -103,7 +103,7 @@ enum DbCommands {
 enum FederationCommands {
     /// Send a Ping ACL via `pg_notify` on `kowalski_federation` (needs `memory.database_url` in config)
     PingNotify {
-        /// Config TOML (default ./config.toml)
+        /// Config TOML (default: $KOWALSKI_CONFIG, ./config.toml, then ~/.config/kowalski/config.toml)
         #[clap(short, long)]
         config: Option<String>,
     },

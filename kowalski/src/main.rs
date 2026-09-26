@@ -1,6 +1,7 @@
 use clap::Parser;
 
 mod auth;
+mod embedded;
 mod fswatch;
 mod horde;
 mod http_api;
@@ -20,7 +21,7 @@ struct Cli {
     /// which `ui/vite.config.ts` proxy and the CLI default mirror)
     #[clap(long, default_value = kowalski_core::config::DEFAULT_API_BIND)]
     bind: String,
-    /// Config TOML path (default ./config.toml)
+    /// Config TOML path (default: $KOWALSKI_CONFIG, ./config.toml, then ~/.config/kowalski/config.toml)
     #[clap(short, long)]
     config: Option<String>,
     /// Ollama base URL for `/api/doctor` (default http://127.0.0.1:11434)
@@ -41,6 +42,9 @@ struct Cli {
     /// origins. Only used with auth enabled (otherwise CORS is permissive).
     #[clap(long = "cors-origin", value_name = "ORIGIN")]
     cors_origins: Vec<String>,
+    /// Do not open the browser at start (it opens by default when started from a terminal).
+    #[clap(long)]
+    no_open: bool,
 }
 
 #[tokio::main]
@@ -63,7 +67,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         auth: cli.auth,
         cors_origins: cli.cors_origins,
     };
-    http_api::serve(addr, cli.config, cli.ollama_url, tls, security).await?;
+    let open_browser = !cli.no_open && std::io::IsTerminal::is_terminal(&std::io::stdout());
+    http_api::serve(addr, cli.config, cli.ollama_url, tls, security, open_browser).await?;
 
     Ok(())
 }

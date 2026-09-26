@@ -25,6 +25,44 @@ pub const RUN_DB_ENV: &str = "KOWALSKI_RUN_DB";
 /// `cargo run -p kowalski-cli` (dev tree).
 pub const CLI_BIN_ENV: &str = "KOWALSKI_CLI_BIN";
 
+/// Env var naming the config file explicitly.
+pub const CONFIG_ENV: &str = "KOWALSKI_CONFIG";
+
+/// Single source of truth for which config file the server and the CLI read when `-c` is not
+/// given: [`CONFIG_ENV`], else `./config.toml` when it exists, else the per-user file that
+/// `install.sh` writes (`$XDG_CONFIG_HOME/kowalski/config.toml`, default
+/// `~/.config/kowalski/config.toml`) when it exists, else `./config.toml` (missing: defaults).
+pub fn default_config_path() -> std::path::PathBuf {
+    use std::path::PathBuf;
+    if let Ok(p) = std::env::var(CONFIG_ENV)
+        && !p.trim().is_empty()
+    {
+        return PathBuf::from(p.trim());
+    }
+    let local = PathBuf::from("config.toml");
+    if local.is_file() {
+        return local;
+    }
+    if let Some(user) = user_config_path()
+        && user.is_file()
+    {
+        return user;
+    }
+    local
+}
+
+/// The per-user config file location (`$XDG_CONFIG_HOME/kowalski/config.toml`, default
+/// `~/.config/kowalski/config.toml`), whether or not it exists.
+pub fn user_config_path() -> Option<std::path::PathBuf> {
+    use std::path::PathBuf;
+    let base = std::env::var("XDG_CONFIG_HOME")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .map(PathBuf::from)
+        .or_else(|| std::env::var("HOME").ok().map(|h| PathBuf::from(h).join(".config")))?;
+    Some(base.join("kowalski").join("config.toml"))
+}
+
 /// Env var overriding horde discovery roots: a `:`-separated list of directories
 /// scanned for horde definitions. Its first entry is also the user hordes root
 /// (where imported bundles land).

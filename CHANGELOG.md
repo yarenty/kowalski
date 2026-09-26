@@ -12,6 +12,14 @@ All notable changes to this project will be documented in this file, or at least
 - The Rookery builder prompt is compiled into the server, so an installed `kowalski` builds hordes without a source checkout; an override file next to the config still wins.
 - Crate descriptions and version strings brought up to date.
 
+### Added
+- One binary: the build compiles the operator UI (`ui/dist`) into `kowalski`, which serves it at `/` (app routes fall back to the page, hashed assets cached) and opens the browser when started from a terminal (`--no-open` to skip). A build without the UI still starts and says how to add it.
+- Built-in hordes (`url-summarizer`, `knowledge-compiler`) ship inside the binary and are written to `builtin-hordes/` beside the config on every start, scanned last so a user's own horde with the same id wins.
+- Config lookup shared by the server and the CLI: `-c`, else `$KOWALSKI_CONFIG`, else `./config.toml`, else `~/.config/kowalski/config.toml` (where `install.sh` writes it), so an installed `kowalski` finds its config from any directory.
+
+### Changed
+- With auth on, only `/api/*` needs the token; the UI's static files are open (they carry no data).
+
 ### Fixed
 - A `verify` step's command is killed when it passes the verify timeout (before, the timeout was only noticed after the command ended, so a hung command hung the run) and when its run is cancelled; the whole process group goes, so `sh -c` children do not linger.
 
