@@ -1,24 +1,43 @@
-# Kowalski Roadmap & Features (1.8.0+)
+# Kowalski Roadmap & Features (2.0.0+)
 
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"
 
-**Shipped:** **1.8.0 — Ecosystem** (MCP layer extracted: emperor-mcp + tableski; slim 4-crate workspace) and **1.7.0 — Autonomy** — see [`CHANGELOG.md`](CHANGELOG.md).  
+**Shipped:** **2.0.0 — Out of the Box** (one binary, first-run Setup, web tools, built-in Spreadsheet analyst), **1.8.0 — Ecosystem** (MCP layer extracted: emperor-mcp + tableski; slim 4-crate workspace) and **1.7.0 — Autonomy** — see [`CHANGELOG.md`](CHANGELOG.md).  
 **Published on crates.io:** lags GitHub releases; `cargo install` from git works today.  
 **Per-crate roadmaps:** [`kowalski-core/ROADMAP.md`](kowalski-core/ROADMAP.md), [`kowalski-cli/ROADMAP.md`](kowalski-cli/ROADMAP.md), [`ui/ROADMAP.md`](ui/ROADMAP.md).
 
-## Release train (1.7 → 2.0)
+## Release train (2.x)
+
+The 2.x line is about one person, not developers: a small-business owner or trader who downloads
+kowalski, answers three setup questions, drops a spreadsheet and gets a correct report back.
+
+| Version | Theme | Goal |
+|---------|--------|------|
+| ~~2.0.0~~ | **Out of the Box** — *shipped 2026-09-26* | One binary with the UI inside; first-run Setup (model, files folder, tableski sign-in); `web_fetch` / `web_search`; built-in Spreadsheet analyst with `table_profile`, `sql_batch`, `xlsx_report` steps |
+| **2.1.0** | **Standing Orders** | Safe defaults (auth when not on localhost, isolation for imported bundles, confirmation before `verify`/`apply` commands); built-in Morning brief (cron) and Folder watcher (watch) hordes; pre-built macOS and Linux binaries on releases |
+| **2.2.0** | **Commando** | Full UI redesign (penguin black and white, signal red); docs reorganised with a new architecture page; demo recording and the official blog at kowalski.yarenty.com |
+| later | **Support** | Chat tab becomes a kowalski-aware helper (install gaps, Rookery and horde intro) |
+| later | **Trading horde** | Market monitor and scheduled analysis over tableski's market data |
+| later | **Obsidian MCP** | An Obsidian vault server on `emperor-mcp` |
+
+## Shipped in 2.0.0 — **Out of the Box** (2026-09-26)
+
+See [`CHANGELOG.md`](CHANGELOG.md) (**[2.0.0]**). Highlights:
+
+- **One binary** — the operator UI and the built-in hordes are compiled into `kowalski`; it opens the browser on start
+- **First-run Setup** — model (Ollama detected, or any OpenAI-compatible endpoint), files folder, Connect tableski (OAuth, no token to copy); writes the config and restarts itself
+- **Web tools** — `web_fetch` (public addresses only) and `web_search` (Brave, Staan or SearXNG)
+- **Spreadsheet analyst** — plain questions in, `HANDOFF.md` and `report.xlsx` out; the model writes SQL, the engine computes every number
+- **CI** covers the whole workspace and the UI build; HTTP-level tests drive real horde folders
+
+## Earlier release train (1.7 → 1.8)
 
 | Version | Theme | Goal |
 |---------|--------|------|
 | ~~1.5.0~~ | **Coder (execution)** — *shipped in 1.7.0* | Full working coding horde: project tree ingest, tool-enabled stages, apply/verify, conditional loops |
 | ~~1.6.0~~ | **Fresh install** — *shipped in 1.7.0* | [`install.sh`](install.sh) onboarding — env checks, Ollama hints, Docker MCP suggestions, minimal tool stack |
 | ~~1.7.0~~ | **Autonomy** — *shipped 2026-08-27* | Durable runs (resume, cancel), cron/watch/webhook triggers, native tool calling, structured output, guided Rookery builder, hot reload, portable manifests/bundles, process isolation, API auth |
-| ~~1.8.0~~ | **Ecosystem** (standalone MCP crates) — *shipped 2026-08-27* | Shared framework → [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) (consumed from crates.io); DataFusion server → **`tableski`** (standalone project, public at first release) |
-| **1.7.x** | **Obsidian MCP** (intermediate) | Reusable MCP catalog doc; an Obsidian server on `emperor-mcp` (filesystem vault v0); survey existing Obsidian MCPs before building |
-| **1.9.0** | **Support** | Chat tab becomes **Support**: Kowalski-aware helper (install gaps, Rookery + horde intro) |
-| **1.10.0** | **Vision & docs** | Marketing-quality articles; evolution 0.5 → 1.0 → hordes → Rookery; consolidated vision |
-| **1.11.0** | **Trading horde** | Web monitor + scheduled market analysis; buy/sell/wait suggestions (details TBD) |
-| **2.0.0** | **Production polish** | Mac + Ubuntu from-scratch installs; pre-built hordes usable out of the box |
+| ~~1.8.0~~ | **Ecosystem** (standalone MCP crates) — *shipped 2026-08-27* | Shared framework → [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) (consumed from crates.io); DataFusion server → **`tableski`** (standalone project) |
 
 ## Shipped in 1.8.0 — **Ecosystem** (2026-08-27)
 

@@ -6,11 +6,18 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-26 — **Out of the Box**
+
+> The product release: download one binary, answer three setup questions, ask your spreadsheets
+> questions and get a report workbook back.
+
 ### Changed
 - `kowalski-cli chat` and a bare `kowalski-cli` start the config-driven agent chat (`run`): your model plus MCP tools.
 - The sample configuration is now `config.example.toml` (what `install.sh` downloads); `config.toml` is git-ignored so personal endpoints and keys never reach the repository.
 - The Rookery builder prompt is compiled into the server, so an installed `kowalski` builds hordes without a source checkout; an override file next to the config still wins.
 - Crate descriptions and version strings brought up to date.
+- The UI's chat is tool-aware by default (remembered per browser), so connected tools such as tableski, web and files are used without ticking a box.
+- With auth on, only `/api/*` needs the token; the UI's static files are open (they carry no data).
 
 ### Added
 - Web tools for agents: `web_fetch` (one public page as readable Markdown; private, loopback, link-local and cloud-metadata addresses refused, every redirect re-checked) always, and `web_search` (top results with title, URL and snippet) when `[search]` names Brave Search (key in config or `BRAVE_API_KEY`), Staan, the European web index (`STAAN_API_KEY`, optional `market`), or a SearXNG instance. The Setup screen takes an optional Brave or Staan key.
@@ -21,10 +28,6 @@ All notable changes to this project will be documented in this file, or at least
 - Data step kinds for hordes, run without a model: `table_profile` (every table's source, columns, types and statistics from the data tool), `sql_batch` (each fenced SQL block of the previous step's plan run through `query_sql`; results as Markdown plus a JSON sidecar) and `xlsx_report` (that sidecar as a workbook, numbers typed as numbers).
 - Built-in hordes (`spreadsheet-analyst`, `url-summarizer`, `knowledge-compiler`) ship inside the binary and are written to `builtin-hordes/` beside the config on every start, scanned last so a user's own horde with the same id wins.
 - Config lookup shared by the server and the CLI: `-c`, else `$KOWALSKI_CONFIG`, else `./config.toml`, else `~/.config/kowalski/config.toml` (where `install.sh` writes it), so an installed `kowalski` finds its config from any directory.
-
-### Changed
-- The UI's chat is tool-aware by default (remembered per browser), so connected tools such as tableski, web and files are used without ticking a box.
-- With auth on, only `/api/*` needs the token; the UI's static files are open (they carry no data).
 
 ### Fixed
 - A step's context token pointing at a folder output (such as `@step:ingest@`, whose output is `debug/raw/`) attaches that folder's newest Markdown file, the current run's input; before, it attached an empty section, so later steps never saw the operator's input.
@@ -39,7 +42,7 @@ All notable changes to this project will be documented in this file, or at least
 ### Removed
 - Legacy agent-manager commands (`create`, `chat <agent>`, `list`, `agents`, `--interactive`): their agents lived only for one process and ignored the config.
 - Hardcoded `/opt/ml/kowalski` fallbacks for hordes, the builder prompt and the worker root.
-- The unused `[search]` configuration section, the disabled MCP and Graph tabs in the UI, and the `dag-demo` stub.
+- The disabled MCP and Graph tabs in the UI, and the `dag-demo` stub.
 
 ## [1.8.0] - 2026-08-27 — **Ecosystem**
 
