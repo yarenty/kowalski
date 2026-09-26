@@ -2,7 +2,7 @@
 
 How do you give an AI agent a memory that’s more than just a chat log? In Kowalski **1.1.x**, that capability lives in **`kowalski-core`** (`memory/` modules): a Rust-native, multi-tiered memory stack for agentic AI. This article walks through the philosophy, architecture, and practical trade-offs—without pretending there is a separate `kowalski-memory` crate.
 
-> **Design update:** **Qdrant** was used in an **initial proof of concept** for semantic (vector) memory. The **main goal** going forward is a **simple, robust, dependency-light** implementation with **minimal moving parts** and **fewer failure points**. See the canonical note [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](DESIGN_MEMORY_AND_DEPENDENCIES.md).
+> **Design update:** **Qdrant** was used in an **initial proof of concept** for semantic (vector) memory. The **main goal** going forward is a **simple, robust, dependency-light** implementation with **minimal moving parts** and **fewer failure points**. See the canonical note [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](../dev/DESIGN_MEMORY_AND_DEPENDENCIES.md).
 
 ---
 
@@ -24,7 +24,7 @@ When an agent is in the middle of a conversation, it relies on its working memor
 
 But what happens to those experiences? They don’t just vanish. Instead, they’re archived in the episodic buffer—a kind of journal that records the agent’s life in high fidelity. Here, we use **embedded SQLite** (via `sqlx`): rows in `episodic_kv` hold serialized memory units. It’s persistent, fast, and can recall every detail of recent events. Of course, even journals must be pruned, so we use a time-to-live policy to keep things manageable.
 
-The real magic happens in the long-term semantic store. This is the agent’s true “brain,” where knowledge is distilled and organized. Instead of storing only raw conversations, semantic retrieval uses **embeddings** so the agent can find memories by meaning, not just keywords (historically explored with an external vector DB as **PoC**; the **default direction** is **in-process** similarity plus optional backends—see [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](DESIGN_MEMORY_AND_DEPENDENCIES.md)). For relationships and structured knowledge, **subject → (predicate, object)** edges are kept in a small **in-memory map** (`std` collections—no separate graph library required).
+The real magic happens in the long-term semantic store. This is the agent’s true “brain,” where knowledge is distilled and organized. Instead of storing only raw conversations, semantic retrieval uses **embeddings** so the agent can find memories by meaning, not just keywords (historically explored with an external vector DB as **PoC**; the **default direction** is **in-process** similarity plus optional backends—see [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](../dev/DESIGN_MEMORY_AND_DEPENDENCIES.md)). For relationships and structured knowledge, **subject → (predicate, object)** edges are kept in a small **in-memory map** (`std` collections—no separate graph library required).
 
 Here’s a diagram to visualize this architecture:
 
@@ -52,7 +52,7 @@ graph TD
     style T3 fill:#99ccff,stroke:#333,stroke-width:2px
 ```
 
-![](img/memory_3tiers.png)
+![](../img/memory_3tiers.png)
 
 ---
 
@@ -86,7 +86,7 @@ The Recall Engine, on the other hand, is the agent’s librarian. When the agent
 
 ## Technical Details: Under the Hood
 
-Everything in this stack is written in Rust, chosen for its speed, safety, and ability to handle concurrency with ease. **SQLite** backs episodic memory (`episodic_kv`), giving fast, embeddable storage without a separate daemon. For semantic memory, **vector search** was first explored with **Qdrant** as a **PoC**; the **default direction** is **in-process** similarity and **minimal external dependencies**—see [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](DESIGN_MEMORY_AND_DEPENDENCIES.md). Background tasks like consolidation run asynchronously with Tokio, ensuring the agent’s main loop is never blocked.
+Everything in this stack is written in Rust, chosen for its speed, safety, and ability to handle concurrency with ease. **SQLite** backs episodic memory (`episodic_kv`), giving fast, embeddable storage without a separate daemon. For semantic memory, **vector search** was first explored with **Qdrant** as a **PoC**; the **default direction** is **in-process** similarity and **minimal external dependencies**—see [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](../dev/DESIGN_MEMORY_AND_DEPENDENCIES.md). Background tasks like consolidation run asynchronously with Tokio, ensuring the agent’s main loop is never blocked.
 
 The architecture is built for extensibility. The core interfaces are defined as Rust traits—`MemoryProvider`, `MemoryWeaver`—so you can swap out storage backends, embedding models, retrieval strategies, or even the entire consolidation process as your needs evolve. For example, you might want to use a different vector database, or plug in a domain-specific LLM for summarization. Here’s how a basic memory trait might look:
 
@@ -114,7 +114,7 @@ Deciding what to keep, what to summarize, and what to forget is a subtle art. It
 
 With **`kowalski-core`** memory tiers, agents can recall what happened last week, not just the last message. They can learn and generalize from experience, forget what’s no longer useful, and answer questions with context and depth. This is a step toward truly intelligent, continuously learning AI—one that feels less like a chatbot, and more like a thoughtful collaborator.
 
-If you’re curious to dive deeper, check out the [memory architecture documentation](memory_architecture.md) or explore the code on GitHub. The journey to human-like memory in AI is just beginning, and there’s plenty of room for you to make your mark.
+If you’re curious to dive deeper, check out the [memory architecture documentation](../dev/memory_architecture.md) or explore the code on GitHub. The journey to human-like memory in AI is just beginning, and there’s plenty of room for you to make your mark.
 
 ---
 

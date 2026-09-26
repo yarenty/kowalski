@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Documentation
+- New architecture page (`docs/architecture.html`) with diagrams of the system, one run and the run lifecycle; the README carries the new system map.
+- README rewritten around what kowalski does for you; release history lives in the CHANGELOG only.
+- `docs/` reorganised: `dev/` (technical, kept current), `blog/` (articles), `concepts/` (unbuilt ideas), `purgatory/` (superseded).
+
 ## [2.1.0] - 2026-09-26 — **Standing Orders**
 
 > Kowalski works while you are away: scheduled and file-triggered hordes, pre-built binaries, and
@@ -431,7 +436,7 @@ All notable changes to this project will be documented in this file, or at least
 - **DAG orchestrator scheduling:** `agent-app run` and the HTTP horde orchestrator execute steps via `execution_order()` / `next_ready_step()` (sequential within each ready layer in MVP). Federation workers resolve `@step:name@` via on-disk outputs.
 - **Rookery DAG birth:** `write_horde_tree` emits `[[edges]]` when the draft graph differs from an implicit linear chain; builder prompt documents fork/join. MCP rookery tools accept `edges` in draft JSON.
 - **UI DAG canvas:** **PenguinCanvas** layered fork/join layout; Rookery read-only edge list; Horde/Federation DAG scheduling notes.
-- **Coding horde example** (planning tier; rebranded to [`examples/coder/`](examples/coder/) on `feat/coder`): operator form (project path + task) → parallel warmup + todo-plan → adjust → dev/test/review chain → handoff markdown (repo edits deferred to **1.5.0**).
+- **Coding horde example** (planning tier; rebranded to [`examples/coder/`](examples/coder) on `feat/coder`): operator form (project path + task) → parallel warmup + todo-plan → adjust → dev/test/review chain → handoff markdown (repo edits deferred to **1.5.0**).
 
 ### Fixed
 
@@ -444,12 +449,12 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Added
 
-- **A2A federation-edge design:** [`docs/DESIGN_A2A_FEDERATION_EDGE.md`](docs/DESIGN_A2A_FEDERATION_EDGE.md) — decision + mapping for adopting [A2A](https://a2a-protocol.org/) **only** at the node↔node boundary (Agent Card derived from `AgentRegistry` + horde catalog; A2A Task lifecycle mapped onto existing `AclMessage` variants; transport reused from `kowalski-mcp-base`). Explicitly **no penguin-to-penguin A2A**; implementation deferred to 1.4/1.5.
+- **A2A federation-edge design:** [`docs/concepts/DESIGN_A2A_FEDERATION_EDGE.md`](docs/concepts/DESIGN_A2A_FEDERATION_EDGE.md) — decision + mapping for adopting [A2A](https://a2a-protocol.org/) **only** at the node↔node boundary (Agent Card derived from `AgentRegistry` + horde catalog; A2A Task lifecycle mapped onto existing `AclMessage` variants; transport reused from `kowalski-mcp-base`). Explicitly **no penguin-to-penguin A2A**; implementation deferred to 1.4/1.5.
 - **Stateless Streamable HTTP for in-repo MCP servers:** new shared crate **`kowalski-mcp-base`** provides one `McpHandler` trait and two runners — **stdio** and **stateless Streamable HTTP** (no `Mcp-Session-Id` issued or required; every POST independent → restartable / horizontally scalable). Both **`kowalski-mcp-rookery`** (`--transport stdio|http`, `--bind`) and **`kowalski-mcp-datafusion`** now run on it, so every in-repo MCP server is reachable over stateless HTTP. The Kowalski MCP client already tolerates sessionless servers (captures `Mcp-Session-Id` only if present). See `kowalski-mcp-base/README.md`.
 - **Rookery MCP server:** new in-repo crate **`kowalski-mcp-rookery`** — an MCP server (stdio **or** stateless HTTP) that exposes the horde builder so any MCP client (the Kowalski agent, CLI, or external clients like Claude Desktop) can build hordes, not only the Vue tab. Tools: **`rookery_example_draft`**, **`rookery_validate_draft`**, **`rookery_parse_draft`**, **`rookery_give_birth`** — all delegate to `kowalski_core::rookery` (same primitives as `/api/rookery/*`, no duplicated orchestration). The server is **LLM-free**: the calling agent drives the interview; this server validates/parses/writes. Wire it via `config.toml` and verify with `kowalski-cli mcp ping`/`mcp tools`. See [`kowalski-mcp-rookery/README.md`](kowalski-mcp-rookery/README.md).
 - **Docker MCP gateway support:** Kowalski connects to the [Docker MCP Toolkit](https://docs.docker.com/ai/mcp-catalog-and-toolkit/toolkit/) catalog through **one** stdio MCP server (`command = ["docker", "mcp", "gateway", "run"]`) instead of wiring many individual servers — verified via `kowalski-cli mcp ping`/`mcp tools`. Default (no flags) exposes the gateway's **dynamic** management tools (`mcp-find`, `mcp-exec`, `code-mode`); `--servers <name>` / `--profile <id>` expose a specific server's tools by name (after it is configured in Docker Desktop). `tools/internal/*` remain the dependency-light fallback and are shadowed by the gateway when present. Documented in [`config.toml`](config.example.toml) and [`kowalski-core/AGENTS.md`](kowalski-core/AGENTS.md).
 - **Rookery horde builder:** `kowalski-core::rookery` — linear draft validation and `write_horde_tree` for born hordes; builder prompt at [`resources/prompts/rookery/builder.md`](kowalski/resources/prompts/rookery/builder.md). HTTP API on the `kowalski` server: `POST/GET/DELETE /api/rookery/sessions`, `POST .../chat` (optional SSE via `"stream": true`), `POST .../propose`, `POST .../give-birth`. Vue **Rookery** tab: interview chat, pipeline summary, **Give birth**. Default output root: `examples/` (override with `KOWALSKI_ROOKERY_OUTPUT` or `give-birth.output_root`).
-- **Penguin avatars in UI:** per-step mascot images from [`ui/src/assets/pinguins/`](ui/src/assets/pinguins/) — auto-assigned on **Propose** from `kind` + step `name` (`kowalski-core::rookery::infer_penguin_avatar`), persisted in born horde `agents/*.md` frontmatter as `avatar = "…"`, editable per penguin in **PenguinEditor** (avatar picker). Shown on **PenguinCanvas**, Rookery/Chat/Federation run feeds.
+- **Penguin avatars in UI:** per-step mascot images from [`ui/src/assets/pinguins/`](ui/src/assets/pinguins) — auto-assigned on **Propose** from `kind` + step `name` (`kowalski-core::rookery::infer_penguin_avatar`), persisted in born horde `agents/*.md` frontmatter as `avatar = "…"`, editable per penguin in **PenguinEditor** (avatar picker). Shown on **PenguinCanvas**, Rookery/Chat/Federation run feeds.
 
 ### Changed
 
@@ -491,8 +496,8 @@ All notable changes to this project will be documented in this file, or at least
 - **Knowledge Compiler:** removed optional **external mdBook vault** wiring from `agent_app_ops` (no `external_vault_root` / corpus injection / `EXTERNAL_VAULT_MERGED.md` / `mdbook-summary-suggestion.md`).
 - CI: added **`docs`** job (Lychee markdown link check, offline). Local: **`just docs-links`** / `./scripts/docs-linkcheck.sh`.
 - Added **`.lychee.toml`**, **`justfile`**, **`scripts/docs-linkcheck.sh`**, root **`LICENSE`** (MIT), and **`CONTRIBUTING.md`**.
-- Added docs governance: **`docs/GOVERNANCE.md`** plus governance references in docs index.
-- Added architecture snapshots: **`docs/architecture_v02.md`**, **`docs/architecture_v03_future.md`**, and Excalidraw sources under `docs/img/`.
+- Added docs governance: **`docs/dev/GOVERNANCE.md`** plus governance references in docs index.
+- Added architecture snapshots: **`docs/purgatory/architecture_v02.md`**, **`docs/concepts/architecture_v03_future.md`**, and Excalidraw sources under `docs/img/`.
 - Consolidated legacy AGENTS content into **`docs/purgatory/legacy_v1.1.0.md`** and replaced inline legacy blocks with pointers.
 - **Horde / ACL:** `run_finished.paste_for_obsidian` is renamed to **`handoff_markdown`** (serde still accepts the old JSON key when deserializing). Generic server defaults no longer assume Obsidian or the Knowledge Compiler narrative; per-app copy belongs in each **`horde.md`**.
 - **`agent-app` markdown stages:** local and federation **`compile` / `ask` / …** workers share **`kowalski_core::markdown_pipeline`** (`context_paths`, `@artifact@`, `@step:name@`, per-stage **`output`**, optional **`normalize_*`**). Rust no longer runs wiki repair, index rebuild, or **`write_paste_me_file`** — final deliverable shape is whatever the last stage’s prompt writes (the KC example ends with **`PASTE_ME.md`** as `agents/lint.md` `output`). **`horde.md`** **`delivery_*`** fields remain for server/UI copy; the sample manifest dropped unused **`handoff_*`** keys.
@@ -516,8 +521,8 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Documentation
 
-- Added **`docs/README.md`** (index), **`docs/OVERVIEW_1_1.md`** (1.1.x narrative), and **`docs/purgatory/`** for superseded articles and legacy static HTML.
-- Updated **`docs/article_memory.md`**, **`docs/memory_architecture.md`**, **`docs/article_tooling.md`**, and **`docs/key_technology.md`** for **`TemplateAgent`** / **`kowalski-core`** naming and current memory stack wording.
+- Added **`docs/README.md`** (index), **`docs/purgatory/OVERVIEW_1_1.md`** (1.1.x narrative), and **`docs/purgatory/`** for superseded articles and legacy static HTML.
+- Updated **`docs/blog/article_memory.md`**, **`docs/dev/memory_architecture.md`**, **`docs/blog/article_tooling.md`**, and **`docs/concepts/key_technology.md`** for **`TemplateAgent`** / **`kowalski-core`** naming and current memory stack wording.
 - Corrected **per-crate `ROADMAP.md`** files (version **1.1.0**; CLI vs **`kowalski`** HTTP responsibilities).
 
 
@@ -538,11 +543,11 @@ All notable changes to this project will be documented in this file, or at least
 - **Cargo feature `postgres`:** PostgreSQL + **`pgvector`** are **optional**. The feature enables `sqlx/postgres`, optional **`pgvector`**, and **`pgvector/sqlx`** (vector types for SQLx). Default builds omit them. Enable with `cargo build -p kowalski-core --features postgres`, `cargo build -p kowalski-cli --features postgres`, or `cargo build -p kowalski --features full` (includes CLI + postgres). If `memory.database_url` is `postgres://…` without the feature, configuration returns a clear error.
 - **Semantic memory (Tier 3) + Postgres:** When **`memory.database_url`** is **`postgres://…`**, semantic tier uses **`PostgresSemanticStore`** ([`semantic_pg.rs`](kowalski-core/src/memory/semantic_pg.rs)): tables **`semantic_memory`** / **`semantic_relation`** ([`003_semantic_memory.sql`](kowalski-core/migrations/postgres/003_semantic_memory.sql)), **pgvector** cosine distance (`<=>`). **`MemoryProvider::retrieve`** embeds the query via **`LLMProvider`** and runs SQL similarity (with `ILIKE` fallback). New config **`memory.embedding_vector_dimensions`** (default **768**, must match `vector(N)` in the migration). Depends on **`pgvector`** crate. In-process **`SemanticStore`** remains the default when no Postgres URL.
 - **Episodic memory (Tier 2):** Replaced **RocksDB** with **`sqlx`** + **`episodic_kv`**: default is a **local SQLite file** under `episodic_path` (directory → `episodic.sqlite`, or an explicit `.sqlite`/`.db`). Optional **`postgres://…`** in `memory.database_url` uses the same JSON rows in **PostgreSQL** (`kowalski-core/migrations/postgres/002_episodic_kv.sql`). **`EpisodicBuffer::open(&MemoryConfig, …)`**, **`Consolidator::new(&MemoryConfig, …)`** (async); **`consolidate`** runs SQL migrations when `database_url` is set.
-- **Semantic memory relations:** Replaced **`petgraph`** with a **`HashMap<String, Vec<(String, String)>>`** (subject → outgoing `(predicate, object)` edges). Same behavior for the current query pattern; **one fewer dependency**; no graph crate—only `std`. See [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md).
+- **Semantic memory relations:** Replaced **`petgraph`** with a **`HashMap<String, Vec<(String, String)>>`** (subject → outgoing `(predicate, object)` edges). Same behavior for the current query pattern; **one fewer dependency**; no graph crate—only `std`. See [`docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md).
 
 ### Documentation
 
-- Documented **memory stack rationale**: **Qdrant** was used in an **initial proof of concept** for semantic memory; the **ongoing goal** is a **simple, robust, dependency-light** default with **minimal moving parts**. Canonical write-up: [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md). Linked from root and component `AGENTS.md`, READMEs, memory articles, and rebuild notes.
+- Documented **memory stack rationale**: **Qdrant** was used in an **initial proof of concept** for semantic memory; the **ongoing goal** is a **simple, robust, dependency-light** default with **minimal moving parts**. Canonical write-up: [`docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md). Linked from root and component `AGENTS.md`, READMEs, memory articles, and rebuild notes.
 - Refreshed **README.md**, **AGENTS.md**, **ROADMAP.md** (root and key sub-crates).
 
 [1.5.0]: https://github.com/yarenty/kowalski/compare/v1.3.0...v1.5.0

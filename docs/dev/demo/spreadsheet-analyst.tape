@@ -1,5 +1,5 @@
 # Terminal recording of the Spreadsheet analyst; from the repository root:
-# `vhs docs/demo/spreadsheet-analyst.tape`
+# `vhs docs/dev/demo/spreadsheet-analyst.tape`
 # (https://github.com/charmbracelet/vhs). Needs kowalski running with tableski connected and
 # tableski serving demo/sample.xlsx; set KOWALSKI_URL before recording if not the default.
 # The minutes the model spends are cut from the recording.

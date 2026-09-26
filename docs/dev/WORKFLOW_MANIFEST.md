@@ -13,7 +13,7 @@ before anything runs.
   `deny_unknown_fields` on every struct; a manifest either matches the contract exactly or
   fails to parse.
 - Published JSON Schema (draft 2020-12):
-  [`kowalski-core/resources/schemas/workflow-manifest.schema.json`](../kowalski-core/resources/schemas/workflow-manifest.schema.json)
+  [`kowalski-core/resources/schemas/workflow-manifest.schema.json`](../../kowalski-core/resources/schemas/workflow-manifest.schema.json)
   (embedded in the crate as `WORKFLOW_MANIFEST_SCHEMA_JSON`).
 - Versioning: `schema_version` is `MAJOR.MINOR` (current `1.0`). A different MAJOR is
   rejected by validation; unknown step kinds are a portability concern reported as
@@ -90,4 +90,4 @@ watched-directory contents, or server-side trigger-override state.
   deployment.
 
 CLI/UI surfaces for export/import build on this contract — see the root
-[`ROADMAP.md`](../ROADMAP.md).
+[`ROADMAP.md`](../../ROADMAP.md).

@@ -1,158 +1,39 @@
 # Kowalski
 
-> [!IMPORTANT]
-> ## 2.1.0 — Standing Orders
-> Download-and-run binaries for macOS and Linux; a Morning Brief and a Folder Watcher that work
-> on a schedule or when a file lands; and safe defaults: commands wait for your approval,
-> imported workflows run isolated, and a server open to the network always needs its token.
->
-> ### 2.0.0 — Out of the Box
-> One binary with the UI inside, a three-question Setup screen, web tools, and a built-in
-> Spreadsheet analyst that turns plain questions into a report workbook, with every number
-> computed by the query engine rather than the model.
->
-> ### 1.8.0 — Ecosystem
-> The MCP layer now lives as standalone projects: [emperor-mcp](https://github.com/yarenty/emperor-mcp)
-> (the enterprise MCP server framework, consumed from crates.io) and
-> [tableski](https://github.com/yarenty/tableski) (SQL over spreadsheets/data files). See the
-> Ecosystem section below.
->
-> ### 1.7.0 — Autonomy
-> Kowalski agents are triggered by time, files, and events — not just prompts; they run as
-> bounded, verified DAGs — not unattended loops; they survive reboots; and they never leave
-> your machine. 1.7.0 ships durable runs, cron/watch/webhook triggers, native tool calling,
-> the guided Rookery builder, and portable workflow bundles.
+> "Kowalski, analysis!"
 
-**Version 2.1.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-rookery`, Vue `ui/`) — MCP servers build on the standalone [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) framework
+**Hordes of small AI agents that do real work on your machine.** Kowalski is one binary: download
+it, answer three setup questions, and give your spreadsheets, pages and documents to a horde.
+The answers come back as files you can open: a report workbook, a morning brief, a note with
+deadlines. Your model (local Ollama, or any OpenAI-compatible endpoint with your key), your files,
+your machine.
 
-> **Build from git** on `main`. **`cargo install --version 2.1.0`** once published to crates.io.
-
-> "AI agents are like pets – they're cute, but they make a mess."  
-> "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"
-
-A sophisticated Rust-based multi-agent framework for interacting with various LLM providers (Ollama, OpenAI-compatible APIs), with MCP tool integration, optional PostgreSQL memory (**pgvector**, **Apache AGE** graph queries), federation hooks, and a small **Vue** operator UI backed by **`kowalski`**.
+**Current release: 2.1 — Standing Orders.** What changed and when: [CHANGELOG.md](CHANGELOG.md) ·
+what is next: [ROADMAP.md](ROADMAP.md).
 
 ---
 
-
-## Horde changes in 1.1.0 (since 1.0.0)
-
-- Added the **Knowledge Compiler** as the first horde-style app workflow (ingest -> compile -> ask -> lint) with markdown-native artifacts.
-- Added markdown-defined sub-agent orchestration (`horde.md` + `agents/*.md`) and validation/run operators.
-- Added federation delegate/worker execution with task progress and final artifact reporting.
-- Improved operator UX for horde runs in CLI and UI with clearer traceability.
-
----
-
-
-## 🌟 Vision & Architecture
-Kowalski is designed as a foundational framework for building intelligent, distributed agent systems that can collaborate securely and efficiently. The architecture supports both standalone operation and federated deployments with advanced privacy-preserving capabilities.
-
-**Operational philosophy:** Prefer **simple, robust defaults** with **minimal moving parts** (fewer required services and dependencies). Early work used **Qdrant** as a **proof of concept** for vector memory; the ongoing direction is **dependency-light** core paths—see [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md).
-
-![Architecture](docs/img/architecture_v01.png)
-
-
-
-
-
-```
-kowalski/
-├── kowalski-core/           # Agents, LLM providers, memory, MCP client, federation types
-├── kowalski-cli/            # REPL, config/db/mcp tools
-├── kowalski/                # HTTP API server binary (`kowalski`)
-├── ui/                      # Vue 3 + Vite operator UI (Chat, MCP, federation, graph status)
-├── kowalski-core/migrations/# SQLite + Postgres SQL migrations (bundled with kowalski-core for sqlx / crates.io)
-├── resources/               # Configs, tokenizer, etc.
-└── docs/                    # Design notes, architecture
-```
-
----
-
-## 📦 Module Overview
-
-### **kowalski-core**
-- Foundational types, agent abstractions, conversation, roles, configuration, error handling, toolchain logic.
-- Includes `TemplateAgent` for building configurable agents.
-- Designed for extensibility and async-first operation.
-- [See details](./kowalski-core/README.md)
-
-### **kowalski-cli**
-- The command-line interface: `chat`, `run`, `config`, `db migrate`, `doctor`, `mcp ping` / `mcp tools`.
-
-### **kowalski**
-- The HTTP API server binary: `kowalski` (HTTP JSON API on `127.0.0.1:3456` by default).
-- **Durable horde runs**: every run/step transition is persisted (SQLite `runs.sqlite`
-  under the server state dir), and runs interrupted by a restart **resume** — completed
-  steps keep their artifacts, the in-flight step is retried, conditional-loop counts stay
-  intact. Interrupted runs surface in the UI ("Interrupted runs" banner) and via
-  `GET /api/hordes/{id}/runs?status=resumable` / `POST /api/hordes/{id}/runs/{run_id}/resume`.
-- **In-process step execution**: all standard step kinds — deterministic (`verify`,
-  `apply`, `ingest`) and LLM (`process`, `compile`, `ask`, `lint`, …) — run inside the
-  server via the `StepHandler` registry: zero worker processes, per-step timeouts
-  (`[horde] step_timeout_secs`), and run cancellation
-  (`POST /api/hordes/{id}/runs/{run_id}/cancel` / the UI **Cancel run** button).
-- **Opt-in process isolation**: a step with `isolation = "process"` in its `agents/*.md`
-  frontmatter runs in a spawned one-shot child (`kowalski-cli agent-app exec-step`)
-  through the same handlers — for third-party hordes you don't fully trust. The server
-  owns the child per step (spawn → execute → reap); cancellation and timeouts kill it,
-  and the child never talks to the server API. See
-  [`kowalski/AGENTS.md`](./kowalski/AGENTS.md) for the trust model.
-- **Event-driven runs**: `[[triggers]]` declared in `horde.md` fire real runs with no
-  chat turn involved — `cron = "0 7 * * *"` (5-field, local time), `watch = { path }`
-  (debounced filesystem events; the changed paths become the run input), and
-  `webhook = { route }` (`POST /api/triggers/<route>`; the JSON body becomes
-  `{{trigger.payload}}`). Trigger-fired runs persist like any other and **auto-resume**
-  after a restart; watchers and schedules re-arm on startup and on horde hot reload. A
-  per-trigger `overlap` policy (`skip` default / `queue` / `parallel`) decides what a
-  firing does while the previous run is still in flight, and every firing (or skip) is
-  recorded on the run's event feed.
-- **Portable hordes**: hand a horde to another machine as one file —
-  `<id>-<version>.kwf.zip` (manifest + optional assets; never credentials or run
-  state). Export/import from every surface: `kowalski-cli agent-app export <horde>` /
-  `agent-app import <bundle> [--dir <hordes-root>]` (portability report as text or
-  `--json`), `GET /api/hordes/{id}/export` / `POST /api/hordes/import` (multipart;
-  `?dry_run=true` for a report-only pass), and the UI's per-horde **Export** button +
-  **Import bundle…** action (report → confirm → the horde appears without a restart).
-  Imports land as **drafts** in the user hordes root with all triggers disabled;
-  `.bbwf.zip` is accepted as an interop alias.
-- Build with **`--features postgres`** for SQL memory + pgvector bindings and **`POST /api/graph/cypher`** (Apache AGE) on `serve`.
-
-### Ecosystem
-
-Kowalski's MCP layer lives as standalone projects it consumes and pairs with:
-
-| Project | What it is | Reach for it when |
-|---|---|---|
-| [**emperor-mcp**](https://github.com/yarenty/emperor-mcp) ([crates.io](https://crates.io/crates/emperor-mcp)) | The enterprise MCP server framework: stateless Streamable HTTP, credential forwarding, output framing, versioned deployment profile ([Emperor Profile P1](https://github.com/yarenty/emperor-mcp/blob/main/PROFILE.md)) | You're building an MCP server that has to survive production |
-| [**tableski**](https://github.com/yarenty/tableski) ([crates.io](https://crates.io/crates/tableski)) | "Every spreadsheet is a table" — Excel/CSV/Parquet/NDJSON as SQL tables over MCP, results exported back to .csv/.xlsx | Your agents need real SQL over data files — attach it to kowalski via `[[mcp.servers]]` |
-
-Kowalski consumes `emperor-mcp` from crates.io; **`kowalski-mcp-rookery` stays in this
-workspace** because it is coupled to `kowalski-core` (the Rookery horde-builder) by design.
-**Policy:** future first-party MCP servers are their own repositories built on `emperor-mcp` —
-this repo stays framework-only.
-
-### **ui/**
-- Vue 3 + Vite operator shell: health, MCP ping, **Chat** (SSE including **tool-aware stream**), federation, graph extension status.
-- Dev: `cd ui && bun install && bun run dev` (proxies `/api` to **`kowalski`**; see [`ui/README.md`](./ui/README.md)).
-
----
-
-## 🚀 Installation & Setup
-
-### One-line install
+## Install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yarenty/kowalski/main/install.sh | bash
 kowalski
 ```
 
-On macOS and Linux (Intel or ARM) this downloads the pre-built `kowalski` and `kowalski-cli` from
-the latest release into `~/.local/bin` (checksum verified), with the UI and built-in hordes inside.
-No Rust needed. `kowalski` opens the app in your browser and the Setup screen asks three questions.
-The archives are also on the [releases page](https://github.com/yarenty/kowalski/releases).
+macOS and Linux, Intel or ARM. The installer downloads the pre-built `kowalski` and `kowalski-cli`
+from the latest release into `~/.local/bin` and checks their checksum; no Rust needed. `kowalski`
+opens the app in your browser, where Setup asks for:
 
-Options via environment variables:
+1. **A model** — Ollama if it is running (its models are listed), or an OpenAI-compatible endpoint
+   and key. A Check button tests it without spending tokens.
+2. **A files folder** — the only place the agents' file tools may read and write.
+3. **tableski** (optional) — sign in and your spreadsheets become SQL tables the agents can query.
+
+Setup writes the config and restarts the server. The archives are also on the
+[releases page](https://github.com/yarenty/kowalski/releases).
+
+<details>
+<summary>Installer options</summary>
 
 | Variable | Effect |
 |----------|--------|
@@ -160,134 +41,91 @@ Options via environment variables:
 | `KOWALSKI_RELEASE=v2.1.0` | A specific release instead of the latest |
 | `KOWALSKI_FROM_SOURCE=1` | Build from crates.io with cargo instead (no UI inside) |
 | `KOWALSKI_VERSION=2.1.0` | crates.io version (source build) |
-| `KOWALSKI_FEATURES=postgres` | `cargo install --features postgres` for server + CLI (source build) |
+| `KOWALSKI_FEATURES=postgres` | `cargo install --features postgres` (source build) |
 | `KOWALSKI_INSTALL_MCP=1` | Also install `kowalski-mcp-rookery` (source build) |
 | `KOWALSKI_SKIP_RUSTUP=1` | Fail instead of auto-installing Rust (source build) |
 
-Custom domain: mirror or redirect [`install.sh`](install.sh) at e.g. `https://yarenty.com/kowalski/install.sh`.
-
-### 1. Prerequisites
-
-- **Rust** (latest stable, [rustup.rs](https://rustup.rs))
-- **[Ollama](https://ollama.com/)** if you use the default `[llm] provider = "ollama"` (local models)
-- **Optional:** Node 22 + **Bun** for the Vue UI (`ui/`), PostgreSQL + extensions for durable memory / federation (see the crate `README`s)
-
-### 2. Clone & build
-
-```bash
-git clone https://github.com/yarenty/kowalski.git
-cd kowalski
-cargo build --release
-cp config.example.toml config.toml   # your own copy; config.toml is git-ignored, keys stay out of git
-```
-
-Main binaries are **`kowalski-cli`** (`target/release/kowalski-cli`) and **`kowalski`** (`target/release/kowalski`). Edit `config.toml` (or pass `-c` / `--config`) for models, MCP servers, and memory. A hosted OpenAI-compatible key is read from `OPENAI_API_KEY`, never from a committed file.
-
-### 3. Ollama (typical local setup)
-
-```bash
-ollama serve   # in another terminal or as a service
-ollama pull llama3.2   # or another tag matching `[ollama].model` in config.toml
-```
-
-### 4. Quick checks
-
-```bash
-./target/release/kowalski-cli doctor
-./target/release/kowalski-cli config check
-```
+</details>
 
 ---
 
-## 🛠️ Usage
+## What a horde does for you
 
-### CLI (examples)
+Five hordes ship inside the binary and appear in the Horde tab on first start.
 
-Tools and MCP are driven by **`TemplateAgent`** + config, not separate `kowalski tool …` / academic subcommands.
+| Horde | You give it | You get |
+|---|---|---|
+| **Spreadsheet analyst** | Questions in plain words, about workbooks loaded in tableski | `report.xlsx` (one sheet per question) and `HANDOFF.md` with short answers. The model writes SQL; every number comes from the query engine. |
+| **Morning brief** | The pages you check every morning | `BRIEF.md`: a top pick and the items worth your time from each page, with links. A weekday 7:00 schedule is ready to switch on. |
+| **Folder watcher** | Documents dropped into its `inbox/` | `NOTE.md`: what the document is, the key facts, and what to do by when. |
+| **URL summarizer** | A list of links | A short summary per page. |
+| **Knowledge compiler** | Articles, repos, notes | A compiled knowledge pack you can ask questions of. |
 
-```bash
-# Help (binary name is kowalski-cli)
-./target/release/kowalski-cli --help
+Scheduled and watching hordes ship switched off: nothing runs, or costs, until you turn it on.
+Steps that would run a command or write into a project stop and ask for your approval first.
 
-# Chat with an agent: your config's model plus its MCP tools (same as `kowalski-cli chat` or no command)
-./target/release/kowalski-cli run -c config.toml
-
-# The server with the UI inside (default bind 127.0.0.1:3456); opens your browser when started
-# from a terminal (--no-open to skip). Build the UI first so it gets compiled in:
-#   (cd ui && bun install && bun run build) && cargo build --release -p kowalski
-# Built-in hordes (spreadsheet-analyst, morning-brief, folder-watcher, url-summarizer,
-# knowledge-compiler) appear in the Horde
-# tab on first start.
-# First run opens Setup: pick a model, a files folder, optionally sign in to tableski; it writes
-# the config and restarts itself. No TOML editing needed.
-# Auth is off by default (single-user local tool). Optional bearer-token auth for /api/*:
-# start with --auth (token printed at first start, persisted 0600 at <config-dir>/db/api_token).
-./target/release/kowalski
-
-# MCP servers from config: initialize + tools/list
-./target/release/kowalski-cli mcp ping -c config.toml
-./target/release/kowalski-cli mcp tools -c config.toml
-
-# Apply SQL migrations when using sqlite: or postgres:// memory URLs
-./target/release/kowalski-cli db migrate --url 'postgres://…'
-# or: db migrate -c config.toml
-```
-
-Build with **`--features postgres`** on `kowalski` for Postgres memory and graph routes (`cargo build -p kowalski --features postgres`).
-
-### Vue UI (`ui/`)
-
-The web UI lives in **[`ui/`](./ui/)** at the repository root (Vue 3 + Vite). It talks to the backend via **`kowalski`**: the dev server proxies **`/api`** to **`http://127.0.0.1:3456`** (see `ui/vite.config.ts`).
-
-**Two terminals:**
+Try the analyst from a terminal against a running server:
 
 ```bash
-# Terminal 1 — HTTP API (must be up first)
-./target/release/kowalski -c config.toml
-
-# Terminal 2 — Vite (default http://localhost:5173)
-cd ui && npm install && npm run dev
+examples/spreadsheet-analyst/demo.sh "Who spent the most?" "How many customers per city?"
 ```
 
-**API token (optional):** auth is **off by default** — the UI works with zero setup. To
-require a bearer token on `/api/*`, start the server with `--auth` (or set
-`[server] auth = true` / `KOWALSKI_API_TOKEN`); the token is generated at first start
-(file path in the server log, default `<config-dir>/db/api_token`). Paste it into the
-**Home tab → API token** field (stored in the browser), or the first-run prompt. With auth
-on, CORS becomes an allowlist (Vite dev origins by default; add more with `--cors-origin`
-or `[server] cors_origins` in `config.toml`). CLI workers and scripts authenticate via the
-`KOWALSKI_API_TOKEN` env var — server-spawned workers inherit it automatically.
+## Make your own
 
-Production build: `cd ui && npm run build` (static assets under `ui/dist/`). More detail: [`ui/README.md`](./ui/README.md) and [`ui/DEPLOY.md`](./ui/DEPLOY.md).
+A horde is a folder of Markdown: `horde.md` (the pipeline and its triggers), `agents/*.md` (one
+file per step: what kind of step, what it reads, where it writes) and `prompts/`. Copy a built-in
+one next to your config and change it, or describe what you want in the **Rookery** tab and let
+the builder write the folder. Hordes can run on a schedule, when a file lands, or from a webhook,
+and travel between machines as a single `.kwf.zip` bundle.
 
-**Rookery (horde builder):** the UI's Rookery tab builds hordes conversationally. Each chat
-turn asks the model for a **small batch of typed edit operations** which the server applies
-to the draft (validated, rolled back on a bad op) — the draft pane updates after every turn,
-and the model never has to emit a whole document, so the builder stays reliable on small
-local models. By default the ops are recovered by JSON extraction (works well with Ollama
-7B-class models); `[llm] structured_output = true` switches to grammar-constrained emission
-for backends where guided decoding is known-good. Press **Give birth** when the draft
-validates. Tuning (optional, `config.toml` `[rookery]`): `max_ops_per_turn`,
-`structured_output`, `allow_replace_draft`.
+---
 
-### Spreadsheet analyst (built-in horde)
+## How it works
 
-Ask questions about your spreadsheets in plain words and get answers plus a report workbook.
-Connect [tableski](https://github.com/yarenty/tableski) in Setup (every sheet becomes a table),
-open the Horde tab, pick **spreadsheet-analyst** and type your questions, one per line.
+![Kowalski architecture](docs/img/architecture.svg)
 
-The horde profiles the tables (no model involved), has the model write one SQL query per question,
-runs them through tableski, and writes `report.xlsx` (one sheet per question plus an index) and
-`HANDOFF.md` (short answers) into its `output/` folder. The model never writes a number: every
-figure comes from the query engine, and a question the data cannot answer is reported as such.
-Works with a small local model (tested with Ollama `qwen2.5:7b`).
+One process holds the operator UI, the HTTP API, the horde runner and the agent core. Runs are
+durable (every state change goes to SQLite, and runs survive restarts). Tools are a small built-in
+set (`web_fetch`, `web_search`, files) plus anything that speaks MCP, starting with
+[tableski](https://github.com/yarenty/tableski). Deterministic steps do the work models are bad
+at — fetching, profiling tables, running SQL, building workbooks — so a small local model only
+has to write a query or a paragraph from material it has been given.
 
-From a terminal: [`examples/spreadsheet-analyst/demo.sh`](examples/spreadsheet-analyst/demo.sh)
-`"Who spent the most?" "How many customers per city?"` runs it against a running server and
-prints the answers; [`docs/demo/spreadsheet-analyst.tape`](docs/demo/spreadsheet-analyst.tape)
-records that as a GIF with [vhs](https://github.com/charmbracelet/vhs).
+The full picture, with diagrams of one run and the run lifecycle:
+**[docs/architecture.html](docs/architecture.html)**.
 
-### Rust API (minimal)
+---
+
+## Build from source
+
+```bash
+git clone https://github.com/yarenty/kowalski.git && cd kowalski
+(cd ui && bun install && bun run build)      # the UI is compiled into the server
+cargo build --release
+./target/release/kowalski                    # http://127.0.0.1:3456, opens your browser
+```
+
+Rust stable and [Bun](https://bun.sh) for the UI; [Ollama](https://ollama.com) if you want a local
+model. [`config.example.toml`](config.example.toml) documents every setting; your own
+`config.toml` is git-ignored. Build with `--features postgres` for Postgres memory (pgvector) and
+graph queries.
+
+| Command | What it does |
+|---|---|
+| `kowalski` | Server with the UI (`--bind`, `--no-open`, `--auth`) |
+| `kowalski-cli` / `kowalski-cli chat` | Terminal chat with your model and MCP tools |
+| `kowalski-cli agent-app export <horde>` / `import <bundle>` | Move a horde as one file |
+| `kowalski-cli mcp ping` / `mcp tools` | Check the MCP servers in your config |
+| `kowalski-cli doctor` | Environment check |
+
+**UI development:** run `kowalski`, then `cd ui && bun run dev` (Vite on :5173 proxies `/api`).
+See [`ui/README.md`](ui/README.md).
+
+**Security defaults:** no token is needed on 127.0.0.1; bound to any other address the API
+always requires the bearer token printed at first start. Imported hordes run their steps in a
+separate process with triggers switched off.
+
+### Rust API
 
 ```rust
 use kowalski_core::agent::Agent;
@@ -306,70 +144,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
----
+### Workspace
 
-## 🤖 Existing Agents & How to Run
+| Crate | Role |
+|---|---|
+| [`kowalski`](kowalski/) | The server binary: HTTP API, horde runner, triggers, Setup, embedded UI and hordes |
+| [`kowalski-core`](kowalski-core/) | Agents, model providers, tools, MCP client, memory, step handlers, bundles |
+| [`kowalski-cli`](kowalski-cli/) | Terminal chat, bundles, MCP checks, isolated step runner |
+| [`kowalski-mcp-rookery`](kowalski-mcp-rookery/) | The horde builder as an MCP server |
+| [`ui/`](ui/) | Vue 3 operator UI |
 
-Kowalski formerly utilized dedicated agent crates (`kowalski-web-agent`, `kowalski-code-agent`, etc.). These have been unified into a single `TemplateAgent` located in `kowalski-core`.
+### Ecosystem
 
-To run specific agent functional "personas" (like `web` or `code`), you can supply the persona name to the CLI, which will load the respective system prompt and configuration dynamically:
+| Project | What it is |
+|---|---|
+| [**tableski**](https://github.com/yarenty/tableski) | Every spreadsheet is a table: Excel, CSV and Parquet as SQL over MCP. Local binary or hosted at tableski.io. |
+| [**emperor-mcp**](https://github.com/yarenty/emperor-mcp) | The MCP server framework first-party servers are built on (stateless HTTP, credential forwarding, output framing). |
 
-```bash
-cargo run --release --bin kowalski-cli
-kowalski> create code
-kowalski> chat code-agent
-```
-
-Legacy prompt configurations may live under `migrations/legacy_prompts/` when present in a checkout.
-
----
-
-## 📖 Documentation & Links
-
-- **[`docs/README.md`](./docs/README.md)** — index of design articles and `docs/` layout
-- **[`docs/OVERVIEW_1_1.md`](./docs/OVERVIEW_1_1.md)** — 1.1.x horde / Knowledge Compiler narrative
-- **[`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](./docs/DESIGN_MEMORY_AND_DEPENDENCIES.md)** — memory stack rationale (canonical)
-- **[`examples/knowledge-compiler/README.md`](./examples/knowledge-compiler/README.md)** — Knowledge Compiler horde example
-- [CHANGELOG.md](./CHANGELOG.md)
-- [ROADMAP.md](./ROADMAP.md)
-- **[`ui/README.md`](./ui/README.md)** — Vue operator UI (dev, build, proxy to `kowalski`)
-- **Archived / historical docs:** [`docs/purgatory/README.md`](./docs/purgatory/README.md)
-- [Each module's README](./kowalski-core/README.md), etc.
+New first-party MCP servers get their own repositories on `emperor-mcp`; this repository stays
+the runtime.
 
 ---
 
-## 🤝 Contributing
+## Documentation
 
-> "Contributing is like dating – it's fun until someone suggests changes." – An Open Source Maintainer
+- [docs/architecture.html](docs/architecture.html) — how it is built
+- [docs/](docs/README.md) — technical notes (`dev/`), articles (`blog/`), ideas (`concepts/`)
+- [examples/](examples/) — every built-in horde, readable as plain files
+- [CHANGELOG.md](CHANGELOG.md) · [ROADMAP.md](ROADMAP.md) · [AGENTS.md](AGENTS.md) for contributors and coding agents
 
-- PRs, issues, and feature requests are welcome!
-- Please add tests and update docs.
-- See [CONTRIBUTING.md](./CONTRIBUTING.md) if available.
+## Contributing
 
----
+> "Contributing is like dating – it's fun until someone suggests changes."
 
-## 📝 License
+Issues and pull requests are welcome. Please add tests and update the docs that your change makes
+wrong.
 
-> "Licenses are like prenuptial agreements – they're boring until you need them." – A Lawyer
+## License
 
-MIT License. See [LICENSE](./LICENSE).
+MIT. See [LICENSE](LICENSE).
 
----
+> "AI agents are like penguins – they look organised, but it's all improvisation."
 
-## 🙏 Acknowledgments
-
-> "Acknowledgments are like thank you notes – they're nice but nobody reads them." – A Grateful Developer
-
-- Thanks to the Ollama team and all open source contributors.
-- Thanks to my coffee machine for keeping me awake during development.
-- Thanks to everyone who opens an issue, even if it's just to say "it doesn't work".
-
----
-
-## 📈 Activity
-
-![Alt](https://repobeats.axiom.co/api/embed/7ac42f1d632566d6dbc38b23cbdcd8c1881b3856.svg "Repobeats analytics image")
-
----
-
-**For the latest features, roadmap, and future plans, see [ROADMAP.md](./ROADMAP.md).**
+![Activity](https://repobeats.axiom.co/api/embed/7ac42f1d632566d6dbc38b23cbdcd8c1881b3856.svg "Repobeats analytics image")

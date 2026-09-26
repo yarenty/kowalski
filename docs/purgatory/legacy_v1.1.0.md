@@ -99,4 +99,4 @@ Those inline sections were removed to keep active AGENT guides focused on the cu
 - For active guidance, use:
   - `AGENTS.md` (root)
   - component `AGENTS.md` files
-  - `docs/README.md` and `docs/OVERVIEW_1_1.md`
+  - `docs/README.md` and `docs/purgatory/OVERVIEW_1_1.md`

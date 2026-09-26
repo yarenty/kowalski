@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kowalski Architecture</title>
+<meta name="description" content="How kowalski is built: one binary, hordes as folders, durable runs, tools over MCP, and why the model never computes a number.">
+<link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light dark;
+    --paper: #f7f6f3;
+    --surface: #ffffff;
+    --sunk: #eeece7;
+    --ink: #111418;
+    --body: #2b2f36;
+    --muted: #5f6670;
+    --line: #d9d6d0;
+    --hair: #e7e4de;
+    --red: #d62828;
+    --red-ink: #b71f1f;
+    --red-soft: #fbe3e1;
+    --steel: #3c5a78;
+    --steel-soft: #e3eaf1;
+    --ok: #2f7d4f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #0e1013;
+      --surface: #171a1f;
+      --sunk: #12151a;
+      --ink: #f2efea;
+      --body: #d6d2cc;
+      --muted: #9aa0a8;
+      --line: #2a2f36;
+      --hair: #1f2329;
+      --red: #ff5a4e;
+      --red-ink: #ff7a70;
+      --red-soft: #3a1614;
+      --steel: #8fb3d6;
+      --steel-soft: #1a2633;
+      --ok: #6fd196;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0e1013;
+    --surface: #171a1f;
+    --sunk: #12151a;
+    --ink: #f2efea;
+    --body: #d6d2cc;
+    --muted: #9aa0a8;
+    --line: #2a2f36;
+    --hair: #1f2329;
+    --red: #ff5a4e;
+    --red-ink: #ff7a70;
+    --red-soft: #3a1614;
+    --steel: #8fb3d6;
+    --steel-soft: #1a2633;
+    --ok: #6fd196;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--body);
+    font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 17px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--red-ink); text-underline-offset: 3px; }
+  code, .mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.86em; }
+  code { background: var(--sunk); border: 1px solid var(--hair); border-radius: 4px; padding: 0.05em 0.35em; }
+  .page { max-width: 1160px; margin: 0 auto; padding: 0 28px 120px; }
+
+  /* masthead */
+  .masthead { padding: 72px 0 40px; border-bottom: 3px solid var(--ink); position: relative; }
+  .masthead::before {
+    content: ""; position: absolute; left: 0; top: 40px; width: 64px; height: 8px; background: var(--red);
+  }
+  .eyebrow {
+    font-family: "JetBrains Mono", monospace; font-size: 11.5px; font-weight: 500;
+    letter-spacing: 0.18em; text-transform: uppercase; color: var(--red-ink); margin: 0 0 20px;
+  }
+  h1 {
+    font-family: "Archivo", "Helvetica Neue", Arial, sans-serif; font-weight: 800;
+    font-size: clamp(2.5rem, 6.2vw, 4.3rem); line-height: 0.98; letter-spacing: -0.035em;
+    color: var(--ink); margin: 0 0 24px; text-wrap: balance;
+  }
+  .standfirst { max-width: 68ch; font-size: 1.2rem; line-height: 1.55; margin: 0; }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 8px 28px; margin-top: 32px;
+    font-family: "JetBrains Mono", monospace; font-size: 11.5px; color: var(--muted); letter-spacing: 0.03em;
+  }
+  .meta b { color: var(--ink); font-weight: 500; }
+
+  /* sections */
+  section { padding: 60px 0 12px; border-bottom: 1px solid var(--hair); }
+  section:last-of-type { border-bottom: none; }
+  .sec-head { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 28px; align-items: start; }
+  .sec-label {
+    font-family: "JetBrains Mono", monospace; font-size: 10.5px; font-weight: 500;
+    letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted);
+    padding-top: 0.7em; border-top: 3px solid var(--red);
+  }
+  h2 {
+    font-family: "Archivo", sans-serif; font-weight: 700; font-size: clamp(1.55rem, 3.1vw, 2.1rem);
+    line-height: 1.1; letter-spacing: -0.02em; color: var(--ink); margin: 0; text-wrap: balance;
+  }
+  h3 { font-family: "Archivo", sans-serif; font-weight: 700; font-size: 1.05rem; color: var(--ink); margin: 40px 0 10px; }
+  .body { display: grid; grid-template-columns: 150px minmax(0, 1fr); column-gap: 28px; margin-top: 24px; }
+  .body > * { grid-column: 2; }
+  .body > figure, .body > .wide { grid-column: 1 / -1; }
+  .lede { font-size: 1.1rem; max-width: 70ch; }
+  p { max-width: 72ch; }
+
+  /* figures */
+  figure { margin: 34px 0 10px; }
+  .figframe { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 22px; overflow-x: auto; }
+  .figframe svg { display: block; width: 100%; height: auto; min-width: 720px; }
+  figcaption { margin-top: 12px; font-size: 0.93rem; color: var(--muted); max-width: 90ch; }
+  figcaption b { color: var(--ink); }
+  svg text { font-family: "IBM Plex Sans", system-ui, sans-serif; fill: var(--body); }
+  svg .t-title { font-family: "Archivo", sans-serif; font-weight: 700; fill: var(--ink); font-size: 15px; }
+  svg .t-small { font-size: 12px; fill: var(--muted); }
+  svg .t-mono { font-family: "JetBrains Mono", monospace; font-size: 11.5px; fill: var(--muted); }
+  svg .t-red { fill: var(--red-ink); }
+  svg .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+  svg .box-ink { fill: var(--ink); }
+  svg .box-ink-text { fill: var(--paper); font-family: "Archivo", sans-serif; font-weight: 700; font-size: 15px; }
+  svg .box-ink-small { fill: var(--paper); opacity: 0.75; font-size: 12px; }
+  svg .box-red { fill: var(--red-soft); stroke: var(--red); stroke-width: 1.5; }
+  svg .box-steel { fill: var(--steel-soft); stroke: var(--steel); stroke-width: 1.5; }
+  svg .region { fill: none; stroke: var(--ink); stroke-width: 2; }
+  svg .region-dash { fill: none; stroke: var(--muted); stroke-width: 1.3; stroke-dasharray: 5 5; }
+  svg .wire { stroke: var(--muted); stroke-width: 1.6; fill: none; }
+  svg .wire-red { stroke: var(--red); stroke-width: 2; fill: none; }
+  svg .arrow { fill: var(--muted); }
+  svg .arrow-red { fill: var(--red); }
+
+  /* cards and tables */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 8px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--ink); border-radius: 4px; padding: 18px 18px 8px; }
+  .card.red { border-top-color: var(--red); }
+  .card .name { font-family: "Archivo", sans-serif; font-weight: 800; color: var(--ink); font-size: 1.05rem; }
+  .card .path { font-family: "JetBrains Mono", monospace; font-size: 11.5px; color: var(--muted); margin: 2px 0 8px; }
+  .card p { font-size: 0.95rem; margin: 0 0 10px; }
+  .card ul { margin: 0 0 10px; padding-left: 18px; font-size: 0.92rem; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.94rem; background: var(--surface); border: 1px solid var(--line); }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--hair); vertical-align: top; }
+  th { font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); background: var(--sunk); font-weight: 500; }
+  td.k { font-family: "JetBrains Mono", monospace; font-size: 0.85rem; color: var(--ink); white-space: nowrap; }
+  .tag { display: inline-block; font-family: "JetBrains Mono", monospace; font-size: 10.5px; letter-spacing: 0.06em; padding: 1px 7px; border-radius: 3px; border: 1px solid var(--line); color: var(--muted); }
+  .tag.det { border-color: var(--ink); color: var(--ink); }
+  .tag.llm { border-color: var(--red); color: var(--red-ink); }
+  .note { background: var(--red-soft); border-left: 4px solid var(--red); padding: 16px 20px; margin: 26px 0; border-radius: 0 4px 4px 0; }
+  .note .hd { font-family: "Archivo", sans-serif; font-weight: 700; color: var(--ink); margin-bottom: 4px; }
+  .note p { margin: 0; }
+  .tablewrap { overflow-x: auto; }
+  footer.end { margin-top: 64px; padding-top: 22px; border-top: 3px solid var(--ink); font-family: "JetBrains Mono", monospace; font-size: 11.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 10px 26px; }
+
+  @media (max-width: 760px) {
+    .page { padding: 0 16px 80px; }
+    .sec-head { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    .body { grid-template-columns: minmax(0, 1fr); }
+    .body > * { grid-column: 1; }
+    .sec-label { width: max-content; }
+    .masthead { padding-top: 60px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="masthead">
+  <p class="eyebrow">kowalski &nbsp;·&nbsp; architecture &nbsp;·&nbsp; 2.x</p>
+  <h1>Kowalski Architecture</h1>
+  <p class="standfirst">A local-first agent runtime in one binary. Work is done by <b>hordes</b>: small teams of
+  agents defined as plain folders, run as durable pipelines, with tools reached over MCP and
+  numbers computed by engines rather than models.</p>
+  <div class="meta">
+    <span><b>Release line</b> &nbsp;2.1 Standing Orders</span>
+    <span><b>Core</b> &nbsp;Rust · Tokio · Axum · SQLite</span>
+    <span><b>UI</b> &nbsp;Vue 3 · TypeScript, compiled into the binary</span>
+    <span><b>Models</b> &nbsp;Ollama or any OpenAI-compatible endpoint</span>
+    <span><b>Tools</b> &nbsp;built-in + MCP (tableski, gateways)</span>
+  </div>
+</header>
+
+<!-- 1 -->
+<section>
+  <div class="sec-head">
+    <div class="sec-label">The shape</div>
+    <h2>One binary, your machine, your model</h2>
+  </div>
+  <div class="body">
+    <p class="lede">You download <code>kowalski</code>, run it, and a browser opens on the app. Everything it
+    needs travels inside: the operator UI, the built-in hordes, the run database. The only things
+    outside are the ones you choose: a model (a local Ollama, or an endpoint with your key) and the
+    tools you connect.</p>
+    <p>That shape is deliberate. The people kowalski is for (a small-business owner with a folder of
+    spreadsheets, a trader with a watchlist) will not run a cluster, and should not have to trust a
+    service with their files. So the default is dependency-light: no required daemons besides the
+    model, SQLite on disk, and optional extras (Postgres with pgvector, graph queries) that stay off
+    until asked for.</p>
+
+    <figure>
+      <div class="figframe">
+        <svg viewBox="0 0 1080 560" role="img" aria-labelledby="f1t">
+          <title id="f1t">Kowalski system map: the binary, its parts, and what it talks to</title>
+          <defs>
+            <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrow"/></marker>
+            <marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrow-red"/></marker>
+          </defs>
+
+          <!-- operator -->
+          <rect x="20" y="40" width="170" height="70" rx="6" class="box"/>
+          <text x="105" y="70" text-anchor="middle" class="t-title">You</text>
+          <text x="105" y="91" text-anchor="middle" class="t-small">browser · terminal</text>
+          <rect x="20" y="150" width="170" height="70" rx="6" class="box"/>
+          <text x="105" y="180" text-anchor="middle" class="t-title">Events</text>
+          <text x="105" y="201" text-anchor="middle" class="t-small">cron · file lands · webhook</text>
+
+          <!-- the binary -->
+          <rect x="240" y="20" width="560" height="520" rx="8" class="region"/>
+          <text x="262" y="48" class="t-mono">kowalski  (one binary · 127.0.0.1:3456)</text>
+
+          <rect x="262" y="64" width="250" height="64" rx="5" class="box-ink"/>
+          <text x="387" y="92" text-anchor="middle" class="box-ink-text">Operator UI</text>
+          <text x="387" y="112" text-anchor="middle" class="box-ink-small">Setup · Horde · Chat · Rookery</text>
+
+          <rect x="528" y="64" width="250" height="64" rx="5" class="box"/>
+          <text x="653" y="92" text-anchor="middle" class="t-title">HTTP API  /api/*</text>
+          <text x="653" y="112" text-anchor="middle" class="t-small">token required off-localhost</text>
+
+          <rect x="262" y="150" width="516" height="118" rx="5" class="box-red"/>
+          <text x="284" y="176" class="t-title">Horde runner</text>
+          <text x="284" y="198" class="t-small">catalog of hordes (folders) · orchestrator · triggers</text>
+          <text x="284" y="218" class="t-small">durable runs: every state change written to SQLite</text>
+          <text x="284" y="238" class="t-small">approval gate before steps that run commands or write files</text>
+          <text x="284" y="258" class="t-mono t-red">pending → running → awaiting_input → done</text>
+
+          <rect x="262" y="290" width="250" height="110" rx="5" class="box"/>
+          <text x="284" y="316" class="t-title">Step handlers</text>
+          <text x="284" y="338" class="t-small">deterministic: ingest · table_profile</text>
+          <text x="284" y="356" class="t-small">sql_batch · xlsx_report · verify · apply</text>
+          <text x="284" y="374" class="t-small">model: process · deliver · compile · ask</text>
+          <text x="284" y="392" class="t-mono">in-process or isolated child</text>
+
+          <rect x="528" y="290" width="250" height="110" rx="5" class="box"/>
+          <text x="550" y="316" class="t-title">Agent core</text>
+          <text x="550" y="338" class="t-small">TemplateAgent · tool calling</text>
+          <text x="550" y="356" class="t-small">built-in: web_fetch · web_search · files</text>
+          <text x="550" y="374" class="t-small">MCP client hub (HTTP, stdio, OAuth)</text>
+          <text x="550" y="392" class="t-mono">kowalski-core</text>
+
+          <rect x="262" y="420" width="250" height="100" rx="5" class="box"/>
+          <text x="284" y="446" class="t-title">State on disk</text>
+          <text x="284" y="468" class="t-small">run store · memory tiers (SQLite)</text>
+          <text x="284" y="486" class="t-small">horde output/ folders</text>
+          <text x="284" y="504" class="t-mono">optional: Postgres + pgvector</text>
+
+          <rect x="528" y="420" width="250" height="100" rx="5" class="box"/>
+          <text x="550" y="446" class="t-title">Built-in hordes</text>
+          <text x="550" y="468" class="t-small">Spreadsheet analyst · Morning brief</text>
+          <text x="550" y="486" class="t-small">Folder watcher · URL summarizer</text>
+          <text x="550" y="504" class="t-small">Knowledge compiler</text>
+
+          <!-- external -->
+          <rect x="850" y="40" width="210" height="80" rx="6" class="box-steel"/>
+          <text x="955" y="72" text-anchor="middle" class="t-title">Model</text>
+          <text x="955" y="94" text-anchor="middle" class="t-small">Ollama (local, free) or</text>
+          <text x="955" y="110" text-anchor="middle" class="t-small">OpenAI-compatible + your key</text>
+
+          <rect x="850" y="160" width="210" height="96" rx="6" class="box-steel"/>
+          <text x="955" y="190" text-anchor="middle" class="t-title">tableski</text>
+          <text x="955" y="212" text-anchor="middle" class="t-small">spreadsheets as SQL tables</text>
+          <text x="955" y="230" text-anchor="middle" class="t-small">MCP · local binary or hosted</text>
+          <text x="955" y="246" text-anchor="middle" class="t-mono">list_tables · query_sql</text>
+
+          <rect x="850" y="296" width="210" height="80" rx="6" class="box-steel"/>
+          <text x="955" y="326" text-anchor="middle" class="t-title">Other MCP servers</text>
+          <text x="955" y="348" text-anchor="middle" class="t-small">Docker MCP gateway, rookery,</text>
+          <text x="955" y="364" text-anchor="middle" class="t-small">anything that speaks MCP</text>
+
+          <rect x="850" y="416" width="210" height="80" rx="6" class="box-steel"/>
+          <text x="955" y="446" text-anchor="middle" class="t-title">The web</text>
+          <text x="955" y="468" text-anchor="middle" class="t-small">public pages only · search via</text>
+          <text x="955" y="484" text-anchor="middle" class="t-small">Brave, Staan or SearXNG</text>
+
+          <!-- wires -->
+          <path d="M190 75 H262" class="wire" marker-end="url(#ah)"/>
+          <path d="M190 185 H240 V209 H262" class="wire-red" marker-end="url(#ahr)"/>
+          <path d="M512 96 H528" class="wire" marker-end="url(#ah)"/>
+          <path d="M653 128 V150" class="wire" marker-end="url(#ah)"/>
+          <path d="M387 268 V290" class="wire" marker-end="url(#ah)"/>
+          <path d="M653 268 V290" class="wire" marker-end="url(#ah)"/>
+          <path d="M512 345 H528" class="wire" marker-end="url(#ah)"/>
+          <path d="M387 400 V420" class="wire" marker-end="url(#ah)"/>
+          <path d="M778 330 H815 V80 H850" class="wire" marker-end="url(#ah)"/>
+          <path d="M778 345 H825 V208 H850" class="wire-red" marker-end="url(#ahr)"/>
+          <path d="M778 360 H835 V336 H850" class="wire" marker-end="url(#ah)"/>
+          <path d="M778 375 H815 V456 H850" class="wire" marker-end="url(#ah)"/>
+        </svg>
+      </div>
+      <figcaption><b>What runs, and what talks to what.</b> Everything inside the black frame is one
+      process started by one command. Blue boxes are outside and chosen by you. The red path is the
+      one that matters most for business users: a horde step calling tableski, so that questions about
+      spreadsheets are answered by a SQL engine. Events (a schedule, a file landing in a folder, a
+      webhook) start runs exactly as a click in the UI does.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- 2 -->
+<section>
+  <div class="sec-head">
+    <div class="sec-label">Hordes</div>
+    <h2>A horde is a folder you can read</h2>
+  </div>
+  <div class="body">
+    <p class="lede">A horde is a directory of Markdown files. <code>horde.md</code> names the pipeline and
+    its triggers; each file in <code>agents/</code> is one step (a "penguin") with TOML front matter
+    saying what kind of step it is, what it reads and where it writes; <code>prompts/</code> holds the
+    instructions for the steps that use a model.</p>
+    <p>Nothing is hidden in a database or a UI-only format. A horde can be read in any editor, diffed
+    in git, copied to another machine, exported as a portable <code>.kwf.zip</code> bundle, or built
+    conversationally in the Rookery tab, which writes the same folder. Drop a folder next to your
+    config and it appears in the Horde tab; edit a file and the running server reloads it.</p>
+
+    <div class="wide tablewrap">
+      <table>
+        <thead><tr><th>Step kind</th><th>Uses a model?</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td class="k">ingest</td><td><span class="tag det">no</span></td><td>Collects the run's input: fetches the URLs (public addresses only), reads the files, keeps the text. Pages are reduced to their main content with absolute links.</td></tr>
+          <tr><td class="k">table_profile</td><td><span class="tag det">no</span></td><td>Asks the data tool for every table, its columns, types and statistics, so the next step starts from exact names.</td></tr>
+          <tr><td class="k">sql_batch</td><td><span class="tag det">no</span></td><td>Runs each SQL block of the previous step's plan through <code>query_sql</code> and records the results exactly as returned.</td></tr>
+          <tr><td class="k">xlsx_report</td><td><span class="tag det">no</span></td><td>Turns those results into a workbook: an index sheet and one sheet per question, numbers typed as numbers.</td></tr>
+          <tr><td class="k">verify · apply</td><td><span class="tag det">no</span></td><td>Run a check command on a project, or write proposed changes into it. Both wait for the operator's approval by default.</td></tr>
+          <tr><td class="k">process · deliver · compile · ask · lint</td><td><span class="tag llm">yes</span></td><td>Model steps: a prompt plus attached context (the previous artifact, other steps' outputs), optionally with tools. The output is one Markdown file.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Pipelines and graphs</h3>
+    <p>Most hordes are a straight line: <code>pipeline = ["ingest", "profile", "plan", "run", "report", "deliver"]</code>.
+    When a job needs branches, <code>edges</code> turn the pipeline into a graph: fork and join,
+    route on a step's pass/fail outcome, and loop back (a failed check returns to the step that
+    writes the fix) with a cap on how often.</p>
+  </div>
+</section>
+
+<!-- 3 -->
+<section>
+  <div class="sec-head">
+    <div class="sec-label">One run</div>
+    <h2>What one question sets in motion</h2>
+  </div>
+  <div class="body">
+    <p class="lede">The Spreadsheet analyst is the clearest example of how the parts fit, because it
+    uses both kinds of step and the division of labour between them is the point.</p>
+
+    <figure>
+      <div class="figframe">
+        <svg viewBox="0 0 1080 360" role="img" aria-labelledby="f2t">
+          <title id="f2t">One Spreadsheet analyst run, step by step</title>
+          <defs>
+            <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="arrow"/></marker>
+          </defs>
+          <text x="20" y="30" class="t-mono">your questions</text>
+          <text x="20" y="48" class="t-small">"Who spent the most?"</text>
+
+          <g>
+            <rect x="20" y="70" width="150" height="120" rx="5" class="box"/>
+            <text x="95" y="100" text-anchor="middle" class="t-title">ingest</text>
+            <text x="95" y="122" text-anchor="middle" class="t-small">records the</text>
+            <text x="95" y="138" text-anchor="middle" class="t-small">questions</text>
+            <text x="95" y="176" text-anchor="middle" class="t-mono">no model</text>
+          </g>
+          <g>
+            <rect x="195" y="70" width="150" height="120" rx="5" class="box"/>
+            <text x="270" y="100" text-anchor="middle" class="t-title">profile</text>
+            <text x="270" y="122" text-anchor="middle" class="t-small">tables, columns,</text>
+            <text x="270" y="138" text-anchor="middle" class="t-small">types, statistics</text>
+            <text x="270" y="176" text-anchor="middle" class="t-mono">no model</text>
+          </g>
+          <g>
+            <rect x="370" y="70" width="150" height="120" rx="5" class="box-red"/>
+            <text x="445" y="100" text-anchor="middle" class="t-title">plan</text>
+            <text x="445" y="122" text-anchor="middle" class="t-small">one SQL query</text>
+            <text x="445" y="138" text-anchor="middle" class="t-small">per question</text>
+            <text x="445" y="176" text-anchor="middle" class="t-mono t-red">model</text>
+          </g>
+          <g>
+            <rect x="545" y="70" width="150" height="120" rx="5" class="box"/>
+            <text x="620" y="100" text-anchor="middle" class="t-title">run</text>
+            <text x="620" y="122" text-anchor="middle" class="t-small">each query through</text>
+            <text x="620" y="138" text-anchor="middle" class="t-small">tableski</text>
+            <text x="620" y="176" text-anchor="middle" class="t-mono">no model</text>
+          </g>
+          <g>
+            <rect x="720" y="70" width="150" height="120" rx="5" class="box"/>
+            <text x="795" y="100" text-anchor="middle" class="t-title">report</text>
+            <text x="795" y="122" text-anchor="middle" class="t-small">report.xlsx,</text>
+            <text x="795" y="138" text-anchor="middle" class="t-small">typed numbers</text>
+            <text x="795" y="176" text-anchor="middle" class="t-mono">no model</text>
+          </g>
+          <g>
+            <rect x="895" y="70" width="165" height="120" rx="5" class="box-red"/>
+            <text x="977" y="100" text-anchor="middle" class="t-title">deliver</text>
+            <text x="977" y="122" text-anchor="middle" class="t-small">HANDOFF.md, answers</text>
+            <text x="977" y="138" text-anchor="middle" class="t-small">quoting the results</text>
+            <text x="977" y="176" text-anchor="middle" class="t-mono t-red">model</text>
+          </g>
+          <path d="M170 130 H195" class="wire" marker-end="url(#ah2)"/>
+          <path d="M345 130 H370" class="wire" marker-end="url(#ah2)"/>
+          <path d="M520 130 H545" class="wire" marker-end="url(#ah2)"/>
+          <path d="M695 130 H720" class="wire" marker-end="url(#ah2)"/>
+          <path d="M870 130 H895" class="wire" marker-end="url(#ah2)"/>
+
+          <rect x="195" y="230" width="500" height="90" rx="5" class="box-steel"/>
+          <text x="445" y="258" text-anchor="middle" class="t-title">tableski (MCP)</text>
+          <text x="445" y="280" text-anchor="middle" class="t-small">list_tables · get_schema · column_statistics · query_sql</text>
+          <text x="445" y="300" text-anchor="middle" class="t-mono">every sheet of your workbook is a table</text>
+          <path d="M270 190 V230" class="wire" marker-end="url(#ah2)"/>
+          <path d="M620 190 V230" class="wire" marker-end="url(#ah2)"/>
+          <text x="720" y="262" class="t-small">files written to the horde's output/ folder:</text>
+          <text x="720" y="282" class="t-mono">debug/profile.md · debug/plan.md</text>
+          <text x="720" y="300" class="t-mono">debug/results.md + .json · report.xlsx · HANDOFF.md</text>
+        </svg>
+      </div>
+      <figcaption><b>Two model steps, four deterministic ones.</b> The model writes SQL (red) and later
+      explains results it is handed (red). It never produces a figure: the profile comes from the data
+      tool, the numbers from the SQL engine, the workbook from those numbers. A question the data cannot
+      answer is reported as such, with the reason the plan gave.</figcaption>
+    </figure>
+
+    <div class="note">
+      <div class="hd">Why deterministic steps exist at all</div>
+      <p>Small local models are unreliable at multi-step tool use: a 7B model will often print a tool
+      call as text instead of making it, or invent a column name. Every place where that failure would
+      corrupt the answer is a plain step instead. The model is left with the one thing it is good at,
+      writing a query or a paragraph from material it has been given, and a wrong query fails loudly
+      in the engine rather than quietly in a report.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 4 -->
+<section>
+  <div class="sec-head">
+    <div class="sec-label">Runs</div>
+    <h2>Durable runs, standing orders, and the approval gate</h2>
+  </div>
+  <div class="body">
+    <p class="lede">Every run is a row in a SQLite store and every transition is written before it takes
+    effect. A restart does not lose work: interrupted runs come back with their finished steps kept,
+    and runs started by a trigger resume on their own.</p>
+
+    <figure>
+      <div class="figframe">
+        <svg viewBox="0 0 1080 250" role="img" aria-labelledby="f3t">
+          <title id="f3t">Run lifecycle</title>
+          <defs>
+            <marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="arrow"/></marker>
+            <marker id="ah3r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="arrow-red"/></marker>
+          </defs>
+          <rect x="20" y="90" width="140" height="56" rx="28" class="box"/>
+          <text x="90" y="123" text-anchor="middle" class="t-title">pending</text>
+          <rect x="230" y="90" width="150" height="56" rx="28" class="box-ink"/>
+          <text x="305" y="123" text-anchor="middle" class="box-ink-text">running</text>
+          <rect x="470" y="20" width="220" height="56" rx="28" class="box-red"/>
+          <text x="580" y="53" text-anchor="middle" class="t-title">awaiting_input</text>
+          <rect x="800" y="30" width="130" height="50" rx="25" class="box"/>
+          <text x="865" y="60" text-anchor="middle" class="t-title">done</text>
+          <rect x="800" y="100" width="130" height="50" rx="25" class="box"/>
+          <text x="865" y="130" text-anchor="middle" class="t-title">error</text>
+          <rect x="800" y="170" width="130" height="50" rx="25" class="box"/>
+          <text x="865" y="200" text-anchor="middle" class="t-title">cancelled</text>
+
+          <path d="M160 118 H230" class="wire" marker-end="url(#ah3)"/>
+          <path d="M380 105 C420 60 440 50 470 48" class="wire-red" marker-end="url(#ah3r)"/>
+          <text x="392" y="66" class="t-small t-red">verify / apply</text>
+          <path d="M470 62 C440 90 420 110 382 122" class="wire-red" marker-end="url(#ah3r)"/>
+          <text x="420" y="118" class="t-small t-red">Approve</text>
+          <path d="M380 110 C560 110 700 60 800 55" class="wire" marker-end="url(#ah3)"/>
+          <path d="M380 125 H800" class="wire" marker-end="url(#ah3)"/>
+          <path d="M380 135 C560 150 700 195 800 195" class="wire" marker-end="url(#ah3)"/>
+          <path d="M690 48 C760 60 760 170 800 190" class="wire" marker-end="url(#ah3)"/>
+          <text x="962" y="60" class="t-small">all steps passed</text>
+          <text x="962" y="130" class="t-small">a step failed, no route</text>
+          <text x="962" y="200" class="t-small">operator cancelled</text>
+          <text x="20" y="200" class="t-mono">restart: running runs resume</text>
+          <text x="20" y="218" class="t-mono">(trigger runs on their own,</text>
+          <text x="20" y="236" class="t-mono">operator runs on a click)</text>
+        </svg>
+      </div>
+      <figcaption><b>The red loop is the approval gate.</b> Before a step that runs a command or writes
+      into your project, the run parks as <code>awaiting_input</code> and says exactly what would run.
+      Approve continues it; the approval covers that step for the rest of the run, so a fix-and-check loop
+      asks once. A parked run survives restarts and never blocks a trigger.</figcaption>
+    </figure>
+
+    <h3>Standing orders</h3>
+    <p>A horde can declare triggers in <code>horde.md</code>: a <b>cron</b> schedule, a <b>watch</b> on a
+    file or folder, or a <b>webhook</b> route. Each firing starts an ordinary durable run carrying its
+    input (the watched path, pre-filled form answers, the payload) and a provenance marker. Overlap is a
+    policy per trigger: skip, queue one, or run in parallel. Built-in schedules ship switched off, so
+    nothing runs, or costs, until you turn it on in the Horde tab.</p>
+  </div>
+</section>
+
+<!-- 5 -->
+<section>
+  <div class="sec-head">
+    <div class="sec-label">Tools</div>
+    <h2>Tools: a few built in, everything else over MCP</h2>
+  </div>
+  <div class="body">
+    <p class="lede">Agents reach the outside world through tools, and kowalski keeps its own set small on
+    purpose. Capability lives in standalone MCP servers that any MCP client can use, kowalski included.</p>
+    <div class="wide cards">
+      <div class="card red">
+        <div class="name">Built in</div>
+        <div class="path">kowalski-core · tools/internal</div>
+        <p><code>web_fetch</code> reads one public page (private and cloud-metadata addresses refused,
+        every redirect re-checked). <code>web_search</code> uses Brave, Staan or SearXNG when configured.
+        File tools stay inside the folder you chose in Setup.</p>
+      </div>
+      <div class="card">
+        <div class="name">tableski</div>
+        <div class="path">separate project · MCP</div>
+        <p>Every spreadsheet as a SQL table (Excel, CSV, Parquet), on Apache DataFusion. Local binary or
+        the hosted service; Setup signs in with OAuth, so there is no token to copy.</p>
+      </div>
+      <div class="card">
+        <div class="name">Any MCP server</div>
+        <div class="path">[[mcp.servers]] in config</div>
+        <p>HTTP or stdio, with bearer tokens that refresh themselves. The Docker MCP gateway brings its
+        whole catalog through one entry. First-party servers are built on the emperor-mcp framework.</p>
+      </div>
+      <div class="card">
+        <div class="name">rookery</div>
+        <div class="path">kowalski-mcp-rookery</div>
+        <p>The horde builder as an MCP server: any MCP-capable assistant can design a horde, validate it
+        and write the folder, without the kowalski UI.</p>
+      </div>
+    </div>
+    <p>Tool calls go over the model's native tool-calling interface when it has one, with a text
+    fallback for models that do not. Each step lists the tools it may use; nothing else is offered to
+    the model in that step.</p>
+  </div>
+</section>
+
+<!-- 6 -->
+<section>
+  <div class="sec-head">
+    <div class="sec-label">Memory</div>
+    <h2>Memory in three tiers, on SQLite by default</h2>
+  </div>
+  <div class="body">
+    <div class="wide tablewrap">
+      <table>
+        <thead><tr><th>Tier</th><th>Holds</th><th>Default</th><th>Optional</th></tr></thead>
+        <tbody>
+          <tr><td class="k">working</td><td>The active conversation and task context</td><td>in process, bounded</td><td>—</td></tr>
+          <tr><td class="k">episodic</td><td>A chronological log of recent interactions</td><td>SQLite file</td><td>Postgres</td></tr>
+          <tr><td class="k">semantic</td><td>Distilled facts, found by similarity, with relations</td><td>in-process vectors</td><td>Postgres + pgvector, graph queries</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Hordes mostly do not need memory: their state is the files they write, which is easier to inspect
+    and to trust. Memory serves the chat agent and long-lived assistants.</p>
+  </div>
+</section>
+
+<!-- 7 -->
+<section>
+  <div class="sec-head">
+    <div class="sec-label">Safety</div>
+    <h2>Safe by default, because agents can act</h2>
+  </div>
+  <div class="body">
+    <div class="wide tablewrap">
+      <table>
+        <thead><tr><th>Risk</th><th>Default</th></tr></thead>
+        <tbody>
+          <tr><td>Someone else on the network drives your agents</td><td>On 127.0.0.1 no token is needed. Bound to any other address, the API always requires the bearer token printed at first start.</td></tr>
+          <tr><td>A step runs a command you did not expect</td><td><code>verify</code> and <code>apply</code> wait for your approval, showing the command. <code>[horde] confirm_commands = false</code> turns this off for hordes you trust.</td></tr>
+          <tr><td>A workflow from elsewhere misbehaves</td><td>Imported bundles are checked like untrusted zips, their triggers arrive switched off, and every step runs in a separate process.</td></tr>
+          <tr><td>A page makes the fetcher reach inside your network</td><td>Fetches go to public addresses only, and every redirect is checked again.</td></tr>
+          <tr><td>Keys leak into a repository</td><td>The sample config is <code>config.example.toml</code>; your <code>config.toml</code> is never committed, and Setup writes it owner-only when it holds a key.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- 8 -->
+<section>
+  <div class="sec-head">
+    <div class="sec-label">Code</div>
+    <h2>Four crates and a UI</h2>
+  </div>
+  <div class="body">
+    <div class="wide cards">
+      <div class="card red">
+        <div class="name">kowalski</div>
+        <div class="path">kowalski/</div>
+        <p>The server binary: HTTP API, horde runner, triggers, Setup, embedded UI and built-in hordes.</p>
+      </div>
+      <div class="card">
+        <div class="name">kowalski-core</div>
+        <div class="path">kowalski-core/</div>
+        <p>Agents, model providers, tools, MCP client, memory, step handlers, manifests and bundles, the Rookery builder.</p>
+      </div>
+      <div class="card">
+        <div class="name">kowalski-cli</div>
+        <div class="path">kowalski-cli/</div>
+        <p>Terminal chat, bundle export and import, MCP checks, migrations, and the child process for isolated steps.</p>
+      </div>
+      <div class="card">
+        <div class="name">kowalski-mcp-rookery</div>
+        <div class="path">kowalski-mcp-rookery/</div>
+        <p>The horde builder over MCP (stdio or stateless HTTP).</p>
+      </div>
+      <div class="card">
+        <div class="name">ui</div>
+        <div class="path">ui/ · Vue 3</div>
+        <p>Setup, Horde runs with live progress and approvals, Chat, Rookery, federation views. Built once, compiled into the server.</p>
+      </div>
+    </div>
+    <p>Pre-built binaries for macOS and Linux are attached to every release; <code>install.sh</code>
+    downloads the right one and verifies its checksum.</p>
+  </div>
+</section>
+
+<footer class="end">
+  <span>kowalski · github.com/yarenty/kowalski</span>
+  <span>docs/architecture.html</span>
+  <span>history of these ideas: docs/blog</span>
+</footer>
+
+</div>
+</body>
+</html>

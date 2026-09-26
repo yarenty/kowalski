@@ -20,8 +20,3 @@ exclude_path = [
   "progress.md",
   "findings.md",
 ]
-
-# README references this PNG; repo has `architecture_v01.excalidraw` — export or refresh when updating the diagram
-exclude = [
-  "architecture_v01\\.png",
-]

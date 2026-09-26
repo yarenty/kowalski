@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 560" width="1080" height="560" role="img" aria-labelledby="f1t">
+<style>
+  svg { --paper:#f7f6f3; --surface:#ffffff; --ink:#111418; --body:#2b2f36; --muted:#5f6670; --line:#d9d6d0;
+        --red:#d62828; --red-ink:#b71f1f; --red-soft:#fbe3e1; --steel:#3c5a78; --steel-soft:#e3eaf1; }
+  @media (prefers-color-scheme: dark) {
+    svg { --paper:#0e1013; --surface:#171a1f; --ink:#f2efea; --body:#d6d2cc; --muted:#9aa0a8; --line:#2a2f36;
+          --red:#ff5a4e; --red-ink:#ff7a70; --red-soft:#3a1614; --steel:#8fb3d6; --steel-soft:#1a2633; }
+  }
+  .bg { fill: var(--paper); }
+text { font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; fill: var(--body); }
+  .t-title { font-family: "Helvetica Neue", Arial, sans-serif; font-weight: 700; fill: var(--ink); font-size: 15px; }
+  .t-small { font-size: 12px; fill: var(--muted); }
+  .t-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; fill: var(--muted); }
+  .t-red { fill: var(--red-ink); }
+  .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+  .box-ink { fill: var(--ink); }
+  .box-ink-text { fill: var(--paper); font-family: "Helvetica Neue", Arial, sans-serif; font-weight: 700; font-size: 15px; }
+  .box-ink-small { fill: var(--paper); opacity: 0.75; font-size: 12px; }
+  .box-red { fill: var(--red-soft); stroke: var(--red); stroke-width: 1.5; }
+  .box-steel { fill: var(--steel-soft); stroke: var(--steel); stroke-width: 1.5; }
+  .region { fill: none; stroke: var(--ink); stroke-width: 2; }
+  .region-dash { fill: none; stroke: var(--muted); stroke-width: 1.3; stroke-dasharray: 5 5; }
+  .wire { stroke: var(--muted); stroke-width: 1.6; fill: none; }
+  .wire-red { stroke: var(--red); stroke-width: 2; fill: none; }
+  .arrow { fill: var(--muted); }
+  .arrow-red { fill: var(--red); }
+</style>
+<rect class="bg" x="0" y="0" width="1080" height="560" rx="10"/>
+          <title id="f1t">Kowalski system map: the binary, its parts, and what it talks to</title>
+          <defs>
+            <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrow"/></marker>
+            <marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrow-red"/></marker>
+          </defs>
+
+          <!-- operator -->
+          <rect x="20" y="40" width="170" height="70" rx="6" class="box"/>
+          <text x="105" y="70" text-anchor="middle" class="t-title">You</text>
+          <text x="105" y="91" text-anchor="middle" class="t-small">browser · terminal</text>
+          <rect x="20" y="150" width="170" height="70" rx="6" class="box"/>
+          <text x="105" y="180" text-anchor="middle" class="t-title">Events</text>
+          <text x="105" y="201" text-anchor="middle" class="t-small">cron · file lands · webhook</text>
+
+          <!-- the binary -->
+          <rect x="240" y="20" width="560" height="520" rx="8" class="region"/>
+          <text x="262" y="48" class="t-mono">kowalski  (one binary · 127.0.0.1:3456)</text>
+
+          <rect x="262" y="64" width="250" height="64" rx="5" class="box-ink"/>
+          <text x="387" y="92" text-anchor="middle" class="box-ink-text">Operator UI</text>
+          <text x="387" y="112" text-anchor="middle" class="box-ink-small">Setup · Horde · Chat · Rookery</text>
+
+          <rect x="528" y="64" width="250" height="64" rx="5" class="box"/>
+          <text x="653" y="92" text-anchor="middle" class="t-title">HTTP API  /api/*</text>
+          <text x="653" y="112" text-anchor="middle" class="t-small">token required off-localhost</text>
+
+          <rect x="262" y="150" width="516" height="118" rx="5" class="box-red"/>
+          <text x="284" y="176" class="t-title">Horde runner</text>
+          <text x="284" y="198" class="t-small">catalog of hordes (folders) · orchestrator · triggers</text>
+          <text x="284" y="218" class="t-small">durable runs: every state change written to SQLite</text>
+          <text x="284" y="238" class="t-small">approval gate before steps that run commands or write files</text>
+          <text x="284" y="258" class="t-mono t-red">pending → running → awaiting_input → done</text>
+
+          <rect x="262" y="290" width="250" height="110" rx="5" class="box"/>
+          <text x="284" y="316" class="t-title">Step handlers</text>
+          <text x="284" y="338" class="t-small">deterministic: ingest · table_profile</text>
+          <text x="284" y="356" class="t-small">sql_batch · xlsx_report · verify · apply</text>
+          <text x="284" y="374" class="t-small">model: process · deliver · compile · ask</text>
+          <text x="284" y="392" class="t-mono">in-process or isolated child</text>
+
+          <rect x="528" y="290" width="250" height="110" rx="5" class="box"/>
+          <text x="550" y="316" class="t-title">Agent core</text>
+          <text x="550" y="338" class="t-small">TemplateAgent · tool calling</text>
+          <text x="550" y="356" class="t-small">built-in: web_fetch · web_search · files</text>
+          <text x="550" y="374" class="t-small">MCP client hub (HTTP, stdio, OAuth)</text>
+          <text x="550" y="392" class="t-mono">kowalski-core</text>
+
+          <rect x="262" y="420" width="250" height="100" rx="5" class="box"/>
+          <text x="284" y="446" class="t-title">State on disk</text>
+          <text x="284" y="468" class="t-small">run store · memory tiers (SQLite)</text>
+          <text x="284" y="486" class="t-small">horde output/ folders</text>
+          <text x="284" y="504" class="t-mono">optional: Postgres + pgvector</text>
+
+          <rect x="528" y="420" width="250" height="100" rx="5" class="box"/>
+          <text x="550" y="446" class="t-title">Built-in hordes</text>
+          <text x="550" y="468" class="t-small">Spreadsheet analyst · Morning brief</text>
+          <text x="550" y="486" class="t-small">Folder watcher · URL summarizer</text>
+          <text x="550" y="504" class="t-small">Knowledge compiler</text>
+
+          <!-- external -->
+          <rect x="850" y="40" width="210" height="80" rx="6" class="box-steel"/>
+          <text x="955" y="72" text-anchor="middle" class="t-title">Model</text>
+          <text x="955" y="94" text-anchor="middle" class="t-small">Ollama (local, free) or</text>
+          <text x="955" y="110" text-anchor="middle" class="t-small">OpenAI-compatible + your key</text>
+
+          <rect x="850" y="160" width="210" height="96" rx="6" class="box-steel"/>
+          <text x="955" y="190" text-anchor="middle" class="t-title">tableski</text>
+          <text x="955" y="212" text-anchor="middle" class="t-small">spreadsheets as SQL tables</text>
+          <text x="955" y="230" text-anchor="middle" class="t-small">MCP · local binary or hosted</text>
+          <text x="955" y="246" text-anchor="middle" class="t-mono">list_tables · query_sql</text>
+
+          <rect x="850" y="296" width="210" height="80" rx="6" class="box-steel"/>
+          <text x="955" y="326" text-anchor="middle" class="t-title">Other MCP servers</text>
+          <text x="955" y="348" text-anchor="middle" class="t-small">Docker MCP gateway, rookery,</text>
+          <text x="955" y="364" text-anchor="middle" class="t-small">anything that speaks MCP</text>
+
+          <rect x="850" y="416" width="210" height="80" rx="6" class="box-steel"/>
+          <text x="955" y="446" text-anchor="middle" class="t-title">The web</text>
+          <text x="955" y="468" text-anchor="middle" class="t-small">public pages only · search via</text>
+          <text x="955" y="484" text-anchor="middle" class="t-small">Brave, Staan or SearXNG</text>
+
+          <!-- wires -->
+          <path d="M190 75 H262" class="wire" marker-end="url(#ah)"/>
+          <path d="M190 185 H240 V209 H262" class="wire-red" marker-end="url(#ahr)"/>
+          <path d="M512 96 H528" class="wire" marker-end="url(#ah)"/>
+          <path d="M653 128 V150" class="wire" marker-end="url(#ah)"/>
+          <path d="M387 268 V290" class="wire" marker-end="url(#ah)"/>
+          <path d="M653 268 V290" class="wire" marker-end="url(#ah)"/>
+          <path d="M512 345 H528" class="wire" marker-end="url(#ah)"/>
+          <path d="M387 400 V420" class="wire" marker-end="url(#ah)"/>
+          <path d="M778 330 H815 V80 H850" class="wire" marker-end="url(#ah)"/>
+          <path d="M778 345 H825 V208 H850" class="wire-red" marker-end="url(#ahr)"/>
+          <path d="M778 360 H835 V336 H850" class="wire" marker-end="url(#ah)"/>
+          <path d="M778 375 H815 V456 H850" class="wire" marker-end="url(#ah)"/>
+        </svg>

@@ -2,7 +2,7 @@
 
 Multi-tiered memory for agents: working (scratchpad), episodic (journal), and semantic (distilled knowledge + relationships).
 
-> **Design context:** Early delivery used **Qdrant** as a **proof of concept** for vector-backed semantic memory. The **ongoing goal** is a **simple, robust, dependency-light** stack with **few moving parts**—see [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../docs/DESIGN_MEMORY_AND_DEPENDENCIES.md).
+> **Design context:** Early delivery used **Qdrant** as a **proof of concept** for vector-backed semantic memory. The **ongoing goal** is a **simple, robust, dependency-light** stack with **few moving parts**—see [`docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md).
 
 ---
 
@@ -35,7 +35,7 @@ graph TD
 | Tier | Role | Implementation (current) |
 |------|------|----------------------------|
 | **1 – Working** | Immediate context for the active task | In-process structures; limited size, volatile |
-| **2 – Episodic** | Chronological, high-fidelity log of recent interactions | **SQL** — `episodic_kv` JSON: default **SQLite** file under `memory.episodic_path`, or **PostgreSQL** when `memory.database_url` is `postgres://…` ([`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../docs/DESIGN_MEMORY_AND_DEPENDENCIES.md)) |
+| **2 – Episodic** | Chronological, high-fidelity log of recent interactions | **SQL** — `episodic_kv` JSON: default **SQLite** file under `memory.episodic_path`, or **PostgreSQL** when `memory.database_url` is `postgres://…` ([`docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md)) |
 | **3 – Semantic** | Distilled knowledge: similarity search + optional relational edges | Default: **in-process** vectors + **`HashMap` relation edges**. With **`memory.database_url`** = `postgres://…`: **`semantic_memory`** + **`semantic_relation`** + **pgvector** (`<=>`); [`PostgresSemanticStore`](./src/memory/semantic_pg.rs) embeds the query in **`retrieve`** for SQL similarity. |
 
 ---
@@ -59,7 +59,7 @@ graph TD
 - **No Qdrant** (or other vector service) is required for the default build.
 - **Ollama** (or your configured LLM provider) is still needed for chat/embeddings when those features are used.
 - **Episodic SQLite** opens `episodic.sqlite` under the configured directory (or the path you set if it ends with `.sqlite` / `.db`).
-- Optional **SQL** migrations run when `memory.database_url` is set (e.g. `sqlite:…`); see [`src/db/mod.rs`](./src/db/mod.rs) and this crate’s [`migrations/`](./migrations/) tree.
+- Optional **SQL** migrations run when `memory.database_url` is set (e.g. `sqlite:…`); see [`src/db/mod.rs`](./src/db/mod.rs) and this crate’s [`migrations/`](./migrations) tree.
 
 ### Graph relationships (in-memory map)
 
@@ -85,4 +85,4 @@ Memory tests do **not** require an external vector database.
 
 ## 5. Optional future backends
 
-Deployments that need **scale-out** or **shared** vector search may add **Postgres + pgvector**, **sqlite-vec**, or a **managed vector service**—as **optional** integrations, aligned with [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../docs/DESIGN_MEMORY_AND_DEPENDENCIES.md).
+Deployments that need **scale-out** or **shared** vector search may add **Postgres + pgvector**, **sqlite-vec**, or a **managed vector service**—as **optional** integrations, aligned with [`docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md).

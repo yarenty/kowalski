@@ -2,8 +2,8 @@
 
 Current 1.1.x architecture focused on the delivered workspace status.
 
-- Diagram source: [`img/architecture_v02.excalidraw`](./img/architecture_v02.excalidraw)
-- Companion future diagram: [`architecture_v03_future.md`](./architecture_v03_future.md)
+- Diagram source: [`img/architecture_v02.excalidraw`](../img/architecture_v02.excalidraw)
+- Companion future diagram: [`architecture_v03_future.md`](../concepts/architecture_v03_future.md)
 
 ```mermaid
 flowchart TB

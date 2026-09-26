@@ -1,60 +1,46 @@
-# `docs/` — documentation index
+# `docs/`
 
-Use this folder for **design articles**, **architecture notes**, and **long-form explanations**. Operational entry points remain the repository **[`README.md`](../README.md)** and **[`CHANGELOG.md`](../CHANGELOG.md)**.
+Start with **[architecture.html](architecture.html)**: how kowalski is built, with diagrams of the
+system, one run, and the run lifecycle. Operational entry points stay in the repository
+[README](../README.md) and [CHANGELOG](../CHANGELOG.md).
 
-## Start here (1.1.x)
+| Folder | What lives there | Kept in sync with the code? |
+|---|---|---|
+| [`dev/`](dev/) | Technical notes for people changing kowalski | Yes: a change that makes one wrong updates it |
+| [`blog/`](blog/) | Articles written to be published | Dated; facts correct when written |
+| [`concepts/`](concepts/) | Ideas and designs not built (or not yet) | No |
+| [`purgatory/`](purgatory/README.md) | Superseded documents kept for history | No |
+| [`img/`](img/) | Diagrams and pictures used by the above | — |
 
-| Doc | Purpose |
-|-----|---------|
-| [`OVERVIEW_1_1.md`](./OVERVIEW_1_1.md) | Narrative of the **1.1.0** horde introduction (still accurate background). **Current release:** **1.5.0** on `main` (crates.io **1.3.0** until 1.5 publish) — see root [`CHANGELOG.md`](../CHANGELOG.md). |
-| [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](./DESIGN_MEMORY_AND_DEPENDENCIES.md) | Canonical memory stack rationale (dependency-light defaults, Qdrant as PoC). |
-| [`DESIGN_A2A_FEDERATION_EDGE.md`](./DESIGN_A2A_FEDERATION_EDGE.md) | **A2A at the federation edge** (R4, target 1.4/1.5): Agent Card + Task lifecycle mapped onto ACL; no penguin-to-penguin A2A. |
-| [`../examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md) | First **horde-style app** example (ingest → compile → ask → lint). |
-
-## Memory
-
-| Doc | Purpose |
-|-----|---------|
-| [`memory_architecture.md`](./memory_architecture.md) | Three-tier memory model (working / episodic / semantic). |
-| [`article_memory.md`](./article_memory.md) | Longer-form article on agent memory (aligned with `kowalski-core` memory modules). |
-
-## Tools & technology
+## dev/
 
 | Doc | Purpose |
-|-----|---------|
-| [`article_tooling.md`](./article_tooling.md) | Principles for designing tools for **`TemplateAgent`** and the tool chain. |
-| [`WORKFLOW_MANIFEST.md`](./WORKFLOW_MANIFEST.md) | **Portable workflow manifest**: canonical JSON interchange form of a horde (schema, converters, round-trip guarantees). |
-| [`key_technology.md`](./key_technology.md) | Perspectives (technology, business, research) — updated for the **1.1.x** workspace layout. |
+|---|---|
+| [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](dev/DESIGN_MEMORY_AND_DEPENDENCIES.md) | Why the memory stack is dependency-light, and when to reach for Postgres |
+| [`memory_architecture.md`](dev/memory_architecture.md) | The three memory tiers: working, episodic, semantic |
+| [`WORKFLOW_MANIFEST.md`](dev/WORKFLOW_MANIFEST.md) | The portable workflow manifest: JSON form of a horde, schema, converters, round trip |
+| [`GOVERNANCE.md`](dev/GOVERNANCE.md) | Who owns which docs and when they must change |
+| [`demo/`](dev/demo/) | Terminal recording script for the Spreadsheet analyst demo |
 
-## Architecture snapshots
+## blog/
 
-| Doc | Purpose |
-|-----|---------|
-| [`architecture_v02.md`](./architecture_v02.md) | Current delivered architecture (1.1.x baseline). |
-| [`architecture_v03_future.md`](./architecture_v03_future.md) | Future-state architecture with planned improvements. |
+| Article | About |
+|---|---|
+| [`article_memory.md`](blog/article_memory.md) | Building human-like memory for agents |
+| [`article_tooling.md`](blog/article_tooling.md) | Your agent is only as good as its tools |
 
-## Archive
+Published copies live on the kowalski blog.
 
-| Location | Purpose |
-|----------|---------|
-| [`purgatory/`](./purgatory/README.md) | Old articles and static HTML **not** kept in sync with mainline releases. |
+## concepts/
 
-## Images & assets
+| Doc | Idea |
+|---|---|
+| [`architecture_v03_future.md`](concepts/architecture_v03_future.md) | An earlier future-state architecture |
+| [`DESIGN_A2A_FEDERATION_EDGE.md`](concepts/DESIGN_A2A_FEDERATION_EDGE.md) | Agent-to-agent protocol at the federation edge |
+| [`key_technology.md`](concepts/key_technology.md) | Technology, business and research perspectives |
 
-Illustrations and exports live under [`img/`](./img/). Prefer referencing diagrams from markdown in this tree rather than duplicating a second HTML site.
+## Link checking
 
-## Link checking (CI & local)
-
-GitHub Actions runs **[Lychee](https://github.com/lycheeverse/lychee)** on all `**/*.md` files (`offline` mode: validates repo-relative paths and existing files; skips external URLs). Config: [`.lychee.toml`](../.lychee.toml).
-
-```bash
-cargo install lychee   # once
-cargo install just     # optional helper runner
-just docs-links        # or: ./scripts/docs-linkcheck.sh
-```
-
-## Governance
-
-Documentation ownership, update policy, and mandatory closure rules:
-
-- [`GOVERNANCE.md`](./GOVERNANCE.md)
+CI runs [Lychee](https://github.com/lycheeverse/lychee) offline on every `*.md` (repo-relative
+links must resolve); `purgatory/` is excluded. Config: [`.lychee.toml`](../.lychee.toml).
+Locally: `cargo install lychee-cli`, then `./scripts/docs-linkcheck.sh` or `just docs-links`.

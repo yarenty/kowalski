@@ -110,13 +110,13 @@ The builder shipped, but the UI absorbed core responsibilities. Pay down before 
 - [x] Draft/manifest **`edges[]`** (dependencies, parallel branches, join points).
 - [x] Horde orchestrator schedules by graph (`execution_order` / `next_ready_step`).
 - [x] Rookery UI canvas: fork/join + read-only edge list; builder prompt for branches.
-- [x] Flagship example: [`examples/coder/`](examples/coder/) (rebranded from `coding-assistant` on `feat/coder`).
+- [x] Flagship example: [`examples/coder/`](examples/coder) (rebranded from `coding-assistant` on `feat/coder`).
 
 Existing linear hordes remain valid without migration. **MVP limits:** acyclic graphs only; ready steps run **sequentially** within a layer until conditional routing adds loops (below).
 
 ## In progress: Coder — **execution tier** (1.5.0)
 
-**Reference app:** [`examples/coder/`](examples/coder/) — operator form (project path + task) → parallel **warmup** / **todo-plan** → **adjust** → fixed dev/test/review chain → `HANDOFF.md`.
+**Reference app:** [`examples/coder/`](examples/coder) — operator form (project path + task) → parallel **warmup** / **todo-plan** → **adjust** → fixed dev/test/review chain → `HANDOFF.md`.
 
 **Goal (1.5.0):** Same horde shape, but stages **walk the project tree**, use **tools** (sandboxed to `project_path`), **run verification commands**, and **loop** (review → dev) until acceptance criteria pass.
 
@@ -180,10 +180,10 @@ Existing linear hordes remain valid without migration. **MVP limits:** acyclic g
 2. `cargo test` (or configured command) runs in **test-verify**; failure routes to **review → dev** at least once.
 3. Linear + DAG hordes without tools unchanged.
 
-**Related:** [`examples/rust-project-scaffolder/`](examples/rust-project-scaffolder/) (linear greenfield planning); Knowledge Compiler (URL ingest). **Out of scope:** penguin-to-penguin A2A (see federation-edge design doc).
+**Related:** [`examples/rust-project-scaffolder/`](examples/rust-project-scaffolder) (linear greenfield planning); Knowledge Compiler (URL ingest). **Out of scope:** penguin-to-penguin A2A (see federation-edge design doc).
 
 
-**Design-only for now** (see [`docs/DESIGN_A2A_FEDERATION_EDGE.md`](docs/DESIGN_A2A_FEDERATION_EDGE.md)). Penguins inside a horde stay **orchestrator-mediated** (sequential/DAG + artifact handoff); the homegrown ACL (`federation/acl.rs`) stays the **internal** bus. A2A is adopted only as the **external** node↔node skin:
+**Design-only for now** (see [`docs/concepts/DESIGN_A2A_FEDERATION_EDGE.md`](docs/concepts/DESIGN_A2A_FEDERATION_EDGE.md)). Penguins inside a horde stay **orchestrator-mediated** (sequential/DAG + artifact handoff); the homegrown ACL (`federation/acl.rs`) stays the **internal** bus. A2A is adopted only as the **external** node↔node skin:
 
 - [ ] Each Kowalski node publishes an **A2A Agent Card** and accepts A2A tasks.
 - [ ] A2A task lifecycle maps onto `AclMessage`; an A2A endpoint delegates into the existing orchestrator.
@@ -205,7 +205,7 @@ Existing linear hordes remain valid without migration. **MVP limits:** acyclic g
 
 ## Modular architecture (1.1.0 baseline)
 
-**Design emphasis:** Prefer **simple, robust** components and **few required services**—see [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md) (note on **Qdrant** as early **PoC** for vector memory).
+**Design emphasis:** Prefer **simple, robust** components and **few required services**—see [`docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md) (note on **Qdrant** as early **PoC** for vector memory).
 
 Workspace layout:
 - **kowalski-core**: `TemplateAgent`, LLM providers, memory, MCP client/hub, federation types; optional **Postgres** + **pgvector** + **Apache AGE** helpers.
