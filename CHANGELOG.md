@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-26 — **Standing Orders**
+
+> Kowalski works while you are away: scheduled and file-triggered hordes, pre-built binaries, and
+> defaults that ask before anything runs a command.
+
 ### Added
 - Morning Brief, a built-in horde: the pages you follow (defaults: GitHub trending Rust, TLDR, arXiv cs, Hacker News) become a one-page `BRIEF.md`, one section per page plus a top pick; a weekday 7:00 schedule ships switched off.
 - Folder Watcher, a built-in horde: a document dropped into its `inbox/` becomes `NOTE.md` (what it is, key facts, actions with deadlines); the watcher ships switched off.
