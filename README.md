@@ -199,7 +199,8 @@ Tools and MCP are driven by **`TemplateAgent`** + config, not separate `kowalski
 # The server with the UI inside (default bind 127.0.0.1:3456); opens your browser when started
 # from a terminal (--no-open to skip). Build the UI first so it gets compiled in:
 #   (cd ui && bun install && bun run build) && cargo build --release -p kowalski
-# Built-in hordes (url-summarizer, knowledge-compiler) appear in the Horde tab on first start.
+# Built-in hordes (spreadsheet-analyst, url-summarizer, knowledge-compiler) appear in the Horde
+# tab on first start.
 # First run opens Setup: pick a model, a files folder, optionally sign in to tableski; it writes
 # the config and restarts itself. No TOML editing needed.
 # Auth is off by default (single-user local tool). Optional bearer-token auth for /api/*:
@@ -251,6 +252,23 @@ local models. By default the ops are recovered by JSON extraction (works well wi
 for backends where guided decoding is known-good. Press **Give birth** when the draft
 validates. Tuning (optional, `config.toml` `[rookery]`): `max_ops_per_turn`,
 `structured_output`, `allow_replace_draft`.
+
+### Spreadsheet analyst (built-in horde)
+
+Ask questions about your spreadsheets in plain words and get answers plus a report workbook.
+Connect [tableski](https://github.com/yarenty/tableski) in Setup (every sheet becomes a table),
+open the Horde tab, pick **spreadsheet-analyst** and type your questions, one per line.
+
+The horde profiles the tables (no model involved), has the model write one SQL query per question,
+runs them through tableski, and writes `report.xlsx` (one sheet per question plus an index) and
+`HANDOFF.md` (short answers) into its `output/` folder. The model never writes a number: every
+figure comes from the query engine, and a question the data cannot answer is reported as such.
+Works with a small local model (tested with Ollama `qwen2.5:7b`).
+
+From a terminal: [`examples/spreadsheet-analyst/demo.sh`](examples/spreadsheet-analyst/demo.sh)
+`"Who spent the most?" "How many customers per city?"` runs it against a running server and
+prints the answers; [`docs/demo/spreadsheet-analyst.tape`](docs/demo/spreadsheet-analyst.tape)
+records that as a GIF with [vhs](https://github.com/charmbracelet/vhs).
 
 ### Rust API (minimal)
 

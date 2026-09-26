@@ -212,11 +212,32 @@ pub fn render_context_attachments(
     let mut out = String::new();
     for token in tokens {
         let path = resolve_path_token(workdir, token, step_paths, previous_artifact)?;
-        let label = path.strip_prefix(workdir).unwrap_or(&path).display().to_string();
-        let body = fs::read_to_string(&path).unwrap_or_default();
-        out.push_str(&format!("## Context file: `{label}`\n\n{body}\n\n---\n\n"));
+        for file in context_files(&path) {
+            let label = file.strip_prefix(workdir).unwrap_or(&file).display().to_string();
+            let body = fs::read_to_string(&file).unwrap_or_default();
+            out.push_str(&format!("## Context file: `{label}`\n\n{body}\n\n---\n\n"));
+        }
     }
     Ok(out)
+}
+
+/// A context path as files: itself, or for a folder output (such as `ingest`'s `debug/raw/`,
+/// which gains one timestamped file per run) its newest Markdown file, i.e. this run's.
+fn context_files(path: &Path) -> Vec<PathBuf> {
+    if !path.is_dir() {
+        return vec![path.to_path_buf()];
+    }
+    fs::read_dir(path)
+        .map(|rd| {
+            rd.flatten()
+                .map(|e| e.path())
+                .filter(|p| p.is_file() && p.extension().is_some_and(|x| x == "md"))
+                .max_by_key(|p| (fs::metadata(p).and_then(|m| m.modified()).ok(), p.clone()))
+        })
+        .ok()
+        .flatten()
+        .into_iter()
+        .collect()
 }
 
 /// Optional markdown normalization (H1 + required ## sections).
@@ -314,6 +335,21 @@ fn normalize_markdown_sections(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_folder_step_output_attaches_its_newest_markdown_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let raw = dir.path().join("debug/raw");
+        fs::create_dir_all(&raw).unwrap();
+        fs::write(raw.join("20260101-000000-inputs-1.md"), "an older run's question").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        fs::write(raw.join("20260102-000000-inputs-1.md"), "Who spent the most?").unwrap();
+        fs::write(raw.join("notes.txt"), "skipped").unwrap();
+        let steps = BTreeMap::from([("ingest".to_string(), raw.clone())]);
+        let ctx = render_context_attachments(dir.path(), &["@step:ingest@".into()], &steps, None).unwrap();
+        assert!(ctx.contains("Who spent the most?"), "{ctx}");
+        assert!(!ctx.contains("older run") && !ctx.contains("skipped"), "{ctx}");
+    }
 
     fn lint_like_agent() -> StageAgentMeta {
         StageAgentMeta {

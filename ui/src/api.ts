@@ -347,6 +347,7 @@ export type ModelChoice = {
   api_key?: string;
   files_dir?: string;
   search_api_key?: string;
+  search_provider?: "brave" | "staan";
 };
 
 export const api = {

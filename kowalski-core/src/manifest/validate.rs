@@ -12,7 +12,7 @@ use crate::rookery::{validate_horde_id, validate_step_name};
 use std::collections::BTreeSet;
 
 /// Deterministic (non-LLM) kowalski step kinds executed by the in-process registry.
-pub const DETERMINISTIC_STEP_KINDS: &[&str] = &["verify", "apply", "ingest"];
+pub const DETERMINISTIC_STEP_KINDS: &[&str] = &["verify", "apply", "ingest", "table_profile", "sql_batch", "xlsx_report"];
 
 /// Interchange kinds declared for cross-system manifests; not executed by kowalski.
 pub const INTERCHANGE_STEP_KINDS: &[&str] = &["llm", "rag", "input"];

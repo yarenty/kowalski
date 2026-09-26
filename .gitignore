@@ -35,12 +35,13 @@ Cargo.lock
 /examples/knowledge-compiler/raw
 
 
-continuity_prompt.md
-findings.md
-progress.md
-task_plan.md
-TODO.md
-PLAN.md
+# anchored at the root: horde steps such as agents/plan.md must stay tracked
+/continuity_prompt.md
+/findings.md
+/progress.md
+/task_plan.md
+/TODO.md
+/PLAN.md
 
 # Private multi-task planning (exec-task / sync-plan ledgers) — never committed
 /plans/

@@ -267,9 +267,15 @@ pub async fn serve(
     // step handlers. Worker spawn remains available as the future isolation mode.
     {
         let horde_agent = TemplateAgent::new(full_config.clone()).await?;
+        // data steps call the same tools the horde agent has (MCP proxies such as tableski's
+        // query_sql), so numbers come from the tool, not from the model
+        let horde_tools = horde_agent.base().tool_manager.clone();
         let horde_agent = Arc::new(Mutex::new(horde_agent));
         let mut registry = kowalski_core::StepHandlerRegistry::with_builtin_deterministic();
         kowalski_core::LlmStepHandler::register_all(&mut registry, horde_agent, &model);
+        registry.register(Arc::new(kowalski_core::horde_table_steps::TableProfileStepHandler::new(horde_tools.clone())));
+        registry.register(Arc::new(kowalski_core::horde_table_steps::SqlBatchStepHandler::new(horde_tools)));
+        registry.register(Arc::new(kowalski_core::horde_table_steps::XlsxReportStepHandler));
         horde_manager.step_handlers = Arc::new(registry);
     }
     let horde_manager = horde_manager;
@@ -3444,6 +3450,173 @@ mod api_tests {
             .uri(format!("/api/setup/tableski/callback?code=the-code&state={state_param}"))
             .body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(res.headers()["location"], "/?setup=tableski-expired");
+    }
+
+    /// A stand-in for tableski's `query_sql`: answers with an Arrow-style grid inside a data frame.
+    struct FakeQuerySql;
+
+    #[async_trait::async_trait]
+    impl kowalski_core::tools::Tool for FakeQuerySql {
+        async fn execute(
+            &mut self,
+            input: kowalski_core::tools::ToolInput,
+        ) -> Result<kowalski_core::tools::ToolOutput, kowalski_core::error::KowalskiError> {
+            let sql = input.parameters["sql"].as_str().unwrap_or("").to_string();
+            if sql.contains("nope") {
+                return Err(kowalski_core::error::KowalskiError::ToolExecution("no such column: nope".into()));
+            }
+            let text = "The following is a computed result...\n----- BEGIN_DATA_1 -----\n+-------+-------+\n| name  | total |\n+-------+-------+\n| ada   | 150.5 |\n| linus | 99.99 |\n+-------+-------+\n----- END_DATA_1 -----";
+            Ok(kowalski_core::tools::ToolOutput::new(json!({ "content": [{ "type": "text", "text": text }] }), None))
+        }
+        fn name(&self) -> &str {
+            "query_sql"
+        }
+        fn description(&self) -> &str {
+            "fake"
+        }
+        fn parameters(&self) -> Vec<kowalski_core::tools::ToolParameter> {
+            Vec::new()
+        }
+    }
+
+    #[tokio::test]
+    async fn sql_batch_and_xlsx_report_run_without_a_model() {
+        let dir = tempfile::tempdir().unwrap();
+        let hordes = dir.path().join("hordes");
+        let h = hordes.join("data-horde");
+        std::fs::create_dir_all(h.join("agents")).unwrap();
+        std::fs::create_dir_all(h.join("prompts")).unwrap();
+        std::fs::write(h.join("horde.md"), "---\nid = \"data-horde\"\ndisplay_name = \"data\"\ndescription = \"t\"\ncapability_prefix = \"data-horde\"\npipeline = [\"ingest\", \"run\", \"report\"]\nworkdir = \"output\"\n---\n").unwrap();
+        std::fs::write(h.join("agents/ingest.md"), "---\nname = \"ingest\"\nkind = \"ingest\"\ncapability = \"data-horde.ingest\"\ndefault_agent_id = \"d-ingest\"\ndisplay_name = \"Ingest\"\nprompt_file = \"prompts/ingest.md\"\noutput = \"debug/raw/\"\n---\n").unwrap();
+        std::fs::write(h.join("prompts/ingest.md"), "Collect.\n").unwrap();
+        std::fs::write(h.join("agents/run.md"), "---\nname = \"run\"\nkind = \"sql_batch\"\ncapability = \"data-horde.run\"\ndefault_agent_id = \"d-run\"\ndisplay_name = \"Run\"\ntool_ids = [\"query_sql\"]\noutput = \"debug/results.md\"\n---\n").unwrap();
+        std::fs::write(h.join("agents/report.md"), "---\nname = \"report\"\nkind = \"xlsx_report\"\ncapability = \"data-horde.report\"\ndefault_agent_id = \"d-report\"\ndisplay_name = \"Report\"\noutput = \"report.xlsx\"\n---\n").unwrap();
+
+        let broker = Arc::new(MpscBroker::new());
+        let registry = Arc::new(AgentRegistry::new());
+        let federation = Arc::new(FederationOrchestrator::new(registry, broker.clone()));
+        let store = kowalski_core::db::run_store::RunStore::open("sqlite::memory:").await.unwrap();
+        let mut manager = crate::horde::HordeManager::new(Vec::new(), broker, federation, store);
+        manager.catalog = Arc::new(crate::horde::HordeCatalog::with_roots(vec![hordes]));
+        let tools = kowalski_core::tools::manager::ToolManager::new();
+        tools.register(FakeQuerySql);
+        let mut steps = kowalski_core::StepHandlerRegistry::with_builtin_deterministic();
+        steps.register(Arc::new(kowalski_core::horde_table_steps::TableProfileStepHandler::new(tools.clone())));
+        steps.register(Arc::new(kowalski_core::horde_table_steps::SqlBatchStepHandler::new(tools)));
+        steps.register(Arc::new(kowalski_core::horde_table_steps::XlsxReportStepHandler));
+        manager.step_handlers = Arc::new(steps);
+        crate::horde::spawn_orchestrator_loop(manager.clone());
+
+        let plan = "### Q1: Who spent the most?\n```sql\nSELECT name, SUM(amount) AS total FROM orders GROUP BY name ORDER BY total DESC\n```\n### Q2: A broken one\n```sql\nSELECT nope FROM orders\n```\n### Q3: Cities\nThere is no city column.\n";
+        let record = manager
+            // as the API does: the operator's text is both the prompt and the ingest source
+            .start_run("data-horde", plan, Some(plan), Some(plan), kowalski_core::db::run_store::RUN_ORIGIN_OPERATOR)
+            .await
+            .unwrap();
+        let mut done = None;
+        for _ in 0..200 {
+            let r = manager.persisted_run(&record.run_id).await.unwrap().unwrap();
+            if matches!(r.status, kowalski_core::db::run_store::RunStatus::Done | kowalski_core::db::run_store::RunStatus::Error) {
+                done = Some(r);
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+        let run = done.expect("run finished");
+        assert_eq!(run.status, kowalski_core::db::run_store::RunStatus::Done, "{:?}", run.events);
+
+        let out = h.join("output");
+        let md = std::fs::read_to_string(out.join("debug/results.md")).unwrap();
+        assert!(md.contains("## Q1: Who spent the most?") && md.contains("| ada | 150.5 |"), "{md}");
+        assert!(md.contains("no such column: nope"), "a failed query is recorded, not hidden: {md}");
+        let results: Vec<kowalski_core::horde_table_steps::QueryResult> =
+            serde_json::from_slice(&std::fs::read(out.join("debug/results.json")).unwrap()).unwrap();
+        assert!(md.contains("**Not answerable from these tables:** There is no city column."), "{md}");
+        assert_eq!(results.len(), 3);
+        assert_eq!(results[0].grid.as_ref().unwrap().rows[1], vec!["linus", "99.99"]);
+        let xlsx = std::fs::read(out.join("report.xlsx")).unwrap();
+        assert!(xlsx.starts_with(b"PK"), "report workbook written");
+    }
+
+    /// A stand-in for one of tableski's read-only tools: answers `text` inside a data frame.
+    struct FakeTableTool(&'static str, &'static str);
+
+    #[async_trait::async_trait]
+    impl kowalski_core::tools::Tool for FakeTableTool {
+        async fn execute(
+            &mut self,
+            _input: kowalski_core::tools::ToolInput,
+        ) -> Result<kowalski_core::tools::ToolOutput, kowalski_core::error::KowalskiError> {
+            let text = format!("The following is a computed result...\n----- BEGIN_DATA_1 -----\n{}\n----- END_DATA_1 -----", self.1);
+            Ok(kowalski_core::tools::ToolOutput::new(json!({ "content": [{ "type": "text", "text": text }] }), None))
+        }
+        fn name(&self) -> &str {
+            self.0
+        }
+        fn description(&self) -> &str {
+            "fake"
+        }
+        fn parameters(&self) -> Vec<kowalski_core::tools::ToolParameter> {
+            Vec::new()
+        }
+    }
+
+    #[tokio::test]
+    async fn table_profile_describes_tables_without_a_model() {
+        let dir = tempfile::tempdir().unwrap();
+        let hordes = dir.path().join("hordes");
+        let h = hordes.join("profile-horde");
+        std::fs::create_dir_all(h.join("agents")).unwrap();
+        std::fs::create_dir_all(h.join("prompts")).unwrap();
+        std::fs::write(h.join("horde.md"), "---\nid = \"profile-horde\"\ndisplay_name = \"p\"\ndescription = \"t\"\ncapability_prefix = \"profile-horde\"\npipeline = [\"ingest\", \"profile\"]\nworkdir = \"output\"\n---\n").unwrap();
+        std::fs::write(h.join("agents/ingest.md"), "---\nname = \"ingest\"\nkind = \"ingest\"\ncapability = \"profile-horde.ingest\"\ndefault_agent_id = \"p-ingest\"\ndisplay_name = \"Ingest\"\nprompt_file = \"prompts/ingest.md\"\noutput = \"debug/raw/\"\n---\n").unwrap();
+        std::fs::write(h.join("prompts/ingest.md"), "Collect.\n").unwrap();
+        std::fs::write(h.join("agents/profile.md"), "---\nname = \"profile\"\nkind = \"table_profile\"\ncapability = \"profile-horde.profile\"\ndefault_agent_id = \"p-profile\"\ndisplay_name = \"Profile\"\noutput = \"debug/profile.md\"\n---\n").unwrap();
+
+        let broker = Arc::new(MpscBroker::new());
+        let registry = Arc::new(AgentRegistry::new());
+        let federation = Arc::new(FederationOrchestrator::new(registry, broker.clone()));
+        let store = kowalski_core::db::run_store::RunStore::open("sqlite::memory:").await.unwrap();
+        let mut manager = crate::horde::HordeManager::new(Vec::new(), broker, federation, store);
+        manager.catalog = Arc::new(crate::horde::HordeCatalog::with_roots(vec![hordes]));
+        let tools = kowalski_core::tools::manager::ToolManager::new();
+        tools.register(FakeTableTool("list_tables", "{\n  \"tables\": [{ \"name\": \"orders\", \"source\": \"sample.xlsx\", \"sheet\": \"Orders\", \"rows\": 3, \"columns\": 2 }]\n}"));
+        tools.register(FakeTableTool("get_schema", "{\n  \"table\": \"orders\",\n  \"columns\": [{ \"name\": \"name\", \"data_type\": \"Utf8\", \"nullable\": true }, { \"name\": \"amount\", \"data_type\": \"Float64\", \"nullable\": false }]\n}"));
+        tools.register(FakeTableTool("column_statistics", "+-----------+--------+\n| statistic | amount |\n+-----------+--------+\n| max       | 100.5  |\n+-----------+--------+"));
+        let mut steps = kowalski_core::StepHandlerRegistry::with_builtin_deterministic();
+        steps.register(Arc::new(kowalski_core::horde_table_steps::TableProfileStepHandler::new(tools)));
+        manager.step_handlers = Arc::new(steps);
+        crate::horde::spawn_orchestrator_loop(manager.clone());
+
+        let record = manager
+            .start_run("profile-horde", "questions", Some("questions"), Some("questions"), kowalski_core::db::run_store::RUN_ORIGIN_OPERATOR)
+            .await
+            .unwrap();
+        let mut done = None;
+        for _ in 0..200 {
+            let r = manager.persisted_run(&record.run_id).await.unwrap().unwrap();
+            if matches!(r.status, kowalski_core::db::run_store::RunStatus::Done | kowalski_core::db::run_store::RunStatus::Error) {
+                done = Some(r);
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+        let run = done.expect("run finished");
+        assert_eq!(run.status, kowalski_core::db::run_store::RunStatus::Done, "{:?}", run.events);
+        let md = std::fs::read_to_string(h.join("output/debug/profile.md")).unwrap();
+        assert!(md.contains("## orders") && md.contains("- Sheet: Orders") && md.contains("- Rows: 3"), "{md}");
+        assert!(md.contains("| `amount` | Float64 | false |"), "{md}");
+        assert!(md.contains("| max | 100.5 |"), "{md}");
+    }
+
+    #[tokio::test]
+    async fn the_spreadsheet_analyst_horde_loads_cleanly() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::embedded::install_builtin_hordes(&dir.path().join("b")).unwrap();
+        let catalog = crate::horde::HordeCatalog::with_roots(vec![dir.path().join("b")]);
+        let entry = catalog.list().into_iter().find(|e| e.spec.id == "spreadsheet-analyst").expect("built in");
+        assert!(entry.load_error.is_none(), "{:?}", entry.load_error);
+        assert_eq!(entry.spec.pipeline, vec!["ingest", "profile", "plan", "run", "report", "deliver"]);
     }
 
     #[tokio::test]

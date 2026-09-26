@@ -157,9 +157,12 @@ pub struct ModelChoice {
     api_key: Option<String>,
     #[serde(default)]
     files_dir: Option<String>,
-    /// Brave Search API key: turns on the `web_search` tool (`[search]`).
+    /// Search API key: turns on the `web_search` tool (`[search]`).
     #[serde(default)]
     search_api_key: Option<String>,
+    /// `brave` (default) or `staan`.
+    #[serde(default)]
+    search_provider: Option<String>,
 }
 
 /// `POST /api/setup/test-model`: Ollama must list the model; a hosted endpoint must accept the
@@ -253,7 +256,11 @@ pub async fn save(State(state): State<ApiState>, Json(c): Json<ModelChoice>) -> 
     }
     if let Some(key) = c.search_api_key.as_deref().map(str::trim).filter(|k| !k.is_empty()) {
         let search = sub(&mut t, "search");
-        search.insert("provider".into(), "brave".into());
+        let provider = match c.search_provider.as_deref() {
+            Some("staan") => "staan",
+            _ => "brave",
+        };
+        search.insert("provider".into(), provider.into());
         search.insert("api_key".into(), key.into());
         secret = true;
     }
