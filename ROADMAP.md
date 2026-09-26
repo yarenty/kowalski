@@ -2,7 +2,7 @@
 
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"
 
-**Shipped:** **2.1.0 — Standing Orders** (binaries, Morning Brief, Folder Watcher, safe defaults), **2.0.0 — Out of the Box** (one binary, first-run Setup, web tools, built-in Spreadsheet analyst), **1.8.0 — Ecosystem** (MCP layer extracted: emperor-mcp + tableski; slim 4-crate workspace) and **1.7.0 — Autonomy** — see [`CHANGELOG.md`](CHANGELOG.md).  
+**Shipped:** **2.2.0 — Commando** (UI redesign, architecture docs, demo, blog), **2.1.0 — Standing Orders** (binaries, Morning Brief, Folder Watcher, safe defaults), **2.0.0 — Out of the Box** (one binary, first-run Setup, web tools, built-in Spreadsheet analyst), **1.8.0 — Ecosystem** (MCP layer extracted: emperor-mcp + tableski; slim 4-crate workspace) and **1.7.0 — Autonomy** — see [`CHANGELOG.md`](CHANGELOG.md).  
 **Published on crates.io:** lags GitHub releases; `cargo install` from git works today.  
 **Per-crate roadmaps:** [`kowalski-core/ROADMAP.md`](kowalski-core/ROADMAP.md), [`kowalski-cli/ROADMAP.md`](kowalski-cli/ROADMAP.md), [`ui/ROADMAP.md`](ui/ROADMAP.md).
 
@@ -15,10 +15,19 @@ kowalski, answers three setup questions, drops a spreadsheet and gets a correct 
 |---------|--------|------|
 | ~~2.0.0~~ | **Out of the Box** — *shipped 2026-09-26* | One binary with the UI inside; first-run Setup (model, files folder, tableski sign-in); `web_fetch` / `web_search`; built-in Spreadsheet analyst with `table_profile`, `sql_batch`, `xlsx_report` steps |
 | ~~2.1.0~~ | **Standing Orders** — *shipped 2026-09-26* | Safe defaults (auth when not on localhost, isolation for imported bundles, confirmation before `verify`/`apply` commands); built-in Morning brief (cron) and Folder watcher (watch) hordes; pre-built macOS and Linux binaries on releases |
-| **2.2.0** | **Commando** | Full UI redesign (penguin black and white, signal red); docs reorganised with a new architecture page; demo recording and the official blog at kowalski.yarenty.com |
+| ~~2.2.0~~ | **Commando** — *shipped 2026-09-26* | Full UI redesign (penguin black and white, signal red); docs reorganised with a new architecture page; demo recording and the official blog at kowalski.yarenty.com |
 | later | **Support** | Chat tab becomes a kowalski-aware helper (install gaps, Rookery and horde intro) |
 | later | **Trading horde** | Market monitor and scheduled analysis over tableski's market data |
 | later | **Obsidian MCP** | An Obsidian vault server on `emperor-mcp` |
+
+## Shipped in 2.2.0 — **Commando** (2026-09-26)
+
+See [`CHANGELOG.md`](CHANGELOG.md) (**[2.2.0]**). Highlights:
+
+- **Commando UI** — penguin black, snow white and signal red, light and dark; Hordes, Chat, Build and Setup up front, technical screens under Admin
+- **Hordes screen** — horde cards that say what each needs and delivers, a pipeline stepper, an approval box you cannot miss, and the answers rendered when the run finishes
+- **Docs** — `docs/architecture.html`, a new system map in the README, `docs/` split into dev, blog and concepts
+- **Demo and blog** — a recording of the Spreadsheet analyst, and the blog at [kowalski.yarenty.com](https://kowalski.yarenty.com)
 
 ## Shipped in 2.1.0 — **Standing Orders** (2026-09-26)
 

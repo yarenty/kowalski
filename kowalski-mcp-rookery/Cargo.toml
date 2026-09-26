@@ -1,6 +1,6 @@
 [package]
 name = "kowalski-mcp-rookery"
-version = "2.1.0"
+version = "2.2.0"
 edition = "2024"
 description = "Standalone MCP (stdio) server: validate and give birth to Kowalski hordes (Rookery) over kowalski-core"
 license = "MIT"
@@ -10,7 +10,7 @@ homepage = "https://github.com/yarenty/kowalski"
 readme = "README.md"
 
 [dependencies]
-kowalski-core = { path = "../kowalski-core", version = "2.1.0" }
+kowalski-core = { path = "../kowalski-core", version = "2.2.0" }
 emperor-mcp = "0.1"
 clap = { version = "4.5", features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }

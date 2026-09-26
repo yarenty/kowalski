@@ -55,7 +55,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: Kowalski  
-**Release line**: **2.1.0 — Standing Orders** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).
+**Release line**: **2.2.0 — Commando** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).
 **Purpose**: A Rust-native multi-agent framework: **`kowalski-core`** (agents, LLM, memory, MCP client), **`kowalski-cli`** (REPL + operators, extensions, **`agent-app`**), **`kowalski`** (HTTP **`/api/*`** server), Vue **`ui/`**, optional PostgreSQL (**pgvector**, **Apache AGE**).  
 **Core Value Proposition**: Modular, extensible deployment with MCP-first tools and federation-oriented APIs.  
 **Primary Mechanism**: `TemplateAgent` + pluggable tools (built-in + MCP), Ollama/OpenAI-compatible providers.  
@@ -391,7 +391,9 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-**2.1.0 — Standing Orders** is the current release: pre-built macOS and Linux binaries (`install.sh` downloads them); built-in Morning Brief (cron) and Folder Watcher (watch) hordes, shipped switched off; safe defaults — `verify`/`apply` steps wait for operator approval, imported bundles run with process isolation, and a non-loopback bind always requires the API token. See `CHANGELOG.md` **[2.1.0]**.
+**2.2.0 — Commando** is the current release: the operator UI redesigned (Commando theme: penguin black, snow white, signal red; light and dark; plain navigation with Hordes, Chat, Build, Setup; a stepper-first Hordes screen that renders the delivered answers), the docs reorganised around a new architecture page, and the kowalski blog at kowalski.yarenty.com. See `CHANGELOG.md` **[2.2.0]**.
+
+**2.1.0 — Standing Orders** was the previous release: pre-built macOS and Linux binaries (`install.sh` downloads them); built-in Morning Brief (cron) and Folder Watcher (watch) hordes, shipped switched off; safe defaults — `verify`/`apply` steps wait for operator approval, imported bundles run with process isolation, and a non-loopback bind always requires the API token. See `CHANGELOG.md` **[2.1.0]**.
 
 **2.0.0 — Out of the Box** was the previous release: one `kowalski` binary serves the operator UI and ships built-in hordes (Spreadsheet analyst, URL summarizer, Knowledge compiler); a first-run Setup screen writes the config (model, files folder, tableski sign-in over OAuth); agents get `web_fetch` and `web_search`; and the data step kinds `table_profile`, `sql_batch` and `xlsx_report` keep numbers out of the model. See `CHANGELOG.md` **[2.0.0]**.
 
