@@ -34,9 +34,10 @@ struct Cli {
     /// TLS private key (PEM). Must be set together with `--tls-cert`.
     #[clap(long, value_name = "PEM")]
     tls_key: Option<std::path::PathBuf>,
-    /// Enable API bearer-token auth + CORS origin allowlist. Off by default
-    /// (single-user local tool). Also enabled by `[server] auth = true` in the
-    /// config or a non-empty `KOWALSKI_API_TOKEN` env var.
+    /// Enable API bearer-token auth + CORS origin allowlist. Off by default on a
+    /// loopback address (single-user local tool); always on when `--bind` reaches
+    /// the network. Also enabled by `[server] auth = true` in the config or a
+    /// non-empty `KOWALSKI_API_TOKEN` env var.
     #[clap(long)]
     auth: bool,
     /// Allowed browser origin for CORS (repeatable). Defaults to the Vite dev UI

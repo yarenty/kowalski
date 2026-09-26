@@ -162,6 +162,17 @@ pub enum AclMessage {
         #[serde(default)]
         reason: Option<String>,
     },
+    /// Run parked before a step that runs commands or writes files, until an operator approves.
+    ApprovalRequired {
+        run_id: String,
+        horde: String,
+        step: String,
+        /// What the step would do, in plain words.
+        text: String,
+        /// The command a `verify` step would run, when it has one.
+        #[serde(default)]
+        command: Option<String>,
+    },
 }
 
 /// Reject [`AclMessage::TaskDelegate`] when `delegation_depth` exceeds the effective max.

@@ -42,6 +42,11 @@ pub const DEFAULT_RESUME_MAX_ATTEMPTS: u32 = 2;
 /// Default wall-clock limit per in-process step execution (matches the verify
 /// stage's internal command timeout). Override with `[horde] step_timeout_secs`.
 pub const DEFAULT_STEP_TIMEOUT_SECS: u64 = 600;
+/// Server default for [`HordeManager::confirm_commands`]: `verify` and `apply` steps wait for
+/// an operator's approval. Override with `[horde] confirm_commands = false`.
+pub const DEFAULT_CONFIRM_COMMANDS: bool = true;
+/// Step kinds that run commands or write into the operator's project.
+const COMMAND_STEP_KINDS: &[&str] = &["verify", "apply"];
 /// Relative path under `workdir` for managed federation worker stdout/stderr logs (HTTP server convention).
 pub const AGENTS_LOG_REL: &str = "agents_log";
 /// Relative path under `workdir` for follow-up chat markdown from `POST .../followup` (HTTP server convention).
@@ -924,6 +929,13 @@ pub struct HordeManager {
     /// Config file passed to isolated children (`exec-step --config …`) so the
     /// child resolves the same LLM provider/model as the server.
     pub exec_step_config: Option<PathBuf>,
+    /// When on, a `verify` or `apply` step parks its run (`awaiting_input`) until an operator
+    /// approves it ([`Self::approve_run`]). Off for a bare manager; the server turns it on
+    /// ([`DEFAULT_CONFIRM_COMMANDS`]).
+    pub confirm_commands: bool,
+    /// Approved `(run_id, step)` pairs: one approval covers every later attempt of that step
+    /// in that run (loops do not ask again).
+    pub approvals: Arc<Mutex<std::collections::HashSet<(String, String)>>>,
 }
 
 impl HordeManager {
@@ -950,6 +962,8 @@ impl HordeManager {
                 .filter(|s| !s.trim().is_empty())
                 .map(PathBuf::from),
             exec_step_config: None,
+            confirm_commands: false,
+            approvals: Arc::new(Mutex::new(std::collections::HashSet::new())),
         }
     }
 
@@ -1251,6 +1265,17 @@ impl HordeManager {
             .sub_agent(step_name)
             .ok_or_else(|| format!("missing sub-agent {} in horde {}", step_name, spec.id))?
             .clone();
+        if self.confirm_commands
+            && COMMAND_STEP_KINDS.contains(&sub.kind.as_str())
+            && !self
+                .approvals
+                .lock()
+                .await
+                .contains(&(run_id.to_string(), step_name.to_string()))
+        {
+            self.park_for_approval(spec, run_id, &sub).await;
+            return Ok(());
+        }
         let task_id = self.task_id(&spec.id, run_id, step_name);
 
         let instruction;
@@ -1357,6 +1382,68 @@ impl HordeManager {
             }
             Err(e) => Err(format!("federation delegate error: {}", e)),
         }
+    }
+
+    /// Stop `run_id` before `sub` (a command step) and wait for the operator: the run goes to
+    /// `awaiting_input` with an `approval_required` event saying what would run.
+    async fn park_for_approval(&self, spec: &HordeSpec, run_id: &str, sub: &SubAgentSpec) {
+        let what = match (sub.kind.as_str(), sub.verify_command.as_deref()) {
+            ("verify", Some(cmd)) => format!("runs the command `{cmd}`"),
+            ("verify", None) => "runs the project's check command".to_string(),
+            _ => "writes the proposed changes into the project folder".to_string(),
+        };
+        let envelope = self.build_envelope(
+            &spec.topic,
+            AclMessage::ApprovalRequired {
+                run_id: run_id.to_string(),
+                horde: spec.id.clone(),
+                step: sub.name.clone(),
+                text: format!("Step `{}` {what}. Approve to continue, or cancel the run.", sub.name),
+                command: sub.verify_command.clone(),
+            },
+        );
+        let event = envelope_summary(&envelope);
+        log::info!("run {run_id} waits for approval before step {} ({})", sub.name, sub.kind);
+        {
+            let mut runs = self.runs.lock().await;
+            if let Some(mut run) = runs.runs.remove(run_id) {
+                run.status = RunStatus::AwaitingInput;
+                run.events.push(event.clone());
+            }
+        }
+        self.persist_current_step(run_id, Some(&sub.name)).await;
+        self.persist_event(run_id, &event).await;
+        self.persist_run_status(run_id, RunStatus::AwaitingInput, None).await;
+        self.drop_cancel_token(run_id).await;
+        self.publish(&envelope).await;
+    }
+
+    /// Approve the command step `run_id` is waiting on and continue the run. The approval
+    /// holds for that step for the rest of the run; it does not use up a resume attempt.
+    pub async fn approve_run(&self, run_id: &str) -> Result<RunRecord, String> {
+        let persisted = self
+            .store
+            .get_run(run_id)
+            .await
+            .map_err(|e| format!("run store: {e}"))?
+            .ok_or_else(|| format!("run {run_id} not found"))?;
+        if persisted.status != RunStatus::AwaitingInput {
+            return Err(format!(
+                "run {run_id} is {}, not waiting for approval",
+                api_run_status(persisted.status)
+            ));
+        }
+        let step = persisted
+            .current_step
+            .clone()
+            .ok_or_else(|| format!("run {run_id} has no step waiting"))?;
+        self.approvals.lock().await.insert((run_id.to_string(), step.clone()));
+        self.persist_event(
+            run_id,
+            &json!({ "kind": "approval_granted", "step": step, "text": format!("Step `{step}` approved by the operator."), "ts": now_ts() }),
+        )
+        .await;
+        self.resume_run_inner(run_id, false).await
     }
 
     /// Execute a registry-backed step inside the server process as a Tokio task.
@@ -2326,6 +2413,12 @@ impl HordeManager {
     /// A failed resume leaves the run resumable until the attempt cap is spent,
     /// then the run goes to `error` with a reason.
     pub async fn resume_run(&self, run_id: &str) -> Result<RunRecord, String> {
+        self.resume_run_inner(run_id, true).await
+    }
+
+    /// [`Self::resume_run`]; `count_attempt` is false when an approval continues a parked run
+    /// (not a recovery, so it neither checks nor uses the resume cap).
+    async fn resume_run_inner(&self, run_id: &str, count_attempt: bool) -> Result<RunRecord, String> {
         let persisted = self
             .store
             .get_run(run_id)
@@ -2359,19 +2452,22 @@ impl HordeManager {
                 )
             })?;
 
-        if persisted.resume_count >= self.resume_max_attempts as i64 {
-            let reason = format!(
-                "resume attempts exhausted ({} of {})",
-                persisted.resume_count, self.resume_max_attempts
-            );
-            self.mark_unresumable(&spec, run_id, &reason).await;
-            return Err(reason);
-        }
-        let attempt_no = self
-            .store
-            .increment_resume_count(run_id)
-            .await
-            .map_err(|e| format!("run store: {e}"))?;
+        let attempt_no = if count_attempt {
+            if persisted.resume_count >= self.resume_max_attempts as i64 {
+                let reason = format!(
+                    "resume attempts exhausted ({} of {})",
+                    persisted.resume_count, self.resume_max_attempts
+                );
+                self.mark_unresumable(&spec, run_id, &reason).await;
+                return Err(reason);
+            }
+            self.store
+                .increment_resume_count(run_id)
+                .await
+                .map_err(|e| format!("run store: {e}"))?
+        } else {
+            persisted.resume_count
+        };
 
         let (pipeline, graph) =
             Self::snapshot_execution(&spec, persisted.manifest_snapshot.as_ref());
@@ -2466,11 +2562,15 @@ impl HordeManager {
                 .await;
             return Err(e);
         }
-        let runs = self.runs.lock().await;
-        runs.runs
-            .get(run_id)
-            .cloned()
-            .ok_or_else(|| "run vanished after resume".to_string())
+        let live = self.runs.lock().await.runs.get(run_id).cloned();
+        match live {
+            Some(run) => Ok(run),
+            // parked again (a command step waiting for approval): the store has it
+            None => self
+                .persisted_run(run_id)
+                .await?
+                .ok_or_else(|| "run vanished after resume".to_string()),
+        }
     }
 
     /// A resume attempt failed before the run got moving again. Below the cap

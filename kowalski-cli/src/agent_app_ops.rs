@@ -1648,6 +1648,12 @@ fn render_portability_report(report: &kowalski_core::manifest::PortabilityReport
             report.triggers_disabled
         ));
     }
+    if report.steps_isolated > 0 {
+        lines.push(format!(
+            "  {} step(s) set to run in a separate process (isolation = \"process\")",
+            report.steps_isolated
+        ));
+    }
     lines.join("\n")
 }
 
