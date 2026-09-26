@@ -51,7 +51,7 @@ Setup writes the config and restarts the server. The archives are also on the
 
 ## What a horde does for you
 
-Five hordes ship inside the binary and appear in the Horde tab on first start.
+Five hordes ship inside the binary and appear in the Hordes screen on first start.
 
 | Horde | You give it | You get |
 |---|---|---|
