@@ -11,7 +11,10 @@ All notable changes to this project will be documented in this file, or at least
 - Folder Watcher, a built-in horde: a document dropped into its `inbox/` becomes `NOTE.md` (what it is, key facts, actions with deadlines); the watcher ships switched off.
 - `context_max_chars` on a stage: caps the attached context, shared evenly between ingested sources, so small local models stay inside their window.
 
+- Pre-built binaries on every release for macOS (Apple Silicon, Intel) and Linux (x86_64, ARM): `kowalski` with the UI and built-in hordes inside, plus `kowalski-cli`, with SHA-256 checksums.
+
 ### Changed
+- `install.sh` downloads the pre-built binaries for your machine into `~/.local/bin` (checksum verified) and leaves the config to the Setup screen; `KOWALSKI_FROM_SOURCE=1`, or a platform without a binary, keeps the crates.io build. The source build no longer fails on macOS's bash 3.2 when no features are set.
 - Fetched pages keep only their content: the `<main>` element (or a lone `<article>`) when present, without navigation, headers, footers, menus and dialogs; relative links become absolute; the page title leads.
 
 ### Fixed

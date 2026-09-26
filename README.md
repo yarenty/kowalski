@@ -135,23 +135,29 @@ this repo stays framework-only.
 
 ## 🚀 Installation & Setup
 
-### One-line install (crates.io)
+### One-line install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yarenty/kowalski/main/install.sh | bash
+kowalski
 ```
 
-This installs **`kowalski-cli`** and **`kowalski`** into `~/.cargo/bin` (installs Rust via rustup if needed), seeds `~/.config/kowalski/config.toml` from [`config.example.toml`](config.example.toml), and prints next steps.
+On macOS and Linux (Intel or ARM) this downloads the pre-built `kowalski` and `kowalski-cli` from
+the latest release into `~/.local/bin` (checksum verified), with the UI and built-in hordes inside.
+No Rust needed. `kowalski` opens the app in your browser and the Setup screen asks three questions.
+The archives are also on the [releases page](https://github.com/yarenty/kowalski/releases).
 
 Options via environment variables:
 
 | Variable | Effect |
 |----------|--------|
-| `KOWALSKI_VERSION=2.0.0` | Pin crates.io version on install |
-| `KOWALSKI_FEATURES=postgres` | `cargo install --features postgres` for server + CLI |
-| `KOWALSKI_INSTALL_MCP=1` | Also install `kowalski-mcp-rookery` |
-| `KOWALSKI_SKIP_RUSTUP=1` | Fail instead of auto-installing Rust |
-| `KOWALSKI_CONFIG_DIR=~/.config/kowalski` | Where the sample config is written as `config.toml` |
+| `KOWALSKI_BIN_DIR=~/.local/bin` | Where the binaries go |
+| `KOWALSKI_RELEASE=v2.1.0` | A specific release instead of the latest |
+| `KOWALSKI_FROM_SOURCE=1` | Build from crates.io with cargo instead (no UI inside) |
+| `KOWALSKI_VERSION=2.1.0` | crates.io version (source build) |
+| `KOWALSKI_FEATURES=postgres` | `cargo install --features postgres` for server + CLI (source build) |
+| `KOWALSKI_INSTALL_MCP=1` | Also install `kowalski-mcp-rookery` (source build) |
+| `KOWALSKI_SKIP_RUSTUP=1` | Fail instead of auto-installing Rust (source build) |
 
 Custom domain: mirror or redirect [`install.sh`](install.sh) at e.g. `https://yarenty.com/kowalski/install.sh`.
 
