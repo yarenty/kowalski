@@ -3365,6 +3365,14 @@ mod api_tests {
         assert_eq!(written.llm.model.as_deref(), Some("gpt-4o-mini"));
         assert_eq!(written.llm.openai_api_key.as_deref(), Some("sk-test"));
         assert!(crate::setup::files_dir(&written).is_some(), "earlier settings survive a later save");
+        let (status, _) = call(&app, "POST", "/api/setup/save",
+            Some(json!({ "provider": "openai", "model": "gpt-4o-mini", "search_api_key": "brv-test" })), None).await;
+        assert_eq!(status, StatusCode::OK);
+        let written: kowalski_core::config::Config = toml::from_str(&std::fs::read_to_string(&cfg).unwrap()).unwrap();
+        assert_eq!(
+            kowalski_core::tools::internal::SearchBackend::from_config(&written),
+            Some(kowalski_core::tools::internal::SearchBackend::Brave { api_key: "brv-test".into() })
+        );
         assert!(dir.path().join("config.toml.bak").is_file(), "previous file kept");
         #[cfg(unix)]
         {

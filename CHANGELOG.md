@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file, or at least
 - Crate descriptions and version strings brought up to date.
 
 ### Added
+- Web tools for agents: `web_fetch` (one public page as readable Markdown; private, loopback, link-local and cloud-metadata addresses refused, every redirect re-checked) always, and `web_search` (top results with title, URL and snippet) when `[search]` names Brave Search (free tier; key in config or `BRAVE_API_KEY`) or a SearXNG instance. The Setup screen takes an optional Brave key.
 - First-run Setup screen: on a fresh install the UI opens it (also under Administrator → Setup). Three steps: the model (local Ollama with the installed models listed, or any OpenAI-compatible endpoint with your key; a Check button verifies without spending tokens), the files folder chat's file tool is confined to, and tableski. Save writes the config (previous file kept as `.bak`, owner-only when a key is inside) and the server restarts itself so every agent picks it up.
 - OAuth for MCP servers: an `[[mcp.servers]]` entry can carry `oauth = { token_file = "…" }`; the client sends a bearer token from that file, refreshes it before expiry and once after a 401, and saves rotated refresh tokens. The Setup screen's "Connect tableski" uses it: discovery from the server's metadata, dynamic client registration with a loopback redirect, PKCE sign-in in the browser, no token to copy.
 - One binary: the build compiles the operator UI (`ui/dist`) into `kowalski`, which serves it at `/` (app routes fall back to the page, hashed assets cached) and opens the browser when started from a terminal (`--no-open` to skip). A build without the UI still starts and says how to add it.
@@ -20,6 +21,7 @@ All notable changes to this project will be documented in this file, or at least
 - Config lookup shared by the server and the CLI: `-c`, else `$KOWALSKI_CONFIG`, else `./config.toml`, else `~/.config/kowalski/config.toml` (where `install.sh` writes it), so an installed `kowalski` finds its config from any directory.
 
 ### Changed
+- The UI's chat is tool-aware by default (remembered per browser), so connected tools such as tableski, web and files are used without ticking a box.
 - With auth on, only `/api/*` needs the token; the UI's static files are open (they carry no data).
 
 ### Fixed

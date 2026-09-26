@@ -10,7 +10,7 @@ use std::time::Duration;
 
 const FETCH_TIMEOUT_SECS: u64 = 90;
 
-/// Marker for future `Tool` registration (`internal_web_fetch`, etc.).
+/// Marker for the web helpers module; the agent tools built on it live in `web_tools`.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct WebInternalModule;
 

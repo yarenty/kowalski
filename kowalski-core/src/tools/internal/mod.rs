@@ -18,6 +18,7 @@ pub mod file_system;
 pub mod fs_tool;
 pub mod github;
 pub mod web;
+pub mod web_tools;
 
 pub use file_system::{
     append_file, copy_file, file_len, is_dir, is_file, list_dir_entries, list_dir_names, mkdir_all,
@@ -27,3 +28,4 @@ pub use file_system::{
 pub use fs_tool::FsTool;
 pub use github::{fetch_url_for_ingest, FetchedUrlBody, GithubFetchKind, resolve_github_fetch};
 pub use web::{fetch_url_as_markdown, html_body_to_markdown, looks_like_html};
+pub use web_tools::{SearchBackend, WebFetchTool, WebSearchTool};

@@ -15,6 +15,7 @@ const baseUrl = ref("https://api.openai.com/v1");
 const hostedModel = ref("gpt-4o-mini");
 const apiKey = ref("");
 const filesDir = ref("");
+const searchKey = ref("");
 
 const check = ref<{ ok: boolean; message: string } | null>(null);
 const busy = ref<string | null>(null);
@@ -37,13 +38,14 @@ function applyPreset() {
 
 const choice = computed<ModelChoice>(() =>
   provider.value === "ollama"
-    ? { provider: "ollama", model: ollamaModel.value.trim(), files_dir: filesDir.value.trim() || undefined }
+    ? { provider: "ollama", model: ollamaModel.value.trim(), files_dir: filesDir.value.trim() || undefined, search_api_key: searchKey.value.trim() || undefined }
     : {
         provider: "openai",
         model: hostedModel.value.trim(),
         openai_api_base: baseUrl.value.trim(),
         api_key: apiKey.value.trim() || undefined,
         files_dir: filesDir.value.trim() || undefined,
+        search_api_key: searchKey.value.trim() || undefined,
       },
 );
 
@@ -227,11 +229,17 @@ onMounted(async () => {
       </li>
 
       <li>
-        <h3><span class="n">2</span> Where do your files live?</h3>
+        <h3><span class="n">2</span> Files and the web</h3>
         <div class="fields">
           <label>Folder <input v-model="filesDir" placeholder="~/Documents/kowalski" spellcheck="false" /></label>
         </div>
         <p class="muted small">Chat's file tool reads and writes only inside this folder. Leave empty to decide per chat.</p>
+        <div class="fields" style="margin-top:0.8rem">
+          <label>Web search key (optional)
+            <input v-model="searchKey" type="password" autocomplete="off" :placeholder="status.web_search ? 'web search is on; leave empty to keep it' : 'Brave Search API key'" />
+          </label>
+        </div>
+        <p class="muted small">Agents can always read a web page you give them. To let them search too, paste a <a href="https://brave.com/search/api/" target="_blank" rel="noopener">Brave Search API</a> key (free tier available).</p>
       </li>
 
       <li>
