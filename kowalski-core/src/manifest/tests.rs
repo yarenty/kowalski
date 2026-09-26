@@ -288,7 +288,12 @@ fn bundle_round_trip_on_example_is_equivalent_and_report_clean() {
         imported.report
     );
     let manifest2 = horde_dir_to_manifest(&imported.horde_root).unwrap();
-    assert_eq!(manifest, manifest2, "export → import must be equivalent");
+    // equivalent except that an import runs every step isolated
+    let mut expected = manifest.clone();
+    for step in expected.steps.iter_mut() {
+        step.kowalski.get_or_insert_with(Default::default).isolation = Some("process".into());
+    }
+    assert_eq!(expected, manifest2, "export → import must be equivalent");
 }
 
 #[test]
@@ -320,6 +325,11 @@ fn bundle_import_reports_gaps_and_disables_triggers() {
     let landed = draft_from_horde_dir(&imported.horde_root).unwrap();
     assert!(!landed.triggers[0].enabled);
     assert_eq!(landed.triggers[0].cron.as_deref(), Some("*/5 * * * *"));
+    assert!(report.steps_isolated > 0);
+    assert!(
+        landed.penguins.iter().all(|p| p.isolation.as_deref() == Some("process")),
+        "imported steps run in a child process"
+    );
     assert!(imported.horde_root.join("assets/icon.svg").is_file());
     assert!(imported.horde_root.join("assets/ui/sample.json").is_file());
 }

@@ -92,6 +92,10 @@ pub struct PortabilityReport {
     pub migrations: Vec<String>,
     /// How many trigger declarations were rewritten to `enabled = false`.
     pub triggers_disabled: usize,
+    /// How many steps were switched to `process` isolation (every imported step runs in a
+    /// child process until an operator edits the horde).
+    #[serde(default)]
+    pub steps_isolated: usize,
 }
 
 impl PortabilityReport {
@@ -200,7 +204,7 @@ pub fn export_horde_dir_bundle(
 /// as are traversal paths, symlinks, and anything beyond the size caps. The manifest
 /// is migrated (older MINOR) or rejected (different MAJOR), validated, and written
 /// through the normal horde writer with every trigger declaration rewritten to
-/// `enabled = false`. Portability problems are returned in the report, not raised.
+/// `enabled = false` and every step set to `process` isolation. Portability problems are returned in the report, not raised.
 pub fn import_bundle(
     bundle_path: &Path,
     dest_root: &Path,
@@ -348,10 +352,22 @@ fn load_bundle(
         }
     }
 
+    // Code from elsewhere runs isolated: every step goes to a child process, so a bad step
+    // cannot take the server (or its memory) with it.
+    let mut steps_isolated = 0usize;
+    for step in manifest.steps.iter_mut() {
+        let ext = step.kowalski.get_or_insert_with(Default::default);
+        if ext.isolation.as_deref() != Some(crate::horde_step::ISOLATION_PROCESS) {
+            ext.isolation = Some(crate::horde_step::ISOLATION_PROCESS.to_string());
+            steps_isolated += 1;
+        }
+    }
+
     let warnings = validate_manifest(&manifest)?;
     let mut report = portability_report(&manifest, &warnings, context);
     report.migrations = migrations;
     report.triggers_disabled = triggers_disabled;
+    report.steps_isolated = steps_isolated;
     Ok(LoadedBundle {
         manifest,
         assets,
@@ -402,6 +418,7 @@ pub fn portability_report(
         warnings: warnings.to_vec(),
         migrations: Vec::new(),
         triggers_disabled: 0,
+        steps_isolated: 0,
     }
 }
 

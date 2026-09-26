@@ -241,6 +241,7 @@ export type PortabilityReport = {
   warnings: string[];
   migrations: string[];
   triggers_disabled: number;
+  steps_isolated?: number;
 };
 
 export type HordeImportResponse = {
@@ -507,6 +508,11 @@ export const api = {
   hordeRunResume: (hordeId: string, runId: string) =>
     json<{ ok: boolean; run: HordeRunRecord }>(
       `/api/hordes/${encodeURIComponent(hordeId)}/runs/${encodeURIComponent(runId)}/resume`,
+      { method: "POST", body: "{}" },
+    ),
+  hordeRunApprove: (hordeId: string, runId: string) =>
+    json<{ ok: boolean; run: HordeRunRecord }>(
+      `/api/hordes/${encodeURIComponent(hordeId)}/runs/${encodeURIComponent(runId)}/approve`,
       { method: "POST", body: "{}" },
     ),
   hordeRunCancel: (hordeId: string, runId: string) =>

@@ -299,6 +299,9 @@ onMounted(() => void refreshAll());
       <p v-if="importReport.triggers_disabled" class="muted">
         {{ importReport.triggers_disabled }} trigger(s) will be imported disabled — re-enable them on the Horde tab.
       </p>
+      <p v-if="importReport.steps_isolated" class="muted">
+        {{ importReport.steps_isolated }} step(s) will run in a separate process, so a faulty step cannot affect the server.
+      </p>
       <p>
         <button type="button" class="primary" :disabled="importBusy" @click="confirmImport">
           {{ importBusy ? "Importing..." : "Confirm import" }}

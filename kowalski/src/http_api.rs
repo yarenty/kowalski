@@ -86,6 +86,12 @@ pub struct SecurityOptions {
     pub cors_origins: Vec<String>,
 }
 
+/// True when `addr` accepts connections from other machines (anything but loopback). Such a
+/// server always requires the API token: agents there can read files and run commands.
+pub(crate) fn bind_reaches_network(addr: SocketAddr) -> bool {
+    !addr.ip().is_loopback()
+}
+
 /// Run until SIGINT / process exit. Binds `addr` and serves under `/api/*`.
 /// When `tls` is `Some((cert_pem, key_pem))`, serves HTTPS via rustls (`axum-server`).
 pub async fn serve(
@@ -103,7 +109,12 @@ pub async fn serve(
         .unwrap_or_else(|| PathBuf::from("."))
         .join("db");
 
+    let open_to_network = bind_reaches_network(addr);
+    if open_to_network && !security.auth {
+        log::warn!("Listening on {addr}, beyond this machine: API auth is on (a bearer token is required on /api/*)");
+    }
     let auth_enabled = security.auth
+        || open_to_network
         || server_config_auth(&full_config)
         || std::env::var(crate::auth::TOKEN_ENV)
             .map(|v| !v.trim().is_empty())
@@ -256,6 +267,11 @@ pub async fn serve(
     }
     if let Some(secs) = horde_config_step_timeout_secs(&full_config) {
         horde_manager.step_timeout = std::time::Duration::from_secs(secs);
+    }
+    horde_manager.confirm_commands =
+        horde_config_confirm_commands(&full_config).unwrap_or(crate::horde::DEFAULT_CONFIRM_COMMANDS);
+    if !horde_manager.confirm_commands {
+        log::warn!("[horde] confirm_commands = false: verify and apply steps run without asking");
     }
     // Process-isolated steps re-load this same config in the child so both
     // execution paths resolve one LLM provider/model (root AGENTS.md Rule 8).
@@ -512,6 +528,10 @@ fn build_app(
             "/api/hordes/{horde_id}/runs/{run_id}/cancel",
             post(post_horde_run_cancel),
         )
+        .route(
+            "/api/hordes/{horde_id}/runs/{run_id}/approve",
+            post(post_horde_run_approve),
+        )
         .route("/api/federation/register", post(post_federation_register))
         .route(
             "/api/federation/deregister",
@@ -652,6 +672,16 @@ fn horde_config_step_timeout_secs(cfg: &Config) -> Option<u64> {
         .and_then(|obj| obj.get("step_timeout_secs"))
         .and_then(|v| v.as_u64())
         .filter(|v| *v > 0)
+}
+
+/// `[horde] confirm_commands` in `config.toml` — whether `verify` / `apply` steps wait for
+/// an operator's approval (default [`crate::horde::DEFAULT_CONFIRM_COMMANDS`]).
+fn horde_config_confirm_commands(cfg: &Config) -> Option<bool> {
+    cfg.additional
+        .get("horde")
+        .and_then(|v| v.as_object())
+        .and_then(|obj| obj.get("confirm_commands"))
+        .and_then(|v| v.as_bool())
 }
 
 async fn get_health(State(state): State<ApiState>) -> Json<serde_json::Value> {
@@ -2939,6 +2969,33 @@ async fn post_horde_run_resume(
     })))
 }
 
+async fn post_horde_run_approve(
+    State(state): State<ApiState>,
+    AxumPath((horde_id, run_id)): AxumPath<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let snap = state
+        .horde_manager
+        .persisted_run(&run_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("run {} not found", run_id)))?;
+    if snap.horde_id != horde_id {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("run {} belongs to horde {}", run_id, snap.horde_id),
+        ));
+    }
+    let record = state
+        .horde_manager
+        .approve_run(&run_id)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    Ok(Json(json!({
+        "ok": true,
+        "run": record,
+    })))
+}
+
 async fn get_horde_run_detail(
     State(state): State<ApiState>,
     AxumPath((horde_id, run_id)): AxumPath<(String, String)>,
@@ -3096,6 +3153,10 @@ mod api_tests {
     }
 
     async fn fixture(dir: &Path, api_token: Option<&str>) -> Router {
+        fixture_with(dir, api_token, false).await
+    }
+
+    async fn fixture_with(dir: &Path, api_token: Option<&str>, confirm_commands: bool) -> Router {
         let hordes = dir.join("hordes");
         write_horde(&hordes, "api-horde", "true", "\n[[triggers]]\nwebhook = { route = \"api-hook\" }\n");
         write_horde(&hordes, "slow-horde", "sleep 30", "");
@@ -3113,6 +3174,7 @@ mod api_tests {
         manager.catalog = Arc::new(crate::horde::HordeCatalog::with_roots(vec![hordes]));
         manager.step_handlers =
             Arc::new(kowalski_core::StepHandlerRegistry::with_builtin_deterministic());
+        manager.confirm_commands = confirm_commands;
         crate::horde::spawn_orchestrator_loop(manager.clone());
         let trigger_manager = crate::triggers::TriggerManager::new(manager.clone());
         trigger_manager.rearm().await;
@@ -3234,6 +3296,40 @@ mod api_tests {
         assert_eq!(status, StatusCode::NOT_FOUND);
         let (status, _) = call(&app, "GET", &format!("/api/hordes/slow-horde/runs/{id}"), None, None).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "a run is only visible under its own horde");
+    }
+
+    #[tokio::test]
+    async fn a_command_step_waits_for_approval() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let app = fixture_with(dir.path(), None, true).await;
+        let (_, started) = call(
+            &app,
+            "POST",
+            "/api/hordes/api-horde/run",
+            Some(json!({ "prompt": "check it", "source": project.path().display().to_string() })),
+            None,
+        )
+        .await;
+        let id = run_id(&started);
+        let run = wait_for(&app, "api-horde", &id, &["awaiting_input", "completed", "failed"]).await;
+        assert_eq!(run["status"], "awaiting_input", "{run}");
+        let asked = run["events"].as_array().unwrap().iter().find(|e| e["kind"] == "approval_required").expect("approval event");
+        assert_eq!(asked["step"], "check");
+        assert_eq!(asked["command"], "true");
+
+        // resuming is not approving: the run parks again at the same step
+        let (status, resumed) = call(&app, "POST", &format!("/api/hordes/api-horde/runs/{id}/resume"), None, None).await;
+        assert_eq!(status, StatusCode::OK, "{resumed}");
+        let run = wait_for(&app, "api-horde", &id, &["awaiting_input", "completed", "failed"]).await;
+        assert_eq!(run["status"], "awaiting_input", "{run}");
+
+        let (status, approved) = call(&app, "POST", &format!("/api/hordes/api-horde/runs/{id}/approve"), None, None).await;
+        assert_eq!(status, StatusCode::OK, "{approved}");
+        let run = wait_for(&app, "api-horde", &id, &["completed", "failed"]).await;
+        assert_eq!(run["status"], "completed", "{run}");
+        let (status, _) = call(&app, "POST", &format!("/api/hordes/api-horde/runs/{id}/approve"), None, None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "nothing left to approve");
     }
 
     #[tokio::test]
@@ -3450,6 +3546,15 @@ mod api_tests {
             .uri(format!("/api/setup/tableski/callback?code=the-code&state={state_param}"))
             .body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(res.headers()["location"], "/?setup=tableski-expired");
+    }
+
+    #[test]
+    fn only_loopback_binds_may_run_without_auth() {
+        assert!(!bind_reaches_network("127.0.0.1:3456".parse().unwrap()));
+        assert!(!bind_reaches_network("[::1]:3456".parse().unwrap()));
+        assert!(bind_reaches_network("0.0.0.0:3456".parse().unwrap()));
+        assert!(bind_reaches_network("[::]:3456".parse().unwrap()));
+        assert!(bind_reaches_network("192.168.1.20:3456".parse().unwrap()));
     }
 
     /// A stand-in for tableski's `query_sql`: answers with an Arrow-style grid inside a data frame.

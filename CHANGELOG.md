@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Security
+- Safe defaults: a server bound to anything but a loopback address always requires the API token (agents there can read files and run commands); steps that run commands (`verify`) or write into the project (`apply`) wait for the operator's approval (Approve / Cancel in the Horde tab, `POST /api/hordes/{id}/runs/{run_id}/approve`; one approval covers that step for the rest of the run; `[horde] confirm_commands = false` to turn off); every step of an imported bundle runs with `isolation = "process"`, and the import report says so.
+
 ## [2.0.0] - 2026-09-26 — **Out of the Box**
 
 > The product release: download one binary, answer three setup questions, ask your spreadsheets

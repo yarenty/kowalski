@@ -62,6 +62,23 @@ const selectedHordeIsDag = computed(() => {
 const selectedHordeWorkers = computed(() => workerProfiles.value.filter((w) => w.horde_id === selectedHordeId.value));
 const resumableRuns = computed(() => runHistory.value.filter((r) => r.resumable));
 const resumeBusyId = ref<string | null>(null);
+/** A command step waiting for the operator (`approval_required`): what it would do. */
+type PendingApproval = { runId: string; step: string; text: string; command: string | null };
+const approval = ref<PendingApproval | null>(null);
+const approvalBusy = ref(false);
+
+/** The approval a parked run is waiting on, from its latest `approval_required` event. */
+function approvalFromRun(r: HordeRunRecord): PendingApproval | null {
+  if (r.status !== "awaiting_input") return null;
+  const ev = [...(r.events ?? [])].reverse().find((e) => e.kind === "approval_required");
+  if (!ev) return null;
+  return {
+    runId: r.run_id,
+    step: String(ev.step ?? ""),
+    text: String(ev.text ?? "A step is waiting for your approval."),
+    command: ev.command != null ? String(ev.command) : null,
+  };
+}
 const activeRunFromHistory = computed(() =>
   runId.value ? runHistory.value.find((r) => r.run_id === runId.value) ?? null : null,
 );
@@ -272,6 +289,19 @@ function processFederationEvent(data: string) {
     runResult.value = JSON.stringify(payload, null, 2);
     progressText.value = "failed";
     feed("system", "run failed", "System");
+    runBusy.value = false;
+    clearRunWatchdog();
+    void loadRunHistory();
+  } else if (kind === "approval_required") {
+    const step = String(payload.step ?? "?");
+    approval.value = {
+      runId: evRunId || runId.value || "",
+      step,
+      text: String(payload.text ?? "A step is waiting for your approval."),
+      command: payload.command != null ? String(payload.command) : null,
+    };
+    progressText.value = `${step} waiting for your approval`;
+    feed("orchestrator", String(payload.text ?? `${step} waits for approval`), "Agent: Boss", step);
     runBusy.value = false;
     clearRunWatchdog();
     void loadRunHistory();
@@ -668,6 +698,45 @@ async function cancelActiveRun() {
   }
 }
 
+async function approvePending(pending: PendingApproval) {
+  if (!selectedHordeId.value || approvalBusy.value) return;
+  approvalBusy.value = true;
+  runErr.value = null;
+  try {
+    if (runId.value !== pending.runId) {
+      resetDraftState();
+      runId.value = pending.runId;
+    }
+    connectStream();
+    runBusy.value = true;
+    progressText.value = `${pending.step} approved`;
+    feed("user", `Approved \`${pending.step}\``, "You");
+    await api.hordeRunApprove(selectedHordeId.value, pending.runId);
+    approval.value = null;
+  } catch (e) {
+    runBusy.value = false;
+    runErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    approvalBusy.value = false;
+    void loadRunHistory();
+  }
+}
+
+async function rejectPending(pending: PendingApproval) {
+  if (!selectedHordeId.value || approvalBusy.value) return;
+  approvalBusy.value = true;
+  try {
+    await api.hordeRunCancel(selectedHordeId.value, pending.runId);
+    approval.value = null;
+    feed("system", `run cancelled before \`${pending.step}\``, "System");
+  } catch (e) {
+    runErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    approvalBusy.value = false;
+    void loadRunHistory();
+  }
+}
+
 async function resumeInterruptedRun(run: { run_id: string; prompt: string }) {
   if (!selectedHordeId.value || resumeBusyId.value) return;
   resumeBusyId.value = run.run_id;
@@ -802,7 +871,20 @@ onUnmounted(() => {
           <span class="muted">{{ r.status }}{{ (r.resume_count ?? 0) > 0 ? ` · ${r.resume_count} resume attempt(s)` : "" }}</span>
           <span class="muted resume-prompt">{{ r.prompt || r.question }}</span>
         </div>
+        <template v-if="approvalFromRun(r)">
+          <span class="resume-approval">{{ approvalFromRun(r)?.text }}</span>
+          <button
+            type="button"
+            class="primary"
+            :disabled="approvalBusy || runBusy"
+            @click="approvePending(approvalFromRun(r)!)"
+          >
+            Approve
+          </button>
+          <button type="button" :disabled="approvalBusy" @click="rejectPending(approvalFromRun(r)!)">Cancel run</button>
+        </template>
         <button
+          v-else
           type="button"
           class="primary"
           :disabled="resumeBusyId !== null || runBusy"
@@ -937,6 +1019,18 @@ onUnmounted(() => {
         {{ cancelBusy ? "Cancelling…" : "Cancel run" }}
       </button>
     </div>
+    <section v-if="approval" class="approval-box" role="alert">
+      <h3>Waiting for your approval</h3>
+      <p>{{ approval.text }}</p>
+      <pre v-if="approval.command" class="approval-cmd">{{ approval.command }}</pre>
+      <p>
+        <button type="button" class="primary" :disabled="approvalBusy" @click="approvePending(approval)">
+          {{ approvalBusy ? "Working…" : "Approve and continue" }}
+        </button>
+        <button type="button" :disabled="approvalBusy" @click="rejectPending(approval)">Cancel run</button>
+      </p>
+      <p class="muted">Approval covers this step for the rest of the run.</p>
+    </section>
     <p v-if="runId" class="muted">Run ID: {{ runId }}</p>
 
     <div class="chat-feed">
@@ -1071,6 +1165,10 @@ onUnmounted(() => {
 .resume-banner { position: relative; z-index: 6; border: 1px solid #8a6d3b; border-radius: 8px; background: #221c10; padding: 0.55rem 0.65rem; margin-bottom: 0.55rem; }
 .resume-banner h3 { margin: 0 0 0.25rem; font-size: 0.95rem; color: #e0c284; }
 .load-error { color: #e0a184; font-size: 0.85rem; }
+.approval-box { border: 1px solid #b04a3a; border-radius: 8px; background: #2a1512; padding: 0.6rem 0.75rem; margin: 0.55rem 0; }
+.approval-box h3 { margin: 0 0 0.3rem; }
+.approval-cmd { background: #120b0a; padding: 0.4rem 0.55rem; border-radius: 6px; overflow-x: auto; }
+.resume-approval { flex: 1; font-size: 0.9em; }
 .resume-item { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; border: 1px solid #3a3324; border-radius: 6px; background: #1a1712; padding: 0.4rem 0.55rem; margin-top: 0.35rem; }
 .resume-meta { display: grid; gap: 0.1rem; min-width: 0; }
 .resume-prompt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 34rem; }
