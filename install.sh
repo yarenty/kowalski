@@ -1,31 +1,36 @@
 #!/usr/bin/env bash
-# Kowalski one-line installer (crates.io).
+# Kowalski one-line installer.
 #
 #   curl -fsSL https://raw.githubusercontent.com/yarenty/kowalski/main/install.sh | bash
 #
-# Optional custom domain (redirect or mirror this file):
-#   curl -fsSL https://yarenty.com/kowalski/install.sh | bash
+# Downloads the pre-built binaries for your machine (macOS or Linux, Intel or ARM) from the latest
+# GitHub release into ~/.local/bin, then `kowalski` opens the app with its Setup screen. No Rust
+# needed. Other platforms, or KOWALSKI_FROM_SOURCE=1, build from crates.io instead.
 #
 # Environment:
-#   KOWALSKI_VERSION=1.5.0     Pin crates.io version (default: latest on registry)
-#   KOWALSKI_FEATURES=postgres   Enable postgres feature on kowalski + kowalski-cli
-#   KOWALSKI_INSTALL_MCP=1       Also install kowalski-mcp-rookery (+ datafusion; slow)
-#   KOWALSKI_SKIP_RUSTUP=1       Do not auto-install Rust when missing
-#
-# Installs into $HOME/.cargo/bin — ensure that directory is on your PATH.
+#   KOWALSKI_BIN_DIR=~/.local/bin  Where the binaries go (download mode)
+#   KOWALSKI_RELEASE=v2.1.0        A specific release tag instead of the latest
+#   KOWALSKI_FROM_SOURCE=1         Build with cargo from crates.io (no UI inside)
+#   KOWALSKI_VERSION=2.1.0         crates.io version (source mode; default: latest)
+#   KOWALSKI_FEATURES=postgres     Features for kowalski + kowalski-cli (source mode)
+#   KOWALSKI_INSTALL_MCP=1         Also install kowalski-mcp-rookery (source mode)
+#   KOWALSKI_SKIP_RUSTUP=1         Do not auto-install Rust when missing (source mode)
 set -euo pipefail
 
 KOWALSKI_REPO="${KOWALSKI_REPO:-https://github.com/yarenty/kowalski}"
 KOWALSKI_VERSION="${KOWALSKI_VERSION:-}"
 KOWALSKI_FEATURES="${KOWALSKI_FEATURES:-}"
 KOWALSKI_INSTALL_MCP="${KOWALSKI_INSTALL_MCP:-0}"
+KOWALSKI_BIN_DIR="${KOWALSKI_BIN_DIR:-${HOME}/.local/bin}"
+KOWALSKI_RELEASE="${KOWALSKI_RELEASE:-}"
+KOWALSKI_FROM_SOURCE="${KOWALSKI_FROM_SOURCE:-0}"
 
 info() { printf '==> %s\n' "$*"; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
 }
 
@@ -92,7 +97,57 @@ check_ollama() {
   warn "or set [llm] provider = \"openai\" in your config.toml"
 }
 
+# Release asset target for this machine, or nothing when no pre-built binary exists.
+release_target() {
+  case "$(uname -s)/$(uname -m)" in
+    Darwin/arm64) echo "aarch64-apple-darwin" ;;
+    Darwin/x86_64) echo "x86_64-apple-darwin" ;;
+    Linux/x86_64) echo "x86_64-unknown-linux-gnu" ;;
+    Linux/aarch64 | Linux/arm64) echo "aarch64-unknown-linux-gnu" ;;
+    *) echo "" ;;
+  esac
+}
+
+install_binary() {
+  local target="$1"
+  local asset="kowalski-${target}.tar.gz"
+  local base="${KOWALSKI_REPO}/releases/latest/download"
+  [[ -n "$KOWALSKI_RELEASE" ]] && base="${KOWALSKI_REPO}/releases/download/${KOWALSKI_RELEASE}"
+  local tmp
+  tmp="$(mktemp -d)"
+  info "downloading ${asset}"
+  if ! curl -fsSL "${base}/${asset}" -o "${tmp}/${asset}"; then
+    rm -rf "$tmp"
+    return 1
+  fi
+  if curl -fsSL "${base}/${asset}.sha256" -o "${tmp}/${asset}.sha256" 2>/dev/null; then
+    local want got
+    want="$(awk '{print $1}' "${tmp}/${asset}.sha256")"
+    got="$( (shasum -a 256 "${tmp}/${asset}" 2>/dev/null || sha256sum "${tmp}/${asset}") | awk '{print $1}')"
+    [[ "$want" == "$got" ]] || die "checksum mismatch for ${asset}"
+  fi
+  tar xzf "${tmp}/${asset}" -C "$tmp"
+  mkdir -p "$KOWALSKI_BIN_DIR"
+  install -m 0755 "${tmp}/kowalski-${target}/kowalski" "${tmp}/kowalski-${target}/kowalski-cli" "$KOWALSKI_BIN_DIR/"
+  rm -rf "$tmp"
+  info "installed kowalski and kowalski-cli into ${KOWALSKI_BIN_DIR}"
+  case ":${PATH}:" in
+    *":${KOWALSKI_BIN_DIR}:"*) ;;
+    *) warn "${KOWALSKI_BIN_DIR} is not on PATH — add: export PATH=\"${KOWALSKI_BIN_DIR}:\$PATH\"" ;;
+  esac
+  check_ollama
+  printf '\nKowalski installed.\n\n  kowalski        # opens the app in your browser; first start asks three setup questions\n\n'
+  printf 'Model: local Ollama (free, https://ollama.com) or any OpenAI-compatible endpoint with your key.\n'
+  printf 'Docs:  %s\n' "$KOWALSKI_REPO"
+}
+
 main() {
+  local target
+  target="$(release_target)"
+  if [[ "$KOWALSKI_FROM_SOURCE" != "1" && -n "$target" ]]; then
+    install_binary "$target" && return 0
+    warn "no pre-built binary downloaded; building from source instead"
+  fi
   info "Kowalski installer (crates.io)"
   ensure_cargo
 
@@ -102,8 +157,8 @@ main() {
     feat=(--features "$KOWALSKI_FEATURES")
   fi
 
-  cargo_install kowalski-cli "${feat[@]}"
-  cargo_install kowalski "${feat[@]}"
+  cargo_install kowalski-cli ${feat[@]+"${feat[@]}"}
+  cargo_install kowalski ${feat[@]+"${feat[@]}"}
 
   if [[ "$KOWALSKI_INSTALL_MCP" == "1" ]]; then
     info "Installing optional MCP servers"
