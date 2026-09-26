@@ -57,6 +57,10 @@ impl TemplateAgent {
         }
 
         base.tool_manager.register(crate::tools::internal::FsTool);
+        base.tool_manager.register(crate::tools::internal::WebFetchTool);
+        if let Some(backend) = crate::tools::internal::SearchBackend::from_config(&config) {
+            base.tool_manager.register(crate::tools::internal::WebSearchTool::new(backend));
+        }
 
         template_config.tool_prompt_appendix =
             Self::build_tool_prompt_appendix(&base.tool_manager).await;

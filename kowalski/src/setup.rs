@@ -127,6 +127,7 @@ pub async fn status(State(state): State<ApiState>) -> Json<Value> {
         "ollama": { "reachable": models.is_some(), "models": models.unwrap_or_default(),
                     "url": format!("http://{}:{}", cfg.ollama.host, cfg.ollama.port) },
         "files_dir": files_dir(cfg),
+        "web_search": kowalski_core::tools::internal::SearchBackend::from_config(cfg).is_some(),
         "tableski": {
             "connected": tableski.is_some(),
             "url": tableski.map(|s| s.url.clone()),
@@ -156,6 +157,9 @@ pub struct ModelChoice {
     api_key: Option<String>,
     #[serde(default)]
     files_dir: Option<String>,
+    /// Brave Search API key: turns on the `web_search` tool (`[search]`).
+    #[serde(default)]
+    search_api_key: Option<String>,
 }
 
 /// `POST /api/setup/test-model`: Ollama must list the model; a hosted endpoint must accept the
@@ -246,6 +250,12 @@ pub async fn save(State(state): State<ApiState>, Json(c): Json<ModelChoice>) -> 
             }
             sub(&mut t, "files").insert("dir".into(), expanded.into());
         }
+    }
+    if let Some(key) = c.search_api_key.as_deref().map(str::trim).filter(|k| !k.is_empty()) {
+        let search = sub(&mut t, "search");
+        search.insert("provider".into(), "brave".into());
+        search.insert("api_key".into(), key.into());
+        secret = true;
     }
     write_table(&path, &t, secret).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     log::info!("setup: config written to {}", path.display());

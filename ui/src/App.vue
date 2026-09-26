@@ -50,7 +50,10 @@ const activeHordeInteractionId = ref<string | null>(null);
 const chatBusy = ref(false);
 const resetBusy = ref(false);
 const chatErr = ref<string | null>(null);
-const chatToolsStream = ref(false);
+// Tool-aware chat is the default, so connected tools (tableski, web, files) get used; the
+// operator's choice is remembered per browser.
+const CHAT_TOOLS_KEY = "kowalski.ui.chat.tools.v1";
+const chatToolsStream = ref(localStorage.getItem(CHAT_TOOLS_KEY) !== "off");
 const chatUseMemory = ref(true);
 const chatMessagesView = ref<string>("");
 const chatMessagesBusy = ref(false);
@@ -851,7 +854,7 @@ onMounted(async () => {
         :chat-use-memory="chatUseMemory"
         :chat-messages-view="chatMessagesView"
         :chat-messages-busy="chatMessagesBusy"
-        @toggle-tools-stream="chatToolsStream = $event"
+        @toggle-tools-stream="(v: boolean) => { chatToolsStream = v; localStorage.setItem(CHAT_TOOLS_KEY, v ? 'on' : 'off'); }"
         @toggle-use-memory="chatUseMemory = $event"
         @inspect-chat-messages="inspectChatMessages"
         @send-chat="sendChat"

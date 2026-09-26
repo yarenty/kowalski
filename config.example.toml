@@ -27,6 +27,19 @@ episodic_path = "db/episodic_buffer"
 [horde]
 clean_on_startup = true
 
+# ---- Web tools --------------------------------------------------------------------------------
+# `web_fetch` (read one public page) is always available. `web_search` needs a search API:
+# [search]
+# provider = "brave"        # https://brave.com/search/api/ (free tier); or set BRAVE_API_KEY
+# api_key = "..."
+# or your own SearXNG instance with the JSON format enabled:
+# provider = "searxng"
+# url = "https://searx.example.org"
+
+# Chat's file tool is confined to this folder unless a request names another one.
+# [files]
+# dir = "~/Documents/kowalski"
+
 # ---- MCP servers (optional): tools for agents and hordes -----------------------------------
 # Check with: kowalski-cli mcp ping -c ~/.config/kowalski/config.toml
 #

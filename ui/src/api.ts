@@ -337,6 +337,7 @@ export type SetupStatus = {
   has_api_key: boolean;
   ollama: { reachable: boolean; models: string[]; url: string };
   files_dir: string | null;
+  web_search: boolean;
   tableski: { connected: boolean; url: string | null; signed_in: boolean };
 };
 export type ModelChoice = {
@@ -345,6 +346,7 @@ export type ModelChoice = {
   openai_api_base?: string;
   api_key?: string;
   files_dir?: string;
+  search_api_key?: string;
 };
 
 export const api = {
