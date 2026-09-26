@@ -6,7 +6,7 @@
 use crate::operator_input::parse_operator_answer_block;
 use crate::tools::internal::file_system::{self, DEFAULT_MAX_READ_BYTES};
 use crate::tools::internal::github::{fetch_url_for_ingest, GithubFetchKind, resolve_github_fetch};
-use crate::tools::internal::web::{fetch_url_as_markdown, html_body_to_markdown, looks_like_html};
+use crate::tools::internal::web::{fetch_url_as_markdown, html_to_markdown_at, looks_like_html};
 use chrono::Utc;
 use std::collections::{HashSet, VecDeque};
 use std::fs;
@@ -79,9 +79,9 @@ fn md_cell(input: &str) -> String {
     input.replace('|', "\\|").replace('\n', " ")
 }
 
-fn normalize_fetched_url_body(text: &str) -> String {
+fn normalize_fetched_url_body(text: &str, url: &str) -> String {
     if looks_like_html(text) {
-        html_body_to_markdown(text)
+        html_to_markdown_at(text, reqwest::Url::parse(url).ok().as_ref())
     } else {
         text.to_string()
     }
@@ -100,7 +100,7 @@ fn fetch_url_for_bundle(url: &str) -> Result<(String, String, String), String> {
                 GithubFetchKind::RawUserContent => "github raw",
                 GithubFetchKind::PlainHttp => "github plain http",
             };
-            let body = normalize_fetched_url_body(&fetched.text);
+            let body = normalize_fetched_url_body(&fetched.text, url);
             let note = if looks_like_html(&fetched.text) {
                 format!("{via}; html→md")
             } else {

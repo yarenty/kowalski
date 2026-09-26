@@ -447,12 +447,17 @@ impl StepHandler for IngestStepHandler {
 
     async fn execute(&self, ctx: &StepContext<'_>) -> Result<StepOutcome, StepError> {
         ctx.check_cancelled()?;
-        let source = ctx
-            .source
-            .ok_or_else(|| {
-                KowalskiError::Validation("ingest: missing `source` in horde instruction".into())
-            })?
-            .to_string();
+        let source = ctx.source.ok_or_else(|| {
+            KowalskiError::Validation("ingest: missing `source` in horde instruction".into())
+        })?;
+        // a trigger's source only names the trigger; its input is the prompt
+        let source = if source.starts_with(crate::horde_trigger::TRIGGER_SOURCE_PREFIX)
+            && !ctx.question.trim().is_empty()
+        {
+            ctx.question.to_string()
+        } else {
+            source.to_string()
+        };
         let debug_root = ctx.workdir.join(WORKDIR_DEBUG_DIR);
         std::fs::create_dir_all(&debug_root).map_err(|e| {
             KowalskiError::Validation(format!("create {}: {e}", debug_root.display()))
@@ -550,6 +555,10 @@ pub fn build_llm_stage_request(
         &step_paths,
         previous_artifact,
     )?;
+    let ctx = match meta.context_max_chars {
+        Some(max) => crate::markdown_pipeline::cap_context(&ctx, max),
+        None => ctx,
+    };
     let message = if extra_user_block.trim().is_empty() {
         format!("{prompt}\n\n{ctx}")
     } else {

@@ -69,6 +69,10 @@ pub struct StageAgentMeta {
     /// Pinned model (omitted = deployment default).
     #[serde(default)]
     pub model_id: Option<String>,
+    /// Cap on the attached context in characters, shared between ingested sources (each keeps its head);
+    /// keeps small local models inside their window. `None` attaches everything.
+    #[serde(default)]
+    pub context_max_chars: Option<usize>,
     /// `in_process` (default) or `process` step isolation.
     #[serde(default)]
     pub isolation: Option<String>,
@@ -221,6 +225,40 @@ pub fn render_context_attachments(
     Ok(out)
 }
 
+/// `text` cut to at most `max` characters (on a char boundary), with a note saying so.
+pub fn cap_chars(text: &str, max: usize) -> String {
+    match text.char_indices().nth(max) {
+        None => text.to_string(),
+        Some((cut, _)) => format!(
+            "{}\n\n[… {} more characters left out to fit the model's context]\n",
+            &text[..cut],
+            text[cut..].chars().count()
+        ),
+    }
+}
+
+/// Context capped at `max` characters, shared evenly between the sources of an ingest collection
+/// (`<!-- source:N:…:begin -->` sections), so one long page cannot crowd out the others.
+pub fn cap_context(text: &str, max: usize) -> String {
+    const BEGIN: &str = "<!-- source:";
+    let starts: Vec<usize> = text
+        .match_indices(BEGIN)
+        .map(|(i, _)| i)
+        .filter(|&i| text[i..].lines().next().is_some_and(|l| l.contains(":begin")))
+        .collect();
+    if starts.len() < 2 {
+        return cap_chars(text, max);
+    }
+    let head = &text[..starts[0]];
+    let share = max.saturating_sub(head.chars().count()) / starts.len();
+    let mut out = head.to_string();
+    for (n, &start) in starts.iter().enumerate() {
+        let end = starts.get(n + 1).copied().unwrap_or(text.len());
+        out.push_str(&cap_chars(&text[start..end], share.max(500)));
+    }
+    out
+}
+
 /// A context path as files: itself, or for a folder output (such as `ingest`'s `debug/raw/`,
 /// which gains one timestamped file per run) its newest Markdown file, i.e. this run's.
 fn context_files(path: &Path) -> Vec<PathBuf> {
@@ -335,6 +373,22 @@ fn normalize_markdown_sections(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cap_chars_keeps_the_head_and_says_what_was_cut() {
+        assert_eq!(cap_chars("short", 10), "short");
+        let capped = cap_chars("héllo world", 5);
+        assert!(capped.starts_with("héllo") && capped.contains("6 more characters"), "{capped}");
+    }
+
+    #[test]
+    fn cap_context_shares_the_budget_between_sources() {
+        let long = "x".repeat(20_000);
+        let text = format!("# Raw\n<!-- source:1:url:begin -->\n{long}\n<!-- source:1:url:end -->\n<!-- source:2:url:begin -->\nsecond page\n<!-- source:2:url:end -->\n");
+        let capped = cap_context(&text, 4_000);
+        assert!(capped.contains("second page"), "the short source survives");
+        assert!(capped.chars().count() < 4_500, "{}", capped.chars().count());
+    }
 
     #[test]
     fn a_folder_step_output_attaches_its_newest_markdown_file() {

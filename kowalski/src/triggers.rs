@@ -31,7 +31,7 @@ use tokio::sync::Mutex;
 /// `source` of a trigger-fired run: `trigger:<kind>:<horde>` (provenance for
 /// the run row, the UI run feed, and the overlap-policy check).
 pub fn trigger_source(kind: &str, horde_id: &str) -> String {
-    format!("trigger:{kind}:{horde_id}")
+    format!("{}{kind}:{horde_id}", kowalski_core::horde_trigger::TRIGGER_SOURCE_PREFIX)
 }
 
 /// Stable identity of one trigger declaration: `<horde>#<index>`. Used for

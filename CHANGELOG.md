@@ -6,6 +6,17 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Added
+- Morning Brief, a built-in horde: the pages you follow (defaults: GitHub trending Rust, TLDR, arXiv cs, Hacker News) become a one-page `BRIEF.md`, one section per page plus a top pick; a weekday 7:00 schedule ships switched off.
+- Folder Watcher, a built-in horde: a document dropped into its `inbox/` becomes `NOTE.md` (what it is, key facts, actions with deadlines); the watcher ships switched off.
+- `context_max_chars` on a stage: caps the attached context, shared evenly between ingested sources, so small local models stay inside their window.
+
+### Changed
+- Fetched pages keep only their content: the `<main>` element (or a lone `<article>`) when present, without navigation, headers, footers, menus and dialogs; relative links become absolute; the page title leads.
+
+### Fixed
+- A trigger-fired run's ingest reads the trigger's input (the watched path, the pre-filled answers, the webhook payload) instead of its provenance marker.
+
 ### Security
 - Safe defaults: a server bound to anything but a loopback address always requires the API token (agents there can read files and run commands); steps that run commands (`verify`) or write into the project (`apply`) wait for the operator's approval (Approve / Cancel in the Horde tab, `POST /api/hordes/{id}/runs/{run_id}/approve`; one approval covers that step for the rest of the run; `[horde] confirm_commands = false` to turn off); every step of an imported bundle runs with `isolation = "process"`, and the import report says so.
 

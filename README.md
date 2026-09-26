@@ -204,7 +204,8 @@ Tools and MCP are driven by **`TemplateAgent`** + config, not separate `kowalski
 # The server with the UI inside (default bind 127.0.0.1:3456); opens your browser when started
 # from a terminal (--no-open to skip). Build the UI first so it gets compiled in:
 #   (cd ui && bun install && bun run build) && cargo build --release -p kowalski
-# Built-in hordes (spreadsheet-analyst, url-summarizer, knowledge-compiler) appear in the Horde
+# Built-in hordes (spreadsheet-analyst, morning-brief, folder-watcher, url-summarizer,
+# knowledge-compiler) appear in the Horde
 # tab on first start.
 # First run opens Setup: pick a model, a files folder, optionally sign in to tableski; it writes
 # the config and restarts itself. No TOML editing needed.

@@ -3368,6 +3368,19 @@ mod api_tests {
         let (status, fired) = call(&app, "POST", "/api/triggers/api-hook", Some(json!({ "ticket": 7 })), None).await;
         assert_eq!(status, StatusCode::OK, "{fired}");
         assert!(fired.to_string().contains("run"), "{fired}");
+        // ingest reads the trigger's input (the payload), not its provenance marker
+        let raw_dir = dir.path().join("hordes/api-horde/output/debug/raw");
+        let mut captured = String::new();
+        for _ in 0..200 {
+            if let Ok(rd) = std::fs::read_dir(&raw_dir) {
+                captured = rd.flatten().filter_map(|e| std::fs::read_to_string(e.path()).ok()).collect();
+                if !captured.is_empty() {
+                    break;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+        assert!(captured.contains("ticket"), "{captured}");
         let (status, _) = call(&app, "POST", "/api/triggers/no-such-route", Some(json!({})), None).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
     }
@@ -3715,13 +3728,23 @@ mod api_tests {
     }
 
     #[tokio::test]
-    async fn the_spreadsheet_analyst_horde_loads_cleanly() {
+    async fn the_built_in_hordes_load_cleanly() {
         let dir = tempfile::tempdir().unwrap();
         crate::embedded::install_builtin_hordes(&dir.path().join("b")).unwrap();
         let catalog = crate::horde::HordeCatalog::with_roots(vec![dir.path().join("b")]);
         let entry = catalog.list().into_iter().find(|e| e.spec.id == "spreadsheet-analyst").expect("built in");
         assert!(entry.load_error.is_none(), "{:?}", entry.load_error);
         assert_eq!(entry.spec.pipeline, vec!["ingest", "profile", "plan", "run", "report", "deliver"]);
+        for id in ["morning-brief", "folder-watcher", "url-summarizer", "knowledge-compiler"] {
+            let entry = catalog.list().into_iter().find(|e| e.spec.id == id).unwrap_or_else(|| panic!("{id} built in"));
+            assert!(entry.load_error.is_none(), "{id}: {:?}", entry.load_error);
+        }
+        // scheduled built-ins ship switched off: nothing runs (or costs) until the operator says so
+        for id in ["morning-brief", "folder-watcher"] {
+            let entry = catalog.list().into_iter().find(|e| e.spec.id == id).unwrap();
+            assert!(!entry.spec.triggers.is_empty() && entry.spec.triggers.iter().all(|t| !t.enabled), "{id}");
+        }
+        assert!(dir.path().join("b/folder-watcher/inbox").is_dir(), "the watched folder exists");
     }
 
     #[tokio::test]
