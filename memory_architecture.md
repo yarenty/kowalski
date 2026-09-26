@@ -2,7 +2,7 @@
 
 **A Design for Short-Term Recall, Long-Term Knowledge, and Autonomous Consolidation**
 
-> **Design note:** **Qdrant** appeared in an **early proof of concept** for vector-backed semantic memory. The **ongoing goal** is a **simple, robust, dependency-light** stack with **few moving parts**—see [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md).
+> **Design note:** **Qdrant** appeared in an **early proof of concept** for vector-backed semantic memory. The **ongoing goal** is a **simple, robust, dependency-light** stack with **few moving parts**—see [`docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md).
 
 ---
 
@@ -63,7 +63,7 @@ graph TD
 ### Tier 3: Long-Term Semantic Store (The Library)
 *   **Purpose:** To store distilled, permanent knowledge. This is the agent's true "brain." It doesn't store conversations verbatim; it stores the *meaning* extracted from them.
 *   **Storage Technology:** Typically a **dual-component** system:
-    1.  **Vector / semantic retrieval:** Every piece of knowledge is converted into an embedding so the agent can find relevant memories by **conceptual similarity**. Kowalski **explored external vector DBs (e.g. Qdrant) as PoC**; the **default direction** is **in-process** similarity and **minimal external dependencies**—see [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md). Optional hosted or SQL-backed vector stores remain valid for scale-out.
+    1.  **Vector / semantic retrieval:** Every piece of knowledge is converted into an embedding so the agent can find relevant memories by **conceptual similarity**. Kowalski **explored external vector DBs (e.g. Qdrant) as PoC**; the **default direction** is **in-process** similarity and **minimal external dependencies**—see [`docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md). Optional hosted or SQL-backed vector stores remain valid for scale-out.
     2.  **(Optional but powerful) Graph layer:** For structured relationships between entities (e.g., "User A *works on* Project X"); the **default implementation** uses **`std::collections::HashMap`** for triples—no separate graph library or server.
 *   **Characteristics:** Slower than other tiers, but offers powerful query capabilities. Designed for permanent storage.
 *   **Management:** Data is added to this tier exclusively through the **Memory Consolidation Process**.
@@ -105,7 +105,7 @@ This architecture can be implemented as a new `kowalski-memory` crate.
 
 *   It would define `Memory` and `Recall` traits.
 *   Tier 2 uses **SQLite** (`sqlx` + `episodic_kv`) for the embedded episodic store.
-*   Vector retrieval may use **in-process** code paths by default; external vector services are **optional** add-ons for large-scale deployments (see [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md)).
+*   Vector retrieval may use **in-process** code paths by default; external vector services are **optional** add-ons for large-scale deployments (see [`docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md)).
 *   The Memory Weaver would be an asynchronous `tokio` background task, ensuring it doesn't block the main agent loop.
 
 By designing memory as a multi-tiered, actively managed system, we move beyond simple chat history and create the foundation for a truly intelligent and continuously learning AI agent.

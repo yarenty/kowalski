@@ -2,8 +2,8 @@
 
 Future-facing architecture sketch for roadmap planning.
 
-- Diagram source: [`img/architecture_v03-future.excalidraw`](./img/architecture_v03-future.excalidraw)
-- Current status diagram: [`architecture_v02.md`](./architecture_v02.md)
+- Diagram source: [`img/architecture_v03-future.excalidraw`](../img/architecture_v03-future.excalidraw)
+- Current status diagram: [`architecture_v02.md`](../purgatory/architecture_v02.md)
 
 ```mermaid
 flowchart TB

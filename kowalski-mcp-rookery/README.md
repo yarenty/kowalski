@@ -17,7 +17,7 @@ The server intentionally runs **no LLM**. The *calling* agent conducts the inter
 | `rookery_parse_draft` | `{ text }` | `{ ok, draft }` or `{ ok:false, error }` — parse a fenced JSON/YAML draft block from assistant text |
 | `rookery_give_birth` | `{ draft, output_root?, overwrite? }` | `{ ok, horde_id, horde_root, validate_ok, validate_errors }` — writes `agents/`, `prompts/`, `horde.md`, `README.md`, `AGENTS.md` and validates the tree |
 
-> **1.5.0:** optional **`edges[]`** / `[[edges]]` for DAG fork/join hordes (validated via `kowalski_core::horde_graph`). Linear hordes omit `edges` (implicit chain). See [`examples/coder/`](../examples/coder/).
+> **1.5.0:** optional **`edges[]`** / `[[edges]]` for DAG fork/join hordes (validated via `kowalski_core::horde_graph`). Linear hordes omit `edges` (implicit chain). See [`examples/coder/`](../examples/coder).
 
 ## Run (dev)
 
@@ -72,5 +72,5 @@ cargo test -p kowalski-mcp-rookery
 ## See also
 
 - [`AGENTS.md`](./AGENTS.md) — agent / contributor notes for this crate.
-- [`../kowalski-core/src/rookery/`](../kowalski-core/src/rookery/) — the primitives this server wraps.
+- [`../kowalski-core/src/rookery/`](../kowalski-core/src/rookery) — the primitives this server wraps.
 - [`../ROADMAP.md`](../ROADMAP.md) — R2 reposition rationale (1.3.x cleanup).

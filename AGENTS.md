@@ -94,11 +94,11 @@ All “do something with the outside world” behavior should align with **one m
    `kowalski-core` by design. **Policy: this repo stays framework-only; new servers get their
    own repos.**
 2. **External MCP** reached via gateways or catalogs (e.g. [Docker MCP Toolkit](https://docs.docker.com/ai/mcp-catalog-and-toolkit/toolkit/) — profiles, OAuth, catalog).
-3. **`kowalski-core` internal tools** — small in-process modules under [`kowalski-core/src/tools/internal/`](kowalski-core/src/tools/internal/) (GitHub-aware fetch, web, filesystem) with **config toggles** (planned) to disable or replace with MCP without rewriting apps.
+3. **`kowalski-core` internal tools** — small in-process modules under [`kowalski-core/src/tools/internal/`](kowalski-core/src/tools/internal) (GitHub-aware fetch, web, filesystem) with **config toggles** (planned) to disable or replace with MCP without rewriting apps.
 
 **Rule:** Do not treat CLI or HTTP crates as the home for reusable fetch/FS/GitHub rules; extend **`tools/internal`** or **MCP**, not random `src/` helpers in surface binaries.
 
-**CLI / UI executors only:** `kowalski-cli` and `ui/` ship **interaction** (argv, HTTP client, Vue). Shared capture and tool behavior live in **`kowalski-core`** (e.g. [`source_bundle`](kowalski-core/src/source_bundle.rs), [`tools/internal`](kowalski-core/src/tools/internal/)). See [`kowalski-cli/AGENTS.md`](kowalski-cli/AGENTS.md) (**Strict boundaries**).
+**CLI / UI executors only:** `kowalski-cli` and `ui/` ship **interaction** (argv, HTTP client, Vue). Shared capture and tool behavior live in **`kowalski-core`** (e.g. [`source_bundle`](kowalski-core/src/source_bundle.rs), [`tools/internal`](kowalski-core/src/tools/internal)). See [`kowalski-cli/AGENTS.md`](kowalski-cli/AGENTS.md) (**Strict boundaries**).
 
 ### Cross-Cutting Concerns
 - **Logging**: Standard Rust tracing/logging
@@ -113,7 +113,7 @@ The Vue **`ui/`** is the default way operators run Chat, **Horde** (e.g. Knowled
 
 ### Memory stack and dependencies (design)
 
-Early work used **Qdrant** as a **proof of concept** for semantic (vector) memory. The **product direction** is a **simple, robust, dependency-light** default: **minimize moving parts and failure points** (fewer mandatory daemons and network services), favor **in-process and embedded** storage for core paths, and keep **optional** backends (SQL, hosted vectors, etc.) truly optional. Canonical rationale: [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/DESIGN_MEMORY_AND_DEPENDENCIES.md).
+Early work used **Qdrant** as a **proof of concept** for semantic (vector) memory. The **product direction** is a **simple, robust, dependency-light** default: **minimize moving parts and failure points** (fewer mandatory daemons and network services), favor **in-process and embedded** storage for core paths, and keep **optional** backends (SQL, hosted vectors, etc.) truly optional. Canonical rationale: [`docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md`](docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md).
 
 ---
 
@@ -262,7 +262,7 @@ Component-specific files contain crucial information about:
 - Integration patterns with other services
 
 ### Cursor IDE: persistent instructions
-- **This repository:** Always-applied **project rules** live in **[`.cursor/rules/`](.cursor/rules/)** (planning, `task_plan.md` / `progress.md` / `findings.md`, and core-vs-CLI boundaries). They complement this `AGENTS.md` so you do not repeat the same reminders every conversation.
+- **This repository:** Always-applied **project rules** live in **[`.cursor/rules/`](.cursor/rules)** (planning, `task_plan.md` / `progress.md` / `findings.md`, and core-vs-CLI boundaries). They complement this `AGENTS.md` so you do not repeat the same reminders every conversation.
 - **All repositories on your machine:** Paste the block from **[`tools/cursor_user_rules_all_repos.md`](tools/cursor_user_rules_all_repos.md)** into **Cursor Settings → Rules → User Rules** once. User Rules apply to **Agent (Chat)** globally (per [Cursor Rules docs](https://cursor.com/docs/context/rules)).
 
 ### Rule 1: Create Plan First

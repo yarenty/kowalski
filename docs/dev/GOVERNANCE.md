@@ -4,10 +4,10 @@ This page defines how documentation is managed in this repository.
 
 ## Sources of truth
 
-- **Operational docs:** root [`README.md`](../README.md), root [`CHANGELOG.md`](../CHANGELOG.md), root [`ROADMAP.md`](../ROADMAP.md).
+- **Operational docs:** root [`README.md`](../../README.md), root [`CHANGELOG.md`](../../CHANGELOG.md), root [`ROADMAP.md`](../../ROADMAP.md).
 - **Component execution rules:** crate/package `AGENTS.md` files.
-- **Design narratives:** files under [`docs/`](./README.md).
-- **Historical docs:** [`docs/purgatory/`](./purgatory/README.md).
+- **Design narratives:** files under [`docs/`](../README.md).
+- **Historical docs:** [`docs/purgatory/`](../purgatory/README.md).
 
 ## Mandatory update rule
 
@@ -18,7 +18,7 @@ For any refactor, API change, CLI flag change, or behavior change:
 3. Update `docs/` if architecture/operator workflow changed.
 4. Keep the documentation update in the **same PR** (or immediately stacked follow-up).
 
-This is also codified as **Rule 7** in root [`AGENTS.md`](../AGENTS.md).
+This is also codified as **Rule 7** in root [`AGENTS.md`](../../AGENTS.md).
 
 ## Link quality and CI
 
@@ -33,6 +33,6 @@ just docs-links
 
 ## Architecture assets process
 
-- Source diagrams are versioned under [`docs/img/`](./img/), e.g. `architecture_v02.excalidraw`.
+- Source diagrams are versioned under [`docs/img/`](../img), e.g. `architecture_v02.excalidraw`.
 - Add a short companion markdown note when introducing a new architecture version.
 - Keep one “current” and one “future” architecture asset for roadmap conversations.

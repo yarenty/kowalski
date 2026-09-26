@@ -1,10 +1,10 @@
 # Design: A2A at the federation edge (R4, target 1.4/1.5)
 
-> **Status:** design-only (no code in 1.3.x). Companion to [`../ROADMAP.md`](../ROADMAP.md) (*Planned: A2A at the federation edge*) and
-> [`../ROADMAP.md`](../ROADMAP.md) ("Planned: A2A at the federation edge").
+> **Status:** design-only (no code in 1.3.x). Companion to [`../ROADMAP.md`](../../ROADMAP.md) (*Planned: A2A at the federation edge*) and
+> [`../ROADMAP.md`](../../ROADMAP.md) ("Planned: A2A at the federation edge").
 > **TL;DR:** Adopt [A2A](https://a2a-protocol.org/) (Agent2Agent) **only as the external skin at
-> the node↔node boundary**, mapped onto the existing [`AclMessage`](../kowalski-core/src/federation/acl.rs)
-> bus and [`AgentRegistry`](../kowalski-core/src/federation/registry.rs). **No penguin-to-penguin A2A.**
+> the node↔node boundary**, mapped onto the existing [`AclMessage`](../../kowalski-core/src/federation/acl.rs)
+> bus and [`AgentRegistry`](../../kowalski-core/src/federation/registry.rs). **No penguin-to-penguin A2A.**
 
 ## 1. Decision and rationale
 
@@ -37,7 +37,7 @@ as **JSON-RPC 2.0 over HTTP**, with **SSE** for streaming updates.
 
 A2A publishes a JSON **Agent Card** (conventionally at `/.well-known/agent.json`) describing the
 agent's identity, skills, endpoint URL, and auth. We already hold the substance in
-[`AgentRecord`](../kowalski-core/src/federation/registry.rs) (`id`, `capabilities: Vec<String>`).
+[`AgentRecord`](../../kowalski-core/src/federation/registry.rs) (`id`, `capabilities: Vec<String>`).
 
 | A2A Agent Card field | Kowalski source |
 |----------------------|-----------------|
@@ -111,7 +111,7 @@ auth; A2A "input-required" interactive turns (depends on Phase 8 runtime forms).
 
 - **Standards on the wire, internals unchanged:** A2A (JSON-RPC/HTTP/SSE) is an open standard at the
   edge; ACL remains the internal bus. Same separation we use for MCP (see
-  [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](./DESIGN_MEMORY_AND_DEPENDENCIES.md) philosophy: minimize
+  [`DESIGN_MEMORY_AND_DEPENDENCIES.md`](../dev/DESIGN_MEMORY_AND_DEPENDENCIES.md) philosophy: minimize
   moving parts, keep optional things optional).
 - **No new transport stack:** reuses `emperor-mcp`.
 - **No orchestration rewrite:** the adapter translates to existing `AclMessage`; horde execution is

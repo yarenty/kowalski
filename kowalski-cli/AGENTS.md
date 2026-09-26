@@ -92,7 +92,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 
 ### Memory stack and dependencies (design)
 
-**Qdrant** was used in an **initial PoC** for semantic memory. The project prioritizes a **simple, robust, dependency-light** stack and **fewer moving parts**; see [`../docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../docs/DESIGN_MEMORY_AND_DEPENDENCIES.md).
+**Qdrant** was used in an **initial PoC** for semantic memory. The project prioritizes a **simple, robust, dependency-light** stack and **fewer moving parts**; see [`../docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md).
 
 ---
 
@@ -165,7 +165,7 @@ There are **no** standalone `kowalski-academic-agent` / `kowalski-web-agent` cra
 - **`kowalski-cli`** and **`ui/`** must **not** own reusable domain logic (URL fetch rules, HTML shaping, horde-specific parsers). They **parse argv / render UX** and call **`kowalski`** HTTP APIs or **`kowalski-core`** libraries used by the worker runtime.
 - **No baked-in app types**: `agent-app` resolves the tree only from **`--path`** or env **`KOWALSKI_AGENT_APP_ROOT`**; the dev default `examples/knowledge-compiler` is a **convenience**, not a type system. The manifest is **`app.md`** or legacy **`horde.md`**, plus **`agents/*.md`** (aligned with `kowalski_core::markdown_pipeline` and the server catalog).
 - **Local `agent-app run` workdir**: for the default KC app tree, the CLI uses **`LOCAL_AGENT_APP_WORKDIR`** (`"output"`) under the app root so artifacts match **`horde.md`** `workdir = "output"` (`output/PASTE_ME.md`, `output/debug/`, …).
-- **DAG scheduling (1.5.0):** `agent-app run` calls `kowalski_core::resolve_execution_graph` + `execution_order`; `@step:name@` context attachments resolve inside the shared step handlers (`kowalski_core::build_llm_stage_request`). See [`examples/coder/`](../examples/coder/).
+- **DAG scheduling (1.5.0):** `agent-app run` calls `kowalski_core::resolve_execution_graph` + `execution_order`; `@step:name@` context attachments resolve inside the shared step handlers (`kowalski_core::build_llm_stage_request`). See [`examples/coder/`](../examples/coder).
 - **Process-isolated steps — `agent-app exec-step`:** the one-shot executor the server
   spawns for steps whose `agents/*.md` frontmatter declares `isolation = "process"`. It
   reads one `kowalski_core::IsolatedStepRequest` JSON document from **stdin**, executes

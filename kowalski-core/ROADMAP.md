@@ -10,7 +10,7 @@ Crate version **1.5.0** (see `Cargo.toml`). For the whole workspace, see **[`../
 
 ## Medium term
 
-- [ ] Memory: conversation search / indexing (if kept in-tree; align with [`docs/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../docs/DESIGN_MEMORY_AND_DEPENDENCIES.md)).
+- [ ] Memory: conversation search / indexing (if kept in-tree; align with [`docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md)).
 - [ ] Federation: further operator tuning (TTL jobs, auth on register/deregister) as needed.
 
 ## Done (1.1.0)
