@@ -1,6 +1,6 @@
 # Knowledge Compiler example
 
-**Example aligned with workspace release line 1.3.0**
+**Example aligned with workspace release line 1.8.0**
 
 Operator-focused behavior, GitHub ingest, and federation roles are documented in **[`AGENTS.md`](AGENTS.md)**.
 
@@ -125,7 +125,7 @@ cd ui && bun install && bun run dev
 
 `kowalski` discovers **`horde.md`** under:
 
-- Paths derived from **`KOWALSKI_HORDES_DIR`** (`:` separated), `<config-dir>/hordes`, **`examples`** next to config, cwd **`examples`**, and the built-in **`/opt/ml/kowalski/examples`** fallback.
+- Paths derived from **`KOWALSKI_HORDES_DIR`** (`:` separated), `<config-dir>/hordes`, **`examples`** next to config, and cwd **`examples`**.
 
 Run serve from repo root **or** set **`KOWALSKI_HORDES_DIR`** to this example’s **`examples`** parent if needed.
 

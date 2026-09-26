@@ -31,6 +31,10 @@ use uuid::Uuid;
 use kowalski_core::config::default_model as determine_model;
 
 const BUILDER_PROMPT_REL: &str = "resources/prompts/rookery/builder.md";
+
+/// The builder prompt compiled into the binary, used when no override file is found on disk
+/// (a `cargo install`ed server has no repository next to it).
+const BUILDER_PROMPT_EMBEDDED: &str = include_str!("../resources/prompts/rookery/builder.md");
 const PROPOSE_USER_MESSAGE: &str = "Based on our conversation so far, emit ONLY a single ```toml code block with the complete horde draft. No other prose.\n\nRequired top-level: `id`, `display_name`, `description`, `pipeline` (array of step names), and `[[penguins]]` rows with at least `name`, `description`, `prompt_body`, `output`. Optional per penguin: `kind` (inferred from `name` if omitted), `display_name`, `context_paths`, `inputs`.\n\nID rules: `id` and every penguin `name` / pipeline entry must be lowercase ASCII kebab-case (`a-z`, `0-9`, hyphens only). Human titles go in `display_name`, not in `name`.\n\nExample:\n```toml\nid = \"my-horde\"\ndisplay_name = \"My Horde\"\ndescription = \"…\"\npipeline = [\"ingest\", \"deliver\"]\n\n[[penguins]]\nname = \"ingest\"\ndescription = \"…\"\nprompt_body = \"…\"\noutput = \"debug/raw/\"\n\n[[penguins]]\nname = \"deliver\"\ndescription = \"…\"\nprompt_body = \"…\"\noutput = \"HANDOFF.md\"\n```\n\nYou may use ```json instead if needed; omitting `kind` is OK when the step `name` is ingest/deliver/ask/lint.";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -339,7 +343,9 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// Load builder system prompt from repo `resources/` (several search roots).
+/// Load the builder system prompt: an override file at `resources/prompts/rookery/builder.md`
+/// next to the config, one level up, or in the working directory wins; otherwise the prompt
+/// compiled into the binary.
 pub fn load_builder_prompt(config_path: &Path) -> Result<String, Box<dyn std::error::Error>> {
     let mut candidates: Vec<PathBuf> = Vec::new();
     if let Some(parent) = config_path.parent() {
@@ -351,22 +357,13 @@ pub fn load_builder_prompt(config_path: &Path) -> Result<String, Box<dyn std::er
     if let Ok(cwd) = std::env::current_dir() {
         candidates.push(cwd.join(BUILDER_PROMPT_REL));
     }
-    candidates.push(PathBuf::from("/opt/ml/kowalski").join(BUILDER_PROMPT_REL));
 
-    let tried = candidates
-        .iter()
-        .map(|p| p.display().to_string())
-        .collect::<Vec<_>>()
-        .join(", ");
     for p in &candidates {
         if p.is_file() {
             return Ok(std::fs::read_to_string(p)?);
         }
     }
-    Err(format!(
-        "rookery builder prompt not found (tried {tried}); expected {BUILDER_PROMPT_REL}"
-    )
-    .into())
+    Ok(BUILDER_PROMPT_EMBEDDED.to_string())
 }
 
 #[derive(Serialize)]
@@ -1227,7 +1224,7 @@ mod tests {
 
     #[test]
     fn default_output_root_is_examples_under_repo() {
-        let p = default_rookery_output_root(Some(Path::new("/opt/ml/kowalski")));
+        let p = default_rookery_output_root(Some(Path::new("/tmp/kowalski-test")));
         assert!(p.ends_with("examples") || p.to_string_lossy().contains("examples"));
     }
 
@@ -1258,12 +1255,10 @@ mod tests {
     }
 
     #[test]
-    fn load_builder_prompt_from_repo() {
-        let cfg = Path::new("/opt/ml/kowalski/config.toml");
-        if cfg.exists() {
-            let prompt = load_builder_prompt(cfg).expect("builder.md");
-            assert!(prompt.contains("Rookery"));
-        }
+    fn builder_prompt_falls_back_to_the_embedded_copy() {
+        let prompt = load_builder_prompt(Path::new("/nonexistent/kowalski/config.toml"))
+            .expect("embedded builder prompt");
+        assert!(prompt.contains("Rookery"));
     }
 
     #[test]
@@ -1271,7 +1266,7 @@ mod tests {
         let key = "KOWALSKI_ROOKERY_STATE";
         let prev = std::env::var(key).ok();
         unsafe { std::env::set_var(key, "/tmp/rookery-state-test") };
-        let dir = default_rookery_state_dir(Some(Path::new("/opt/ml/kowalski")));
+        let dir = default_rookery_state_dir(Some(Path::new("/tmp/kowalski-test")));
         assert_eq!(dir, PathBuf::from("/tmp/rookery-state-test"));
         match prev {
             Some(v) => unsafe { std::env::set_var(key, v) },
@@ -1284,7 +1279,7 @@ mod tests {
         let key = "KOWALSKI_ROOKERY_STATE";
         let prev = std::env::var(key).ok();
         unsafe { std::env::remove_var(key) };
-        let dir = default_rookery_state_dir(Some(Path::new("/opt/ml/kowalski")));
+        let dir = default_rookery_state_dir(Some(Path::new("/tmp/kowalski-test")));
         assert!(dir.ends_with("db/rookery"));
         if let Some(v) = prev {
             unsafe { std::env::set_var(key, v) };

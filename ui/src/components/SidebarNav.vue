@@ -74,22 +74,6 @@ function timeAgo(ts: number): string {
         <button :class="{ active: activeTab === 'chat' }" @click="emit('select-tab', 'chat')">Chat</button>
         <button :class="{ active: activeTab === 'federation-run' }" @click="emit('select-tab', 'federation-run')">Horde</button>
         <button :class="{ active: activeTab === 'rookery' }" @click="emit('select-tab', 'rookery')">Rookery</button>
-        <button
-          class="is-disabled"
-          :class="{ active: activeTab === 'mcp' }"
-          title="Temporarily disabled"
-          disabled
-        >
-          MCP
-        </button>
-        <button
-          class="is-disabled"
-          :class="{ active: activeTab === 'graph' }"
-          title="Temporarily disabled"
-          disabled
-        >
-          Graph
-        </button>
       </nav>
 
       <section v-if="activeTab === 'chat'" class="chat-list">

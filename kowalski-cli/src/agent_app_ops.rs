@@ -309,10 +309,10 @@ fn resolve_stage_project_path(
             return Ok(path);
         }
     }
-    if let Some(s) = source {
-        if let Some(p) = extract_project_path_from_source(s) {
-            return Ok(p);
-        }
+    if let Some(s) = source
+        && let Some(p) = extract_project_path_from_source(s)
+    {
+        return Ok(p);
     }
     Err("verify/apply: missing operator project_path (set on ingest form)".into())
 }
@@ -596,33 +596,31 @@ where
         step_outcome.insert(step.clone(), outcome);
         step_paths.insert(step.clone(), out_path);
 
-        if has_conditional_outbound(&graph.edges, &step) {
-            if let Some(next) = select_next_from_outcome(
+        if has_conditional_outbound(&graph.edges, &step)
+            && let Some(next) = select_next_from_outcome(
                 &main.meta.pipeline,
                 &graph.edges,
                 &step,
                 outcome,
                 &loop_counts,
-            ) {
-                if is_loop_back_step(&main.meta.pipeline, &step, &next) {
-                    let key = loop_edge_key(&step, &next);
-                    let count = {
-                        let c = loop_counts.entry(key).or_insert(0);
-                        *c += 1;
-                        *c
-                    };
-                    for s in retry_span(&main.meta.pipeline, &next, &step) {
-                        step_status.insert(s.clone(), "pending".to_string());
-                        step_outcome.remove(&s);
-                        step_paths.remove(&s);
-                    }
-                    log.push_str(&format!(
-                        "- loop retry → `{}` (count {})\n\n",
-                        next,
-                        count
-                    ));
-                }
+            )
+            && is_loop_back_step(&main.meta.pipeline, &step, &next)
+        {
+            let key = loop_edge_key(&step, &next);
+            let count = {
+                let c = loop_counts.entry(key).or_insert(0);
+                *c += 1;
+                *c
+            };
+            for s in retry_span(&main.meta.pipeline, &next, &step) {
+                step_status.insert(s.clone(), "pending".to_string());
+                step_outcome.remove(&s);
+                step_paths.remove(&s);
             }
+            log.push_str(&format!(
+                "- loop retry → `{}` (count {})\n\n",
+                next, count
+            ));
         }
     }
 
@@ -1142,6 +1140,7 @@ fn publish_task_started(
     );
 }
 
+#[allow(clippy::too_many_arguments)] // one event, many fields; a params struct is a later refactor
 fn publish_task_finished(
     api: &str,
     topic: &str,

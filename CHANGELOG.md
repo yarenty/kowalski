@@ -6,6 +6,17 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Changed
+- `kowalski-cli chat` and a bare `kowalski-cli` start the config-driven agent chat (`run`): your model plus MCP tools.
+- The sample configuration is now `config.example.toml` (what `install.sh` downloads); `config.toml` is git-ignored so personal endpoints and keys never reach the repository.
+- The Rookery builder prompt is compiled into the server, so an installed `kowalski` builds hordes without a source checkout; an override file next to the config still wins.
+- Crate descriptions and version strings brought up to date.
+
+### Removed
+- Legacy agent-manager commands (`create`, `chat <agent>`, `list`, `agents`, `--interactive`): their agents lived only for one process and ignored the config.
+- Hardcoded `/opt/ml/kowalski` fallbacks for hordes, the builder prompt and the worker root.
+- The unused `[search]` configuration section, the disabled MCP and Graph tabs in the UI, and the `dag-demo` stub.
+
 ## [1.8.0] - 2026-08-27 — **Ecosystem**
 
 > The extraction release: the MCP layer graduates into standalone projects and the workspace

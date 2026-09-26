@@ -75,7 +75,7 @@ seed_config() {
     return 0
   fi
   mkdir -p "$dest_dir"
-  local sample_url="${KOWALSKI_REPO}/raw/main/config.toml"
+  local sample_url="${KOWALSKI_REPO}/raw/main/config.example.toml"
   if curl -fsSL "$sample_url" -o "$dest"; then
     info "wrote sample config: ${dest}"
   else

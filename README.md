@@ -136,7 +136,7 @@ this repo stays framework-only.
 curl -fsSL https://raw.githubusercontent.com/yarenty/kowalski/main/install.sh | bash
 ```
 
-This installs **`kowalski-cli`** and **`kowalski`** into `~/.cargo/bin` (installs Rust via rustup if needed), seeds `~/.config/kowalski/config.toml` from the repo sample, and prints next steps.
+This installs **`kowalski-cli`** and **`kowalski`** into `~/.cargo/bin` (installs Rust via rustup if needed), seeds `~/.config/kowalski/config.toml` from [`config.example.toml`](config.example.toml), and prints next steps.
 
 Options via environment variables:
 
@@ -146,7 +146,7 @@ Options via environment variables:
 | `KOWALSKI_FEATURES=postgres` | `cargo install --features postgres` for server + CLI |
 | `KOWALSKI_INSTALL_MCP=1` | Also install `kowalski-mcp-rookery` |
 | `KOWALSKI_SKIP_RUSTUP=1` | Fail instead of auto-installing Rust |
-| `KOWALSKI_CONFIG_DIR=~/.config/kowalski` | Where sample `config.toml` is written |
+| `KOWALSKI_CONFIG_DIR=~/.config/kowalski` | Where the sample config is written as `config.toml` |
 
 Custom domain: mirror or redirect [`install.sh`](install.sh) at e.g. `https://yarenty.com/kowalski/install.sh`.
 
@@ -154,7 +154,7 @@ Custom domain: mirror or redirect [`install.sh`](install.sh) at e.g. `https://ya
 
 - **Rust** (latest stable, [rustup.rs](https://rustup.rs))
 - **[Ollama](https://ollama.com/)** if you use the default `[llm] provider = "ollama"` (local models)
-- **Optional:** Node 22 + **Bun** for the Vue UI (`ui/`), PostgreSQL + extensions for durable memory / federation (see `TODO.md` and crate `README`s)
+- **Optional:** Node 22 + **Bun** for the Vue UI (`ui/`), PostgreSQL + extensions for durable memory / federation (see the crate `README`s)
 
 ### 2. Clone & build
 
@@ -162,9 +162,10 @@ Custom domain: mirror or redirect [`install.sh`](install.sh) at e.g. `https://ya
 git clone https://github.com/yarenty/kowalski.git
 cd kowalski
 cargo build --release
+cp config.example.toml config.toml   # your own copy; config.toml is git-ignored, keys stay out of git
 ```
 
-Main binaries are **`kowalski-cli`** (`target/release/kowalski-cli`) and **`kowalski`** (`target/release/kowalski`). Adjust `config.toml` in the repo root (or pass `-c` / `--config` where supported) for models, MCP servers, and memory.
+Main binaries are **`kowalski-cli`** (`target/release/kowalski-cli`) and **`kowalski`** (`target/release/kowalski`). Edit `config.toml` (or pass `-c` / `--config`) for models, MCP servers, and memory. A hosted OpenAI-compatible key is read from `OPENAI_API_KEY`, never from a committed file.
 
 ### 3. Ollama (typical local setup)
 
@@ -192,7 +193,7 @@ Tools and MCP are driven by **`TemplateAgent`** + config, not separate `kowalski
 # Help (binary name is kowalski-cli)
 ./target/release/kowalski-cli --help
 
-# Orchestrator REPL (TemplateAgent + tools; uses config.toml by default)
+# Chat with an agent: your config's model plus its MCP tools (same as `kowalski-cli chat` or no command)
 ./target/release/kowalski-cli run -c config.toml
 
 # HTTP API for the Vue UI (default bind 127.0.0.1:3456)
@@ -207,11 +208,6 @@ Tools and MCP are driven by **`TemplateAgent`** + config, not separate `kowalski
 # Apply SQL migrations when using sqlite: or postgres:// memory URLs
 ./target/release/kowalski-cli db migrate --url 'postgres://…'
 # or: db migrate -c config.toml
-
-# Interactive / legacy agent manager flow (create agents, then chat by name)
-./target/release/kowalski-cli --interactive
-./target/release/kowalski-cli create web
-./target/release/kowalski-cli chat my-agent-name
 ```
 
 Build with **`--features postgres`** on `kowalski` for Postgres memory and graph routes (`cargo build -p kowalski --features postgres`).

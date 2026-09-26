@@ -14,7 +14,7 @@ cargo run -p kowalski-cli -- agent-app validate --path examples/coder
 
 ```bash
 cargo run -p kowalski-cli -- agent-app run --path examples/coder \
-  "Task: add structured logging. Project: /opt/ml/kowalski"
+  "Task: add structured logging. Project: ~/code/my-project"
 ```
 
 ## UI / federation

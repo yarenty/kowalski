@@ -145,6 +145,55 @@ pub fn operator_answer<'a>(answers: &'a BTreeMap<String, String>, field_id: &str
     })
 }
 
+/// Default ingest-stage form for Rust / greenfield project hordes.
+pub fn default_ingest_form_fields() -> Vec<OperatorInputField> {
+    vec![
+        OperatorInputField {
+            id: "project_name".into(),
+            field_type: "text".into(),
+            label: "Project name".into(),
+            required: true,
+            placeholder: Some("my-rust-service".into()),
+            options: vec![],
+            default: None,
+        },
+        OperatorInputField {
+            id: "project_goals".into(),
+            field_type: "textarea".into(),
+            label: "Goals and constraints".into(),
+            required: true,
+            placeholder: Some(
+                "e.g. CLI tool, async HTTP, SQLite, no cloud deps…".into(),
+            ),
+            options: vec![],
+            default: None,
+        },
+        OperatorInputField {
+            id: "repo_url".into(),
+            field_type: "url".into(),
+            label: "Existing repository URL (optional)".into(),
+            required: false,
+            placeholder: Some("https://github.com/org/repo".into()),
+            options: vec![],
+            default: None,
+        },
+        OperatorInputField {
+            id: "crate_focus".into(),
+            field_type: "choice".into(),
+            label: "Primary project shape".into(),
+            required: false,
+            placeholder: None,
+            options: vec![
+                "cli".into(),
+                "web-api".into(),
+                "library".into(),
+                "embedded".into(),
+            ],
+            default: Some("cli".into()),
+        },
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,53 +300,4 @@ mod tests {
         );
         assert_eq!(m.get("Project path").map(String::as_str), Some("/tmp"));
     }
-}
-
-/// Default ingest-stage form for Rust / greenfield project hordes.
-pub fn default_ingest_form_fields() -> Vec<OperatorInputField> {
-    vec![
-        OperatorInputField {
-            id: "project_name".into(),
-            field_type: "text".into(),
-            label: "Project name".into(),
-            required: true,
-            placeholder: Some("my-rust-service".into()),
-            options: vec![],
-            default: None,
-        },
-        OperatorInputField {
-            id: "project_goals".into(),
-            field_type: "textarea".into(),
-            label: "Goals and constraints".into(),
-            required: true,
-            placeholder: Some(
-                "e.g. CLI tool, async HTTP, SQLite, no cloud deps…".into(),
-            ),
-            options: vec![],
-            default: None,
-        },
-        OperatorInputField {
-            id: "repo_url".into(),
-            field_type: "url".into(),
-            label: "Existing repository URL (optional)".into(),
-            required: false,
-            placeholder: Some("https://github.com/org/repo".into()),
-            options: vec![],
-            default: None,
-        },
-        OperatorInputField {
-            id: "crate_focus".into(),
-            field_type: "choice".into(),
-            label: "Primary project shape".into(),
-            required: false,
-            placeholder: None,
-            options: vec![
-                "cli".into(),
-                "web-api".into(),
-                "library".into(),
-                "embedded".into(),
-            ],
-            default: Some("cli".into()),
-        },
-    ]
 }
