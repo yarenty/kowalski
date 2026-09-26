@@ -55,11 +55,11 @@ struct ChatState {
 }
 
 #[derive(Clone)]
-struct ApiState {
-    config_path: PathBuf,
+pub(crate) struct ApiState {
+    pub(crate) config_path: PathBuf,
     ollama_url: Option<String>,
     model: String,
-    full_config: Config,
+    pub(crate) full_config: Config,
     chat: Arc<Mutex<ChatState>>,
     federation_broker: Arc<MpscBroker>,
     federation: Arc<FederationOrchestrator>,
@@ -69,7 +69,7 @@ struct ApiState {
     trigger_manager: crate::triggers::TriggerManager,
     /// This server's own base URL (from `--bind` + TLS scheme) — passed to spawned
     /// workers as `--api` so they call back to the right address.
-    api_url: String,
+    pub(crate) api_url: String,
     /// Bearer token required on `/api/*` (`None` when auth is off — the default); handed to
     /// spawned workers via `KOWALSKI_API_TOKEN`.
     api_token: Option<Arc<String>>,
@@ -416,6 +416,13 @@ fn build_app(
     let router = Router::new()
         .fallback(crate::embedded::serve_ui)
         .route("/api/health", get(get_health))
+        .route("/api/setup/status", get(crate::setup::status))
+        .route("/api/setup/test-model", post(crate::setup::test_model))
+        .route("/api/setup/save", post(crate::setup::save))
+        .route("/api/setup/tableski/start", post(crate::setup::tableski_start))
+        .route("/api/setup/tableski/callback", get(crate::setup::tableski_callback))
+        .route("/api/setup/tableski/disconnect", post(crate::setup::tableski_disconnect))
+        .route("/api/setup/restart", post(crate::setup::restart))
         .route("/api/agents", get(get_agents))
         .route("/api/sessions", get(get_sessions))
         .route("/api/doctor", get(get_doctor))
@@ -1029,10 +1036,12 @@ async fn post_chat(
     let policy = if use_tools {
         Some(kowalski_core::tools::policy::ToolExecutionPolicy {
             allowed_tools: tool_ids,
+            // the request's folder, else the files folder chosen at setup (`[files] dir`)
             sandbox_root: body
                 .sandbox_root
-                .as_ref()
+                .clone()
                 .filter(|s| !s.trim().is_empty())
+                .or_else(|| crate::setup::files_dir(&state.full_config))
                 .map(std::path::PathBuf::from),
             quiet: true,
         })
@@ -3324,6 +3333,109 @@ mod api_tests {
         let ids: Vec<String> = catalog.list().iter().map(|e| e.spec.id.clone()).collect();
         assert!(ids.contains(&"url-summarizer".to_string()) && ids.contains(&"knowledge-compiler".to_string()), "{ids:?}");
         assert!(catalog.list().iter().all(|e| e.load_error.is_none()));
+    }
+
+    #[tokio::test]
+    async fn setup_saves_models_and_checks_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = fixture(dir.path(), None).await;
+        let cfg = dir.path().join("config.toml");
+
+        let (status, st) = call(&app, "GET", "/api/setup/status", None, None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(st["configured"], false);
+        assert_eq!(st["write_path"], cfg.display().to_string());
+
+        let files = dir.path().join("files");
+        std::fs::create_dir_all(&files).unwrap();
+        let (status, saved) = call(&app, "POST", "/api/setup/save",
+            Some(json!({ "provider": "ollama", "model": "llama3.2", "files_dir": files.display().to_string() })), None).await;
+        assert_eq!(status, StatusCode::OK, "{saved}");
+        let written: kowalski_core::config::Config = toml::from_str(&std::fs::read_to_string(&cfg).unwrap()).unwrap();
+        assert_eq!(written.llm.provider, "ollama");
+        assert_eq!(written.ollama.model, "llama3.2");
+        assert_eq!(crate::setup::files_dir(&written).as_deref(), Some(files.display().to_string().as_str()));
+
+        let (status, saved) = call(&app, "POST", "/api/setup/save",
+            Some(json!({ "provider": "openai", "model": "gpt-4o-mini", "openai_api_base": "https://api.example/v1", "api_key": "sk-test" })), None).await;
+        assert_eq!(status, StatusCode::OK, "{saved}");
+        let raw = std::fs::read_to_string(&cfg).unwrap();
+        let written: kowalski_core::config::Config = toml::from_str(&raw).unwrap();
+        assert_eq!(written.llm.provider, "openai");
+        assert_eq!(written.llm.model.as_deref(), Some("gpt-4o-mini"));
+        assert_eq!(written.llm.openai_api_key.as_deref(), Some("sk-test"));
+        assert!(crate::setup::files_dir(&written).is_some(), "earlier settings survive a later save");
+        assert!(dir.path().join("config.toml.bak").is_file(), "previous file kept");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&cfg).unwrap().permissions().mode() & 0o777, 0o600, "a key inside: owner-only");
+        }
+
+        let (status, bad) = call(&app, "POST", "/api/setup/save",
+            Some(json!({ "provider": "ollama", "model": "x", "files_dir": "/definitely/not/here" })), None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");
+    }
+
+    #[tokio::test]
+    async fn tableski_oauth_round_trip_writes_tokens_and_the_mcp_entry() {
+        use axum::extract::Form as AxForm;
+        // a mock tableski: protected resource + authorization server metadata, registration, token
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let b = base.clone();
+        let mock = Router::new()
+            .route("/.well-known/oauth-protected-resource", get({
+                let b = b.clone();
+                move || async move { Json(json!({ "resource": format!("{b}/"), "authorization_servers": [b] })) }
+            }))
+            .route("/.well-known/oauth-authorization-server", get({
+                let b = b.clone();
+                move || async move { Json(json!({ "issuer": b, "authorization_endpoint": format!("{b}/oauth/authorize"),
+                    "token_endpoint": format!("{b}/oauth/token"), "registration_endpoint": format!("{b}/oauth/register") })) }
+            }))
+            .route("/oauth/register", post(|Json(body): Json<serde_json::Value>| async move {
+                assert_eq!(body["token_endpoint_auth_method"], "none");
+                assert!(body["redirect_uris"][0].as_str().unwrap().ends_with("/api/setup/tableski/callback"));
+                (StatusCode::CREATED, Json(json!({ "client_id": "tsc_kowalski" })))
+            }))
+            .route("/oauth/token", post(|AxForm(f): AxForm<HashMap<String, String>>| async move {
+                assert_eq!(f.get("grant_type").map(String::as_str), Some("authorization_code"));
+                assert_eq!(f.get("code").map(String::as_str), Some("the-code"));
+                assert!(f.get("code_verifier").is_some_and(|v| v.len() >= 43));
+                Json(json!({ "access_token": "tsk_access", "refresh_token": "tsr_1", "expires_in": 3600, "token_type": "Bearer" }))
+            }));
+        tokio::spawn(async move { axum::serve(listener, mock).await.unwrap() });
+
+        let dir = tempfile::tempdir().unwrap();
+        let app = fixture(dir.path(), None).await;
+        let (status, started) = call(&app, "POST", "/api/setup/tableski/start", Some(json!({ "url": format!("{base}/") })), None).await;
+        assert_eq!(status, StatusCode::OK, "{started}");
+        let url = started["authorize_url"].as_str().unwrap().to_string();
+        assert!(url.starts_with(&format!("{base}/oauth/authorize?")) && url.contains("code_challenge_method=S256"), "{url}");
+        let state_param = url.split("state=").nth(1).unwrap().split('&').next().unwrap().to_string();
+
+        // the browser comes back
+        let res = app.clone().oneshot(Request::builder()
+            .uri(format!("/api/setup/tableski/callback?code=the-code&state={state_param}"))
+            .body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(res.status(), StatusCode::SEE_OTHER);
+        assert_eq!(res.headers()["location"], "/?setup=tableski-connected");
+
+        let token_file = dir.path().join("db/oauth/tableski.json");
+        let tokens = kowalski_core::mcp::oauth::TokenSet::load(&token_file).unwrap();
+        assert_eq!(tokens.access_token, "tsk_access");
+        assert_eq!(tokens.refresh_token.as_deref(), Some("tsr_1"));
+        let written: kowalski_core::config::Config = toml::from_str(&std::fs::read_to_string(dir.path().join("config.toml")).unwrap()).unwrap();
+        let entry = written.mcp.servers.iter().find(|s| s.name == "tableski").expect("tableski entry");
+        assert_eq!(entry.url, format!("{base}/"));
+        assert!(entry.oauth.is_some());
+
+        // a replayed state is refused
+        let res = app.clone().oneshot(Request::builder()
+            .uri(format!("/api/setup/tableski/callback?code=the-code&state={state_param}"))
+            .body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(res.headers()["location"], "/?setup=tableski-expired");
     }
 
     #[tokio::test]

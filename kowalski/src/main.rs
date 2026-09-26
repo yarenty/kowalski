@@ -7,6 +7,7 @@ mod horde;
 mod http_api;
 mod http_ops;
 mod rookery;
+mod setup;
 mod triggers;
 
 #[derive(Parser, Debug)]

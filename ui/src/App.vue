@@ -9,6 +9,7 @@ import GraphPanel from "./panels/GraphPanel.vue";
 import HomePanel from "./panels/HomePanel.vue";
 import McpPanel from "./panels/McpPanel.vue";
 import RookeryPanel, { type RookeryUiSession } from "./panels/RookeryPanel.vue";
+import SetupPanel from "./panels/SetupPanel.vue";
 import {
   api,
   chatStream,
@@ -20,7 +21,7 @@ import {
 } from "./api";
 
 const tab = ref<
-  "home" | "mcp" | "chat" | "rookery" | "federation-management" | "federation-run" | "graph" | "about"
+  "home" | "mcp" | "chat" | "rookery" | "federation-management" | "federation-run" | "graph" | "about" | "setup"
 >("chat");
 const sidebarCollapsed = ref(false);
 
@@ -745,7 +746,8 @@ function selectTab(
     | "federation-management"
     | "federation-run"
     | "graph"
-    | "about",
+    | "about"
+    | "setup",
 ) {
   tab.value = nextTab;
   if (nextTab === "federation-run") {
@@ -778,6 +780,14 @@ onMounted(async () => {
     /* keep unknown */
   }
   await ensureApiToken();
+  // first run (no config yet) or returning from the tableski sign-in: the setup screen
+  const fromOAuth = new URLSearchParams(window.location.search).has("setup");
+  try {
+    const s = await api.setupStatus();
+    if (!s.configured || fromOAuth) tab.value = "setup";
+  } catch {
+    if (fromOAuth) tab.value = "setup";
+  }
 });
 </script>
 
@@ -805,7 +815,8 @@ onMounted(async () => {
       @delete-rookery-session="deleteRookerySession"
     />
     <main class="main">
-      <HomePanel v-if="tab === 'home'" />
+      <SetupPanel v-if="tab === 'setup'" @done="appVersion = appVersion" />
+      <HomePanel v-else-if="tab === 'home'" />
       <McpPanel v-else-if="tab === 'mcp'" />
       <RookeryPanel
         v-else-if="tab === 'rookery'"

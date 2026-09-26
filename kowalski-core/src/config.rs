@@ -409,6 +409,17 @@ pub struct McpServerConfig {
     /// argv for [`McpTransport::Stdio`] (program + args).
     #[serde(default)]
     pub command: Vec<String>,
+    /// OAuth sign-in for HTTP servers that require it (written by the setup screen): the
+    /// bearer token comes from this token file and is refreshed before it expires.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oauth: Option<McpOAuthConfig>,
+}
+
+/// Where an OAuth-connected MCP server's tokens live.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct McpOAuthConfig {
+    /// JSON token file (owner-only permissions), see `mcp::oauth::TokenSet`.
+    pub token_file: std::path::PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

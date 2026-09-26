@@ -327,7 +327,36 @@ export type OpenPathResponse = {
   path: string;
 };
 
+export type SetupStatus = {
+  configured: boolean;
+  config_path: string;
+  write_path: string;
+  provider: string;
+  model: string;
+  openai_api_base: string | null;
+  has_api_key: boolean;
+  ollama: { reachable: boolean; models: string[]; url: string };
+  files_dir: string | null;
+  tableski: { connected: boolean; url: string | null; signed_in: boolean };
+};
+export type ModelChoice = {
+  provider: "ollama" | "openai";
+  model: string;
+  openai_api_base?: string;
+  api_key?: string;
+  files_dir?: string;
+};
+
 export const api = {
+  setupStatus: () => json<SetupStatus>("/api/setup/status"),
+  setupTestModel: (c: ModelChoice) =>
+    json<{ ok: boolean; message: string }>("/api/setup/test-model", { method: "POST", body: JSON.stringify(c) }),
+  setupSave: (c: ModelChoice) =>
+    json<{ ok: boolean; config_path: string }>("/api/setup/save", { method: "POST", body: JSON.stringify(c) }),
+  setupTableskiStart: () =>
+    json<{ authorize_url: string }>("/api/setup/tableski/start", { method: "POST", body: "{}" }),
+  setupTableskiDisconnect: () => json<{ ok: boolean }>("/api/setup/tableski/disconnect", { method: "POST" }),
+  setupRestart: () => json<{ ok: boolean }>("/api/setup/restart", { method: "POST" }),
   health: () => json<Health>("/api/health"),
   agents: () => json<AgentsResponse>("/api/agents"),
   sessions: () => json<SessionsResponse>("/api/sessions"),

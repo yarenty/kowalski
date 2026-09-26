@@ -34,6 +34,7 @@
 
 pub mod client;
 pub mod hub;
+pub mod oauth;
 pub mod stdio;
 pub mod tool;
 pub mod types;

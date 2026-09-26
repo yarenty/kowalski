@@ -200,6 +200,8 @@ Tools and MCP are driven by **`TemplateAgent`** + config, not separate `kowalski
 # from a terminal (--no-open to skip). Build the UI first so it gets compiled in:
 #   (cd ui && bun install && bun run build) && cargo build --release -p kowalski
 # Built-in hordes (url-summarizer, knowledge-compiler) appear in the Horde tab on first start.
+# First run opens Setup: pick a model, a files folder, optionally sign in to tableski; it writes
+# the config and restarts itself. No TOML editing needed.
 # Auth is off by default (single-user local tool). Optional bearer-token auth for /api/*:
 # start with --auth (token printed at first start, persisted 0600 at <config-dir>/db/api_token).
 ./target/release/kowalski
