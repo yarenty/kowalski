@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-09-26 — **Commando**
+
+> The face-lift release: a readable, redesigned operator UI, documentation that explains the
+> architecture, a demo recording, and the kowalski blog at kowalski.yarenty.com.
+
 ### Fixed
 - The finished-run payload carries the horde's declared hand-off (`HANDOFF.md`, `BRIEF.md`, `NOTE.md`) instead of only a legacy `PASTE_ME.md`, so the Hordes screen shows the answers; the screen renders them as formatted Markdown.
 - A long pipeline no longer widens the Hordes screen past the window; penguin avatars sit on a transparent background.

@@ -1,6 +1,6 @@
 [package]
 name = "kowalski"
-version = "2.1.0"
+version = "2.2.0"
 edition = "2024"
 description = "HTTP server and UI host of Kowalski, a Rust multi-agent framework: agents with MCP tools and memory, and hordes (step pipelines with triggers) over Ollama or OpenAI-compatible models"
 license = "MIT"
@@ -23,8 +23,8 @@ keywords = [
 
 [dependencies]
 # Core components are non-optional
-kowalski-core = { path = "../kowalski-core", version = "2.1.0" }
-kowalski-cli = { path = "../kowalski-cli", version = "2.1.0", optional = true }
+kowalski-core = { path = "../kowalski-core", version = "2.2.0" }
+kowalski-cli = { path = "../kowalski-cli", version = "2.2.0", optional = true }
 
 tokio = { workspace = true }
 tokio-util = { workspace = true }
