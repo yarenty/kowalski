@@ -1,7 +1,12 @@
 # Kowalski
 
 > [!IMPORTANT]
-> ## 2.0.0 — Out of the Box
+> ## 2.1.0 — Standing Orders
+> Download-and-run binaries for macOS and Linux; a Morning Brief and a Folder Watcher that work
+> on a schedule or when a file lands; and safe defaults: commands wait for your approval,
+> imported workflows run isolated, and a server open to the network always needs its token.
+>
+> ### 2.0.0 — Out of the Box
 > One binary with the UI inside, a three-question Setup screen, web tools, and a built-in
 > Spreadsheet analyst that turns plain questions into a report workbook, with every number
 > computed by the query engine rather than the model.
@@ -18,9 +23,9 @@
 > your machine. 1.7.0 ships durable runs, cron/watch/webhook triggers, native tool calling,
 > the guided Rookery builder, and portable workflow bundles.
 
-**Version 2.0.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-rookery`, Vue `ui/`) — MCP servers build on the standalone [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) framework
+**Version 2.1.0** · Rust workspace (`kowalski-core`, `kowalski-cli`, `kowalski-mcp-rookery`, Vue `ui/`) — MCP servers build on the standalone [`emperor-mcp`](https://github.com/yarenty/emperor-mcp) framework
 
-> **Build from git** on `main`. **`cargo install --version 2.0.0`** once published to crates.io.
+> **Build from git** on `main`. **`cargo install --version 2.1.0`** once published to crates.io.
 
 > "AI agents are like pets – they're cute, but they make a mess."  
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"

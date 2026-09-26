@@ -1,6 +1,6 @@
 # Knowledge Compiler example
 
-**Example aligned with workspace release line 2.0.0**
+**Example aligned with workspace release line 2.1.0**
 
 Operator-focused behavior, GitHub ingest, and federation roles are documented in **[`AGENTS.md`](AGENTS.md)**.
 

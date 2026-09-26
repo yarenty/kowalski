@@ -55,7 +55,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: Kowalski  
-**Release line**: **2.0.0 — Out of the Box** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).
+**Release line**: **2.1.0 — Standing Orders** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).
 **Purpose**: A Rust-native multi-agent framework: **`kowalski-core`** (agents, LLM, memory, MCP client), **`kowalski-cli`** (REPL + operators, extensions, **`agent-app`**), **`kowalski`** (HTTP **`/api/*`** server), Vue **`ui/`**, optional PostgreSQL (**pgvector**, **Apache AGE**).  
 **Core Value Proposition**: Modular, extensible deployment with MCP-first tools and federation-oriented APIs.  
 **Primary Mechanism**: `TemplateAgent` + pluggable tools (built-in + MCP), Ollama/OpenAI-compatible providers.  
@@ -391,7 +391,9 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-**2.0.0 — Out of the Box** is the current release: one `kowalski` binary serves the operator UI and ships built-in hordes (Spreadsheet analyst, URL summarizer, Knowledge compiler); a first-run Setup screen writes the config (model, files folder, tableski sign-in over OAuth); agents get `web_fetch` and `web_search`; and the data step kinds `table_profile`, `sql_batch` and `xlsx_report` keep numbers out of the model. See `CHANGELOG.md` **[2.0.0]**.
+**2.1.0 — Standing Orders** is the current release: pre-built macOS and Linux binaries (`install.sh` downloads them); built-in Morning Brief (cron) and Folder Watcher (watch) hordes, shipped switched off; safe defaults — `verify`/`apply` steps wait for operator approval, imported bundles run with process isolation, and a non-loopback bind always requires the API token. See `CHANGELOG.md` **[2.1.0]**.
+
+**2.0.0 — Out of the Box** was the previous release: one `kowalski` binary serves the operator UI and ships built-in hordes (Spreadsheet analyst, URL summarizer, Knowledge compiler); a first-run Setup screen writes the config (model, files folder, tableski sign-in over OAuth); agents get `web_fetch` and `web_search`; and the data step kinds `table_profile`, `sql_batch` and `xlsx_report` keep numbers out of the model. See `CHANGELOG.md` **[2.0.0]**.
 
 **1.8.0 — Ecosystem** was the previous release: the MCP server framework and the SQL-over-spreadsheets server were extracted into their own projects ([`emperor-mcp`](https://github.com/yarenty/emperor-mcp), [`tableski`](https://github.com/yarenty/tableski)); this repository stays framework-only. It builds on **1.7.0 — Autonomy**, which shipped **durable horde runs** (SQLite-backed state, resume after restart, cancellation), **event-driven triggers** (cron / file-watch / webhook with operator controls), **native LLM tool calling** with ReAct fallback, **constrained structured output**, the **guided-delta Rookery builder**, **horde hot reload**, **portable workflow manifests + bundles** (export/import via CLI, HTTP, UI), opt-in **process isolation**, and opt-in **API auth**. It consolidates the untagged 1.5.0 (Coder execution tier: tree ingest, tool stages, verify/apply, conditional loops) and 1.6.0 (**`install.sh`**, the shared MCP framework crate — since extracted as [`emperor-mcp`](https://github.com/yarenty/emperor-mcp)) milestones — see [`ROADMAP.md`](ROADMAP.md) and `CHANGELOG.md` **[1.7.0]**.
 
