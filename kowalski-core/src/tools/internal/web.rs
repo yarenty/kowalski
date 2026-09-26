@@ -46,6 +46,47 @@ fn decode_href_entities(url: &str) -> String {
 /// Preserves hyperlink targets as `[text](url)` before generic tag stripping so URLs are not lost.
 /// This is **not** a full Readability clone — it makes HTML **usable** in LLM/source bundles.
 pub fn html_body_to_markdown(html: &str) -> String {
+    html_to_markdown_at(html, None)
+}
+
+/// The page's own content: the `<main>` element (else a lone `<article>`) when there is one,
+/// without navigation, header, footer, menus and other page chrome.
+fn main_content(html: &str) -> std::borrow::Cow<'_, str> {
+    // an unclosed <main> (a body cut at the fetch cap) runs to the end of what arrived
+    let re_main = Regex::new(r"(?is)<main\b[^>]*>(.*?)(?:</main\s*>|\z)").expect("valid regex");
+    let re_article = Regex::new(r"(?is)<article\b[^>]*>(.*?)</article\s*>").expect("valid regex");
+    // one <article> is the page's content; many are rows of a list, so keep the page
+    let single_article = || {
+        let mut all = re_article.captures_iter(html);
+        match (all.next(), all.next()) {
+            (Some(c), None) => Some(c),
+            _ => None,
+        }
+    };
+    let picked = re_main
+        .captures(html)
+        .or_else(single_article)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str())
+        .filter(|m| m.len() > 200);
+    let mut out = picked.unwrap_or(html).to_string();
+    for tag in ["nav", "header", "footer", "aside", "svg", "noscript", "template", "form", "details", "select", "dialog"] {
+        let re = Regex::new(&format!(r"(?is)<{tag}\b[^>]*>.*?</{tag}\s*>")).expect("valid regex");
+        out = re.replace_all(&out, " ").into_owned();
+    }
+    std::borrow::Cow::Owned(out)
+}
+
+/// [`html_body_to_markdown`] for a page fetched from `base`: relative links become absolute.
+pub fn html_to_markdown_at(html: &str, base: Option<&reqwest::Url>) -> String {
+    let title = Regex::new(r"(?is)<title[^>]*>(.*?)</title>")
+        .expect("valid regex")
+        .captures(html)
+        .and_then(|c| c.get(1))
+        .map(|m| flatten_inline_tags(m.as_str()))
+        .filter(|t| !t.is_empty());
+    let content = main_content(html);
+    let html = content.as_ref();
     let re_script = Regex::new(r"(?is)<script[^>]*>.*?</script>").expect("valid regex");
     let re_style = Regex::new(r"(?is)<style[^>]*>.*?</style>").expect("valid regex");
     let re_anchor = Regex::new(
@@ -64,6 +105,12 @@ pub fn html_body_to_markdown(html: &str) -> String {
             .or_else(|| caps.name("sq"))
             .map(|m| decode_href_entities(m.as_str()))
             .unwrap_or_default();
+        let url = match base {
+            Some(b) if !url.is_empty() && !url.starts_with('#') && !url.contains("://") => {
+                b.join(&url).map(|u| u.to_string()).unwrap_or(url)
+            }
+            _ => url,
+        };
         let inner = caps.name("inner").map(|m| m.as_str()).unwrap_or("");
         let text = flatten_inline_tags(inner);
         if url.is_empty() {
@@ -90,8 +137,9 @@ pub fn html_body_to_markdown(html: &str) -> String {
     let lines: Vec<&str> = s.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
     let body = lines.join("\n\n");
     let body = re_nl.replace_all(&body, "\n\n");
+    let heading = title.map(|t| format!("# {t}\n\n")).unwrap_or_default();
     format!(
-        "<!-- converted from HTML (internal web tool; heuristic strip) -->\n\n{}\n",
+        "<!-- converted from HTML (internal web tool; heuristic strip) -->\n\n{heading}{}\n",
         body.trim()
     )
 }
@@ -126,7 +174,7 @@ pub fn fetch_http_body(url: &str) -> Result<String, String> {
 pub fn fetch_url_as_markdown(url: &str) -> Result<String, String> {
     let text = fetch_http_body(url)?;
     if looks_like_html(&text) {
-        Ok(html_body_to_markdown(&text))
+        Ok(html_to_markdown_at(&text, reqwest::Url::parse(url).ok().as_ref()))
     } else {
         Ok(text)
     }
@@ -151,6 +199,31 @@ mod tests {
         assert!(!md.contains("<script"));
         assert!(md.contains("Title"));
         assert!(md.contains("world"));
+    }
+
+    #[test]
+    fn keeps_main_content_and_resolves_relative_links() {
+        let html = r#"<html><head><title>Trending Rust</title></head><body>
+            <header><a href="/login">Sign in</a></header><nav>Platform Copilot Actions</nav>
+            <main><h2><a href="/tokio-rs/tokio">tokio-rs / tokio</a></h2>
+            <p>A runtime for writing reliable asynchronous applications with Rust. Stars today: 120.
+            More text so the main element is clearly the page's own content, not a stub.</p></main>
+            <footer>Terms Privacy</footer></body></html>"#;
+        let base = reqwest::Url::parse("https://github.com/trending/rust").unwrap();
+        let md = html_to_markdown_at(html, Some(&base));
+        assert!(md.contains("# Trending Rust"), "{md}");
+        assert!(md.contains("[tokio-rs / tokio](https://github.com/tokio-rs/tokio)"), "{md}");
+        assert!(!md.contains("Sign in") && !md.contains("Copilot") && !md.contains("Privacy"), "{md}");
+    }
+
+    #[test]
+    fn a_main_cut_off_by_the_fetch_cap_still_counts() {
+        let html = format!(
+            "<html><body><nav>Menu Menu</nav><main><p>{}</p><a href=\"/a/b\">a / b</a>",
+            "Repository description text. ".repeat(20)
+        );
+        let md = html_to_markdown_at(&html, Some(&reqwest::Url::parse("https://github.com/x").unwrap()));
+        assert!(md.contains("[a / b](https://github.com/a/b)") && !md.contains("Menu"), "{md}");
     }
 
     #[test]

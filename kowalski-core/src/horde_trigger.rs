@@ -25,6 +25,10 @@ pub const OVERLAP_POLICIES: &[&str] = &["skip", "queue", "parallel"];
 /// Default `overlap` when the manifest omits it.
 pub const DEFAULT_TRIGGER_OVERLAP: &str = "skip";
 
+/// Prefix of a trigger-fired run's `source` (`trigger:<kind>:<horde>`, provenance only): such a
+/// run carries its real input (a watched path, pre-filled answers) in the prompt.
+pub const TRIGGER_SOURCE_PREFIX: &str = "trigger:";
+
 /// One `[[triggers]]` entry: exactly one of `cron` / `watch` / `webhook`, plus common
 /// optional fields. Unknown keys are rejected at parse time.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

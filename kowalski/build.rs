@@ -9,7 +9,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 /// Hordes shipped inside the binary, by directory name under `examples/`.
-const BUILTIN_HORDES: &[&str] = &["spreadsheet-analyst", "url-summarizer", "knowledge-compiler"];
+const BUILTIN_HORDES: &[&str] = &["spreadsheet-analyst", "morning-brief", "folder-watcher", "url-summarizer", "knowledge-compiler"];
 
 fn collect(root: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) {
     let Ok(rd) = std::fs::read_dir(dir) else { return };
