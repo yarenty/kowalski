@@ -7,6 +7,9 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # a change to this workflow builds every target (artifacts only) before a tag depends on it
+  pull_request:
+    paths: [".github/workflows/release.yml"]
   workflow_dispatch:
 
 permissions:
