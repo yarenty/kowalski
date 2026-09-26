@@ -72,6 +72,7 @@ function onImgError() {
   object-fit: contain;
   border-radius: var(--radius);
   flex-shrink: 0;
-  background: var(--rail);
+  /* the artwork carries its own outline; no tile behind it */
+  background: transparent;
 }
 </style>

@@ -74,11 +74,14 @@ defineExpose({ headline });
   display: flex;
   gap: 0;
   overflow-x: auto;
+  /* a long pipeline scrolls here instead of widening the card around it */
+  min-width: 0;
+  max-width: 100%;
 }
 .step {
   position: relative;
   flex: 1 1 0;
-  min-width: 7.5rem;
+  min-width: 6.5rem;
   display: flex;
   flex-direction: column;
   align-items: flex-start;

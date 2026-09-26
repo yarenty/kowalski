@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Fixed
+- The finished-run payload carries the horde's declared hand-off (`HANDOFF.md`, `BRIEF.md`, `NOTE.md`) instead of only a legacy `PASTE_ME.md`, so the Hordes screen shows the answers; the screen renders them as formatted Markdown.
+- A long pipeline no longer widens the Hordes screen past the window; penguin avatars sit on a transparent background.
+- Spreadsheet analyst prompts: "who has the most" questions aggregate and select the measure; the answers may only quote numbers present in the results.
+
 ### Changed
 - Operator UI redesigned in the "Commando" theme: penguin black and snow white with one signal-red accent, light and dark modes (with a light / dark / auto toggle), readable type (Archivo, IBM Plex Sans, JetBrains Mono) and WCAG AA contrast; all colours are design tokens in one stylesheet.
 - Plainer navigation: **Hordes** (now the landing screen), **Chat**, **Build** and **Setup**, with the technical screens folded under **Admin**.

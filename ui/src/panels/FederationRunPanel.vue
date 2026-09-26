@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
 import {
   api,
   openFederationEventSource,
@@ -249,6 +251,13 @@ async function copyPasteToClipboard() {
   }
 }
 const finalShortSummary = computed(() => selectedHorde.value?.delivery_summary_note || "Run completed.");
+const deliveryNoteHtml = computed(() =>
+  DOMPurify.sanitize(marked.parseInline(selectedHorde.value?.delivery_note ?? "") as string),
+);
+/** The hand-off rendered for reading (sanitised; the raw Markdown stays one click away). */
+const handoffHtml = computed(() =>
+  handoffMarkdown.value ? DOMPurify.sanitize(marked.parse(handoffMarkdown.value, { gfm: true }) as string) : "",
+);
 const handoffMarkdown = computed(() => {
   if (!runResult.value) return "";
   try {
@@ -1260,31 +1269,28 @@ onUnmounted(() => {
           <p v-if="pathAction" class="muted small">{{ pathAction }}</p>
           <h3 class="delivery-title">{{ selectedHorde?.delivery_title || "Final delivery" }}</h3>
           <p>{{ finalShortSummary }}</p>
-          <p v-if="selectedHorde?.delivery_note" class="muted small">{{ selectedHorde.delivery_note }}</p>
-          <p class="muted small">{{ finalDelivery?.text || "Run completed." }}</p>
+          <p v-if="selectedHorde?.delivery_note" class="muted small" v-html="deliveryNoteHtml" />
 
           <template v-if="handoffMarkdown">
-            <h4 class="handoff-title">Markdown hand-off</h4>
-            <p class="muted small">
-              Copy this block into your documentation or tracker. Wording at the top comes from this horde’s
-              <code>horde.md</code> when configured.
-            </p>
-            <textarea
-              readonly
-              class="paste-handoff-markdown"
-              rows="18"
-              spellcheck="false"
-              :value="handoffMarkdown"
-            />
+            <div class="handoff-rendered" v-html="handoffHtml" />
+            <details class="handoff-raw">
+              <summary>Markdown source</summary>
+              <textarea
+                readonly
+                class="paste-handoff-markdown"
+                rows="14"
+                spellcheck="false"
+                :value="handoffMarkdown"
+              />
+            </details>
             <div class="btn-row">
-              <button type="button" @click="copyPasteToClipboard">Copy to clipboard</button>
+              <button type="button" @click="copyPasteToClipboard">Copy as Markdown</button>
             </div>
             <p v-if="copyPasteErr" class="err">{{ copyPasteErr }}</p>
           </template>
           <p v-else class="muted small">
-            No markdown hand-off in this run (e.g. pipeline ended before <code>lint</code>, or run failed). Intermediates
-            live under <code>workdir/debug/</code>; the same content may exist as <code>PASTE_ME.md</code> at the workdir
-            root when the pipeline wrote it.
+            This run finished without a hand-off file. Its working files are in the output folder, under
+            <code>debug/</code>.
           </p>
           <details v-if="otherArtifacts.length">
             <summary>Intermediate files ({{ otherArtifacts.length }})</summary>
@@ -1456,6 +1462,25 @@ onUnmounted(() => {
 .resume-prompt { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .resume-approval { flex: 1 1 12rem; font-size: 0.9rem; color: var(--ink); }
 
+/* ---------- hand-off ---------- */
+.handoff-rendered {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--ink);
+  border-radius: 6px;
+  padding: 0.4rem 1.2rem 0.8rem;
+  line-height: 1.6;
+  overflow-x: auto;
+}
+.handoff-rendered :deep(h1) { font-size: 1.35rem; margin: 0.7rem 0 0.4rem; }
+.handoff-rendered :deep(h2) { font-size: 1.12rem; margin: 1.1rem 0 0.35rem; }
+.handoff-rendered :deep(h3) { font-size: 1rem; margin: 1rem 0 0.3rem; }
+.handoff-rendered :deep(table) { border-collapse: collapse; margin: 0.5rem 0; font-size: 0.92rem; }
+.handoff-rendered :deep(th), .handoff-rendered :deep(td) { border: 1px solid var(--hair); padding: 0.3rem 0.6rem; text-align: left; }
+.handoff-rendered :deep(th) { background: var(--sunk); }
+.handoff-rendered :deep(code) { background: var(--sunk); padding: 0.05rem 0.3rem; border-radius: 3px; }
+.handoff-raw { margin-top: 0.6rem; }
+
 /* ---------- layout ---------- */
 .hordes-layout {
   display: grid;
@@ -1464,7 +1489,7 @@ onUnmounted(() => {
   align-items: start;
 }
 .mission { display: grid; gap: 1rem; min-width: 0; }
-.mission > * { margin: 0; }
+.mission > * { margin: 0; min-width: 0; }
 
 /* ---------- picker ---------- */
 .picker { position: sticky; top: 0; }

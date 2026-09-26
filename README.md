@@ -8,6 +8,11 @@ The answers come back as files you can open: a report workbook, a morning brief,
 deadlines. Your model (local Ollama, or any OpenAI-compatible endpoint with your key), your files,
 your machine.
 
+![Kowalski's Spreadsheet analyst: plain questions in, answers and a workbook out](docs/img/kowalski-demo.gif)
+
+*Three questions to the Spreadsheet analyst, on a local 7B model; the minutes it spends thinking are
+cut from the recording.*
+
 **Current release: 2.1 — Standing Orders.** What changed and when: [CHANGELOG.md](CHANGELOG.md) ·
 what is next: [ROADMAP.md](ROADMAP.md).
 

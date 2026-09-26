@@ -87,7 +87,7 @@ const pickerSizePx = `${PENGUIN_DISPLAY.picker}px`;
   max-height: v-bind(pickerSizePx);
   object-fit: contain;
   border-radius: 4px;
-  background: var(--rail);
+  background: transparent;
 }
 .pick-label {
   font-size: 0.58rem;
