@@ -168,6 +168,9 @@ pub enum SearchBackend {
     Brave { api_key: String },
     /// A SearXNG instance with the JSON format enabled.
     Searxng { url: String },
+    /// Staan (European web index, staan.ai); key from config or `STAAN_API_KEY`, optional
+    /// `market` such as `en-us`, `de-de`, `fr-fr`.
+    Staan { api_key: String, market: Option<String> },
 }
 
 impl SearchBackend {
@@ -182,8 +185,12 @@ impl SearchBackend {
                 Some(Self::Brave { api_key })
             }
             "searxng" => Some(Self::Searxng { url: get("url")?.trim_end_matches('/').to_string() }),
+            "staan" => {
+                let api_key = get("api_key").or_else(|| std::env::var("STAAN_API_KEY").ok().filter(|k| !k.is_empty()))?;
+                Some(Self::Staan { api_key, market: get("market") })
+            }
             other => {
-                log::warn!("[search] provider `{other}` is not supported (brave, searxng); web_search disabled");
+                log::warn!("[search] provider `{other}` is not supported (brave, staan, searxng); web_search disabled");
                 None
             }
         }
@@ -232,6 +239,25 @@ impl WebSearchTool {
                 Ok(v["web"]["results"]
                     .as_array()
                     .map(|a| a.iter().take(count).map(|r| hit(r["title"].as_str(), r["url"].as_str(), r["description"].as_str())).collect())
+                    .unwrap_or_default())
+            }
+            SearchBackend::Staan { api_key, market } => {
+                let mut req = self
+                    .http
+                    .get("https://api.staan.ai/v2/search/web")
+                    .query(&[("q", query)])
+                    .bearer_auth(api_key);
+                if let Some(m) = market {
+                    req = req.query(&[("market", m.as_str())]);
+                }
+                let res = req.send().await.map_err(|e| e.to_string())?;
+                if !res.status().is_success() {
+                    return Err(format!("Staan answered {}", res.status()));
+                }
+                let v: Value = res.json().await.map_err(|e| e.to_string())?;
+                Ok(v["web"]["results"]
+                    .as_array()
+                    .map(|a| a.iter().take(count).map(|r| hit(r["title"].as_str(), r["url"].as_str(), r["snippet"].as_str())).collect())
                     .unwrap_or_default())
             }
             SearchBackend::Searxng { url } => {
@@ -338,6 +364,8 @@ mod tests {
         assert_eq!(SearchBackend::from_config(&c), Some(SearchBackend::Searxng { url: "https://search.example".into() }));
         c.additional.insert("search".into(), json!({ "provider": "brave", "api_key": "k" }));
         assert_eq!(SearchBackend::from_config(&c), Some(SearchBackend::Brave { api_key: "k".into() }));
+        c.additional.insert("search".into(), json!({ "provider": "staan", "api_key": "s", "market": "de-de" }));
+        assert_eq!(SearchBackend::from_config(&c), Some(SearchBackend::Staan { api_key: "s".into(), market: Some("de-de".into()) }));
         c.additional.insert("search".into(), json!({ "provider": "bing", "api_key": "k" }));
         assert_eq!(SearchBackend::from_config(&c), None);
     }
