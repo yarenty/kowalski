@@ -238,6 +238,17 @@ pub struct HordeSpec {
     pub run_form: Option<kowalski_core::HordeRunFormSpec>,
 }
 
+/// `text` without a leading `---` … `---` metadata block.
+fn strip_front_matter(text: &str) -> &str {
+    let Some(rest) = text.strip_prefix("---\n").or_else(|| text.strip_prefix("---\r\n")) else {
+        return text;
+    };
+    match rest.find("\n---") {
+        Some(end) => rest[end + 4..].trim_start_matches(['\r', '\n']),
+        None => text,
+    }
+}
+
 fn default_category() -> String {
     "other".to_string()
 }
@@ -2302,6 +2313,9 @@ impl HordeManager {
             spec.workdir.join("PASTE_ME.md")
         };
         let handoff_markdown = std::fs::read_to_string(&paste_path).ok().map(|s| {
+            // a leading `---` metadata block (verify/apply artifacts carry one) is for the
+            // orchestrator, not the reader
+            let s = strip_front_matter(&s).to_string();
             const MAX: usize = 48_000;
             if s.len() <= MAX {
                 s
@@ -2951,6 +2965,13 @@ pub use kowalski_core::config::default_horde_roots;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hand_off_front_matter_is_stripped() {
+        assert_eq!(strip_front_matter("---\nstatus: pass\n---\n\n# Verify\nok"), "# Verify\nok");
+        assert_eq!(strip_front_matter("# No metadata"), "# No metadata");
+        assert_eq!(strip_front_matter("---\nunclosed"), "---\nunclosed");
+    }
     use kowalski_core::db::run_store::RUN_ORIGIN_TRIGGER;
     use kowalski_core::federation::{AgentRecord, AgentRegistry};
 

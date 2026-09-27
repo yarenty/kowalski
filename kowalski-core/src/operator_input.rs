@@ -201,7 +201,9 @@ const RUN_TITLE_MAX: usize = 80;
 /// of an operator form (its first line, with "+N more" when it has more lines), a file name for
 /// a path, a host for a URL, the first line of free text, or what started a trigger run.
 pub fn run_title(prompt: &str, question: &str, source: Option<&str>) -> String {
-    let text = if question.trim().is_empty() { prompt } else { question };
+    // the operator's own form answers say what the run is about; a horde's default question
+    // (used when the form has no free-text question) would name every run the same
+    let text = if first_answer(prompt).is_some() || question.trim().is_empty() { prompt } else { question };
     if let Some(kind) = source
         .and_then(|s| s.strip_prefix(crate::horde_trigger::TRIGGER_SOURCE_PREFIX))
         .and_then(|rest| rest.split(':').next())
@@ -284,6 +286,8 @@ mod tests {
         assert_eq!(run_title(brief, brief, None), "news.ycombinator.com +1 more");
         assert_eq!(run_title("## Summarise this repo please", "", None), "Summarise this repo please");
         assert_eq!(run_title("", "", None), "Untitled run");
+        let brief = "# Operator input (Brief)\n\n**What should be checked?:** Is the release ready?";
+        assert_eq!(run_title(brief, "Are the checks green?", None), "Is the release ready?", "form answers beat the default question");
         let long = "x".repeat(200);
         assert!(run_title(&long, "", None).chars().count() <= RUN_TITLE_MAX + 1);
     }

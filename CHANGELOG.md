@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Fixed
+- Run titles use the operator's form answers before a horde's default question, so runs of the same horde no longer share one name.
+- A hand-off file's leading `---` metadata block is left out of the finished-run payload.
+
 ### Added
 - Hordes declare `category`, `icon` and `featured` in `horde.md`; the built-in hordes are tagged (Spreadsheet analyst, Morning brief and Folder watcher are featured).
 - Every run has a readable `title` (the first question with "+N more", a watched file's name, "Scheduled run"), and `GET /api/runs` lists runs across hordes with status filters (`needs_you`, `running`, `failed`, `done`, `cancelled`), a horde filter and per-filter counts.
