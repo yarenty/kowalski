@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-09-27
+
+### Changed
+- The crates.io and docs.rs pages of `kowalski`, `kowalski-core`, `kowalski-cli` and `kowalski-mcp-rookery` are rewritten for the current release: install, features, a compiled example and absolute links, with no version numbers to go stale. The `kowalski`, `kowalski-core` and `kowalski-cli` crate docs are their READMEs, so the examples are compiled as doctests.
+- Crates inherit the workspace version; `scripts/release-version.sh bump X.Y.Z` sets every version mention and `scripts/release-version.sh check` (run in CI and before `scripts/publish-crates.sh`) fails when one drifts or a crate README carries a version or a relative link.
+
 ## [2.3.0] - 2026-09-27 — **Mission Control**
 
 > Many hordes, one calm screen: a home with icon tiles, every run in one list named by what was

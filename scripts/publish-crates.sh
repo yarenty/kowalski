@@ -128,6 +128,8 @@ if [[ ${#selected[@]} -eq 0 ]]; then
   exit 1
 fi
 
+"$ROOT/scripts/release-version.sh" check
+
 echo "Publish sequence: ${selected[*]}"
 [[ "$DRY_RUN" -eq 1 ]] && echo "(dry-run: package only, no upload)"
 

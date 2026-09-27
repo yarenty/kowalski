@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 pub mod agent_app_ops;
 pub mod config;
 pub mod error;

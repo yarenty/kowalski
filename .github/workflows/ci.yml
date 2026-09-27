@@ -19,6 +19,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Release version consistent, crate READMEs publishable
+        run: ./scripts/release-version.sh check
+
       - name: Markdown link check (offline)
         uses: lycheeverse/lychee-action@v2
         with:

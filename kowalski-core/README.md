@@ -1,199 +1,48 @@
-# Kowalski Core
+# kowalski-core
 
-**Crate version 1.5.0** · Part of the [`kowalski` workspace](https://github.com/yarenty/kowalski).
+Core library of **Kowalski**, a Rust multi-agent framework: agents with MCP tools and memory, and
+hordes (step pipelines with triggers) over Ollama or OpenAI-compatible models. The
+[`kowalski`](https://crates.io/crates/kowalski) server and
+[`kowalski-cli`](https://crates.io/crates/kowalski-cli) are thin surfaces over this crate.
 
-The core library for the Kowalski AI agent framework, providing foundational abstractions, types, and utilities for building modular, extensible, and robust AI agents.
-
----
-
-## Horde changes in 1.1.0 (since 1.0.0)
-
-- Core app flow now powers horde-style markdown orchestration for the Knowledge Compiler example.
-- Federation-oriented task execution surfaces sub-agent step traces and artifact-focused completion contracts.
-
----
-
-## Description
-
-`kowalski-core` is the heart of the Kowalski agent ecosystem. It defines the essential building blocks for agent-based AI systems, including agent logic, conversation management, tool and toolchain orchestration, model management, roles/personas, configuration, error handling, and logging. All other Kowalski modules and agents build on top of these abstractions.
-
-**Memory & dependencies:** **Qdrant** was used in an **initial PoC** for semantic memory. The **goal** is a **simple, robust** stack with **minimal failure points**—see [`docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md`](../docs/dev/DESIGN_MEMORY_AND_DEPENDENCIES.md) and [`MEMORY_ARCHITECTURE.md`](./MEMORY_ARCHITECTURE.md).
-
----
-
-## Dependencies
-
-- **serde** (with `derive`) — Serialization/deserialization
-- **serde_json** — JSON support
-- **async-trait** — Async trait support
-- **tokio** — Async runtime
-- **reqwest** — HTTP client
-- **thiserror** — Error handling
-- **uuid** — Unique IDs for conversations, etc.
-- **chrono** — Date/time utilities
-- **log** — Logging facade
-- **config** — Configuration file parsing
-- **dirs** — Platform-specific directory helpers
-- **toml** — TOML parsing
-- **env_logger** — Logging backend
-- **url** — URL parsing
-
----
-
-## Architecture
-
-```
-kowalski-core/
-├── agent/         # Agent trait and base agent implementation
-├── config.rs      # Configuration system
-├── conversation/  # Conversation and message types
-├── error.rs       # Unified error types
-├── logging/       # Logging utilities
-├── memory/        # Multi-tiered memory system
-├── model/         # Model management and selection
-├── role/          # Role, audience, preset, and style abstractions
-├── tool_chain.rs  # Tool chain orchestration
-├── tools.rs       # Tool trait and parameter types
-├── utils/         # Utility helpers
-└── lib.rs         # Main library entry point
+```bash
+cargo add kowalski-core
+cargo add kowalski-core --features postgres   # SQL memory, pgvector, graph
 ```
 
-- **Trait-based design**: All extensible components (agents, tools, task types) are defined as traits.
-- **Async-first**: All major operations are async for scalability.
-- **Strong typing**: Rich, serializable types for all core concepts.
-- **Extensible**: Designed for easy extension with new tools, roles, and agent types.
+## What is inside
 
----
+| Area | Modules |
+|------|---------|
+| Agents | `agent` (`Agent` trait, `BaseAgent`, native tool calling with a ReAct fallback), `template` (`TemplateAgent`, `AgentBuilder`), `role` |
+| Models | `llm` (Ollama and OpenAI-compatible providers, structured output), `model` |
+| Tools | `tools` (`Tool` trait; internal `web_fetch`, `web_search`, filesystem), `tool_chain`, `mcp` (MCP client and hub: stdio and Streamable HTTP) |
+| Memory | `memory` (working, episodic and semantic tiers), `db` (SQLite by default, Postgres optional; migrations ship with the crate) |
+| Hordes | `horde_step`, `horde_stages`, `horde_graph` (linear and fork/join), `horde_trigger` (cron, watch, webhook), `horde_table_steps` (`table_profile`, `sql_batch`, `xlsx_report`), `markdown_pipeline`, `operator_input` |
+| Building and sharing | `rookery` (horde builder primitives), `manifest` (portable workflow manifests and bundles), `source_bundle` |
+| Federation | `federation` (agent registry, task delegation, events), `graph` |
 
-## Core Functionality & Examples
+## Example
 
-### 1. Agent Abstraction
+```rust,no_run
+use kowalski_core::{Agent, Config, template::TemplateAgent};
 
-Defines the `Agent` trait and a `BaseAgent` implementation for managing conversations, interacting with models, and handling messages.
-
-```rust
-use kowalski_core::{Agent, BaseAgent, Config};
-
-let config = Config::default();
-let mut agent = BaseAgent::new(config, "Demo Agent", "A test agent").await?;
-let conv_id = agent.start_conversation("llama3.2");
-agent.add_message(&conv_id, "user", "Hello, world!").await;
-```
-
----
-
-### 2. Memory System
-
-`kowalski-core` includes a sophisticated, multi-tiered memory system that gives agents a robust and scalable memory, moving beyond simple conversation history to enable true learning and context retention.
-
-For a detailed explanation of the memory architecture, please see [MEMORY_ARCHITECTURE.md](./MEMORY_ARCHITECTURE.md).
-
----
-
-### 3. Conversation Management
-
-Manages conversation history, messages, and tool calls.
-
-```rust
-use kowalski_core::conversation::Conversation;
-
-let mut conv = Conversation::new("llama3.2");
-conv.add_message("user", "What's the weather?");
-for msg in conv.get_messages() {
-    println!("{}: {}", msg.role, msg.content);
+#[tokio::main]
+async fn main() -> Result<(), kowalski_core::KowalskiError> {
+    let config = Config::default();
+    let model = config.ollama.model.clone();
+    let mut agent = TemplateAgent::new(config).await?;
+    let conv = agent.start_conversation(&model);
+    println!("{}", agent.chat_with_history(&conv, "Hello", None).await?);
+    Ok(())
 }
 ```
 
----
+## Documentation
 
-### 4. Tool & Tool Chain System
+- [docs.rs/kowalski-core](https://docs.rs/kowalski-core)
+- [Architecture](https://github.com/yarenty/kowalski/blob/main/docs/architecture.html) · [Memory architecture](https://github.com/yarenty/kowalski/blob/main/kowalski-core/MEMORY_ARCHITECTURE.md) · [Changelog](https://github.com/yarenty/kowalski/blob/main/CHANGELOG.md)
 
-Defines the `Tool` trait for pluggable tools and the `ToolChain` for orchestrating tool execution.
+## License
 
-```rust
-use kowalski_core::{Tool, ToolInput, ToolOutput, ToolChain};
-use serde_json::json;
-
-struct EchoTool;
-#[async_trait::async_trait]
-impl Tool for EchoTool {
-    async fn execute(&mut self, input: ToolInput) -> Result<ToolOutput, kowalski_core::KowalskiError> {
-        Ok(ToolOutput::new(json!({"echo": input.content}), None))
-    }
-    fn name(&self) -> &str { "echo" }
-    fn description(&self) -> &str { "Echoes input" }
-    fn parameters(&self) -> Vec<kowalski_core::ToolParameter> { vec![] }
-}
-
-let mut chain = ToolChain::new();
-chain.register_tool(Box::new(EchoTool));
-```
-
----
-
-### 5. Model Management
-
-Handles model listing, existence checks, and pulling models from a server.
-
-```rust
-use kowalski_core::model::ModelManager;
-
-let manager = ModelManager::new("http://localhost:11434".to_string())?;
-let models = manager.list_models().await?;
-```
-
----
-
-### 6. Roles, Audiences, Presets, Styles
-
-Allows agents to assume different personas and communication styles.
-
-```rust
-use kowalski_core::role::{Role, Audience, Preset, Style};
-
-let role = Role::new("Teacher", "Explains concepts simply")
-    .with_audience(Audience::new("Student", "Learning Rust"))
-    .with_preset(Preset::new("Beginner", "No prior experience"))
-    .with_style(Style::new("Friendly", "Conversational and encouraging"));
-```
-
----
-
-### 7. Configuration
-
-Flexible, extensible configuration system for agents and tools.
-
-```rust
-use kowalski_core::Config;
-
-let config = Config::default();
-println!("Ollama host: {}", config.ollama.host);
-```
-
----
-
-### 8. Error Handling
-
-Unified error type for all core operations.
-
-```rust
-use kowalski_core::KowalskiError;
-
-fn do_something() -> Result<(), KowalskiError> {
-    Err(KowalskiError::ToolExecution("Something went wrong".into()))
-}
-```
-
----
-
-## Future Enhancements
-
-- **Agent orchestration**: Multi-agent collaboration and federation
-- **Advanced tool chaining**: Conditional and parallel tool execution
-- **Persistent conversation storage**: Database-backed conversation history
-- **Dynamic model selection**: Automatic model switching based on context
-- **Role learning**: Adaptive personas based on user feedback
-- **Plugin system**: Hot-swappable tools and agent extensions
-- **Improved logging and tracing**: Distributed tracing and analytics
-
----
+MIT — see [LICENSE](https://github.com/yarenty/kowalski/blob/main/LICENSE).
