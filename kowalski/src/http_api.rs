@@ -528,6 +528,7 @@ fn build_app(
             "/api/hordes/{horde_id}/runs/{run_id}/cancel",
             post(post_horde_run_cancel),
         )
+        .route("/api/runs", get(get_runs))
         .route(
             "/api/hordes/{horde_id}/runs/{run_id}/approve",
             post(post_horde_run_approve),
@@ -2036,6 +2037,9 @@ async fn get_hordes(State(state): State<ApiState>) -> Json<serde_json::Value> {
                 "delivery_root_rel": s.delivery_root_rel,
                 "delivery_summary_note": s.delivery_summary_note,
                 "prompt_tip": s.prompt_tip,
+                "category": s.category,
+                "icon": s.icon,
+                "featured": s.featured,
                 "sub_agents": s.sub_agents,
                 "run_form": s.run_form,
             })
@@ -2250,6 +2254,9 @@ async fn get_horde_detail(
         "delivery_root_rel": spec.delivery_root_rel,
         "delivery_summary_note": spec.delivery_summary_note,
         "prompt_tip": spec.prompt_tip,
+        "category": spec.category,
+        "icon": spec.icon,
+        "featured": spec.featured,
         "sub_agents": spec.sub_agents,
         "run_form": spec.run_form,
     })))
@@ -2969,6 +2976,84 @@ async fn post_horde_run_resume(
     })))
 }
 
+#[derive(Deserialize, Default)]
+struct RunsQuery {
+    /// `needs_you`, `running`, `failed`, `done` or `cancelled`; absent = every run.
+    status: Option<String>,
+    /// One horde's runs only.
+    horde: Option<String>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+}
+
+/// Store statuses behind one list filter of `GET /api/runs`.
+fn run_filter_statuses(filter: &str) -> Option<Vec<kowalski_core::db::run_store::RunStatus>> {
+    use kowalski_core::db::run_store::RunStatus as S;
+    Some(match filter {
+        "needs_you" => vec![S::AwaitingInput],
+        "running" => vec![S::Pending, S::Running],
+        "failed" => vec![S::Error],
+        "done" => vec![S::Done],
+        "cancelled" => vec![S::Cancelled],
+        _ => return None,
+    })
+}
+
+/// Runs across every horde, newest first, as light summaries (title, horde, status, times) with
+/// per-filter counts: the Runs page and the ⌘K picker read this.
+async fn get_runs(
+    State(state): State<ApiState>,
+    Query(q): Query<RunsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    use kowalski_core::db::run_store::RunStatus as S;
+    let limit = q.limit.unwrap_or(50).clamp(1, 500);
+    let offset = q.offset.unwrap_or(0).max(0);
+    let statuses = match q.status.as_deref().filter(|s| !s.is_empty() && *s != "all") {
+        Some(f) => run_filter_statuses(f)
+            .ok_or_else(|| (StatusCode::BAD_REQUEST, format!("unknown run filter `{f}`")))?,
+        None => Vec::new(),
+    };
+    let store = &state.horde_manager.store;
+    let horde = q.horde.as_deref().filter(|h| !h.is_empty());
+    let page = store
+        .list_runs_filtered(horde, &statuses, limit, offset)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let counts = store
+        .count_runs_by_status(horde)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let count = |want: &[S]| counts.iter().filter(|(s, _)| want.contains(s)).map(|(_, n)| n).sum::<i64>();
+    let runs: Vec<serde_json::Value> = page
+        .iter()
+        .map(|r| {
+            json!({
+                "run_id": r.run_id,
+                "horde_id": r.horde_id,
+                "title": kowalski_core::run_title(&r.prompt, &r.question, r.source.as_deref()),
+                "status": crate::horde::api_run_status(r.status),
+                "started_at": r.started_at,
+                "finished_at": r.finished_at,
+                "origin": r.origin,
+                "current_step": r.current_step,
+            })
+        })
+        .collect();
+    Ok(Json(json!({
+        "runs": runs,
+        "counts": {
+            "all": counts.iter().map(|(_, n)| n).sum::<i64>(),
+            "needs_you": count(&[S::AwaitingInput]),
+            "running": count(&[S::Pending, S::Running]),
+            "failed": count(&[S::Error]),
+            "done": count(&[S::Done]),
+            "cancelled": count(&[S::Cancelled]),
+        },
+        "limit": limit,
+        "offset": offset,
+    })))
+}
+
 async fn post_horde_run_approve(
     State(state): State<ApiState>,
     AxumPath((horde_id, run_id)): AxumPath<(String, String)>,
@@ -3330,6 +3415,44 @@ mod api_tests {
         assert_eq!(run["status"], "completed", "{run}");
         let (status, _) = call(&app, "POST", &format!("/api/hordes/api-horde/runs/{id}/approve"), None, None).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "nothing left to approve");
+    }
+
+    #[tokio::test]
+    async fn runs_list_across_hordes_with_titles_filters_and_counts() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let app = fixture_with(dir.path(), None, true).await;
+        let (_, started) = call(
+            &app,
+            "POST",
+            "/api/hordes/api-horde/run",
+            Some(json!({ "prompt": "Check the release\nthen tag it", "source": project.path().display().to_string() })),
+            None,
+        )
+        .await;
+        let id = run_id(&started);
+        wait_for(&app, "api-horde", &id, &["awaiting_input"]).await;
+
+        let (status, all) = call(&app, "GET", "/api/runs", None, None).await;
+        assert_eq!(status, StatusCode::OK, "{all}");
+        let run = all["runs"].as_array().unwrap().iter().find(|r| r["run_id"] == id.as_str()).expect("listed");
+        assert_eq!(run["horde_id"], "api-horde");
+        assert!(run["title"].as_str().unwrap().starts_with("Check the release"), "{run}");
+        assert_eq!(all["counts"]["needs_you"], 1, "{all}");
+
+        let (_, waiting) = call(&app, "GET", "/api/runs?status=needs_you", None, None).await;
+        assert_eq!(waiting["runs"].as_array().unwrap().len(), 1);
+        let (_, failed) = call(&app, "GET", "/api/runs?status=failed", None, None).await;
+        assert!(failed["runs"].as_array().unwrap().is_empty());
+        let (_, other) = call(&app, "GET", "/api/runs?horde=slow-horde", None, None).await;
+        assert!(other["runs"].as_array().unwrap().is_empty(), "filtered by horde");
+        let (status, _) = call(&app, "GET", "/api/runs?status=bogus", None, None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+
+        let (_, hordes) = call(&app, "GET", "/api/hordes", None, None).await;
+        let h = hordes["hordes"].as_array().unwrap().iter().find(|h| h["id"] == "api-horde").unwrap();
+        assert_eq!(h["category"], "other");
+        assert_eq!(h["featured"], false);
     }
 
     #[tokio::test]

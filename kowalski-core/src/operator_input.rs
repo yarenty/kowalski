@@ -194,8 +194,99 @@ pub fn default_ingest_form_fields() -> Vec<OperatorInputField> {
     ]
 }
 
+/// Longest run title, in characters.
+const RUN_TITLE_MAX: usize = 80;
+
+/// A short, human title for a run, so a list of runs reads as what was asked: the first answer
+/// of an operator form (its first line, with "+N more" when it has more lines), a file name for
+/// a path, a host for a URL, the first line of free text, or what started a trigger run.
+pub fn run_title(prompt: &str, question: &str, source: Option<&str>) -> String {
+    let text = if question.trim().is_empty() { prompt } else { question };
+    if let Some(kind) = source
+        .and_then(|s| s.strip_prefix(crate::horde_trigger::TRIGGER_SOURCE_PREFIX))
+        .and_then(|rest| rest.split(':').next())
+    {
+        match kind {
+            "cron" => return "Scheduled run".to_string(),
+            "webhook" => return "Webhook call".to_string(),
+            _ => {} // a watched path: the file name below says what arrived
+        }
+    }
+    let answer = first_answer(text);
+    let lines: Vec<&str> = match answer.as_deref() {
+        Some(answer) => answer.lines().map(str::trim).filter(|l| !l.is_empty()).collect(),
+        None => text
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with("# Operator input"))
+            .take(1)
+            .collect(),
+    };
+    let Some(first) = lines.first() else {
+        return "Untitled run".to_string();
+    };
+    let mut title = short_label(first);
+    if lines.len() > 1 {
+        title.push_str(&format!(" +{} more", lines.len() - 1));
+    }
+    title
+}
+
+/// The value of the first `**Label:** value` field of an operator block (it may span lines).
+fn first_answer(text: &str) -> Option<String> {
+    let mut value: Option<String> = None;
+    for line in text.lines() {
+        let t = line.trim_start();
+        let is_label = t.starts_with("**") && t.contains(":**");
+        match (&mut value, is_label) {
+            (None, true) => {
+                let rest = &t[t.find(":**")? + 3..];
+                value = Some(rest.trim().to_string());
+            }
+            (Some(_), true) => break,
+            (Some(v), false) => {
+                v.push('\n');
+                v.push_str(line);
+            }
+            (None, false) => {}
+        }
+    }
+    value.filter(|v| !v.trim().is_empty())
+}
+
+/// One line as a label: markdown marks stripped, a path shown by its file name, a URL by its
+/// host, cut to [`RUN_TITLE_MAX`] characters.
+fn short_label(line: &str) -> String {
+    let t = line.trim_start_matches(['#', '*', '>', '-', ' ']).trim().trim_matches('`');
+    let t = if let Some(rest) = t.strip_prefix("https://").or_else(|| t.strip_prefix("http://")) {
+        rest.split('/').next().unwrap_or(rest).to_string()
+    } else if t.starts_with('/') || t.starts_with("~/") {
+        t.rsplit('/').find(|p| !p.is_empty()).unwrap_or(t).to_string()
+    } else {
+        t.to_string()
+    };
+    match t.char_indices().nth(RUN_TITLE_MAX) {
+        Some((cut, _)) => format!("{}…", t[..cut].trim_end()),
+        None => t,
+    }
+}
+
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn run_titles_read_as_what_was_asked() {
+        let form = "# Operator input (Your questions)\n\n**Questions, one per line:** Who spent the most?\nHow many are active?\nPeople per city?\n\n**Tables:** orders";
+        assert_eq!(run_title(form, form, Some(form)), "Who spent the most? +2 more");
+        assert_eq!(run_title("", "/Users/me/inbox/acme-invoice.txt", Some("trigger:watch:folder-watcher")), "acme-invoice.txt");
+        assert_eq!(run_title("", "anything", Some("trigger:cron:morning-brief")), "Scheduled run");
+        let brief = "# Operator input (Fetch)\n\n**Pages to read:** https://news.ycombinator.com/\nhttps://tldr.tech/";
+        assert_eq!(run_title(brief, brief, None), "news.ycombinator.com +1 more");
+        assert_eq!(run_title("## Summarise this repo please", "", None), "Summarise this repo please");
+        assert_eq!(run_title("", "", None), "Untitled run");
+        let long = "x".repeat(200);
+        assert!(run_title(&long, "", None).chars().count() <= RUN_TITLE_MAX + 1);
+    }
     use super::*;
 
     fn sample_form() -> HordeRunFormSpec {

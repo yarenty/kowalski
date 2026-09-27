@@ -80,7 +80,7 @@ pub use markdown_pipeline::{
 };
 pub use operator_input::{
     answers_to_prompt, default_ingest_form_fields, operator_answer, parse_operator_answer_block,
-    validate_form_answers, HordeRunFormSpec, OperatorInputField,
+    run_title, validate_form_answers, HordeRunFormSpec, OperatorInputField,
 };
 pub use rookery::{
     assign_penguin_avatars, extract_json_block, horde_root_path, infer_penguin_avatar,

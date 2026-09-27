@@ -1007,6 +1007,9 @@ mod tests {
             delivery_root_rel: String::new(),
             delivery_summary_note: String::new(),
             prompt_tip: String::new(),
+            category: "other".into(),
+            icon: String::new(),
+            featured: false,
             root_path: dir.to_path_buf(),
             sub_agents: vec![sub("a")],
             followup_artifact_dir: dir.join("follow"),
@@ -1080,6 +1083,7 @@ mod tests {
             origin: RUN_ORIGIN_TRIGGER.into(),
             resume_count: 0,
             resumable: false,
+            title: "q".into(),
             manifest_snapshot: None,
         };
         tm.manager

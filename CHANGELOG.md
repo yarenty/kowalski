@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Added
+- Hordes declare `category`, `icon` and `featured` in `horde.md`; the built-in hordes are tagged (Spreadsheet analyst, Morning brief and Folder watcher are featured).
+- Every run has a readable `title` (the first question with "+N more", a watched file's name, "Scheduled run"), and `GET /api/runs` lists runs across hordes with status filters (`needs_you`, `running`, `failed`, `done`, `cancelled`), a horde filter and per-filter counts.
+
 ### Fixed
 - Chat with tools: an answer containing a code block (a shell command, a JSON example) is no longer mistaken for a broken tool call, which used to send the model a correction turn and could start a tool loop on small models.
 - The tool loop never ends with an empty reply: a repeated identical tool call gets one "answer now" nudge instead of stopping, and a loop that still ends without text (repeats, iteration cap) returns the last tool result.
