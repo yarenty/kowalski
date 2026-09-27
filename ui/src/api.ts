@@ -186,6 +186,35 @@ export type HordeSubAgent = {
   tool_ids?: string[];
 };
 
+/** One table tableski made from an uploaded file. */
+export type TableskiTable = { name: string; sheet?: string; rows: number; columns?: number };
+/** A file on the tableski account (fields as tableski returns them; extras pass through). */
+export type TableskiFile = {
+  id: string;
+  name?: string;
+  file_name?: string;
+  size?: number;
+  bytes?: number;
+  tables?: TableskiTable[];
+  created_at?: string;
+  expires_at?: string | null;
+  [k: string]: unknown;
+};
+export type TableskiFiles = {
+  files: TableskiFile[];
+  quota?: { files?: number | null; bytes_per_file?: number | null; retention_hours?: number | null };
+};
+
+/** Whether a horde queries tableski (a step lists its tools or is a table step). */
+export function usesTableski(h: { sub_agents?: HordeSubAgent[] } | null | undefined): boolean {
+  return (h?.sub_agents ?? []).some(
+    (s) =>
+      s.kind === "table_profile" ||
+      s.kind === "sql_batch" ||
+      (s.tool_ids ?? []).some((t) => ["query_sql", "list_tables", "get_schema"].includes(t)),
+  );
+}
+
 export type OperatorInputField = {
   id: string;
   type: string;
@@ -508,6 +537,17 @@ export const api = {
     const match = /filename="([^"]+)"/.exec(disposition);
     return { fileName: match?.[1] ?? `${hordeId}.kwf.zip`, blob: await res.blob() };
   },
+  /** Workbooks on the connected tableski account (kowalski forwards with its sign-in). */
+  tableskiFiles: () => json<TableskiFiles>("/api/tableski/files"),
+  tableskiUpload: async (file: File): Promise<TableskiFile> => {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    const res = await fetch(`${base}/api/tableski/files`, { method: "POST", headers: authHeaders(), body: form });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json() as Promise<TableskiFile>;
+  },
+  tableskiRemove: (id: string) =>
+    json<{ ok?: boolean }>(`/api/tableski/files/${encodeURIComponent(id)}`, { method: "DELETE" }),
   /** Upload a `.kwf.zip` / `.bbwf.zip` bundle. `dryRun` runs every import gate and
    *  returns the portability report without landing the horde. */
   hordeImport: async (file: File, dryRun: boolean): Promise<HordeImportResponse> => {

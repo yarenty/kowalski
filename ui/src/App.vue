@@ -826,6 +826,7 @@ onUnmounted(() => {
         :horde-id="route.horde"
         :run-id="route.run"
         @go-home="selectTab('federation-run')"
+        @open-setup="selectTab('setup')"
         @open-run="openRun(route.horde!, $event)"
         @run-started="navigate({ run: $event }, { replace: true })"
         @open-runs="openRuns('all', $event)"

@@ -9,9 +9,11 @@ import {
   type HordeRunRecord,
   type HordeTriggerStatus,
   type RunSummary,
+  usesTableski,
 } from "../api";
 import HordeIcon from "../components/HordeIcon.vue";
 import HordeRunForm from "../components/HordeRunForm.vue";
+import WorkbooksCard from "../components/WorkbooksCard.vue";
 import PenguinAvatar from "../components/PenguinAvatar.vue";
 import PipelineStepper, { type StepState, type StepperItem } from "../components/PipelineStepper.vue";
 import { hordeById, hordesLoaded, refreshHordes, useHordePolling, firstSentence } from "../hordesStore";
@@ -32,6 +34,7 @@ const emit = defineEmits<{
   /** A run started from this page: reflect it in the URL without reloading it. */
   (e: "run-started", runId: string): void;
   (e: "open-runs", hordeId: string): void;
+  (e: "open-setup"): void;
   (e: "open-build"): void;
   (e: "new-chat-session"): void;
   /** A run started, ended or was approved: counts elsewhere (top bar badge) are stale. */
@@ -979,6 +982,9 @@ onUnmounted(() => {
           </section>
 
           <p v-if="runErr" class="note note-err">{{ runErr }}</p>
+
+          <!-- the files a tableski-backed horde works on -->
+          <WorkbooksCard v-if="view === 'form' && usesTableski(selectedHorde)" @setup="emit('open-setup')" />
 
           <!-- request form -->
           <section v-if="view === 'form'" class="card accent orders">

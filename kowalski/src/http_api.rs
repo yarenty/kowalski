@@ -439,6 +439,13 @@ fn build_app(
     let router = Router::new()
         .fallback(crate::embedded::serve_ui)
         .route("/api/health", get(get_health))
+        .route(
+            "/api/tableski/files",
+            get(crate::tableski::list)
+                .post(crate::tableski::upload)
+                .layer(DefaultBodyLimit::max(crate::tableski::MAX_UPLOAD_BYTES + 64 * 1024)),
+        )
+        .route("/api/tableski/files/{id}", axum::routing::delete(crate::tableski::remove))
         .route("/api/setup/status", get(crate::setup::status))
         .route("/api/setup/test-model", post(crate::setup::test_model))
         .route("/api/setup/save", post(crate::setup::save))

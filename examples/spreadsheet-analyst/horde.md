@@ -15,14 +15,15 @@ delivery_title = "Your answers"
 delivery_note = "Open **`workdir/HANDOFF.md`** for the answers and **`workdir/report.xlsx`** for every result table. The SQL behind each answer is in `debug/results.md`."
 delivery_root_rel = "HANDOFF.md"
 delivery_summary_note = "Answers to your spreadsheet questions, computed with SQL by tableski, plus a report workbook."
-prompt_tip = "Upload the workbook in tableski first (tableski.io/app, or connect tableski in Setup), then list one question per line."
+prompt_tip = "Add your workbook under Your workbooks (tableski must be connected in Setup), then list one question per line."
 ---
 
 # Spreadsheet Analyst
 
 Needs **tableski** connected (Setup → Connect tableski, or a `[[mcp.servers]]` entry named for any
-server offering `list_tables`, `get_schema`, `column_statistics` and `query_sql`). Upload your
-workbook or CSV in tableski first; every sheet becomes a table.
+server offering `list_tables`, `get_schema`, `column_statistics` and `query_sql`). Add your
+workbook or CSV under **Your workbooks** on this horde's page (it goes to your tableski account);
+every sheet becomes a table.
 
 ## Steps (penguins)
 
