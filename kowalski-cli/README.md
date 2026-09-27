@@ -1,83 +1,49 @@
-# Kowalski CLI
+# kowalski-cli
 
-**Crate version 1.5.0** · See [`ROADMAP.md`](./ROADMAP.md) and root [`README.md`](../README.md).
+Command line of **Kowalski**, a Rust multi-agent framework: agents with MCP tools and memory, and
+hordes (step pipelines with triggers) over Ollama or OpenAI-compatible models.
 
-Command-line interface for Kowalski operators and extension workflows.
+The operator UI and HTTP API are served by the [`kowalski`](https://crates.io/crates/kowalski)
+binary; `kowalski-cli` is the terminal side.
 
-## Horde changes in 1.1.0 (since 1.0.0)
-
-- Added the first horde-focused app operators for markdown-defined orchestration (`agent-app` + extension workflow).
-- Added delegate/worker federation commands for Knowledge Compiler task execution and proof-run validation.
-- Improved run UX with serialized sub-agent traces and artifact path reporting.
-
-## Scope
-
-`kowalski-cli` provides:
-
-- TemplateAgent REPL (`run`)
-- config checks (`config check`)
-- memory DB migrations (`db migrate`)
-- health diagnostics (`doctor`)
-- MCP checks (`mcp ping`, `mcp tools`)
-- federation smoke ops (`federation ping-notify`, with `--features postgres`)
-- extension discovery and execution (`extension list`, `extension run`)
-
-The HTTP API server for UI and federation routes is the separate `kowalski` binary.
-
-## Quick start
+## Install
 
 ```bash
-# help
-cargo run -p kowalski-cli -- --help
+cargo install kowalski-cli
+kowalski-cli --help
+```
 
-# interactive orchestrator REPL
-cargo run -p kowalski-cli -- run -c config.toml
+## Commands
 
-# diagnostics
-cargo run -p kowalski-cli -- doctor
-cargo run -p kowalski-cli -- config check config.toml
+- `run` — interactive agent REPL
+- `config check` — validate a config file
+- `db migrate` — memory database migrations
+- `doctor` — health diagnostics
+- `mcp ping`, `mcp tools` — check configured MCP servers
+- `extension list`, `extension run` — discover and run extensions
+- `federation ping-notify` — federation smoke test (with `--features postgres`)
 
-# MCP checks
-cargo run -p kowalski-cli -- mcp ping -c config.toml
-cargo run -p kowalski-cli -- mcp tools -c config.toml
+```bash
+kowalski-cli run -c config.toml
+kowalski-cli doctor
+kowalski-cli mcp tools -c config.toml
 ```
 
 ## Extensions
 
-```bash
-# discover extensions
-cargo run -p kowalski-cli -- extension list
+`extension run <name>` resolves, in order:
 
-# run an extension command
-cargo run -p kowalski-cli -- extension run knowledge-compiler help
-```
+1. a binary in `PATH` named `kowalski-ext-<name>`
+2. a local executable `.kowalski/extensions/<name>/run`
 
-Extension resolution order:
+See the [Knowledge Compiler example](https://github.com/yarenty/kowalski/tree/main/examples/knowledge-compiler) for a
+delegate/worker flow against a running `kowalski` server.
 
-1. Binary in `PATH` named `kowalski-ext-<name>`
-2. Local executable `.kowalski/extensions/<name>/run`
+## Documentation
 
-## Federation-first app example
+- [docs.rs/kowalski-cli](https://docs.rs/kowalski-cli)
+- [Project README](https://github.com/yarenty/kowalski#readme) · [Changelog](https://github.com/yarenty/kowalski/blob/main/CHANGELOG.md)
 
-The first app example is the Knowledge Compiler extension:
+## License
 
-- docs: [`examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md)
-- local runner: `.kowalski/extensions/knowledge-compiler/run`
-
-Typical flow:
-
-```bash
-# terminal 1: start HTTP API server
-cargo run -p kowalski --bin kowalski
-
-# terminal 2: start worker
-cargo run -p kowalski-cli -- extension run knowledge-compiler worker kc-worker-1
-
-# delegate tasks
-cargo run -p kowalski-cli -- extension run knowledge-compiler delegate kc.compile "kc.compile"
-```
-
-## Notes
-
-- Use `kowalski-cli` for operators and extension orchestration.
-- Use `kowalski` for `/api/*` server routes.
+MIT — see [LICENSE](https://github.com/yarenty/kowalski/blob/main/LICENSE).

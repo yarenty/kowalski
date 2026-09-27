@@ -1,40 +1,40 @@
-# Kowalski (facade crate)
+# kowalski
 
-Rust workspace crate that re-exports **[`kowalski-core`](../kowalski-core/README.md)** and optional **[`kowalski-cli`](../kowalski-cli/README.md)** so dependents can use one package name. Business logic lives in **`kowalski-core`** (`TemplateAgent`, tools, memory, MCP, federation).
+The **Kowalski** server and facade crate. It builds the `kowalski` binary — one executable that serves
+the operator UI, the `/api/*` HTTP API, built-in hordes and their triggers — and, as a library,
+re-exports [`kowalski-core`](https://crates.io/crates/kowalski-core) (and optionally
+[`kowalski-cli`](https://crates.io/crates/kowalski-cli)) under one package name.
 
-## Version
+Kowalski is a Rust multi-agent framework: agents with MCP tools and memory, and **hordes** (step
+pipelines with cron, file-watch and webhook triggers) over Ollama or OpenAI-compatible models.
 
-**Crate version 1.5.0** (see workspace [`Cargo.toml`](../Cargo.toml)). On crates.io until **1.5.0** publish, depend on **1.3.0** or git.
+## Install the server
 
-## Features
+Pre-built binaries for macOS and Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yarenty/kowalski/main/install.sh | bash
+kowalski    # opens the app in your browser; Setup writes the config
+```
+
+Or from crates.io: `cargo install kowalski`.
+
+## Use as a library
+
+```bash
+cargo add kowalski                      # core only
+cargo add kowalski --features full      # + CLI and Postgres-capable core
+```
 
 | Feature | Effect |
 |---------|--------|
-| *(default)* | `kowalski-core` only, re-exported as `kowalski::core` plus convenience `pub use` entries ([`src/lib.rs`](src/lib.rs)). |
-| `cli` | Pulls in **`kowalski-cli`** as `kowalski::cli`. |
-| `postgres` | Enables **`kowalski-core/postgres`** (SQL memory, pgvector helpers). |
+| *(default)* | `kowalski-core`, re-exported as `kowalski::core` plus common types at the crate root. |
+| `cli` | `kowalski-cli` as `kowalski::cli`. |
+| `postgres` | `kowalski-core/postgres` (SQL memory, pgvector, graph). |
 | `full` | `cli` + `postgres`. |
 
-There are **no** separate `kowalski-academic-agent`, `kowalski-tools`, or `kowalski-web-agent` crates in this repository—compose behavior with **`TemplateAgent`**, configuration, and tools.
-
-## Binary: HTTP API
-
-This crate builds the **`kowalski`** executable (**`/api/*`** for the Vue UI and integrations). See the root **[README.md](../README.md)** for run instructions (`cargo run -p kowalski`).
-
-## Usage (`Cargo.toml`)
-
-```toml
-[dependencies]
-kowalski = "1.5.0"
-
-# Optional: CLI + Postgres-capable core
-kowalski = { version = "1.5.0", features = ["full"] }
-```
-
-## Example (Rust API)
-
-```rust
-use kowalski::{Config, TemplateAgent};
+```rust,no_run
+use kowalski::{Agent, Config, TemplateAgent};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -51,8 +51,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Documentation
 
 - [docs.rs/kowalski](https://docs.rs/kowalski)
-- [Workspace README](../README.md) · [AGENTS.md](./AGENTS.md) · [CONTRIBUTING.md](../CONTRIBUTING.md)
+- [Project README](https://github.com/yarenty/kowalski#readme) · [Architecture](https://github.com/yarenty/kowalski/blob/main/docs/architecture.html) · [Changelog](https://github.com/yarenty/kowalski/blob/main/CHANGELOG.md)
+- Blog: [kowalski.yarenty.com](https://kowalski.yarenty.com)
 
 ## License
 
-MIT — see [LICENSE](../LICENSE).
+MIT — see [LICENSE](https://github.com/yarenty/kowalski/blob/main/LICENSE).
