@@ -28,6 +28,22 @@ pub mod types;
 /// structured loop and the ReAct text loop).
 pub const MAX_TOOL_ITERATIONS: usize = 5;
 
+/// Sent once when the model repeats a tool call it already made this turn.
+const REPEAT_TOOL_NUDGE: &str = "You already ran that tool with the same parameters and have its result above. Do not call a tool again: answer the user's question now, in plain text.";
+
+/// What the user sees when a tool loop ends without a plain-text answer (repeats or the
+/// iteration cap), instead of an empty reply.
+fn tool_loop_fallback(last_tool: &Option<(String, String)>) -> String {
+    match last_tool {
+        Some((name, result)) => {
+            let excerpt: String = result.chars().take(1_500).collect();
+            let more = if result.chars().count() > 1_500 { " …" } else { "" };
+            format!("I ran `{name}` but did not get to a final answer. Its result was:\n\n{excerpt}{more}")
+        }
+        None => "I could not produce an answer for that request. Try rephrasing it, or turn tools off for this chat.".to_string(),
+    }
+}
+
 /// The core agent trait that all our specialized agents must implement.
 #[async_trait]
 pub trait Agent: Send + Sync {
@@ -110,6 +126,8 @@ pub trait Agent: Send + Sync {
         let mut current_input = user_input.to_string();
         let mut iteration_count = 0;
         let mut last_tool_call: Option<(String, serde_json::Value)> = None;
+        let mut repeat_nudged = false;
+        let mut last_tool: Option<(String, String)> = None;
         let mut tool_parse_hint_sent = false;
 
         debug!("Starting chat_with_tools for input: '{}'", user_input);
@@ -151,10 +169,13 @@ pub trait Agent: Send + Sync {
                 if let Some(last) = &last_tool_call
                     && *last == tool_call_key
                 {
-                    debug!(
-                        "Detected repeated tool call. Breaking loop to prevent infinite tool call loop."
-                    );
-                    break;
+                    if repeat_nudged {
+                        debug!("Repeated tool call after a nudge; stopping the tool loop");
+                        break;
+                    }
+                    repeat_nudged = true;
+                    current_input = REPEAT_TOOL_NUDGE.to_string();
+                    continue;
                 }
                 last_tool_call = Some(tool_call_key.clone());
 
@@ -183,6 +204,7 @@ pub trait Agent: Send + Sync {
                     }
                 };
 
+                last_tool = Some((tool_call.name.clone(), tool_result.clone()));
                 let tool_message = format!("Tool result for {}: {}", tool_call.name, tool_result);
                 self.add_message(conversation_id, "assistant", &tool_message)
                     .await;
@@ -241,6 +263,9 @@ pub trait Agent: Send + Sync {
             "chat_with_tools completed after {} iterations",
             iteration_count
         );
+        if final_response.trim().is_empty() {
+            final_response = tool_loop_fallback(&last_tool);
+        }
         Ok(final_response)
     }
 
@@ -704,6 +729,8 @@ impl BaseAgent {
         let mut current_input = user_input.to_string();
         let mut iteration_count = 0;
         let mut last_tool_call: Option<(String, serde_json::Value)> = None;
+        let mut repeat_nudged = false;
+        let mut last_tool: Option<(String, String)> = None;
         let mut tool_parse_hint_sent = false;
         let quiet = policy.is_some_and(|p| p.quiet);
 
@@ -733,7 +760,12 @@ impl BaseAgent {
                 if let Some(last) = &last_tool_call
                     && *last == tool_call_key
                 {
-                    break;
+                    if repeat_nudged {
+                        break;
+                    }
+                    repeat_nudged = true;
+                    current_input = REPEAT_TOOL_NUDGE.to_string();
+                    continue;
                 }
                 last_tool_call = Some(tool_call_key);
 
@@ -751,6 +783,7 @@ impl BaseAgent {
                     Err(e) => format!("{}", e),
                 };
 
+                last_tool = Some((tool_call.name.clone(), tool_result.clone()));
                 let tool_message = format!("Tool result for {}: {}", tool_call.name, tool_result);
                 self.add_message(conversation_id, "assistant", &tool_message)
                     .await;
@@ -773,6 +806,9 @@ impl BaseAgent {
             break;
         }
 
+        if final_response.trim().is_empty() {
+            final_response = tool_loop_fallback(&last_tool);
+        }
         Ok(final_response)
     }
 
@@ -811,6 +847,8 @@ impl BaseAgent {
         let mut current_input = user_input.to_string();
         let mut iteration_count = 0;
         let mut last_tool_call: Option<(String, serde_json::Value)> = None;
+        let mut repeat_nudged = false;
+        let mut last_tool: Option<(String, String)> = None;
         let mut tool_parse_hint_sent = false;
         // After a tool ran, the next LLM completion is streamed (final answer in the common case).
         let mut stream_next_llm_turn = false;
@@ -872,8 +910,14 @@ impl BaseAgent {
                 if let Some(last) = &last_tool_call
                     && *last == tool_call_key
                 {
-                    debug!("Repeated tool call; breaking");
-                    break;
+                    if repeat_nudged {
+                        debug!("Repeated tool call after a nudge; stopping the tool loop");
+                        break;
+                    }
+                    repeat_nudged = true;
+                    current_input = REPEAT_TOOL_NUDGE.to_string();
+                    stream_next_llm_turn = true;
+                    continue;
                 }
                 last_tool_call = Some(tool_call_key.clone());
 
@@ -891,6 +935,7 @@ impl BaseAgent {
                     Err(e) => format!("{}", e),
                 };
 
+                last_tool = Some((tool_call.name.clone(), tool_result.clone()));
                 let tool_message = format!("Tool result for {}: {}", tool_call.name, tool_result);
                 self.add_message(conversation_id, "assistant", &tool_message)
                     .await;
@@ -935,6 +980,10 @@ impl BaseAgent {
             warn!("Reached maximum iterations (stream_final)");
         }
 
+        if final_response.trim().is_empty() {
+            final_response = tool_loop_fallback(&last_tool);
+            let _ = token_tx.send(final_response.clone()).await;
+        }
         Ok(final_response)
     }
 }

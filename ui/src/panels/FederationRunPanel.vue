@@ -387,7 +387,9 @@ function processFederationEvent(data: string) {
     const outcomeNote = outcome ? ` (outcome: ${outcome})` : "";
     feed(
       "worker",
-      `${step} ${ok ? "completed" : "failed"}${outcomeNote}${artifact ? ` -> ${artifact}` : ""}`,
+      ok
+        ? `${step} completed${outcomeNote}${artifact ? ` -> ${artifact}` : ""}`
+        : `${step} failed${outcomeNote}${payload.summary ? `: ${String(payload.summary)}` : ""}`,
       speakerNameFromStep(step),
       step,
     );
@@ -435,7 +437,7 @@ function processFederationEvent(data: string) {
     runResult.value = JSON.stringify(payload, null, 2);
     progressText.value = "failed";
     settleSteps("failed");
-    feed("system", "run failed", "System");
+    feed("system", `run failed${payload.reason ? `: ${String(payload.reason)}` : ""}`, "System");
     runBusy.value = false;
     clearRunWatchdog();
     void loadRunHistory();

@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Fixed
+- Chat with tools: an answer containing a code block (a shell command, a JSON example) is no longer mistaken for a broken tool call, which used to send the model a correction turn and could start a tool loop on small models.
+- The tool loop never ends with an empty reply: a repeated identical tool call gets one "answer now" nudge instead of stopping, and a loop that still ends without text (repeats, iteration cap) returns the last tool result.
+- A `verify` step without a project folder runs its check in the horde's output folder (and says so) instead of failing; `apply` still needs a project and now says exactly that.
+- The Hordes screen feed shows why a step or a run failed, not only that it did.
+
 ## [2.2.0] - 2026-09-26 — **Commando**
 
 > The face-lift release: a readable, redesigned operator UI, documentation that explains the
