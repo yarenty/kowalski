@@ -20,9 +20,11 @@ Rules:
   profile answers it, with no sql block.
 - Use only the tables the question is about; ignore unrelated tables in the profile.
 - A sheet the profile notes has no header row is a form: its columns are `col_1`, `col_2`, …
-  and the labels sit in the cells. Find a value by its label, e.g.
-  `SELECT col_2 FROM sheet1 WHERE col_1 LIKE 'Duration%'`; questions about what it contains are
-  answered from the profile's rows.
+  and the labels sit in the cells. Select those columns and filter on the label, e.g.
+  `SELECT col_1, col_2 FROM sheet1 WHERE col_1 LIKE 'Duration%'`. Never select a name that is
+  not a column in the profile (`"Project Duration"` is not a column; double quotes are for
+  column names, single quotes for text). Questions about what it contains are answered from the
+  profile's rows, with no sql block.
 - If the intake names tables to use, use only those.
 - If the intake has "Earlier questions and answers", this is a follow-up: the new questions may
   point back ("those customers", "the top one", "that month"). Work out what they mean from the
