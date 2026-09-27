@@ -12,12 +12,14 @@ id = "sources"
 type = "textarea"
 label = "Pages to read, one per line"
 required = true
-placeholder = "https://github.com/trending/rust\nhttps://tldr.tech/\nhttps://arxiv.org/list/cs/recent\nhttps://news.ycombinator.com/"
+default = "https://github.com/trending/rust\nhttps://tldr.tech/\nhttps://arxiv.org/list/cs/recent\nhttps://news.ycombinator.com/"
+placeholder = "One link per line"
 [[inputs]]
 id = "focus"
 type = "text"
 label = "What you care about"
 required = false
+default = "Rust, AI agents and LLM tooling, data engineering, and research worth knowing about."
 placeholder = "Supplier prices, payment regulation, competitors' launches"
 ---
 

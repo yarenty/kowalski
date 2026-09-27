@@ -24,7 +24,6 @@ const emit = defineEmits<{
   ): void;
 }>();
 
-const sourceUrl = ref("");
 const sourceText = ref("");
 const question = ref("");
 const formAnswers = ref<Record<string, string>>({});
@@ -38,7 +37,6 @@ const runForm = computed((): HordeRunFormSpec | null =>
 watch(
   () => props.horde?.id,
   () => {
-    sourceUrl.value = "";
     sourceText.value = "";
     question.value = props.horde?.default_question ?? "";
     formAnswers.value = {};
@@ -58,19 +56,14 @@ const canSubmit = computed(() => {
   if (!formComplete.value) return false;
   if (props.followUpMode) return question.value.trim().length > 0;
   if (runForm.value) return true;
-  return sourceUrl.value.trim().length > 0 || sourceText.value.trim().length > 0;
+  return sourceText.value.trim().length > 0;
 });
 
-// The operator-input block is built server-side from `formAnswers` (thin UI / thick core).
-// This prompt carries only the optional free-form URL / notes the operator adds alongside a form.
+// A horde with its own form sends only its answers: the operator-input block is built
+// server-side from `formAnswers` (thin UI / thick core). A horde without one gets the single
+// request box; ingest picks the links and file paths out of that text.
 function buildPrompt(): string {
-  const parts: string[] = [];
-  const url = sourceUrl.value.trim();
-  const text = sourceText.value.trim();
-  if (url) parts.push(url);
-  if (text) parts.push(text);
-  if (!parts.length && !runForm.value && question.value.trim()) return question.value.trim();
-  return parts.join("\n\n");
+  return runForm.value ? "" : sourceText.value.trim();
 }
 
 function submit() {
@@ -96,42 +89,18 @@ function submit() {
       @update:answers="formAnswers = $event"
     />
 
-    <template v-if="!followUpMode">
-      <p v-if="!runForm" class="small">
-        {{ horde?.prompt_tip || "Provide a source URL and/or text for the horde to process." }}
-      </p>
-      <p v-else class="muted small">Optional: add a reference URL or extra notes below the form.</p>
-
+    <template v-if="!followUpMode && !runForm">
       <label class="field">
-        <span>Source URL <span v-if="runForm" class="muted">(optional)</span></span>
-        <input
-          v-model="sourceUrl"
-          type="url"
-          class="inp"
-          placeholder="https://…"
-          :disabled="disabled || busy"
-        />
-      </label>
-      <label class="field">
-        <span>Extra notes <span class="muted">(optional)</span></span>
+        <span>What should the horde work on?</span>
         <textarea
           v-model="sourceText"
-          rows="2"
+          rows="4"
           class="inp"
-          placeholder="Paste requirements…"
+          :placeholder="horde?.prompt_tip || 'Links, file paths or text, one per line'"
           :disabled="disabled || busy"
         />
       </label>
-      <label class="field">
-        <span>Question for pipeline</span>
-        <input
-          v-model="question"
-          type="text"
-          class="inp"
-          :placeholder="horde?.default_question || 'What should we extract?'"
-          :disabled="disabled || busy"
-        />
-      </label>
+      <p class="muted small">Links and file paths in the text are fetched and read; everything else is passed on as your request.</p>
     </template>
 
     <template v-else>

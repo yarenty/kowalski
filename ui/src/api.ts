@@ -43,6 +43,8 @@ export type Health = {
   status: string;
   service: string;
   version: string;
+  /** Changes on every server start; used to wait for a real restart. */
+  boot_id?: string;
   model?: string;
   federation?: {
     agents_registered: number;

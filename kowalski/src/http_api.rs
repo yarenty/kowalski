@@ -102,6 +102,7 @@ pub async fn serve(
     security: SecurityOptions,
     open_browser: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let _ = boot_id();
     let config_path = crate::http_ops::mcp_config_path(config.as_deref());
     let full_config = crate::http_ops::load_kowalski_config_for_serve(&config_path)?;
     // Server state dir (`<config-dir>/db`): API token file, run store, trigger overrides.
@@ -685,11 +686,25 @@ fn horde_config_confirm_commands(cfg: &Config) -> Option<bool> {
         .and_then(|v| v.as_bool())
 }
 
+/// Changes on every server start (a self-restart re-execs the binary): clients waiting for a
+/// restart compare it instead of trusting the first answer, which may come from the old process.
+fn boot_id() -> &'static str {
+    static BOOT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    BOOT.get_or_init(|| {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        format!("{}-{nanos}", std::process::id())
+    })
+}
+
 async fn get_health(State(state): State<ApiState>) -> Json<serde_json::Value> {
     Json(json!({
         "status": "ok",
         "service": "kowalski",
         "version": env!("CARGO_PKG_VERSION"),
+        "boot_id": boot_id(),
         "model": state.model,
         "federation": {
             "agents_registered": state.federation.registry.list().len(),

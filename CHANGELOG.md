@@ -7,6 +7,10 @@ All notable changes to this project will be documented in this file, or at least
 ## [Unreleased]
 
 ### Fixed
+- Setup no longer shows the old settings after its automatic restart (it waited for the first answer, which could come from the server that was going down); `/api/health` carries a `boot_id` that changes on every start. Key fields have a show/hide button, and Save is offered only when something changed (connecting tableski saves by itself).
+- A horde's form no longer empties itself every few seconds while you type.
+- A horde with its own form shows only that form; the generic source, notes and question fields are gone. A horde without a form gets one request box.
+- Scheduled and webhook runs start from the form's defaults, with the trigger's `input` on top: the Morning brief's pages live in one place (its form) and fill the form too.
 - Run titles use the operator's form answers before a horde's default question, so runs of the same horde no longer share one name.
 - A hand-off file's leading `---` metadata block is left out of the finished-run payload.
 

@@ -13,21 +13,27 @@ const emit = defineEmits<{
 
 const answers = ref<Record<string, string>>({});
 
+/** Fill the form from its defaults, keeping anything already typed into a field that still exists. */
 function initAnswers(form: HordeRunFormSpec) {
   const next: Record<string, string> = {};
   for (const field of form.inputs) {
-    next[field.id] = field.default ?? "";
+    const typed = answers.value[field.id];
+    next[field.id] = typed !== undefined && typed !== "" ? typed : field.default ?? "";
   }
   answers.value = next;
   emit("update:answers", { ...next });
 }
 
+// Re-initialise only when the form itself changes (another horde, other fields), not whenever
+// the horde list is re-fetched: polling hands over an equal but new object every few seconds.
 watch(
-  () => props.form,
-  (f) => {
-    if (f) initAnswers(f);
+  () => (props.form ? `${props.form.step}|${props.form.inputs.map((f) => `${f.id}=${f.default ?? ""}`).join("|")}` : ""),
+  (key, previous) => {
+    if (!props.form) return;
+    if (previous !== undefined && key.split("|")[0] !== previous.split("|")[0]) answers.value = {};
+    initAnswers(props.form);
   },
-  { immediate: true, deep: true },
+  { immediate: true },
 );
 
 function setField(id: string, value: string) {
