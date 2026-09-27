@@ -537,6 +537,7 @@ fn build_app(
             post(post_horde_run_cancel),
         )
         .route("/api/runs", get(get_runs))
+        .route("/api/hordes/{horde_id}/runs/{run_id}/continue", post(post_horde_run_continue))
         .route(
             "/api/hordes/{horde_id}/runs/{run_id}/approve",
             post(post_horde_run_approve),
@@ -2062,6 +2063,7 @@ async fn get_hordes(State(state): State<ApiState>) -> Json<serde_json::Value> {
                 "category": s.category,
                 "icon": s.icon,
                 "featured": s.featured,
+                "followup": s.followup,
                 "sub_agents": s.sub_agents,
                 "run_form": s.run_form,
             })
@@ -2279,6 +2281,7 @@ async fn get_horde_detail(
         "category": spec.category,
         "icon": spec.icon,
         "featured": spec.featured,
+        "followup": spec.followup,
         "sub_agents": spec.sub_agents,
         "run_form": spec.run_form,
     })))
@@ -2641,6 +2644,93 @@ async fn post_horde_run(
         "ok": true,
         "run": record,
     })))
+}
+
+#[derive(Deserialize)]
+struct ContinueBody {
+    /// The follow-up: new questions, one request.
+    text: String,
+}
+
+/// Longest earlier hand-off carried into a follow-up run, in characters.
+const FOLLOWUP_CONTEXT_MAX: usize = 8_000;
+
+/// `POST /api/hordes/{id}/runs/{run_id}/continue`: follow a finished run up with a NEW run of the
+/// same horde (`[followup]` in `horde.md`): the earlier form answers again, the operator's text in
+/// the declared input field, and the earlier hand-off in the context field, so "which of those…"
+/// is answered against fresh data rather than by re-reading old files.
+async fn post_horde_run_continue(
+    State(state): State<ApiState>,
+    AxumPath((horde_id, run_id)): AxumPath<(String, String)>,
+    Json(body): Json<ContinueBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let text = body.text.trim();
+    if text.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "write the follow-up first".into()));
+    }
+    let spec = state
+        .horde_manager
+        .find(&horde_id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("horde {horde_id} not found")))?;
+    let (Some(followup), Some(form)) = (spec.followup.clone(), spec.run_form.clone()) else {
+        return Err((StatusCode::BAD_REQUEST, format!("horde {horde_id} does not take follow-up runs")));
+    };
+    let prev = state
+        .horde_manager
+        .persisted_run(&run_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("run {run_id} not found")))?;
+    if prev.horde_id != horde_id {
+        return Err((StatusCode::BAD_REQUEST, format!("run {run_id} belongs to horde {}", prev.horde_id)));
+    }
+
+    // the earlier answers, by field id (the stored input is the operator block, keyed by label)
+    let by_label = kowalski_core::parse_operator_answer_block(&prev.prompt);
+    let mut answers: std::collections::BTreeMap<String, String> = form
+        .inputs
+        .iter()
+        .filter_map(|f| by_label.get(&f.label).map(|v| (f.id.clone(), v.clone())))
+        .collect();
+    let earlier_input = answers.get(&followup.input).cloned().unwrap_or_default();
+    answers.insert(followup.input.clone(), text.to_string());
+    if let Some(context) = &followup.context {
+        let handoff = prev
+            .events
+            .iter()
+            .rev()
+            .find(|e| e.get("kind").and_then(|k| k.as_str()) == Some("run_finished"))
+            .and_then(|e| e.get("handoff_markdown").and_then(|h| h.as_str()))
+            .map(str::to_string)
+            .or_else(|| std::fs::read_to_string(spec.workdir.join(&spec.delivery_root_rel)).ok())
+            .unwrap_or_default();
+        let earlier = format!("Earlier request:\n{earlier_input}\n\nEarlier answers:\n{handoff}");
+        let earlier = kowalski_core::markdown_pipeline::cap_chars(earlier.trim(), FOLLOWUP_CONTEXT_MAX);
+        // quoted, so no line of it reads as another form field
+        let quoted: String = earlier.lines().map(|l| format!("> {l}\n")).collect();
+        answers.insert(context.clone(), quoted.trim_end().to_string());
+    }
+    kowalski_core::validate_form_answers(&form, &answers).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let prompt = kowalski_core::answers_to_prompt(&form, &answers);
+    let record = state
+        .horde_manager
+        .start_run(
+            &horde_id,
+            &prompt,
+            Some(&prompt),
+            Some(&spec.default_question),
+            kowalski_core::db::run_store::RUN_ORIGIN_OPERATOR,
+        )
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    state
+        .horde_manager
+        .record_run_event(
+            &record.run_id,
+            json!({ "kind": "follow_up_of", "run_id": run_id, "title": prev.title, "ts": crate::horde::now_ts() }),
+        )
+        .await;
+    Ok(Json(json!({ "ok": true, "run": record, "follow_up_of": run_id })))
 }
 
 /// Webhook trigger firing: the JSON body becomes `{{trigger.payload}}` on the
@@ -3478,6 +3568,48 @@ mod api_tests {
     }
 
     #[tokio::test]
+    async fn a_follow_up_starts_a_new_run_with_the_earlier_answers_as_context() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = fixture(dir.path(), None).await;
+        let h = dir.path().join("hordes/ask-horde");
+        std::fs::create_dir_all(h.join("agents")).unwrap();
+        std::fs::create_dir_all(h.join("prompts")).unwrap();
+        std::fs::write(h.join("horde.md"), "---\nid = \"ask-horde\"\ndisplay_name = \"Ask\"\ndescription = \"t\"\ncapability_prefix = \"ask-horde\"\npipeline = [\"ingest\"]\nworkdir = \"output\"\n\n[followup]\ninput = \"questions\"\ncontext = \"earlier\"\n---\n").unwrap();
+        std::fs::write(h.join("agents/ingest.md"), "---\nname = \"ingest\"\nkind = \"ingest\"\ncapability = \"ask-horde.ingest\"\ndefault_agent_id = \"ask-ingest\"\ndisplay_name = \"Ask\"\nprompt_file = \"prompts/ingest.md\"\noutput = \"debug/raw/\"\n[[inputs]]\nid = \"questions\"\ntype = \"textarea\"\nlabel = \"Questions\"\nrequired = true\n[[inputs]]\nid = \"earlier\"\ntype = \"context\"\nlabel = \"Earlier questions and answers\"\nrequired = false\n---\n").unwrap();
+        std::fs::write(h.join("prompts/ingest.md"), "Collect.\n").unwrap();
+        // the catalog picks new folders up on its next scan
+        let mut listed = false;
+        for _ in 0..80 {
+            let (_, list) = call(&app, "GET", "/api/hordes", None, None).await;
+            if list.to_string().contains("ask-horde") {
+                listed = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert!(listed, "test horde loaded");
+
+        let (status, started) = call(&app, "POST", "/api/hordes/ask-horde/run", Some(json!({ "form_answers": { "questions": "Who spent the most?" } })), None).await;
+        assert_eq!(status, StatusCode::OK, "{started}");
+        let first = run_id(&started);
+        wait_for(&app, "ask-horde", &first, &["completed", "failed"]).await;
+
+        let (status, followed) = call(&app, "POST", &format!("/api/hordes/ask-horde/runs/{first}/continue"), Some(json!({ "text": "Which of those spent over 100?" })), None).await;
+        assert_eq!(status, StatusCode::OK, "{followed}");
+        let second = run_id(&followed);
+        assert_ne!(first, second, "a follow-up is a new run");
+        let run = wait_for(&app, "ask-horde", &second, &["completed", "failed"]).await;
+        let prompt = run["prompt"].as_str().unwrap();
+        assert!(prompt.contains("**Questions:** Which of those spent over 100?"), "{prompt}");
+        assert!(prompt.contains("> Earlier request:") && prompt.contains("> Who spent the most?"), "{prompt}");
+        assert_eq!(run["title"], "Which of those spent over 100?");
+        assert!(run["events"].as_array().unwrap().iter().any(|e| e["kind"] == "follow_up_of" && e["run_id"] == first.as_str()), "{run}");
+
+        let (status, _) = call(&app, "POST", &format!("/api/hordes/api-horde/runs/{first}/continue"), Some(json!({ "text": "x" })), None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "a horde without [followup] refuses");
+    }
+
+    #[tokio::test]
     async fn cancel_a_running_horde_over_http() {
         let dir = tempfile::tempdir().unwrap();
         let project = tempfile::tempdir().unwrap();
@@ -3867,9 +3999,56 @@ mod api_tests {
         let run = done.expect("run finished");
         assert_eq!(run.status, kowalski_core::db::run_store::RunStatus::Done, "{:?}", run.events);
         let md = std::fs::read_to_string(h.join("output/debug/profile.md")).unwrap();
-        assert!(md.contains("## orders") && md.contains("- Sheet: Orders") && md.contains("- Rows: 3"), "{md}");
+        assert!(md.contains("## Table `orders`") && md.contains("- SQL name: `orders`") && md.contains("- Sheet: Orders") && md.contains("- Rows: 3"), "{md}");
         assert!(md.contains("| `amount` | Float64 | false |"), "{md}");
         assert!(md.contains("| max | 100.5 |"), "{md}");
+    }
+
+    #[tokio::test]
+    async fn a_sheet_without_a_header_row_is_read_as_a_form_with_a_tip() {
+        let dir = tempfile::tempdir().unwrap();
+        let hordes = dir.path().join("hordes");
+        let h = hordes.join("form-horde");
+        std::fs::create_dir_all(h.join("agents")).unwrap();
+        std::fs::create_dir_all(h.join("prompts")).unwrap();
+        std::fs::write(h.join("horde.md"), "---\nid = \"form-horde\"\ndisplay_name = \"f\"\ndescription = \"t\"\ncapability_prefix = \"form-horde\"\npipeline = [\"ingest\", \"profile\"]\nworkdir = \"output\"\n---\n").unwrap();
+        std::fs::write(h.join("agents/ingest.md"), "---\nname = \"ingest\"\nkind = \"ingest\"\ncapability = \"form-horde.ingest\"\ndefault_agent_id = \"f-ingest\"\ndisplay_name = \"Ingest\"\nprompt_file = \"prompts/ingest.md\"\noutput = \"debug/raw/\"\n---\n").unwrap();
+        std::fs::write(h.join("prompts/ingest.md"), "Collect.\n").unwrap();
+        std::fs::write(h.join("agents/profile.md"), "---\nname = \"profile\"\nkind = \"table_profile\"\ncapability = \"form-horde.profile\"\ndefault_agent_id = \"f-profile\"\ndisplay_name = \"Profile\"\noutput = \"debug/profile.md\"\n---\n").unwrap();
+
+        let broker = Arc::new(MpscBroker::new());
+        let registry = Arc::new(AgentRegistry::new());
+        let federation = Arc::new(FederationOrchestrator::new(registry, broker.clone()));
+        let store = kowalski_core::db::run_store::RunStore::open("sqlite::memory:").await.unwrap();
+        let mut manager = crate::horde::HordeManager::new(Vec::new(), broker, federation, store);
+        manager.catalog = Arc::new(crate::horde::HordeCatalog::with_roots(vec![hordes]));
+        let tools = kowalski_core::tools::manager::ToolManager::new();
+        tools.register(FakeTableTool("list_tables", "{\n  \"tables\": [{ \"name\": \"sheet1\", \"source\": \"/data/budget.xlsx\", \"sheet\": \"Sheet1\", \"rows\": 1477, \"columns\": 3 }]\n}"));
+        tools.register(FakeTableTool("get_schema", "{\n  \"table\": \"sheet1\",\n  \"columns\": [{ \"name\": \"col_1\", \"data_type\": \"Utf8\", \"nullable\": true }, { \"name\": \"col_2\", \"data_type\": \"Utf8\", \"nullable\": true }]\n}"));
+        tools.register(FakeTableTool("query_sql", "+----------------------+-------+\n| col_1                | col_2 |\n+----------------------+-------+\n| HE action: budget    |       |\n| Acronym:             | PULSE |\n+----------------------+-------+"));
+        let mut steps = kowalski_core::StepHandlerRegistry::with_builtin_deterministic();
+        steps.register(Arc::new(kowalski_core::horde_table_steps::TableProfileStepHandler::new(tools)));
+        manager.step_handlers = Arc::new(steps);
+        crate::horde::spawn_orchestrator_loop(manager.clone());
+
+        let record = manager
+            .start_run("form-horde", "what is it", Some("what is it"), Some("what is it"), kowalski_core::db::run_store::RUN_ORIGIN_OPERATOR)
+            .await
+            .unwrap();
+        let mut done = None;
+        for _ in 0..200 {
+            let r = manager.persisted_run(&record.run_id).await.unwrap().unwrap();
+            if matches!(r.status, kowalski_core::db::run_store::RunStatus::Done | kowalski_core::db::run_store::RunStatus::Error) {
+                done = Some(r);
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+        let run = done.expect("run finished");
+        assert_eq!(run.status, kowalski_core::db::run_store::RunStatus::Done, "a form is still processed: {:?}", run.events);
+        let md = std::fs::read_to_string(h.join("output/debug/profile.md")).unwrap();
+        assert!(md.contains("sheet `Sheet1` of `budget.xlsx` has no header row") && md.contains("column names in the first row"), "the tip is there: {md}");
+        assert!(md.contains("col_2: PULSE"), "the form's text is kept in the profile: {md}");
     }
 
     #[tokio::test]

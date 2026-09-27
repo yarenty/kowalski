@@ -7,6 +7,8 @@ All notable changes to this project will be documented in this file, or at least
 ## [Unreleased]
 
 ### Fixed
+- A workbook sheet without a header row (a form or report rather than a table) is still processed: the profile lists its text rows, the SQL finds values by their labels, and the answers end with a tip on preparing the file (one table per sheet, column names in the first row, no title rows or merged cells). The upload box carries the same hint, and failure messages lose the runner's technical prefixes.
+- A table the model spelled with the sheet's case (`"Sheet1"` for `sheet1`) is retried once with the registered name; the profile states each table's SQL name and samples a few rows, and descriptive questions ("what is this about", "list the fields") are answered from it instead of SQL.
 - Setup no longer shows the old settings after its automatic restart (it waited for the first answer, which could come from the server that was going down); `/api/health` carries a `boot_id` that changes on every start. Key fields have a show/hide button, and Save is offered only when something changed (connecting tableski saves by itself).
 - A horde's form no longer empties itself every few seconds while you type.
 - A horde with its own form shows only that form; the generic source, notes and question fields are gone. A horde without a form gets one request box.

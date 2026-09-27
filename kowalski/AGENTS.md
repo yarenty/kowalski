@@ -168,6 +168,12 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
   `?status=needs_you|running|failed|done|cancelled`, `?horde=`, `limit`/`offset`, and per-filter
   `counts`.
 
+- **`[followup]`** in `horde.md` (`input`, optional `context`, both field ids of the run form)
+  makes follow-ups new runs: `POST /api/hordes/{id}/runs/{run_id}/continue {text}` rebuilds the
+  earlier form answers from the stored operator block, puts `text` in `input` and the earlier
+  hand-off (quoted, capped) in `context`, and records a `follow_up_of` event on the new run. A
+  form field of `type = "context"` is filled by kowalski and never shown in the form.
+
 #### API auth & CORS (optional, off by default — `src/auth.rs`)
 
 - **Default: auth off, permissive CORS** (single-user local tool — zero setup). Enable with

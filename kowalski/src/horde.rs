@@ -56,7 +56,7 @@ pub const AGENTS_LOG_REL: &str = "agents_log";
 pub const FOLLOWUP_ARTIFACT_REL: &str = "debug/followups";
 static RUN_SEQ: AtomicU64 = AtomicU64::new(1);
 
-fn now_ts() -> String {
+pub(crate) fn now_ts() -> String {
     match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(d) => format!("{}.{:03}Z", d.as_secs(), d.subsec_millis()),
         Err(_) => "0.000Z".to_string(),
@@ -115,6 +115,21 @@ pub struct HordeMeta {
     /// Shown on the Hordes home page until the operator pins their own.
     #[serde(default)]
     pub featured: bool,
+    /// How a finished run is followed up: a new run of this horde with the operator's text in
+    /// one form field and the previous answers in another (`[followup]`).
+    #[serde(default)]
+    pub followup: Option<HordeFollowup>,
+}
+
+/// `[followup]` in `horde.md`: follow-up questions start a new run instead of a chat about the
+/// old one. `input` is the form field the new text goes into; `context`, when set, is a form
+/// field (usually `type = "context"`, never shown in the form) that receives the previous run's
+/// hand-off, so questions like "which of those…" can be answered against fresh data.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct HordeFollowup {
+    pub input: String,
+    #[serde(default)]
+    pub context: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -228,6 +243,9 @@ pub struct HordeSpec {
     /// Shown on the Hordes home page by default.
     #[serde(default)]
     pub featured: bool,
+    /// Follow-ups as new runs (checked against the run form at load).
+    #[serde(default)]
+    pub followup: Option<HordeFollowup>,
     pub root_path: PathBuf,
     pub sub_agents: Vec<SubAgentSpec>,
     /// Resolved directory for follow-up chat artifacts ([`FOLLOWUP_ARTIFACT_REL`] under `workdir`).
@@ -424,6 +442,16 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
                 inputs: a.inputs.clone(),
             });
 
+    // a follow-up declaration must name fields of this horde's own form
+    let followup = meta.followup.clone().filter(|f| {
+        let has = |id: &str| run_form.as_ref().is_some_and(|form| form.inputs.iter().any(|i| i.id == id));
+        let ok = has(&f.input) && f.context.as_deref().is_none_or(has);
+        if !ok {
+            log::warn!("horde `{}`: [followup] names a field its run form does not have; ignored", meta.id);
+        }
+        ok
+    });
+
     let category = {
         let c = meta.category.as_deref().map(str::trim).unwrap_or("other").to_lowercase();
         if HORDE_CATEGORIES.contains(&c.as_str()) {
@@ -475,6 +503,7 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
         category,
         icon: meta.icon.unwrap_or_default().trim().to_string(),
         featured: meta.featured,
+        followup,
         root_path: root.to_path_buf(),
         sub_agents,
         followup_artifact_dir,
@@ -3020,6 +3049,7 @@ mod tests {
             category: "other".into(),
             icon: String::new(),
             featured: false,
+            followup: None,
             root_path: dir.to_path_buf(),
             sub_agents: vec![sub("a"), sub("b")],
             followup_artifact_dir: dir.join("follow"),

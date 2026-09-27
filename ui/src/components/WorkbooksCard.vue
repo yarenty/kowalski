@@ -148,6 +148,7 @@ onMounted(load);
         <input ref="input" type="file" :accept="ACCEPT" :disabled="busy !== null" class="sr-only" @change="upload(($event.target as HTMLInputElement).files)" />
         <strong>{{ busy === "upload" ? "Uploading…" : "Add a workbook" }}</strong>
         <span class="muted small">Drop an Excel, CSV or Parquet file here, or click to choose</span>
+        <span class="muted small hint">Works best with one table per sheet, column names in the first row, no title rows or merged cells.</span>
       </label>
 
       <p v-if="notice" class="note note-ok" role="status">{{ notice }}</p>

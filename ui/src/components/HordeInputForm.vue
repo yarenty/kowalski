@@ -36,6 +36,9 @@ watch(
   { immediate: true },
 );
 
+/** `context` fields are filled by kowalski (follow-ups), never typed by the operator. */
+const visibleInputs = computed(() => props.form.inputs.filter((f) => f.type !== "context"));
+
 function setField(id: string, value: string) {
   answers.value = { ...answers.value, [id]: value };
   emit("update:answers", { ...answers.value });
@@ -61,7 +64,7 @@ defineExpose({ missingRequired, answers });
     </header>
 
     <label
-      v-for="field in form.inputs"
+      v-for="field in visibleInputs"
       :key="field.id"
       class="field"
       :class="{ required: field.required }"

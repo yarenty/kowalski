@@ -56,6 +56,19 @@ const stepLive = ref<Record<string, StepState>>({});
 const stepStartedAt = ref<Record<string, number>>({});
 const runResult = ref<string | null>(null);
 const runFailure = ref<{ kind: "failed" | "cancelled"; reason: string } | null>(null);
+/** A failure reason without the runner's wrapping ("step profile failed: table_profile step
+ *  failed: Validation error: …"), so the operator reads the message itself. */
+function plainReason(reason: string): string {
+  let r = reason.trim();
+  for (;;) {
+    const next = r
+      .replace(/^step \S+ failed:\s*/i, "")
+      .replace(/^\S+ step failed:\s*/i, "")
+      .replace(/^(validation|tool execution|server) error:\s*/i, "");
+    if (next === r) return r.charAt(0).toUpperCase() + r.slice(1);
+    r = next;
+  }
+}
 const runErr = ref<string | null>(null);
 const runWatchdog = ref<number | null>(null);
 const runLoading = ref(false);
@@ -196,6 +209,11 @@ const runTitle = computed(() => {
   );
 });
 const runStartedAt = computed(() => activeRunFromHistory.value?.started_at ?? null);
+/** The run this one follows up (a `follow_up_of` event), for a link back. */
+const followsUp = computed(() => {
+  const ev = (activeRunFromHistory.value?.events ?? []).find((e) => e.kind === "follow_up_of");
+  return ev ? { runId: String(ev.run_id ?? ""), title: String(ev.title ?? "the earlier run") } : null;
+});
 
 /** The step working right now, for the single "Now" card. */
 const nowStep = computed(() => {
@@ -446,7 +464,7 @@ function applyEvent(payload: Record<string, unknown>, replay: boolean) {
     runBusy.value = false;
     if (!replay) onRunEnded();
   } else if (kind === "run_failed") {
-    const reason = payload.reason ? String(payload.reason) : "";
+    const reason = payload.reason ? plainReason(String(payload.reason)) : "";
     runFailure.value = { kind: "failed", reason };
     settleSteps("failed");
     feed("system", `run failed${reason ? `: ${reason}` : ""}`, "System", undefined, at);
@@ -740,6 +758,35 @@ async function runHordeWithPayload(payload: {
   }
 }
 
+/** Follow-up text for hordes that answer follow-ups with a new run (`[followup]`). */
+const continueText = ref("");
+const continueBusy = ref(false);
+
+async function continueRun() {
+  const text = continueText.value.trim();
+  const previous = runId.value;
+  if (!text || !previous || continueBusy.value) return;
+  continueBusy.value = true;
+  runErr.value = null;
+  try {
+    const out = await api.hordeRunContinue(props.hordeId, previous, text);
+    continueText.value = "";
+    resetRunState();
+    runBusy.value = true;
+    connectStream();
+    feed("user", promptLine(text) || text, "You");
+    feed("orchestrator", "follow-up: a new run on the same data, with the earlier answers as context", "Agent: Boss");
+    runId.value = out.run.run_id;
+    runHistory.value = [out.run, ...runHistory.value.filter((r) => r.run_id !== out.run.run_id)];
+    emit("run-started", out.run.run_id);
+    void refreshRunLists();
+  } catch (e) {
+    runErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    continueBusy.value = false;
+  }
+}
+
 const cancelBusy = ref(false);
 async function cancelActiveRun() {
   if (!runId.value || cancelBusy.value) return;
@@ -922,6 +969,7 @@ onUnmounted(() => {
             <h1>{{ runTitle }}</h1>
             <p class="head-sub">
               {{ selectedHorde.display_name }}<template v-if="runStartedAt"> · started {{ relativeTime(runStartedAt) }}</template>
+              <template v-if="followsUp && followsUp.runId"> · follow-up of <a href="#" class="inline-link" @click.prevent="emit('open-run', followsUp.runId)">“{{ followsUp.title }}”</a></template>
               <template v-if="activeRunFromHistory">
                 ·
                 <span class="run-status" :class="`tone-${runStatusLabel(activeRunFromHistory.status).tone}`">{{
@@ -1135,7 +1183,30 @@ onUnmounted(() => {
               </div>
             </section>
 
-            <section class="card flat followups">
+            <section v-if="selectedHorde?.followup" class="card accent followups">
+              <p class="eyebrow">Ask more about this data</p>
+              <label class="field">
+                <span>Your next questions, one per line</span>
+                <textarea
+                  v-model="continueText"
+                  rows="3"
+                  class="inp"
+                  placeholder="Which of those spent more than 100? · Show that per month"
+                  :disabled="continueBusy"
+                  @keydown.meta.enter.prevent="continueRun"
+                  @keydown.ctrl.enter.prevent="continueRun"
+                />
+              </label>
+              <p class="muted small">Starts a new run on the same data, with the answers above as context, so questions like “which of those…” get fresh SQL.</p>
+              <div class="btn-row">
+                <button type="button" class="primary" :disabled="continueBusy || !continueText.trim()" @click="continueRun">
+                  {{ continueBusy ? "Starting…" : "Ask" }}
+                </button>
+                <button type="button" class="ghost" :disabled="continueBusy" @click="emit('open-run', null)">Start a new request</button>
+              </div>
+            </section>
+
+            <section v-else class="card flat followups">
               <p class="eyebrow">Follow-up</p>
               <ol v-if="followupMsgs.length" class="feed followup-feed">
                 <li

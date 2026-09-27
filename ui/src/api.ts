@@ -323,6 +323,8 @@ export type HordeCatalogItem = {
   icon?: string;
   /** Shipped as a suggested pin on the Hordes home. */
   featured?: boolean;
+  /** Follow-ups start a new run: the text goes into `input`, the earlier answers into `context`. */
+  followup?: { input: string; context?: string | null } | null;
 };
 
 export type HordeCatalogResponse = {
@@ -537,6 +539,12 @@ export const api = {
     const match = /filename="([^"]+)"/.exec(disposition);
     return { fileName: match?.[1] ?? `${hordeId}.kwf.zip`, blob: await res.blob() };
   },
+  /** Follow a finished run up with a new run of the same horde (`[followup]` in horde.md). */
+  hordeRunContinue: (hordeId: string, runId: string, text: string) =>
+    json<{ ok: boolean; run: HordeRunRecord; follow_up_of: string }>(
+      `/api/hordes/${encodeURIComponent(hordeId)}/runs/${encodeURIComponent(runId)}/continue`,
+      { method: "POST", body: JSON.stringify({ text }) },
+    ),
   /** Workbooks on the connected tableski account (kowalski forwards with its sign-in). */
   tableskiFiles: () => json<TableskiFiles>("/api/tableski/files"),
   tableskiUpload: async (file: File): Promise<TableskiFile> => {

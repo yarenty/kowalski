@@ -16,6 +16,10 @@ delivery_note = "Open **`workdir/HANDOFF.md`** for the answers and **`workdir/re
 delivery_root_rel = "HANDOFF.md"
 delivery_summary_note = "Answers to your spreadsheet questions, computed with SQL by tableski, plus a report workbook."
 prompt_tip = "Add your workbook under Your workbooks (tableski must be connected in Setup), then list one question per line."
+
+[followup]
+input = "questions"
+context = "earlier"
 ---
 
 # Spreadsheet Analyst
@@ -33,6 +37,12 @@ every sheet becomes a table.
 - `run` (sql_batch): runs each query through tableski's `query_sql`; results are recorded exactly as returned.
 - `report` (xlsx_report): builds `report.xlsx`, one sheet per question plus an index.
 - `deliver` (deliver): writes `HANDOFF.md`, answering each question with the numbers from the results.
+
+## Follow-up questions
+
+After a run, ask more about the same data: the follow-up starts a new run with your new
+questions and the earlier answers as context (`[followup]` above), so "which of those…" gets
+fresh SQL instead of a guess.
 
 The model never writes a number into the report: it writes SQL, the query engine computes, and the
 workbook is built from the engine's output.
