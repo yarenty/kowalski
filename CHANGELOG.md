@@ -10,6 +10,14 @@ All notable changes to this project will be documented in this file, or at least
 - Hordes declare `category`, `icon` and `featured` in `horde.md`; the built-in hordes are tagged (Spreadsheet analyst, Morning brief and Folder watcher are featured).
 - Every run has a readable `title` (the first question with "+N more", a watched file's name, "Scheduled run"), and `GET /api/runs` lists runs across hordes with status filters (`needs_you`, `running`, `failed`, `done`, `cancelled`), a horde filter and per-filter counts.
 
+- Operator UI: a **Hordes home** — "What do you need done?" with filter chips (Pinned, Spreadsheets, Web & news, Documents, All) over large horde tiles (coloured icon, name, one line, one status line: next scheduled time, watched folder or last run); stars pin hordes, the shipped `featured` hordes stand in until you pin; "All" stays calm with 100 hordes (smaller tiles, 12 then Show all). A red strip appears only when a run waits for your approval.
+- Operator UI: a **Runs** page (every run across hordes, grouped by day, filters for Needs you / Failed and by horde, Load older) and a **⌘K picker** that finds hordes and recent runs from anywhere.
+- Operator UI: horde icons and category colours (spreadsheets teal, web amber, documents steel, code violet), light and dark.
+
+### Changed
+- Operator UI: a top bar replaces the left rail (Hordes · Runs · Chat · Build · Setup, an Admin menu, the ⌘K search box and the theme toggle); Chat conversations and Build sessions are listed beside their screens.
+- Operator UI: the horde page drops the horde list; it opens on the request form ("Send in the horde") with the horde's past runs beside it. A running horde shows the run's title, the stepper and one "Now" card with the activity log folded; a finished run shows the delivered answers first, with intermediate files, how it was computed, the activity log and the raw payload folded below. Runs open by link (`?horde=<id>&run=<run_id>`) and the browser's Back button works.
+
 ### Fixed
 - Chat with tools: an answer containing a code block (a shell command, a JSON example) is no longer mistaken for a broken tool call, which used to send the model a correction turn and could start a tool loop on small models.
 - The tool loop never ends with an empty reply: a repeated identical tool call gets one "answer now" nudge instead of stopping, and a loop that still ends without text (repeats, iteration cap) returns the last tool result.
