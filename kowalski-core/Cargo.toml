@@ -1,6 +1,6 @@
 [package]
 name = "kowalski-core"
-version = "2.2.0"
+version = "2.3.0"
 edition = "2024"
 description = "Core library of Kowalski, a Rust multi-agent framework: agents with MCP tools and memory, and hordes (step pipelines with triggers) over Ollama or OpenAI-compatible models"
 license = "MIT"
