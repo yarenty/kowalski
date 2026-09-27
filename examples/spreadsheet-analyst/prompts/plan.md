@@ -12,8 +12,21 @@ SELECT ...
 Rules:
 - Exactly one `### Q<n>` section per operator question, in the order they were asked. Answer
   the operator's questions, nothing else.
-- The profile already lists every table and column; never query `information_schema`.
+- Table names: use the `SQL name` from the profile exactly (e.g. `sheet1`), never the sheet name
+  (`Sheet1`) and never in double quotes. The profile already lists every table and column; never
+  query `information_schema`.
+- Questions about what the data is or which fields it has ("what is this about", "list the
+  fields") are answered by the profile, not by SQL: write the heading and one sentence saying the
+  profile answers it, with no sql block.
+- Use only the tables the question is about; ignore unrelated tables in the profile.
+- A sheet the profile notes has no header row is a form: its columns are `col_1`, `col_2`, …
+  and the labels sit in the cells. Find a value by its label, e.g.
+  `SELECT col_2 FROM sheet1 WHERE col_1 LIKE 'Duration%'`; questions about what it contains are
+  answered from the profile's rows.
 - If the intake names tables to use, use only those.
+- If the intake has "Earlier questions and answers", this is a follow-up: the new questions may
+  point back ("those customers", "the top one", "that month"). Work out what they mean from the
+  earlier answers and write fresh SQL for the NEW questions only; never re-answer earlier ones.
 - Only `SELECT` or `WITH ... SELECT`. No other statements, no other fenced code blocks.
 - Use table and column names exactly as in the profile. Wrap names that contain spaces, capitals
   or punctuation in double quotes: `"Order Date"`.

@@ -155,6 +155,25 @@ There are **no** separate `kowalski-tools`, `kowalski-*-agent`, or `kowalski-fed
 - **`TemplateAgent`** and tools live in **`kowalski-core`**; this crate re-exports **`core`** and optionally **`cli`**.
 - **HTTP server** (`kowalski` binary): **`/api/*`** for UI and automation.
 
+#### Horde catalogue fields and the runs list
+
+- `horde.md` may declare **`category`** (one of `HORDE_CATEGORIES` in `src/horde.rs`:
+  `spreadsheets`, `web`, `documents`, `code`, `other`; anything else is logged and shown as
+  `other`), **`icon`** (a name the UI draws; empty = the category's icon) and **`featured`**
+  (shown on the Hordes home page until the operator pins their own). `GET /api/hordes` returns
+  all three.
+- Every run has a **`title`**: `kowalski_core::run_title` turns the run's input into a few words
+  (the first form answer with "+N more", a watched file's name, "Scheduled run"). **`GET
+  /api/runs`** lists runs across hordes as light summaries, newest first, with
+  `?status=needs_you|running|failed|done|cancelled`, `?horde=`, `limit`/`offset`, and per-filter
+  `counts`.
+
+- **`[followup]`** in `horde.md` (`input`, optional `context`, both field ids of the run form)
+  makes follow-ups new runs: `POST /api/hordes/{id}/runs/{run_id}/continue {text}` rebuilds the
+  earlier form answers from the stored operator block, puts `text` in `input` and the earlier
+  hand-off (quoted, capped) in `context`, and records a `follow_up_of` event on the new run. A
+  form field of `type = "context"` is filled by kowalski and never shown in the form.
+
 #### API auth & CORS (optional, off by default — `src/auth.rs`)
 
 - **Default: auth off, permissive CORS** (single-user local tool — zero setup). Enable with

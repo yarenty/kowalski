@@ -14,6 +14,7 @@
 
 - [x] Commando theme: design tokens in `src/styles/theme.css`, light / dark / auto toggle, WCAG AA contrast.
 - [x] Plain navigation (Hordes, Chat, Build, Setup + Admin group); Hordes screen with horde cards, pipeline stepper, live feed and delivered-file panel.
+- [x] Top bar navigation, Hordes home (tiles, chips, pins, needs-you strip), horde page with past runs and answers-first results, Runs page, ⌘K picker, horde icons and category colours.
 
 ## Done (1.1.0)
 

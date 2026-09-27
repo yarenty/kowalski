@@ -16,13 +16,13 @@ Features are **not done** until an operator can complete the primary flows in **
   The horde listing polls every 15 s (server catalog hot-reloads definitions — add/edit/remove
   without restart); a horde whose latest on-disk edit failed to parse shows a ⚠ badge and the
   `load_error` message while the server keeps running its last good version.
-  The **Triggers** panel (when the horde declares `[[triggers]]`) lists each trigger with its
-  kind/detail badge, armed/disabled state, next cron fire, and last-fired run link; the
-  Enable/Disable toggle is a server-side operator override (persists across restarts, never
-  edits `horde.md`) and **Fire now** starts the trigger's run immediately. The **Recent runs**
-  feed shows every run with a source badge (cron/watch/webhook vs operator) and a
-  `resumed ×N` marker on interrupted-then-resumed runs. Trigger definitions are **not**
-  editable here — authoring stays in `horde.md` / Rookery.
+  The folded **Schedules and watchers** section of a horde page (when the horde declares
+  `[[triggers]]`) lists each trigger with its kind/detail badge, on/off state, next cron fire
+  and a link to the run it fired last; **Switch off / on** is a server-side operator override
+  (persists across restarts, never edits `horde.md`) and **Run now** starts the trigger's run
+  immediately. **Past runs of this horde** lists the last five runs by title; the **Runs** tab
+  lists every run. Trigger definitions are **not** editable here — authoring stays in
+  `horde.md` / Rookery.
 - **Federation** tab: registry, worker start/stop, delegate smoke tests. Each horde card
   has an **Export** button (downloads the portable `<id>-<version>.kwf.zip` bundle via
   authenticated fetch — a plain link cannot carry the bearer header) and the hordes list
@@ -42,9 +42,19 @@ Backend or `kowalski-core` changes that touch chat, horde, federation, or delive
   (buttons, inputs, `.card`, `.badge`, `.chip`, `.note-*`, `.eyebrow`, `.page-head`,
   `.empty-state`) live there too; scoped styles only add layout. Keep text/background pairs
   WCAG AA.
-- **Navigation labels**: the rail shows **Hordes** (`federation-run`, default landing tab),
-  **Chat**, **Build** (`rookery`), **Setup**, and an **Admin** group (Federation, MCP servers,
-  Graph, Diagnostics = `home`, About). Help text must use these names.
+- **Navigation labels**: the top bar shows **Hordes** (`federation-run`, default landing tab),
+  **Runs** (`runs`), **Chat**, **Build** (`rookery`), **Setup**, and an **Admin ▾** menu
+  (Federation, MCP servers, Graph, Diagnostics = `home`, About). Help text must use these names.
+- **Routing**: `src/nav.ts` owns the tab ids and the URL mapping (`?tab=`, `?horde=`, `?run=`);
+  `App.vue` pushes history entries so Back works. The Hordes tab shows the home (tiles) until a
+  horde is opened, then `FederationRunPanel` for that horde (and run).
+- **Shared horde list**: `src/hordesStore.ts` holds the catalogue for every screen (15 s poll
+  while a screen uses it) — do not add per-panel `api.hordes()` loops.
+- **Horde icons**: `src/hordeIcons.ts` is the single owner of categories (mirrors
+  `HORDE_CATEGORIES` in `kowalski/src/horde.rs`), their `--cat-*` colour tokens and the icon
+  paths; draw with `components/HordeIcon.vue`. Run status wording lives in `src/runs.ts`.
+- **Runs across hordes** come from `GET /api/runs` (`api.runs()`): the Runs page, the ⌘K picker,
+  the home's needs-you strip and tile status lines, and the horde page's past runs.
 
 - Prefer **`fetch`** and small composables; keep `App.vue` readable—extract new tabs into components if they grow.
 - API helpers live in **`src/api.ts`**; extend `ChatStreamEvent` only when the backend adds event types.

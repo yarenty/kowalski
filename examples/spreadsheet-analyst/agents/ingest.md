@@ -19,6 +19,11 @@ type = "text"
 label = "Tables to use (optional, comma separated; empty = all)"
 required = false
 placeholder = "orders, customers"
+[[inputs]]
+id = "earlier"
+type = "context"
+label = "Earlier questions and answers"
+required = false
 ---
 
 # Your questions

@@ -30,12 +30,24 @@
   --warn: #9a6400;
   --warn-soft: #fbf0d9;
 
-  /* The rail stays penguin-black in both modes. */
+  /* The top bar stays penguin-black in both modes. */
   --rail: #111418;
   --rail-raised: #1d2127;
   --rail-text: #f2efea;
   --rail-muted: #a3a9b1;
   --rail-line: #2c3138;
+
+  /* Horde categories: the square behind a horde icon (white strokes on top, >= 4.5:1). */
+  --on-cat: #ffffff;
+  --cat-spreadsheets: #0e7490;
+  --cat-web: #b45309;
+  --cat-documents: #3c5a78;
+  --cat-code: #5b4a8a;
+  --cat-other: #5f6670;
+
+  /* Overlays (menus, the ⌘K picker). */
+  --scrim: rgba(17, 20, 24, 0.42);
+  --pop-shadow: 0 12px 32px rgba(17, 20, 24, 0.18);
 
   --font-display: "Archivo", "Arial Narrow", "Helvetica Neue", Arial, system-ui, sans-serif;
   --font-body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
@@ -75,6 +87,13 @@
     --rail-text: #f2efea;
     --rail-muted: #9aa0a8;
     --rail-line: #22262c;
+    --cat-spreadsheets: #137a92;
+    --cat-web: #b25a12;
+    --cat-documents: #46688a;
+    --cat-code: #6a589c;
+    --cat-other: #5c636d;
+    --scrim: rgba(0, 0, 0, 0.6);
+    --pop-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
   }
 }
 
@@ -103,6 +122,13 @@
   --rail-text: #f2efea;
   --rail-muted: #9aa0a8;
   --rail-line: #22262c;
+  --cat-spreadsheets: #137a92;
+  --cat-web: #b25a12;
+  --cat-documents: #46688a;
+  --cat-code: #6a589c;
+  --cat-other: #5c636d;
+  --scrim: rgba(0, 0, 0, 0.6);
+  --pop-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
 }
 
 /* ---------- base ---------- */
@@ -467,6 +493,72 @@ input[type="radio"] {
   white-space: nowrap;
 }
 .chip-steel { background: var(--steel-soft); color: var(--steel); border-color: transparent; }
+
+/* Filter chips (Hordes home, Runs page): toggle buttons, `aria-pressed` marks the active one. */
+.filter-chips { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; }
+button.filter-chip {
+  padding: 0.38rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--body);
+  font-size: 0.86rem;
+  font-weight: 500;
+}
+button.filter-chip:hover:not(:disabled) { background: var(--surface); border-color: var(--muted); color: var(--ink); }
+button.filter-chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+button.filter-chip.alert { border-color: var(--red); color: var(--red-ink); }
+button.filter-chip.alert[aria-pressed="true"] { background: var(--red); border-color: var(--red); color: var(--on-red); }
+.filter-chip .n { font-family: var(--font-mono); font-size: 0.74rem; opacity: 0.8; }
+
+/* Run status as quiet text: "Done", "Needs you", "Failed", "Running". */
+.run-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.run-status.tone-ok { color: var(--ok); }
+.run-status.tone-red { color: var(--red-ink); font-weight: 600; }
+.run-status.tone-running { color: var(--ink); }
+.run-status.tone-running::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--red);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+/* Breadcrumb: "Hordes / Spreadsheet analyst". */
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0 0 0.9rem;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.crumbs a { color: var(--muted); text-decoration: none; }
+.crumbs a:hover { color: var(--ink); text-decoration: underline; }
+.crumbs [aria-current] { color: var(--ink); }
+
+/* Text-only button that reads like a link ("All runs →"). */
+button.link-btn {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--red-ink);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+button.link-btn:hover:not(:disabled) { background: transparent; text-decoration: underline; }
 
 .dot-running {
   display: inline-block;

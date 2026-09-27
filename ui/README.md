@@ -6,24 +6,47 @@ Features: health, MCP ping, **Chat** (`POST /api/chat`, SSE **`POST /api/chat/st
 
 ## Look and navigation (Commando theme)
 
-- **Navigation** (left rail): **Hordes** (run a horde — the default screen once Setup is done),
-  **Chat**, **Build** (the Rookery horde builder) and **Setup**. Technical screens sit under the
-  collapsible **Admin** group: **Federation**, **MCP servers**, **Graph**, **Diagnostics** (the
-  former Home/API status screen, including the API token) and **About**. Internal tab ids are
-  unchanged.
-- **Hordes screen**: horde picker cards (name, description, step count, what the horde needs —
-  e.g. tableski — and which file it delivers), the request form, a pipeline stepper
-  (done ✓ / current red / pending / failed ✕), the live feed with timestamps, and a
-  **Delivered** panel that highlights the output file with **Open output folder**. A run waiting
-  before a command step shows a red approval box (Approve / Cancel run); interrupted runs sit in a
-  calm banner.
-- **Deep links**: `?tab=<id>` opens a tab (`federation-run`, `chat`, `rookery`, `setup`,
-  `federation-management`, `mcp`, `graph`, `home`, `about`), `?horde=<id>` preselects a horde on
-  the Hordes screen, `?theme=light|dark|system` overrides the theme for that page load.
-- **Theme**: light / dark / auto toggle at the bottom of the rail (stored in `localStorage`
-  under `kowalski.ui.theme.v1`; auto follows the OS). All colours are design tokens defined once
-  in [`src/styles/theme.css`](./src/styles/theme.css) — components use only `var(--…)`, never
-  hex literals. Text/background pairs are chosen for WCAG AA contrast.
+- **Top bar**: the penguin mark and KOWALSKI wordmark, then **Hordes** (the landing screen once
+  Setup is done), **Runs**, **Chat**, **Build** (the Rookery horde builder) and **Setup**, and an
+  **Admin ▾** menu with **Federation**, **MCP servers**, **Graph**, **Diagnostics** (API status
+  and the API token) and **About**. On the right: **Find a horde or a run… ⌘K** (opens the picker)
+  and a compact light / dark / auto toggle. Below ~1000px the nav folds into one menu. A red count
+  on **Runs** says how many runs wait for approval. Internal tab ids are unchanged.
+- **Hordes home**: "What do you need done?" with filter chips (Pinned · Spreadsheets · Web &
+  news · Documents · Code when present · All N) over a grid of horde tiles: a coloured square with
+  the horde's icon, its name, the first sentence of its description and one quiet status line
+  (next scheduled time, the folder it watches, or the last run). **Pinned** shows the operator's
+  starred hordes (kept in this browser under `kowalski.ui.hordes.pinned.v1`), or the horde's
+  shipped `featured` flag until something is starred. **All** uses smaller tiles and shows at most
+  12 before **Show all**, so 100 hordes stay calm. A red strip at the top appears only when a run
+  waits for approval (**Review** opens it).
+- **Horde page** (from a tile, the picker, the Runs page or a deep link): breadcrumb, icon, name
+  and description; the request form with **Send in the horde**; on the right the last five runs
+  of this horde and **All runs →**, with "How this horde works", schedules and the output folder
+  folded away. While a run works, the title becomes the run's title, then the pipeline stepper
+  (done ✓ / current red / pending / failed ✕) and one **Now** card (current step, elapsed time,
+  what it does); the activity log is folded. A finished run shows the answers first: the
+  **Delivered** card with the rendered hand-off and the output file, then folded rows for
+  intermediate files, how it was computed, the Markdown source, the activity log and the raw
+  payload, then **Follow-up**. A run waiting before a command step shows the red approval box at
+  the top (Approve / Cancel run); interrupted runs sit in a calm banner with **Resume**.
+- **Runs page**: every run across hordes, grouped by day, with filter chips (All / Needs you /
+  Failed, Running while any run works) and an **Any horde** select; 25 at a time with **Load
+  older**. A row opens that run on its horde page.
+- **⌘K picker** (Cmd+K / Ctrl+K anywhere, or the top-bar box): search hordes (name,
+  description, category) and the last 50 runs (title); ↑↓ move, ↵ open, Esc close.
+- **Icons**: [`src/hordeIcons.ts`](./src/hordeIcons.ts) owns the category list (mirroring
+  `HORDE_CATEGORIES` in `kowalski/src/horde.rs`), each category's colour token and default icon,
+  and the icon set (table, sunrise, inbox, link, book, code, blocks, file, globe, receipt, tag,
+  chart, calendar, search, spark). A horde picks one with `icon = "…"` in `horde.md`.
+- **Deep links**: `?tab=<id>` opens a tab (`federation-run`, `runs`, `chat`, `rookery`, `setup`,
+  `federation-management`, `mcp`, `graph`, `home`, `about`), `?horde=<id>` opens that horde's
+  page, `?horde=<id>&run=<run_id>` opens one of its runs, `?theme=light|dark|system` overrides the
+  theme for that page load. The address bar follows navigation, so Back works.
+- **Theme**: light / dark / auto toggle in the top bar (stored in `localStorage` under
+  `kowalski.ui.theme.v1`; auto follows the OS). All colours are design tokens defined once in
+  [`src/styles/theme.css`](./src/styles/theme.css) — components use only `var(--…)`, never hex
+  literals. Text/background pairs are chosen for WCAG AA contrast.
 - **Fonts**: Archivo (headings), IBM Plex Sans (body), JetBrains Mono (labels, ids, code), loaded
   from Google Fonts with system fallbacks, so the UI stays readable offline.
 
@@ -89,17 +112,17 @@ Use this after any change to **`kowalski`**, **`kowalski-core`**, or **`ui/`** t
 
 **Steps**
 
-| # | Sidebar tab | What to do | Pass criteria |
+| # | Screen | What to do | Pass criteria |
 |---|-------------|------------|-----------------|
 | 1 | **Admin → Diagnostics** | Open once. Only if the server runs with `--auth`: paste its API token into **API token** → **Save** (first run only) | No blank crash; **Refresh all** shows agents/sessions (no 401 errors). |
 | 2 | **Chat** | Send one short message | **Optional** if `[llm]` / Ollama is configured: you get a normal reply or a **clear** error in the thread (not a silent hang). Skip if you have no LLM. |
 | 3 | **Admin → Federation** | Scroll to **Knowledge Sucking Swarm** (Knowledge Compiler horde) → **Start All** | Workers move toward ready; no permanent red error. If workers never become ready, start matching `agent-app worker … --role …` processes from [`examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md). |
-| 4 | **Hordes** | **Knowledge Sucking Swarm**: URL + question form → **Run horde**. **Rust Project Scaffolder** (`examples/rust-project-scaffolder`): operator form (project name, goals, crate shape) then **Run horde** | The pipeline stepper advances and the live feed shows each step, or an explicit failure. Scaffolder ingest needs valid `output` paths (auto-repaired on birth/repair). |
+| 4 | **Hordes** | Pick a tile (or ⌘K). **Knowledge Sucking Swarm**: URL + question form → **Send in the horde**. **Rust Project Scaffolder** (`examples/rust-project-scaffolder`): operator form (project name, goals, crate shape) then **Send in the horde** | The pipeline stepper advances, the **Now** card names the working step and the activity log shows each step, or an explicit failure; the run appears under **Runs**. Scaffolder ingest needs valid `output` paths (auto-repaired on birth/repair). |
 | 5 | **Build** (Rookery) | **New session** → describe a 3-step workflow → **Propose horde** → **Give birth** | Summary + pipeline on the right (horizontal track, or layered **DAG** canvas when `edges[]` is present); birth shows path under `examples/<id>/`. Run `cargo run -p kowalski-cli -- agent-app validate --path examples/<id>` to confirm. Requires live LLM for chat/propose. |
 | 5b | **Hordes — Coder** | Restart server; select **Coder (planning tier)** → **Start All** → run | DAG canvas; project path + task form; `HANDOFF.md` under `examples/coder/output/`. |
-| 5c | **Hordes — resume** | Kill the server mid-run; restart; reselect the horde | **Interrupted runs** banner lists the run (status + resume attempts); **Resume** continues from the next ready step (completed steps keep artifacts) and the feed shows a "run resumed" marker. |
-| 5d | **Hordes — cancel** | Start a run; click **Cancel run** under the pipeline stepper | Feed shows "run cancelled"; run history lists the run as `cancelled`; remaining steps are skipped. No worker processes are involved — steps run in-process. |
-| 5e | **Hordes — triggers** | Select a horde with `[[triggers]]` → **Triggers** panel: toggle one **Disable/Enable**, click **Fire now**; restart the server and reselect | Toggle flips armed/disabled (marked "operator override") and **survives the restart**; Fire now reports the started run and highlights it in **Recent runs**; trigger-fired runs carry a cron/watch/webhook badge there (operator runs say `operator`). Trigger cards also badge on **Admin → Federation**. |
+| 5c | **Hordes — resume** | Kill the server mid-run; restart; open the horde again | **Interrupted runs** banner lists the run (status + resume attempts); **Resume** continues from the next ready step (completed steps keep artifacts) and the feed shows a "run resumed" marker. |
+| 5d | **Hordes — cancel** | Start a run; click **Cancel run** in the **Now** card | The page says the run was cancelled; **Past runs** and **Runs** list it as Cancelled; remaining steps are skipped. No worker processes are involved — steps run in-process. |
+| 5e | **Hordes — triggers** | Open a horde with `[[triggers]]` → **Schedules and watchers**: **Switch off / on** one, click **Run now**; restart the server and open it again | The switch flips on/off (marked "changed here") and **survives the restart**; Run now opens the started run; the home tile shows "Next: …" for an armed schedule or "Watching …" for an armed watcher. Trigger cards also badge on **Admin → Federation**. |
 | 6 | **Admin → Federation** (optional extra) | Lower on the same panel: **Refresh registry** if you use raw delegate / `kc.run` smoke | Registry JSON loads; see [`examples/knowledge-compiler/README.md`](../examples/knowledge-compiler/README.md) for legacy worker commands. |
 
 

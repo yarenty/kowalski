@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { api, type ModelChoice, type SetupStatus } from "../api";
+import SecretInput from "../components/SecretInput.vue";
 
 const emit = defineEmits<{ (e: "done"): void }>();
 
@@ -19,6 +20,8 @@ const searchKey = ref("");
 const searchProvider = ref<"brave" | "staan">("brave");
 
 const check = ref<{ ok: boolean; message: string } | null>(null);
+/** The form as last loaded from the server: Save is offered only when something differs. */
+const saved = ref("");
 const busy = ref<string | null>(null);
 
 const PRESETS: Record<string, { base: string; model: string; label: string }> = {
@@ -51,6 +54,13 @@ const choice = computed<ModelChoice>(() =>
       },
 );
 
+/** Everything Save would write except the secrets (those count as changes when typed). */
+function snapshot() {
+  const { api_key: _k, search_api_key: _s, ...rest } = choice.value as ModelChoice & Record<string, unknown>;
+  return JSON.stringify(rest);
+}
+const dirty = computed(() => snapshot() !== saved.value || apiKey.value.trim() !== "" || searchKey.value.trim() !== "");
+
 async function load() {
   err.value = null;
   try {
@@ -68,6 +78,9 @@ async function load() {
       ollamaModel.value = s.ollama.models.find(same) ?? s.ollama.models[0] ?? s.model ?? "llama3.2";
     }
     filesDir.value = s.files_dir ?? "";
+    apiKey.value = "";
+    searchKey.value = "";
+    saved.value = snapshot();
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e);
   }
@@ -85,29 +98,41 @@ async function testModel() {
   }
 }
 
-async function waitForServer() {
+/** Wait until a NEW server process answers: the old one can still reply for a moment after
+ *  the restart request, and reading settings from it shows the state from before the change. */
+async function waitForServer(previousBoot: string | undefined) {
   const until = Date.now() + 30_000;
-  await new Promise((r) => setTimeout(r, 900));
+  await new Promise((r) => setTimeout(r, 700));
   while (Date.now() < until) {
     try {
-      await api.health();
-      return true;
+      const h = await api.health();
+      if (!previousBoot || (h.boot_id && h.boot_id !== previousBoot)) return true;
     } catch {
-      await new Promise((r) => setTimeout(r, 500));
+      /* down while it restarts */
     }
+    await new Promise((r) => setTimeout(r, 500));
   }
   return false;
+}
+
+async function currentBoot() {
+  try {
+    return (await api.health()).boot_id;
+  } catch {
+    return undefined;
+  }
 }
 
 async function restart(message: string) {
   busy.value = "restart";
   notice.value = message;
+  const before = await currentBoot();
   try {
     await api.setupRestart();
   } catch {
     /* the server may already be going down */
   }
-  const back = await waitForServer();
+  const back = await waitForServer(before);
   busy.value = null;
   if (back) {
     await load();
@@ -241,7 +266,7 @@ onMounted(async () => {
           <label class="field"><span>Model</span><input v-model="hostedModel" spellcheck="false" /></label>
           <label class="field">
             <span>API key</span>
-            <input v-model="apiKey" type="password" autocomplete="off" :placeholder="status.has_api_key ? 'saved; leave empty to keep it' : 'sk-…'" />
+            <SecretInput v-model="apiKey" label="API key" :placeholder="status.has_api_key ? 'saved; leave empty to keep it' : 'sk-…'" />
           </label>
           <p class="muted small">The key is stored in your config file with owner-only permissions (or set <code>OPENAI_API_KEY</code> and leave this empty).</p>
         </div>
@@ -276,7 +301,7 @@ onMounted(async () => {
           </label>
           <label class="field">
             <span>Search API key</span>
-            <input v-model="searchKey" type="password" autocomplete="off" :placeholder="status.web_search ? 'web search is on; leave empty to keep it' : (searchProvider === 'staan' ? 'Staan API key' : 'Brave Search API key')" />
+            <SecretInput v-model="searchKey" label="Search API key" :placeholder="status.web_search ? 'web search is on; leave empty to keep it' : (searchProvider === 'staan' ? 'Staan API key' : 'Brave Search API key')" />
           </label>
         </div>
         <p class="muted small">Agents can always read a web page you give them. To let them search too, paste a <a href="https://brave.com/search/api/" target="_blank" rel="noopener">Brave Search</a> or <a href="https://staan.ai/" target="_blank" rel="noopener">Staan</a> key; both have a free monthly allowance.</p>
@@ -291,7 +316,8 @@ onMounted(async () => {
           </div>
         </div>
         <p v-if="status.tableski.connected" class="note note-ok">
-          <strong>Connected</strong>{{ status.tableski.signed_in ? " (signed in)" : "" }}: {{ status.tableski.url }}
+          <strong>Connected</strong>{{ status.tableski.signed_in ? " (signed in)" : "" }}: {{ status.tableski.url }}.
+          Saved already; nothing else to press.
         </p>
         <p v-else>Sign in to tableski.io and your agents can query your uploaded spreadsheets with SQL. Free plan, no card.</p>
         <div class="row">
@@ -303,8 +329,10 @@ onMounted(async () => {
     <p v-else-if="!err" class="muted">Loading your current settings…</p>
 
     <div v-if="status" class="save">
-      <p class="muted small">Saving restarts kowalski so every agent picks up the new settings.</p>
-      <button type="button" class="primary" :disabled="busy !== null" @click="saveAll">{{ busy === "save" || busy === "restart" ? "Working…" : "Save and restart" }}</button>
+      <p class="muted small">
+        {{ dirty ? "Saving restarts kowalski so every agent picks up the new settings." : "No changes to save. Connecting tableski saves by itself." }}
+      </p>
+      <button type="button" class="primary" :disabled="busy !== null || !dirty" @click="saveAll">{{ busy === "save" || busy === "restart" ? "Working…" : dirty ? "Save changes and restart" : "Saved" }}</button>
     </div>
   </section>
 </template>

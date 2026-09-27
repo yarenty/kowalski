@@ -22,6 +22,12 @@ use std::path::{Path, PathBuf};
 const MAX_QUERIES: usize = 20;
 /// Most tables one `table_profile` step describes.
 const MAX_TABLES: usize = 20;
+/// Advice for an operator whose workbook reads like a form rather than tables (a tip, never a stop).
+pub const PREPARE_WORKBOOK_ADVICE: &str = "For better answers, prepare the workbook with each table on its own sheet, the column names in the first row and one record per row below them; no title, instruction or total rows above the header, no merged cells.";
+/// Sample rows shown for a table with a header row.
+const TABLE_SAMPLE_ROWS: usize = 5;
+/// Rows read from a sheet without one (a form or report), whose content is its text.
+const FORM_SAMPLE_ROWS: usize = 60;
 
 /// One question of a plan: its heading and SQL, or the plan's reason for having no SQL.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -214,11 +220,22 @@ impl StepHandler for SqlBatchStepHandler {
                 continue;
             }
             ctx.events.message(&format!("Running query {}: {}", i + 1, q.title)).await;
-            let input = ToolInput::new("query".into(), String::new(), json!({ "sql": q.sql }));
-            let (raw, error) = match self.tools.execute(&tool, input).await {
-                Ok(o) => (tool_text(&o.result), None),
-                Err(e) => (String::new(), Some(e.to_string())),
-            };
+            let (mut raw, mut error) = self.run_query(&tool, &q.sql).await;
+            let mut q = q;
+            // a model that copied a sheet name ("Sheet1") for the table (sheet1): one retry with
+            // the registered name when only the spelling's case differs
+            if let Some(e) = error.as_deref()
+                && let Some(fixed) = self.fix_table_case(&q.sql, e).await
+            {
+                ctx.events.message(&format!("Retrying {} with the registered table name", q.title)).await;
+                let (r2, e2) = self.run_query(&tool, &fixed).await;
+                if e2.is_none() {
+                    q.note = format!("{} (table name corrected)", q.note).trim().to_string();
+                    q.sql = fixed;
+                    raw = r2;
+                    error = None;
+                }
+            }
             let grid = error.is_none().then(|| parse_result_grid(&raw)).flatten();
             md.push_str(&format!("\n## {}\n\n```sql\n{}\n```\n\n", q.title, q.sql));
             match (&error, &grid) {
@@ -294,13 +311,17 @@ impl StepHandler for TableProfileStepHandler {
         }
         let out = artifact_path(ctx)?;
         let mut md = String::from("# Data profile\n\nRead from the data tool; use these table and column names exactly.\n");
+        // sheets that turned out to be forms or reports rather than tables (no header row)
+        let mut forms: Vec<String> = Vec::new();
         for t in tables.iter().take(MAX_TABLES) {
             if ctx.cancel.is_cancelled() {
                 return Err(KowalskiError::Validation(format!("step `{}` cancelled", ctx.step.name)));
             }
             let Some(name) = t.get("name").and_then(Value::as_str) else { continue };
             ctx.events.message(&format!("Profiling table {name}")).await;
-            md.push_str(&format!("\n## {name}\n\n"));
+            md.push_str(&format!(
+                "\n## Table `{name}`\n\n- SQL name: `{name}` (write it exactly so; a sheet name is not a table name)\n"
+            ));
             for (key, label) in [("source", "Source"), ("sheet", "Sheet"), ("rows", "Rows"), ("columns", "Columns")] {
                 match t.get(key) {
                     Some(Value::String(v)) => md.push_str(&format!("- {label}: {v}\n")),
@@ -308,9 +329,18 @@ impl StepHandler for TableProfileStepHandler {
                     _ => {}
                 }
             }
+            let mut form_like = false;
             match self.call("get_schema", json!({ "table": name })).await {
                 Ok(text) => {
                     let cols = framed_json(&text).and_then(|v| v.get("columns").and_then(Value::as_array).cloned()).unwrap_or_default();
+                    // no header row found: tableski names the columns col_1, col_2, …
+                    form_like = !cols.is_empty()
+                        && cols.iter().all(|c| {
+                            c.get("name")
+                                .and_then(Value::as_str)
+                                .and_then(|n| n.strip_prefix("col_"))
+                                .is_some_and(|d| d.chars().all(|ch| ch.is_ascii_digit()))
+                        });
                     md.push_str("\n| column | type | nullable |\n|---|---|---|\n");
                     for c in cols {
                         md.push_str(&format!(
@@ -323,7 +353,45 @@ impl StepHandler for TableProfileStepHandler {
                 }
                 Err(e) => md.push_str(&format!("\nSchema unavailable: {e}\n")),
             }
-            if self.tools.get("column_statistics").is_some() {
+            if self.tools.get("query_sql").is_some() {
+                let limit = if form_like { FORM_SAMPLE_ROWS } else { TABLE_SAMPLE_ROWS };
+                let sql = format!("SELECT * FROM {name} LIMIT {limit}");
+                if let Ok(text) = self.call("query_sql", json!({ "sql": sql })).await
+                    && let Some(g) = parse_result_grid(&text)
+                {
+                    if form_like {
+                        md.push_str("\nNo header row: this sheet looks like a form or report, not a table. Its text is in the rows below (empty cells left out); answer questions about what it contains from these rows, and find values with `WHERE col_1 LIKE '%…%'`.\n\n");
+                        for row in g.rows.iter() {
+                            let cells: Vec<String> = g
+                                .columns
+                                .iter()
+                                .zip(row)
+                                .filter(|(_, v)| !v.trim().is_empty())
+                                .map(|(c, v)| format!("{c}: {}", v.trim()))
+                                .collect();
+                            if !cells.is_empty() {
+                                let line = cells.join(" · ");
+                                md.push_str(&format!("- {}\n", crate::markdown_pipeline::cap_chars(&line, 220).trim_end()));
+                            }
+                        }
+                    } else {
+                        md.push_str(&format!("\nFirst rows:\n\n| {} |\n|{}|\n", g.columns.join(" | "), g.columns.iter().map(|_| "---").collect::<Vec<_>>().join("|")));
+                        for r in &g.rows {
+                            md.push_str(&format!("| {} |\n", r.join(" | ")));
+                        }
+                    }
+                }
+            }
+            if form_like {
+                let origin = match (t.get("sheet").and_then(Value::as_str), t.get("source").and_then(Value::as_str)) {
+                    (Some(sheet), Some(src)) => format!("sheet `{sheet}` of `{}`", src.rsplit('/').next().unwrap_or(src)),
+                    (None, Some(src)) => format!("`{}`", src.rsplit('/').next().unwrap_or(src)),
+                    _ => format!("table `{name}`"),
+                };
+                ctx.events.message(&format!("{origin} has no header row: reading it as a form (a tip on preparing it comes with the answers)")).await;
+                forms.push(origin);
+            }
+            if self.tools.get("column_statistics").is_some() && !form_like {
                 match self.call("column_statistics", json!({ "table": name })).await {
                     Ok(text) => match parse_result_grid(&text) {
                         Some(g) => {
@@ -338,12 +406,57 @@ impl StepHandler for TableProfileStepHandler {
                 }
             }
         }
+        if !forms.is_empty() {
+            let warning = format!(
+                "\n## Note: a sheet without a header row\n\n{} {} no header row, so {} like a form or report rather than a table. It is still used: its text rows are listed below and answers come from them, but a table answers better. {}\n",
+                forms.join(", "),
+                if forms.len() == 1 { "has" } else { "have" },
+                if forms.len() == 1 { "it reads" } else { "they read" },
+                PREPARE_WORKBOOK_ADVICE,
+            );
+            md.insert_str(md.find('\n').map(|i| i + 1).unwrap_or(0), &warning);
+        }
         std::fs::write(&out, &md).map_err(|e| KowalskiError::Validation(e.to_string()))?;
         Ok(StepOutcome::Completed {
             summary: format!("{} tables profiled: {}", tables.len().min(MAX_TABLES), out.display()),
             artifact: Some(out),
             status: StageStatus::Pass,
         })
+    }
+}
+
+impl SqlBatchStepHandler {
+    async fn run_query(&self, tool: &str, sql: &str) -> (String, Option<String>) {
+        let input = ToolInput::new("query".into(), String::new(), json!({ "sql": sql }));
+        match self.tools.execute(tool, input).await {
+            Ok(o) => (tool_text(&o.result), None),
+            Err(e) => (String::new(), Some(e.to_string())),
+        }
+    }
+
+    /// `sql` with a table reference respelled to the registered name, when the data tool refused
+    /// it as unregistered and a registered table differs from it only in case (or quoting).
+    async fn fix_table_case(&self, sql: &str, error: &str) -> Option<String> {
+        let rest = error.split("`").nth(1)?; // the refused name, as the tool quotes it
+        if !error.contains("is not a registered table") {
+            return None;
+        }
+        let bare = rest.trim_matches('"');
+        self.tools.get("list_tables")?;
+        let listing = self
+            .tools
+            .execute("list_tables", ToolInput::new("list_tables".into(), String::new(), json!({})))
+            .await
+            .ok()
+            .map(|o| tool_text(&o.result))?;
+        let tables = framed_json(&listing)?.get("tables")?.as_array()?.clone();
+        let registered = tables
+            .iter()
+            .filter_map(|t| t.get("name").and_then(Value::as_str))
+            .find(|n| n.eq_ignore_ascii_case(bare) && *n != bare)?
+            .to_string();
+        let fixed = sql.replace(&format!("\"{bare}\""), &registered).replace(bare, &registered);
+        (fixed != sql).then_some(fixed)
     }
 }
 

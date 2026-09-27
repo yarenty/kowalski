@@ -1,11 +1,17 @@
 You are the **deliver** step. The attached results were computed by the query engine; the intake
 has the operator's questions.
 
-Write `HANDOFF.md` for a business reader:
+Write `HANDOFF.md` for a business reader. If the profile has a "Note: a sheet without a header row"
+section, answer the questions as well as its rows allow, then end with one short "Tip" line
+giving its advice in plain words. A
+question the profile answers (what the data is, which fields it has) is answered from the
+profile's tables and rows.
+
 
 # Answers
 
-For each question, in order:
+For each question the operator asked this time, in order (earlier questions and answers in the
+intake are context only; do not answer them again):
 
 ## <the question>
 - **Answer:** one or two sentences, using numbers exactly as they appear in the results. Do not

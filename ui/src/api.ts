@@ -43,6 +43,8 @@ export type Health = {
   status: string;
   service: string;
   version: string;
+  /** Changes on every server start; used to wait for a real restart. */
+  boot_id?: string;
   model?: string;
   federation?: {
     agents_registered: number;
@@ -184,6 +186,35 @@ export type HordeSubAgent = {
   tool_ids?: string[];
 };
 
+/** One table tableski made from an uploaded file. */
+export type TableskiTable = { name: string; sheet?: string; rows: number; columns?: number };
+/** A file on the tableski account (fields as tableski returns them; extras pass through). */
+export type TableskiFile = {
+  id: string;
+  name?: string;
+  file_name?: string;
+  size?: number;
+  bytes?: number;
+  tables?: TableskiTable[];
+  created_at?: string;
+  expires_at?: string | null;
+  [k: string]: unknown;
+};
+export type TableskiFiles = {
+  files: TableskiFile[];
+  quota?: { files?: number | null; bytes_per_file?: number | null; retention_hours?: number | null };
+};
+
+/** Whether a horde queries tableski (a step lists its tools or is a table step). */
+export function usesTableski(h: { sub_agents?: HordeSubAgent[] } | null | undefined): boolean {
+  return (h?.sub_agents ?? []).some(
+    (s) =>
+      s.kind === "table_profile" ||
+      s.kind === "sql_batch" ||
+      (s.tool_ids ?? []).some((t) => ["query_sql", "list_tables", "get_schema"].includes(t)),
+  );
+}
+
 export type OperatorInputField = {
   id: string;
   type: string;
@@ -286,6 +317,14 @@ export type HordeCatalogItem = {
   prompt_tip?: string;
   sub_agents: HordeSubAgent[];
   run_form?: HordeRunFormSpec | null;
+  /** Catalogue group (`spreadsheets`, `web`, `documents`, `code`, `other`); see `hordeIcons.ts`. */
+  category?: string;
+  /** Icon name; empty means the category's icon. */
+  icon?: string;
+  /** Shipped as a suggested pin on the Hordes home. */
+  featured?: boolean;
+  /** Follow-ups start a new run: the text goes into `input`, the earlier answers into `context`. */
+  followup?: { input: string; context?: string | null } | null;
 };
 
 export type HordeCatalogResponse = {
@@ -323,6 +362,31 @@ export type HordeRunRecord = {
   resume_count?: number;
   /** Incomplete in the store with no live orchestrator task (interrupted by a restart or awaiting input). */
   resumable?: boolean;
+  /** What the run was about, in a few words (server-built). */
+  title?: string;
+};
+
+/** One row of `GET /api/runs` (runs across hordes, newest first). */
+export type RunSummary = {
+  run_id: string;
+  horde_id: string;
+  title: string;
+  /** API vocabulary: `completed`, `failed`, `cancelled`, `awaiting_input`, `running`, `pending`. */
+  status: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  origin?: string | null;
+  current_step?: string | null;
+};
+
+/** `GET /api/runs` list filters. */
+export type RunFilter = "all" | "needs_you" | "running" | "failed" | "done" | "cancelled";
+
+export type RunsListResponse = {
+  runs: RunSummary[];
+  counts: Record<Exclude<RunFilter, "all"> | "all", number>;
+  limit: number;
+  offset: number;
 };
 
 export type OpenPathResponse = {
@@ -475,6 +539,23 @@ export const api = {
     const match = /filename="([^"]+)"/.exec(disposition);
     return { fileName: match?.[1] ?? `${hordeId}.kwf.zip`, blob: await res.blob() };
   },
+  /** Follow a finished run up with a new run of the same horde (`[followup]` in horde.md). */
+  hordeRunContinue: (hordeId: string, runId: string, text: string) =>
+    json<{ ok: boolean; run: HordeRunRecord; follow_up_of: string }>(
+      `/api/hordes/${encodeURIComponent(hordeId)}/runs/${encodeURIComponent(runId)}/continue`,
+      { method: "POST", body: JSON.stringify({ text }) },
+    ),
+  /** Workbooks on the connected tableski account (kowalski forwards with its sign-in). */
+  tableskiFiles: () => json<TableskiFiles>("/api/tableski/files"),
+  tableskiUpload: async (file: File): Promise<TableskiFile> => {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    const res = await fetch(`${base}/api/tableski/files`, { method: "POST", headers: authHeaders(), body: form });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json() as Promise<TableskiFile>;
+  },
+  tableskiRemove: (id: string) =>
+    json<{ ok?: boolean }>(`/api/tableski/files/${encodeURIComponent(id)}`, { method: "DELETE" }),
   /** Upload a `.kwf.zip` / `.bbwf.zip` bundle. `dryRun` runs every import gate and
    *  returns the portability report without landing the horde. */
   hordeImport: async (file: File, dryRun: boolean): Promise<HordeImportResponse> => {
@@ -490,6 +571,15 @@ export const api = {
       throw new Error(`${res.status} ${res.statusText}: ${text.slice(0, 200)}`);
     }
     return res.json() as Promise<HordeImportResponse>;
+  },
+  runs: (q: { status?: RunFilter; horde?: string; limit?: number; offset?: number } = {}) => {
+    const p = new URLSearchParams();
+    if (q.status && q.status !== "all") p.set("status", q.status);
+    if (q.horde) p.set("horde", q.horde);
+    if (q.limit != null) p.set("limit", String(q.limit));
+    if (q.offset) p.set("offset", String(q.offset));
+    const qs = p.toString();
+    return json<RunsListResponse>(`/api/runs${qs ? `?${qs}` : ""}`);
   },
   hordeRuns: (hordeId: string) =>
     json<{ horde_id: string; runs: HordeRunRecord[] }>(`/api/hordes/${encodeURIComponent(hordeId)}/runs`),

@@ -775,17 +775,23 @@ impl TriggerManager {
         };
         // Pre-filled operator-form answers, validated exactly like an operator
         // submission (`POST /api/hordes/{id}/run` keeps the same rules).
-        let form_block = if trigger.input.is_empty() {
-            None
-        } else {
-            match self
-                .manager
-                .find(&armed.horde_id)
-                .and_then(|s| s.run_form.clone())
-            {
-                Some(form) => {
-                    match kowalski_core::validate_form_answers(&form, &trigger.input) {
-                        Ok(()) => Some(kowalski_core::answers_to_prompt(&form, &trigger.input)),
+        // Pre-filled operator-form answers: the form's own defaults with the trigger's `input`
+        // on top, validated exactly like an operator submission (`POST /api/hordes/{id}/run`
+        // keeps the same rules). One list of defaults serves the form and the schedule.
+        let run_form = self.manager.find(&armed.horde_id).and_then(|s| s.run_form.clone());
+        let form_block = match run_form {
+            Some(form) => {
+                let mut answers: BTreeMap<String, String> = form
+                    .inputs
+                    .iter()
+                    .filter_map(|f| f.default.clone().filter(|d| !d.trim().is_empty()).map(|d| (f.id.clone(), d)))
+                    .collect();
+                answers.extend(trigger.input.clone());
+                if answers.is_empty() {
+                    None
+                } else {
+                    match kowalski_core::validate_form_answers(&form, &answers) {
+                        Ok(()) => Some(kowalski_core::answers_to_prompt(&form, &answers)),
                         Err(e) => {
                             let msg = format!(
                                 "trigger {}: input rejected by the horde's run form, not firing: {e}",
@@ -796,14 +802,16 @@ impl TriggerManager {
                         }
                     }
                 }
-                None => {
+            }
+            None => {
+                if !trigger.input.is_empty() {
                     log::warn!(
                         "trigger {}: has `input` but horde {} declares no run form — ignored",
                         armed.key(),
                         armed.horde_id
                     );
-                    None
                 }
+                None
             }
         };
         let prompt = match &form_block {
@@ -1007,6 +1015,10 @@ mod tests {
             delivery_root_rel: String::new(),
             delivery_summary_note: String::new(),
             prompt_tip: String::new(),
+            category: "other".into(),
+            icon: String::new(),
+            featured: false,
+            followup: None,
             root_path: dir.to_path_buf(),
             sub_agents: vec![sub("a")],
             followup_artifact_dir: dir.join("follow"),
@@ -1080,6 +1092,7 @@ mod tests {
             origin: RUN_ORIGIN_TRIGGER.into(),
             resume_count: 0,
             resumable: false,
+            title: "q".into(),
             manifest_snapshot: None,
         };
         tm.manager
@@ -1350,6 +1363,45 @@ mod tests {
             "payload recorded in the audit event: {:?}",
             persisted.events
         );
+    }
+
+    #[tokio::test]
+    async fn a_trigger_without_input_uses_the_forms_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut t = trigger("skip");
+        t.webhook = Some(WebhookTrigger { route: "brief".into() });
+        let mut spec = test_spec(dir.path(), vec![t]);
+        spec.run_form = Some(kowalski_core::HordeRunFormSpec {
+            step: "a".into(),
+            display_name: Some("Fetch".into()),
+            inputs: vec![
+                kowalski_core::OperatorInputField {
+                    id: "sources".into(),
+                    field_type: "textarea".into(),
+                    label: "Pages".into(),
+                    required: true,
+                    placeholder: None,
+                    options: Vec::new(),
+                    default: Some("https://news.ycombinator.com/".into()),
+                },
+                kowalski_core::OperatorInputField {
+                    id: "focus".into(),
+                    field_type: "text".into(),
+                    label: "Focus".into(),
+                    required: false,
+                    placeholder: None,
+                    options: Vec::new(),
+                    default: None,
+                },
+            ],
+        });
+        let tm = test_tm(spec, local(2026, 8, 10, 7, 30)).await;
+        let spec = tm.manager.find("test-horde").unwrap();
+        let FireOutcome::Started(run) = tm.fire_webhook(&spec, 0, json!({})).await else {
+            panic!("expected Started");
+        };
+        let persisted = tm.manager.store.get_run(&run.run_id).await.unwrap().unwrap();
+        assert!(persisted.prompt.contains("**Pages:** https://news.ycombinator.com/"), "{}", persisted.prompt);
     }
 
     #[tokio::test]

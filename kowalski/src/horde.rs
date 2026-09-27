@@ -45,6 +45,9 @@ pub const DEFAULT_STEP_TIMEOUT_SECS: u64 = 600;
 /// Server default for [`HordeManager::confirm_commands`]: `verify` and `apply` steps wait for
 /// an operator's approval. Override with `[horde] confirm_commands = false`.
 pub const DEFAULT_CONFIRM_COMMANDS: bool = true;
+/// Catalogue groups a horde can declare with `category` in `horde.md`; the UI mirrors this list
+/// (`ui/src/hordeIcons.ts`). Anything else reads as `other`.
+pub const HORDE_CATEGORIES: &[&str] = &["spreadsheets", "web", "documents", "code", "other"];
 /// Step kinds that run commands or write into the operator's project.
 const COMMAND_STEP_KINDS: &[&str] = &["verify", "apply"];
 /// Relative path under `workdir` for managed federation worker stdout/stderr logs (HTTP server convention).
@@ -53,7 +56,7 @@ pub const AGENTS_LOG_REL: &str = "agents_log";
 pub const FOLLOWUP_ARTIFACT_REL: &str = "debug/followups";
 static RUN_SEQ: AtomicU64 = AtomicU64::new(1);
 
-fn now_ts() -> String {
+pub(crate) fn now_ts() -> String {
     match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(d) => format!("{}.{:03}Z", d.as_secs(), d.subsec_millis()),
         Err(_) => "0.000Z".to_string(),
@@ -103,6 +106,30 @@ pub struct HordeMeta {
     pub delivery_summary_note: Option<String>,
     #[serde(default)]
     pub prompt_tip: Option<String>,
+    /// Catalogue group: one of [`HORDE_CATEGORIES`] (default `other`).
+    #[serde(default)]
+    pub category: Option<String>,
+    /// Icon name the UI draws for this horde (default: the category's icon).
+    #[serde(default)]
+    pub icon: Option<String>,
+    /// Shown on the Hordes home page until the operator pins their own.
+    #[serde(default)]
+    pub featured: bool,
+    /// How a finished run is followed up: a new run of this horde with the operator's text in
+    /// one form field and the previous answers in another (`[followup]`).
+    #[serde(default)]
+    pub followup: Option<HordeFollowup>,
+}
+
+/// `[followup]` in `horde.md`: follow-up questions start a new run instead of a chat about the
+/// old one. `input` is the form field the new text goes into; `context`, when set, is a form
+/// field (usually `type = "context"`, never shown in the form) that receives the previous run's
+/// hand-off, so questions like "which of those…" can be answered against fresh data.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct HordeFollowup {
+    pub input: String,
+    #[serde(default)]
+    pub context: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -207,6 +234,18 @@ pub struct HordeSpec {
     pub delivery_root_rel: String,
     pub delivery_summary_note: String,
     pub prompt_tip: String,
+    /// Catalogue group, always one of [`HORDE_CATEGORIES`].
+    #[serde(default = "default_category")]
+    pub category: String,
+    /// Icon name for the UI; empty = the category's icon.
+    #[serde(default)]
+    pub icon: String,
+    /// Shown on the Hordes home page by default.
+    #[serde(default)]
+    pub featured: bool,
+    /// Follow-ups as new runs (checked against the run form at load).
+    #[serde(default)]
+    pub followup: Option<HordeFollowup>,
     pub root_path: PathBuf,
     pub sub_agents: Vec<SubAgentSpec>,
     /// Resolved directory for follow-up chat artifacts ([`FOLLOWUP_ARTIFACT_REL`] under `workdir`).
@@ -215,6 +254,21 @@ pub struct HordeSpec {
     pub worker_log_dir: PathBuf,
     /// Pre-run operator form (first pipeline step that declares `[[inputs]]`).
     pub run_form: Option<kowalski_core::HordeRunFormSpec>,
+}
+
+/// `text` without a leading `---` … `---` metadata block.
+fn strip_front_matter(text: &str) -> &str {
+    let Some(rest) = text.strip_prefix("---\n").or_else(|| text.strip_prefix("---\r\n")) else {
+        return text;
+    };
+    match rest.find("\n---") {
+        Some(end) => rest[end + 4..].trim_start_matches(['\r', '\n']),
+        None => text,
+    }
+}
+
+fn default_category() -> String {
+    "other".to_string()
 }
 
 /// Placeholder for the `#[serde(skip)]` graph field during snapshot deserialization;
@@ -388,6 +442,25 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
                 inputs: a.inputs.clone(),
             });
 
+    // a follow-up declaration must name fields of this horde's own form
+    let followup = meta.followup.clone().filter(|f| {
+        let has = |id: &str| run_form.as_ref().is_some_and(|form| form.inputs.iter().any(|i| i.id == id));
+        let ok = has(&f.input) && f.context.as_deref().is_none_or(has);
+        if !ok {
+            log::warn!("horde `{}`: [followup] names a field its run form does not have; ignored", meta.id);
+        }
+        ok
+    });
+
+    let category = {
+        let c = meta.category.as_deref().map(str::trim).unwrap_or("other").to_lowercase();
+        if HORDE_CATEGORIES.contains(&c.as_str()) {
+            c
+        } else {
+            log::warn!("horde {}: unknown category `{c}` (use one of {HORDE_CATEGORIES:?}); shown as other", meta.id);
+            "other".to_string()
+        }
+    };
     Ok(HordeSpec {
         id: meta.id,
         display_name: meta.display_name,
@@ -427,6 +500,10 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
         prompt_tip: meta.prompt_tip.unwrap_or_else(|| {
             "Provide a prompt that includes source URL and desired output style.".to_string()
         }),
+        category,
+        icon: meta.icon.unwrap_or_default().trim().to_string(),
+        featured: meta.featured,
+        followup,
         root_path: root.to_path_buf(),
         sub_agents,
         followup_artifact_dir,
@@ -796,6 +873,9 @@ pub struct RunStepRecord {
 pub struct RunRecord {
     pub run_id: String,
     pub horde_id: String,
+    /// What the run was about, in a few words ([`kowalski_core::run_title`]): lists of runs read
+    /// as the questions asked, not as ids.
+    pub title: String,
     pub prompt: String,
     pub source: Option<String>,
     pub question: String,
@@ -864,6 +944,7 @@ impl RunRecord {
             .as_deref()
             .and_then(|c| steps.iter().position(|s| s.step == c))
             .unwrap_or(0);
+        let title = kowalski_core::run_title(&p.prompt, &p.question, p.source.as_deref());
         Self {
             run_id: p.run_id,
             horde_id: p.horde_id,
@@ -880,6 +961,7 @@ impl RunRecord {
             origin: p.origin,
             resume_count: p.resume_count.max(0) as u32,
             resumable: false,
+            title,
             manifest_snapshot: p.manifest_snapshot,
         }
     }
@@ -1188,6 +1270,7 @@ impl HordeManager {
             origin: origin.to_string(),
             resume_count: 0,
             resumable: false,
+            title: kowalski_core::run_title(prompt, &q, source),
             manifest_snapshot: serde_json::to_value(&*spec).ok(),
         };
 
@@ -2259,6 +2342,9 @@ impl HordeManager {
             spec.workdir.join("PASTE_ME.md")
         };
         let handoff_markdown = std::fs::read_to_string(&paste_path).ok().map(|s| {
+            // a leading `---` metadata block (verify/apply artifacts carry one) is for the
+            // orchestrator, not the reader
+            let s = strip_front_matter(&s).to_string();
             const MAX: usize = 48_000;
             if s.len() <= MAX {
                 s
@@ -2908,6 +2994,13 @@ pub use kowalski_core::config::default_horde_roots;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hand_off_front_matter_is_stripped() {
+        assert_eq!(strip_front_matter("---\nstatus: pass\n---\n\n# Verify\nok"), "# Verify\nok");
+        assert_eq!(strip_front_matter("# No metadata"), "# No metadata");
+        assert_eq!(strip_front_matter("---\nunclosed"), "---\nunclosed");
+    }
     use kowalski_core::db::run_store::RUN_ORIGIN_TRIGGER;
     use kowalski_core::federation::{AgentRecord, AgentRegistry};
 
@@ -2953,6 +3046,10 @@ mod tests {
             delivery_root_rel: String::new(),
             delivery_summary_note: String::new(),
             prompt_tip: String::new(),
+            category: "other".into(),
+            icon: String::new(),
+            featured: false,
+            followup: None,
             root_path: dir.to_path_buf(),
             sub_agents: vec![sub("a"), sub("b")],
             followup_artifact_dir: dir.join("follow"),

@@ -102,6 +102,7 @@ pub async fn serve(
     security: SecurityOptions,
     open_browser: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let _ = boot_id();
     let config_path = crate::http_ops::mcp_config_path(config.as_deref());
     let full_config = crate::http_ops::load_kowalski_config_for_serve(&config_path)?;
     // Server state dir (`<config-dir>/db`): API token file, run store, trigger overrides.
@@ -438,6 +439,13 @@ fn build_app(
     let router = Router::new()
         .fallback(crate::embedded::serve_ui)
         .route("/api/health", get(get_health))
+        .route(
+            "/api/tableski/files",
+            get(crate::tableski::list)
+                .post(crate::tableski::upload)
+                .layer(DefaultBodyLimit::max(crate::tableski::MAX_UPLOAD_BYTES + 64 * 1024)),
+        )
+        .route("/api/tableski/files/{id}", axum::routing::delete(crate::tableski::remove))
         .route("/api/setup/status", get(crate::setup::status))
         .route("/api/setup/test-model", post(crate::setup::test_model))
         .route("/api/setup/save", post(crate::setup::save))
@@ -528,6 +536,8 @@ fn build_app(
             "/api/hordes/{horde_id}/runs/{run_id}/cancel",
             post(post_horde_run_cancel),
         )
+        .route("/api/runs", get(get_runs))
+        .route("/api/hordes/{horde_id}/runs/{run_id}/continue", post(post_horde_run_continue))
         .route(
             "/api/hordes/{horde_id}/runs/{run_id}/approve",
             post(post_horde_run_approve),
@@ -684,11 +694,25 @@ fn horde_config_confirm_commands(cfg: &Config) -> Option<bool> {
         .and_then(|v| v.as_bool())
 }
 
+/// Changes on every server start (a self-restart re-execs the binary): clients waiting for a
+/// restart compare it instead of trusting the first answer, which may come from the old process.
+fn boot_id() -> &'static str {
+    static BOOT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    BOOT.get_or_init(|| {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        format!("{}-{nanos}", std::process::id())
+    })
+}
+
 async fn get_health(State(state): State<ApiState>) -> Json<serde_json::Value> {
     Json(json!({
         "status": "ok",
         "service": "kowalski",
         "version": env!("CARGO_PKG_VERSION"),
+        "boot_id": boot_id(),
         "model": state.model,
         "federation": {
             "agents_registered": state.federation.registry.list().len(),
@@ -2036,6 +2060,10 @@ async fn get_hordes(State(state): State<ApiState>) -> Json<serde_json::Value> {
                 "delivery_root_rel": s.delivery_root_rel,
                 "delivery_summary_note": s.delivery_summary_note,
                 "prompt_tip": s.prompt_tip,
+                "category": s.category,
+                "icon": s.icon,
+                "featured": s.featured,
+                "followup": s.followup,
                 "sub_agents": s.sub_agents,
                 "run_form": s.run_form,
             })
@@ -2250,6 +2278,10 @@ async fn get_horde_detail(
         "delivery_root_rel": spec.delivery_root_rel,
         "delivery_summary_note": spec.delivery_summary_note,
         "prompt_tip": spec.prompt_tip,
+        "category": spec.category,
+        "icon": spec.icon,
+        "featured": spec.featured,
+        "followup": spec.followup,
         "sub_agents": spec.sub_agents,
         "run_form": spec.run_form,
     })))
@@ -2614,6 +2646,93 @@ async fn post_horde_run(
     })))
 }
 
+#[derive(Deserialize)]
+struct ContinueBody {
+    /// The follow-up: new questions, one request.
+    text: String,
+}
+
+/// Longest earlier hand-off carried into a follow-up run, in characters.
+const FOLLOWUP_CONTEXT_MAX: usize = 8_000;
+
+/// `POST /api/hordes/{id}/runs/{run_id}/continue`: follow a finished run up with a NEW run of the
+/// same horde (`[followup]` in `horde.md`): the earlier form answers again, the operator's text in
+/// the declared input field, and the earlier hand-off in the context field, so "which of those…"
+/// is answered against fresh data rather than by re-reading old files.
+async fn post_horde_run_continue(
+    State(state): State<ApiState>,
+    AxumPath((horde_id, run_id)): AxumPath<(String, String)>,
+    Json(body): Json<ContinueBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let text = body.text.trim();
+    if text.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "write the follow-up first".into()));
+    }
+    let spec = state
+        .horde_manager
+        .find(&horde_id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("horde {horde_id} not found")))?;
+    let (Some(followup), Some(form)) = (spec.followup.clone(), spec.run_form.clone()) else {
+        return Err((StatusCode::BAD_REQUEST, format!("horde {horde_id} does not take follow-up runs")));
+    };
+    let prev = state
+        .horde_manager
+        .persisted_run(&run_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("run {run_id} not found")))?;
+    if prev.horde_id != horde_id {
+        return Err((StatusCode::BAD_REQUEST, format!("run {run_id} belongs to horde {}", prev.horde_id)));
+    }
+
+    // the earlier answers, by field id (the stored input is the operator block, keyed by label)
+    let by_label = kowalski_core::parse_operator_answer_block(&prev.prompt);
+    let mut answers: std::collections::BTreeMap<String, String> = form
+        .inputs
+        .iter()
+        .filter_map(|f| by_label.get(&f.label).map(|v| (f.id.clone(), v.clone())))
+        .collect();
+    let earlier_input = answers.get(&followup.input).cloned().unwrap_or_default();
+    answers.insert(followup.input.clone(), text.to_string());
+    if let Some(context) = &followup.context {
+        let handoff = prev
+            .events
+            .iter()
+            .rev()
+            .find(|e| e.get("kind").and_then(|k| k.as_str()) == Some("run_finished"))
+            .and_then(|e| e.get("handoff_markdown").and_then(|h| h.as_str()))
+            .map(str::to_string)
+            .or_else(|| std::fs::read_to_string(spec.workdir.join(&spec.delivery_root_rel)).ok())
+            .unwrap_or_default();
+        let earlier = format!("Earlier request:\n{earlier_input}\n\nEarlier answers:\n{handoff}");
+        let earlier = kowalski_core::markdown_pipeline::cap_chars(earlier.trim(), FOLLOWUP_CONTEXT_MAX);
+        // quoted, so no line of it reads as another form field
+        let quoted: String = earlier.lines().map(|l| format!("> {l}\n")).collect();
+        answers.insert(context.clone(), quoted.trim_end().to_string());
+    }
+    kowalski_core::validate_form_answers(&form, &answers).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let prompt = kowalski_core::answers_to_prompt(&form, &answers);
+    let record = state
+        .horde_manager
+        .start_run(
+            &horde_id,
+            &prompt,
+            Some(&prompt),
+            Some(&spec.default_question),
+            kowalski_core::db::run_store::RUN_ORIGIN_OPERATOR,
+        )
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    state
+        .horde_manager
+        .record_run_event(
+            &record.run_id,
+            json!({ "kind": "follow_up_of", "run_id": run_id, "title": prev.title, "ts": crate::horde::now_ts() }),
+        )
+        .await;
+    Ok(Json(json!({ "ok": true, "run": record, "follow_up_of": run_id })))
+}
+
 /// Webhook trigger firing: the JSON body becomes `{{trigger.payload}}` on the
 /// fired run. Auth (when enabled) applies like any other `/api/*` route; the
 /// route slug must belong to exactly one enabled webhook trigger.
@@ -2966,6 +3085,84 @@ async fn post_horde_run_resume(
     Ok(Json(json!({
         "ok": true,
         "run": record,
+    })))
+}
+
+#[derive(Deserialize, Default)]
+struct RunsQuery {
+    /// `needs_you`, `running`, `failed`, `done` or `cancelled`; absent = every run.
+    status: Option<String>,
+    /// One horde's runs only.
+    horde: Option<String>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+}
+
+/// Store statuses behind one list filter of `GET /api/runs`.
+fn run_filter_statuses(filter: &str) -> Option<Vec<kowalski_core::db::run_store::RunStatus>> {
+    use kowalski_core::db::run_store::RunStatus as S;
+    Some(match filter {
+        "needs_you" => vec![S::AwaitingInput],
+        "running" => vec![S::Pending, S::Running],
+        "failed" => vec![S::Error],
+        "done" => vec![S::Done],
+        "cancelled" => vec![S::Cancelled],
+        _ => return None,
+    })
+}
+
+/// Runs across every horde, newest first, as light summaries (title, horde, status, times) with
+/// per-filter counts: the Runs page and the ⌘K picker read this.
+async fn get_runs(
+    State(state): State<ApiState>,
+    Query(q): Query<RunsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    use kowalski_core::db::run_store::RunStatus as S;
+    let limit = q.limit.unwrap_or(50).clamp(1, 500);
+    let offset = q.offset.unwrap_or(0).max(0);
+    let statuses = match q.status.as_deref().filter(|s| !s.is_empty() && *s != "all") {
+        Some(f) => run_filter_statuses(f)
+            .ok_or_else(|| (StatusCode::BAD_REQUEST, format!("unknown run filter `{f}`")))?,
+        None => Vec::new(),
+    };
+    let store = &state.horde_manager.store;
+    let horde = q.horde.as_deref().filter(|h| !h.is_empty());
+    let page = store
+        .list_runs_filtered(horde, &statuses, limit, offset)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let counts = store
+        .count_runs_by_status(horde)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let count = |want: &[S]| counts.iter().filter(|(s, _)| want.contains(s)).map(|(_, n)| n).sum::<i64>();
+    let runs: Vec<serde_json::Value> = page
+        .iter()
+        .map(|r| {
+            json!({
+                "run_id": r.run_id,
+                "horde_id": r.horde_id,
+                "title": kowalski_core::run_title(&r.prompt, &r.question, r.source.as_deref()),
+                "status": crate::horde::api_run_status(r.status),
+                "started_at": r.started_at,
+                "finished_at": r.finished_at,
+                "origin": r.origin,
+                "current_step": r.current_step,
+            })
+        })
+        .collect();
+    Ok(Json(json!({
+        "runs": runs,
+        "counts": {
+            "all": counts.iter().map(|(_, n)| n).sum::<i64>(),
+            "needs_you": count(&[S::AwaitingInput]),
+            "running": count(&[S::Pending, S::Running]),
+            "failed": count(&[S::Error]),
+            "done": count(&[S::Done]),
+            "cancelled": count(&[S::Cancelled]),
+        },
+        "limit": limit,
+        "offset": offset,
     })))
 }
 
@@ -3330,6 +3527,86 @@ mod api_tests {
         assert_eq!(run["status"], "completed", "{run}");
         let (status, _) = call(&app, "POST", &format!("/api/hordes/api-horde/runs/{id}/approve"), None, None).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "nothing left to approve");
+    }
+
+    #[tokio::test]
+    async fn runs_list_across_hordes_with_titles_filters_and_counts() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let app = fixture_with(dir.path(), None, true).await;
+        let (_, started) = call(
+            &app,
+            "POST",
+            "/api/hordes/api-horde/run",
+            Some(json!({ "prompt": "Check the release\nthen tag it", "source": project.path().display().to_string() })),
+            None,
+        )
+        .await;
+        let id = run_id(&started);
+        wait_for(&app, "api-horde", &id, &["awaiting_input"]).await;
+
+        let (status, all) = call(&app, "GET", "/api/runs", None, None).await;
+        assert_eq!(status, StatusCode::OK, "{all}");
+        let run = all["runs"].as_array().unwrap().iter().find(|r| r["run_id"] == id.as_str()).expect("listed");
+        assert_eq!(run["horde_id"], "api-horde");
+        assert!(run["title"].as_str().unwrap().starts_with("Check the release"), "{run}");
+        assert_eq!(all["counts"]["needs_you"], 1, "{all}");
+
+        let (_, waiting) = call(&app, "GET", "/api/runs?status=needs_you", None, None).await;
+        assert_eq!(waiting["runs"].as_array().unwrap().len(), 1);
+        let (_, failed) = call(&app, "GET", "/api/runs?status=failed", None, None).await;
+        assert!(failed["runs"].as_array().unwrap().is_empty());
+        let (_, other) = call(&app, "GET", "/api/runs?horde=slow-horde", None, None).await;
+        assert!(other["runs"].as_array().unwrap().is_empty(), "filtered by horde");
+        let (status, _) = call(&app, "GET", "/api/runs?status=bogus", None, None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+
+        let (_, hordes) = call(&app, "GET", "/api/hordes", None, None).await;
+        let h = hordes["hordes"].as_array().unwrap().iter().find(|h| h["id"] == "api-horde").unwrap();
+        assert_eq!(h["category"], "other");
+        assert_eq!(h["featured"], false);
+    }
+
+    #[tokio::test]
+    async fn a_follow_up_starts_a_new_run_with_the_earlier_answers_as_context() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = fixture(dir.path(), None).await;
+        let h = dir.path().join("hordes/ask-horde");
+        std::fs::create_dir_all(h.join("agents")).unwrap();
+        std::fs::create_dir_all(h.join("prompts")).unwrap();
+        std::fs::write(h.join("horde.md"), "---\nid = \"ask-horde\"\ndisplay_name = \"Ask\"\ndescription = \"t\"\ncapability_prefix = \"ask-horde\"\npipeline = [\"ingest\"]\nworkdir = \"output\"\n\n[followup]\ninput = \"questions\"\ncontext = \"earlier\"\n---\n").unwrap();
+        std::fs::write(h.join("agents/ingest.md"), "---\nname = \"ingest\"\nkind = \"ingest\"\ncapability = \"ask-horde.ingest\"\ndefault_agent_id = \"ask-ingest\"\ndisplay_name = \"Ask\"\nprompt_file = \"prompts/ingest.md\"\noutput = \"debug/raw/\"\n[[inputs]]\nid = \"questions\"\ntype = \"textarea\"\nlabel = \"Questions\"\nrequired = true\n[[inputs]]\nid = \"earlier\"\ntype = \"context\"\nlabel = \"Earlier questions and answers\"\nrequired = false\n---\n").unwrap();
+        std::fs::write(h.join("prompts/ingest.md"), "Collect.\n").unwrap();
+        // the catalog picks new folders up on its next scan
+        let mut listed = false;
+        for _ in 0..80 {
+            let (_, list) = call(&app, "GET", "/api/hordes", None, None).await;
+            if list.to_string().contains("ask-horde") {
+                listed = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert!(listed, "test horde loaded");
+
+        let (status, started) = call(&app, "POST", "/api/hordes/ask-horde/run", Some(json!({ "form_answers": { "questions": "Who spent the most?" } })), None).await;
+        assert_eq!(status, StatusCode::OK, "{started}");
+        let first = run_id(&started);
+        wait_for(&app, "ask-horde", &first, &["completed", "failed"]).await;
+
+        let (status, followed) = call(&app, "POST", &format!("/api/hordes/ask-horde/runs/{first}/continue"), Some(json!({ "text": "Which of those spent over 100?" })), None).await;
+        assert_eq!(status, StatusCode::OK, "{followed}");
+        let second = run_id(&followed);
+        assert_ne!(first, second, "a follow-up is a new run");
+        let run = wait_for(&app, "ask-horde", &second, &["completed", "failed"]).await;
+        let prompt = run["prompt"].as_str().unwrap();
+        assert!(prompt.contains("**Questions:** Which of those spent over 100?"), "{prompt}");
+        assert!(prompt.contains("> Earlier request:") && prompt.contains("> Who spent the most?"), "{prompt}");
+        assert_eq!(run["title"], "Which of those spent over 100?");
+        assert!(run["events"].as_array().unwrap().iter().any(|e| e["kind"] == "follow_up_of" && e["run_id"] == first.as_str()), "{run}");
+
+        let (status, _) = call(&app, "POST", &format!("/api/hordes/api-horde/runs/{first}/continue"), Some(json!({ "text": "x" })), None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "a horde without [followup] refuses");
     }
 
     #[tokio::test]
@@ -3722,9 +3999,56 @@ mod api_tests {
         let run = done.expect("run finished");
         assert_eq!(run.status, kowalski_core::db::run_store::RunStatus::Done, "{:?}", run.events);
         let md = std::fs::read_to_string(h.join("output/debug/profile.md")).unwrap();
-        assert!(md.contains("## orders") && md.contains("- Sheet: Orders") && md.contains("- Rows: 3"), "{md}");
+        assert!(md.contains("## Table `orders`") && md.contains("- SQL name: `orders`") && md.contains("- Sheet: Orders") && md.contains("- Rows: 3"), "{md}");
         assert!(md.contains("| `amount` | Float64 | false |"), "{md}");
         assert!(md.contains("| max | 100.5 |"), "{md}");
+    }
+
+    #[tokio::test]
+    async fn a_sheet_without_a_header_row_is_read_as_a_form_with_a_tip() {
+        let dir = tempfile::tempdir().unwrap();
+        let hordes = dir.path().join("hordes");
+        let h = hordes.join("form-horde");
+        std::fs::create_dir_all(h.join("agents")).unwrap();
+        std::fs::create_dir_all(h.join("prompts")).unwrap();
+        std::fs::write(h.join("horde.md"), "---\nid = \"form-horde\"\ndisplay_name = \"f\"\ndescription = \"t\"\ncapability_prefix = \"form-horde\"\npipeline = [\"ingest\", \"profile\"]\nworkdir = \"output\"\n---\n").unwrap();
+        std::fs::write(h.join("agents/ingest.md"), "---\nname = \"ingest\"\nkind = \"ingest\"\ncapability = \"form-horde.ingest\"\ndefault_agent_id = \"f-ingest\"\ndisplay_name = \"Ingest\"\nprompt_file = \"prompts/ingest.md\"\noutput = \"debug/raw/\"\n---\n").unwrap();
+        std::fs::write(h.join("prompts/ingest.md"), "Collect.\n").unwrap();
+        std::fs::write(h.join("agents/profile.md"), "---\nname = \"profile\"\nkind = \"table_profile\"\ncapability = \"form-horde.profile\"\ndefault_agent_id = \"f-profile\"\ndisplay_name = \"Profile\"\noutput = \"debug/profile.md\"\n---\n").unwrap();
+
+        let broker = Arc::new(MpscBroker::new());
+        let registry = Arc::new(AgentRegistry::new());
+        let federation = Arc::new(FederationOrchestrator::new(registry, broker.clone()));
+        let store = kowalski_core::db::run_store::RunStore::open("sqlite::memory:").await.unwrap();
+        let mut manager = crate::horde::HordeManager::new(Vec::new(), broker, federation, store);
+        manager.catalog = Arc::new(crate::horde::HordeCatalog::with_roots(vec![hordes]));
+        let tools = kowalski_core::tools::manager::ToolManager::new();
+        tools.register(FakeTableTool("list_tables", "{\n  \"tables\": [{ \"name\": \"sheet1\", \"source\": \"/data/budget.xlsx\", \"sheet\": \"Sheet1\", \"rows\": 1477, \"columns\": 3 }]\n}"));
+        tools.register(FakeTableTool("get_schema", "{\n  \"table\": \"sheet1\",\n  \"columns\": [{ \"name\": \"col_1\", \"data_type\": \"Utf8\", \"nullable\": true }, { \"name\": \"col_2\", \"data_type\": \"Utf8\", \"nullable\": true }]\n}"));
+        tools.register(FakeTableTool("query_sql", "+----------------------+-------+\n| col_1                | col_2 |\n+----------------------+-------+\n| HE action: budget    |       |\n| Acronym:             | PULSE |\n+----------------------+-------+"));
+        let mut steps = kowalski_core::StepHandlerRegistry::with_builtin_deterministic();
+        steps.register(Arc::new(kowalski_core::horde_table_steps::TableProfileStepHandler::new(tools)));
+        manager.step_handlers = Arc::new(steps);
+        crate::horde::spawn_orchestrator_loop(manager.clone());
+
+        let record = manager
+            .start_run("form-horde", "what is it", Some("what is it"), Some("what is it"), kowalski_core::db::run_store::RUN_ORIGIN_OPERATOR)
+            .await
+            .unwrap();
+        let mut done = None;
+        for _ in 0..200 {
+            let r = manager.persisted_run(&record.run_id).await.unwrap().unwrap();
+            if matches!(r.status, kowalski_core::db::run_store::RunStatus::Done | kowalski_core::db::run_store::RunStatus::Error) {
+                done = Some(r);
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+        let run = done.expect("run finished");
+        assert_eq!(run.status, kowalski_core::db::run_store::RunStatus::Done, "a form is still processed: {:?}", run.events);
+        let md = std::fs::read_to_string(h.join("output/debug/profile.md")).unwrap();
+        assert!(md.contains("sheet `Sheet1` of `budget.xlsx` has no header row") && md.contains("column names in the first row"), "the tip is there: {md}");
+        assert!(md.contains("col_2: PULSE"), "the form's text is kept in the profile: {md}");
     }
 
     #[tokio::test]

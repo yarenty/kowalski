@@ -453,6 +453,59 @@ impl RunStore {
         rows.iter().map(run_from_row).collect()
     }
 
+    /// Runs newest-first across hordes (or one), limited to one or two `statuses` when given
+    /// (every list filter maps to at most two, e.g. running = pending + running). Steps and events
+    /// are not loaded: this backs lists, not run views.
+    pub async fn list_runs_filtered(
+        &self,
+        horde_id: Option<&str>,
+        statuses: &[RunStatus],
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<PersistedRun>, KowalskiError> {
+        let first = statuses.first().map(|s| s.as_str());
+        let second = statuses.get(1).or(statuses.first()).map(|s| s.as_str());
+        let rows = sqlx::query(
+            "SELECT * FROM horde_run
+             WHERE (?1 IS NULL OR horde_id = ?1)
+               AND (?4 IS NULL OR status IN (?4, ?5))
+             ORDER BY started_at DESC, run_id DESC
+             LIMIT ?2 OFFSET ?3",
+        )
+        .bind(horde_id)
+        .bind(limit)
+        .bind(offset)
+        .bind(first)
+        .bind(second)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db_err)?;
+        rows.iter().map(run_from_row).collect()
+    }
+
+    /// How many runs sit in each status (across hordes, or one).
+    pub async fn count_runs_by_status(
+        &self,
+        horde_id: Option<&str>,
+    ) -> Result<Vec<(RunStatus, i64)>, KowalskiError> {
+        let rows = sqlx::query(
+            "SELECT status, COUNT(*) AS n FROM horde_run WHERE (?1 IS NULL OR horde_id = ?1) GROUP BY status",
+        )
+        .bind(horde_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db_err)?;
+        let mut out = Vec::new();
+        for row in rows {
+            let status: String = row.try_get("status").map_err(db_err)?;
+            let n: i64 = row.try_get("n").map_err(db_err)?;
+            if let Ok(st) = status.parse::<RunStatus>() {
+                out.push((st, n));
+            }
+        }
+        Ok(out)
+    }
+
     /// Runs a restart scan must reconcile: `pending`, `running`, or `awaiting_input`.
     pub async fn incomplete_runs(&self) -> Result<Vec<PersistedRun>, KowalskiError> {
         let rows = sqlx::query(
