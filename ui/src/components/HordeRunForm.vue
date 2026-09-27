@@ -8,6 +8,8 @@ const props = defineProps<{
   disabled: boolean;
   busy: boolean;
   followUpMode: boolean;
+  /** Primary button text for a new run (default "Run horde"). */
+  submitLabel?: string;
 }>();
 
 const emit = defineEmits<{
@@ -148,7 +150,7 @@ function submit() {
 
     <p class="actions">
       <button type="button" class="primary" :disabled="disabled || busy || !canSubmit" @click="submit">
-        {{ busy ? "Running…" : followUpMode ? "Ask follow-up" : "Run horde" }}
+        {{ busy ? "Working…" : followUpMode ? "Ask follow-up" : submitLabel || "Run horde" }}
       </button>
     </p>
   </div>

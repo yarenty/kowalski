@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
-import SidebarNav from "./components/SidebarNav.vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import CommandPalette from "./components/CommandPalette.vue";
+import ThreadList from "./components/ThreadList.vue";
+import TopBar from "./components/TopBar.vue";
 import AboutPanel from "./panels/AboutPanel.vue";
 import ChatPanel from "./panels/ChatPanel.vue";
 import FederationManagementPanel from "./panels/FederationManagementPanel.vue";
 import FederationRunPanel from "./panels/FederationRunPanel.vue";
 import GraphPanel from "./panels/GraphPanel.vue";
 import HomePanel from "./panels/HomePanel.vue";
+import HordesHomePanel from "./panels/HordesHomePanel.vue";
 import McpPanel from "./panels/McpPanel.vue";
 import RookeryPanel, { type RookeryUiSession } from "./panels/RookeryPanel.vue";
+import RunsPanel from "./panels/RunsPanel.vue";
 import SetupPanel from "./panels/SetupPanel.vue";
 import {
   api,
@@ -18,30 +22,77 @@ import {
   setApiToken,
   type RookerySessionResponse,
   type RookerySessionStatus,
+  type RunFilter,
+  type RunSummary,
 } from "./api";
+import { routeFromUrl, urlForRoute, type Route, type TabId } from "./nav";
 
-const tab = ref<
-  "home" | "mcp" | "chat" | "rookery" | "federation-management" | "federation-run" | "graph" | "about" | "setup"
->("federation-run");
-// Narrow windows start with the icon-only rail so the work area keeps its width.
-const sidebarCollapsed = ref(typeof window !== "undefined" && window.innerWidth < 1000);
-const TAB_IDS = [
-  "home",
-  "mcp",
-  "chat",
-  "rookery",
-  "federation-management",
-  "federation-run",
-  "graph",
-  "about",
-  "setup",
-] as const;
-type TabId = (typeof TAB_IDS)[number];
-/** `?tab=<id>` deep link (e.g. `?tab=chat`); unknown values are ignored. */
-function tabFromQuery(): TabId | null {
-  const q = new URLSearchParams(window.location.search).get("tab");
-  return q && (TAB_IDS as readonly string[]).includes(q) ? (q as TabId) : null;
+/** Where the operator is (tab + open horde page / run), mirrored into the URL. */
+const route = ref<Route>(routeFromUrl());
+const tab = computed(() => route.value.tab);
+/** Runs page filters when it is opened from a link ("All runs →", the needs-you strip). */
+const runsPreset = ref<{ filter: RunFilter; horde: string | null }>({ filter: "all", horde: null });
+
+function navigate(next: Partial<Route>, opts: { replace?: boolean } = {}) {
+  const r: Route = { tab: route.value.tab, horde: route.value.horde, run: route.value.run, ...next };
+  if (r.tab !== "federation-run") {
+    r.horde = null;
+    r.run = null;
+  }
+  if (!r.horde) r.run = null;
+  route.value = r;
+  const url = urlForRoute(r);
+  if (url !== window.location.pathname + window.location.search + window.location.hash) {
+    if (opts.replace) window.history.replaceState(null, "", url);
+    else window.history.pushState(null, "", url);
+  }
 }
+function onPopState() {
+  route.value = routeFromUrl();
+}
+
+function selectTab(next: TabId) {
+  if (next === "runs") runsPreset.value = { filter: "all", horde: null };
+  navigate({ tab: next, horde: null, run: null });
+  window.scrollTo(0, 0);
+}
+function openHorde(id: string) {
+  navigate({ tab: "federation-run", horde: id, run: null });
+  window.scrollTo(0, 0);
+}
+function openRun(hordeId: string, runId: string | null) {
+  navigate({ tab: "federation-run", horde: hordeId, run: runId });
+  window.scrollTo(0, 0);
+}
+function openRuns(filter: RunFilter = "all", horde: string | null = null) {
+  runsPreset.value = { filter, horde };
+  navigate({ tab: "runs", horde: null, run: null });
+  window.scrollTo(0, 0);
+}
+
+// ---------- ⌘K picker ----------
+const pickerOpen = ref(false);
+function onGlobalKey(e: KeyboardEvent) {
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    pickerOpen.value = !pickerOpen.value;
+  }
+}
+
+// ---------- runs waiting for the operator (home strip + top bar badge) ----------
+const waitingRun = ref<RunSummary | null>(null);
+const waitingCount = ref(0);
+async function loadWaiting() {
+  try {
+    const r = await api.runs({ status: "needs_you", limit: 1 });
+    waitingRun.value = r.runs[0] ?? null;
+    waitingCount.value = r.counts.needs_you;
+  } catch {
+    waitingRun.value = null;
+    waitingCount.value = 0;
+  }
+}
+let waitTimer: ReturnType<typeof setInterval> | null = null;
 
 type ChatTurn = { role: "user" | "assistant"; content: string };
 type Conversation = {
@@ -52,19 +103,11 @@ type Conversation = {
   turns: ChatTurn[];
   updatedAt: number;
 };
-type HordeInteraction = {
-  id: string;
-  title: string;
-  updatedAt: number;
-};
 
 const CHAT_LIST_KEY = "kowalski.ui.chat.list.v2";
-const HORDE_LIST_KEY = "kowalski.ui.horde.list.v1";
 const ROOKERY_LIST_KEY = "kowalski.ui.rookery.list.v1";
 const conversations = ref<Conversation[]>([]);
 const activeConversationId = ref<string | null>(null);
-const hordeInteractions = ref<HordeInteraction[]>([]);
-const activeHordeInteractionId = ref<string | null>(null);
 const chatBusy = ref(false);
 const resetBusy = ref(false);
 const chatErr = ref<string | null>(null);
@@ -111,28 +154,6 @@ function restoreConversations() {
       conversations.value = parsed
         .filter((c) => c && typeof c.id === "string" && Array.isArray(c.turns))
         .map((c) => ({ ...c, updatedAt: c.updatedAt ?? Date.now() }));
-    }
-  } catch {
-    /* ignore invalid storage */
-  }
-}
-
-function persistHordeInteractions() {
-  localStorage.setItem(HORDE_LIST_KEY, JSON.stringify(hordeInteractions.value));
-}
-
-function restoreHordeInteractions() {
-  const raw = localStorage.getItem(HORDE_LIST_KEY);
-  if (!raw) return;
-  try {
-    const parsed = JSON.parse(raw) as HordeInteraction[];
-    if (Array.isArray(parsed)) {
-      hordeInteractions.value = parsed
-        .filter((h) => h && typeof h.id === "string")
-        .map((h) => ({ ...h, updatedAt: h.updatedAt ?? Date.now() }));
-      if (!activeHordeInteractionId.value && hordeInteractions.value.length) {
-        activeHordeInteractionId.value = hordeInteractions.value[0].id;
-      }
     }
   } catch {
     /* ignore invalid storage */
@@ -232,103 +253,7 @@ async function ensureRookeryBackendSession(session: RookeryUiSession): Promise<b
 }
 
 restoreConversations();
-restoreHordeInteractions();
 restoreRookerySessions();
-
-function newHordeInteraction() {
-  const id = `horde-${Date.now()}`;
-  const item: HordeInteraction = {
-    id,
-    title: "New horde interaction",
-    updatedAt: Date.now(),
-  };
-  hordeInteractions.value = [item, ...hordeInteractions.value];
-  activeHordeInteractionId.value = id;
-  persistHordeInteractions();
-}
-
-function newHordeInteractionFromSuggestion(payload: { prompt: string; hordeId: string }) {
-  const id = `horde-${Date.now()}`;
-  const title = payload.prompt.slice(0, 42) || "New horde interaction";
-  const item: HordeInteraction = {
-    id,
-    title,
-    updatedAt: Date.now(),
-  };
-  hordeInteractions.value = [item, ...hordeInteractions.value];
-  activeHordeInteractionId.value = id;
-  localStorage.setItem(
-    threadStateKey(id),
-    JSON.stringify({
-      selectedHordeId: payload.hordeId,
-      runId: null,
-      runMessages: [],
-      runResult: null,
-      followupMsgs: [],
-      followupInput: payload.prompt,
-    }),
-  );
-  persistHordeInteractions();
-}
-
-function createHordeInteractionFromRun(payload: {
-  title: string;
-  snapshot: {
-    selectedHordeId: string;
-    runId: string | null;
-    runMessages: Array<{ role: "orchestrator" | "worker" | "system" | "user"; speaker: string; text: string }>;
-    runResult: string | null;
-    followupMsgs: Array<{ role: "user" | "assistant" | "orchestrator"; speaker: string; text: string }>;
-    followupInput: string;
-  };
-}) {
-  const id = `horde-${Date.now()}`;
-  const item: HordeInteraction = {
-    id,
-    title: payload.title || "Horde interaction",
-    updatedAt: Date.now(),
-  };
-  localStorage.setItem(threadStateKey(id), JSON.stringify(payload.snapshot));
-  hordeInteractions.value = [item, ...hordeInteractions.value];
-  activeHordeInteractionId.value = id;
-  persistHordeInteractions();
-}
-
-function selectHordeInteraction(id: string) {
-  activeHordeInteractionId.value = id;
-}
-
-function threadStateKey(id: string): string {
-  return `kowalski.ui.horde.thread.${id}`;
-}
-
-function deleteHordeInteraction(id: string) {
-  const idx = hordeInteractions.value.findIndex((h) => h.id === id);
-  if (idx < 0) return;
-  hordeInteractions.value = hordeInteractions.value.filter((h) => h.id !== id);
-  localStorage.removeItem(threadStateKey(id));
-  if (!hordeInteractions.value.length) {
-    activeHordeInteractionId.value = null;
-    persistHordeInteractions();
-    return;
-  }
-  if (activeHordeInteractionId.value === id) {
-    activeHordeInteractionId.value = hordeInteractions.value[0].id;
-  }
-  persistHordeInteractions();
-}
-
-function upsertHordeInteraction(item: HordeInteraction) {
-  const existing = hordeInteractions.value.find((h) => h.id === item.id);
-  if (existing) {
-    existing.title = item.title;
-    existing.updatedAt = item.updatedAt;
-  } else {
-    hordeInteractions.value.unshift(item);
-  }
-  hordeInteractions.value = [...hordeInteractions.value].sort((a, b) => b.updatedAt - a.updatedAt);
-  persistHordeInteractions();
-}
 
 function activeConversation(): Conversation | null {
   if (!activeConversationId.value) return null;
@@ -767,24 +692,6 @@ async function giveBirthRookery() {
   }
 }
 
-function selectTab(
-  nextTab:
-    | "home"
-    | "mcp"
-    | "chat"
-    | "rookery"
-    | "federation-management"
-    | "federation-run"
-    | "graph"
-    | "about"
-    | "setup",
-) {
-  tab.value = nextTab;
-  if (nextTab === "federation-run") {
-    activeHordeInteractionId.value = null;
-  }
-}
-
 /** First-run token prompt: `/api/health` is open, everything else needs the bearer token. */
 async function ensureApiToken() {
   try {
@@ -812,120 +719,160 @@ onMounted(async () => {
   await ensureApiToken();
   // first run (no config yet) or returning from the tableski sign-in: the setup screen
   const fromOAuth = new URLSearchParams(window.location.search).has("setup");
-  const linked = tabFromQuery();
-  if (linked) tab.value = linked;
   try {
     const s = await api.setupStatus();
-    if (!s.configured || fromOAuth) tab.value = "setup";
+    if (!s.configured || fromOAuth) navigate({ tab: "setup" }, { replace: true });
   } catch {
-    if (fromOAuth) tab.value = "setup";
+    if (fromOAuth) navigate({ tab: "setup" }, { replace: true });
   }
+  void loadWaiting();
+  waitTimer = setInterval(() => void loadWaiting(), 15000);
+});
+
+onMounted(() => {
+  window.addEventListener("popstate", onPopState);
+  window.addEventListener("keydown", onGlobalKey);
+});
+onUnmounted(() => {
+  window.removeEventListener("popstate", onPopState);
+  window.removeEventListener("keydown", onGlobalKey);
+  if (waitTimer) clearInterval(waitTimer);
 });
 </script>
 
 <template>
-  <div class="app shell">
-    <SidebarNav
+  <div class="app">
+    <TopBar
       :active-tab="tab"
-      :collapsed="sidebarCollapsed"
-      :conversations="conversations"
-      :active-conversation-id="activeConversationId"
-      :horde-interactions="hordeInteractions"
-      :active-horde-interaction-id="activeHordeInteractionId"
-      :rookery-sessions="rookerySessions"
-      :active-rookery-session-id="activeRookerySessionId"
       :app-version="appVersion"
-      @toggle-collapse="sidebarCollapsed = !sidebarCollapsed"
+      :needs-you="waitingCount"
       @select-tab="selectTab"
-      @select-conversation="selectConversation"
-      @new-conversation="newConversation"
-      @select-horde-interaction="selectHordeInteraction"
-      @new-horde-interaction="newHordeInteraction"
-      @delete-horde-interaction="deleteHordeInteraction"
-      @select-rookery-session="selectRookerySession"
-      @new-rookery-session="newRookerySession"
-      @delete-rookery-session="deleteRookerySession"
+      @open-picker="pickerOpen = true"
     />
-    <main class="main">
+    <main class="main" :class="{ 'with-threads': tab === 'chat' || tab === 'rookery' }">
       <SetupPanel v-if="tab === 'setup'" @done="appVersion = appVersion" />
       <HomePanel v-else-if="tab === 'home'" />
       <McpPanel v-else-if="tab === 'mcp'" />
-      <RookeryPanel
-        v-else-if="tab === 'rookery'"
-        :active-session="activeRookerySession()"
-        :chat-busy="rookeryBusy"
-        :propose-busy="rookeryProposeBusy"
-        :birth-busy="rookeryBirthBusy"
-        :save-horde-busy="rookerySaveHordeBusy"
-        :penguin-save-busy="rookeryPenguinSaveBusy"
-        :validate-busy="rookeryValidateBusy"
-        :validate-note="rookeryValidateNote"
-        :new-busy="rookeryNewBusy"
-        :err="rookeryErr"
-        :birth-overwrite="rookeryBirthOverwrite"
-        @send-chat="sendRookeryChat"
-        @propose="proposeRookery"
-        @validate-draft="validateRookeryDraft"
-        @give-birth="giveBirthRookery"
-        @save-horde="saveHordeRookery"
-        @save-penguin="savePenguinRookery"
-        @new-session="newRookerySession"
-        @open-horde="tab = 'federation-run'"
-        @toggle-birth-overwrite="rookeryBirthOverwrite = $event"
-      />
-      <ChatPanel
-        v-else-if="tab === 'chat'"
-        :active-conversation="activeConversation()"
-        :chat-busy="chatBusy"
-        :reset-busy="resetBusy"
-        :chat-err="chatErr"
-        :chat-tools-stream="chatToolsStream"
-        :chat-use-memory="chatUseMemory"
-        :chat-messages-view="chatMessagesView"
-        :chat-messages-busy="chatMessagesBusy"
-        @toggle-tools-stream="setChatToolsStream"
-        @toggle-use-memory="chatUseMemory = $event"
-        @inspect-chat-messages="inspectChatMessages"
-        @send-chat="sendChat"
-        @new-conversation="newConversation"
-      />
-      <FederationManagementPanel
-        v-else-if="tab === 'federation-management'"
-        @new-chat-session="newConversation"
+      <template v-else-if="tab === 'rookery'">
+        <ThreadList
+          label="Build sessions"
+          new-label="New build session"
+          empty-text="No build sessions yet."
+          :items="rookerySessions"
+          :active-id="activeRookerySessionId"
+          deletable
+          @select="selectRookerySession"
+          @new="newRookerySession"
+          @delete="deleteRookerySession"
+        />
+        <RookeryPanel
+          :active-session="activeRookerySession()"
+          :chat-busy="rookeryBusy"
+          :propose-busy="rookeryProposeBusy"
+          :birth-busy="rookeryBirthBusy"
+          :save-horde-busy="rookerySaveHordeBusy"
+          :penguin-save-busy="rookeryPenguinSaveBusy"
+          :validate-busy="rookeryValidateBusy"
+          :validate-note="rookeryValidateNote"
+          :new-busy="rookeryNewBusy"
+          :err="rookeryErr"
+          :birth-overwrite="rookeryBirthOverwrite"
+          @send-chat="sendRookeryChat"
+          @propose="proposeRookery"
+          @validate-draft="validateRookeryDraft"
+          @give-birth="giveBirthRookery"
+          @save-horde="saveHordeRookery"
+          @save-penguin="savePenguinRookery"
+          @new-session="newRookerySession"
+          @open-horde="selectTab('federation-run')"
+          @toggle-birth-overwrite="rookeryBirthOverwrite = $event"
+        />
+      </template>
+      <template v-else-if="tab === 'chat'">
+        <ThreadList
+          label="Conversations"
+          new-label="New conversation"
+          empty-text="No conversations yet."
+          :items="conversations"
+          :active-id="activeConversationId"
+          @select="selectConversation"
+          @new="newConversation"
+        />
+        <ChatPanel
+          :active-conversation="activeConversation()"
+          :chat-busy="chatBusy"
+          :reset-busy="resetBusy"
+          :chat-err="chatErr"
+          :chat-tools-stream="chatToolsStream"
+          :chat-use-memory="chatUseMemory"
+          :chat-messages-view="chatMessagesView"
+          :chat-messages-busy="chatMessagesBusy"
+          @toggle-tools-stream="setChatToolsStream"
+          @toggle-use-memory="chatUseMemory = $event"
+          @inspect-chat-messages="inspectChatMessages"
+          @send-chat="sendChat"
+          @new-conversation="newConversation"
+        />
+      </template>
+      <FederationManagementPanel v-else-if="tab === 'federation-management'" @new-chat-session="newConversation" />
+      <RunsPanel
+        v-else-if="tab === 'runs'"
+        :initial-filter="runsPreset.filter"
+        :initial-horde="runsPreset.horde"
+        @open-run="openRun"
       />
       <FederationRunPanel
-        v-else-if="tab === 'federation-run'"
-        :active-thread-id="activeHordeInteractionId"
-        @thread-upsert="upsertHordeInteraction"
-        @new-thread-from-suggestion="newHordeInteractionFromSuggestion"
-        @thread-create-from-run="createHordeInteractionFromRun"
+        v-else-if="tab === 'federation-run' && route.horde"
+        :horde-id="route.horde"
+        :run-id="route.run"
+        @go-home="selectTab('federation-run')"
+        @open-run="openRun(route.horde!, $event)"
+        @run-started="navigate({ run: $event }, { replace: true })"
+        @open-runs="openRuns('all', $event)"
+        @open-build="selectTab('rookery')"
         @new-chat-session="newConversation"
-        @open-build="tab = 'rookery'"
+        @runs-changed="loadWaiting"
+      />
+      <HordesHomePanel
+        v-else-if="tab === 'federation-run'"
+        :waiting="waitingRun"
+        :waiting-count="waitingCount"
+        @open-horde="openHorde"
+        @open-run="openRun"
+        @open-runs="openRuns"
+        @open-build="selectTab('rookery')"
+        @open-picker="pickerOpen = true"
       />
       <GraphPanel v-else-if="tab === 'graph'" />
       <AboutPanel v-else-if="tab === 'about'" />
     </main>
+    <CommandPalette v-if="pickerOpen" @close="pickerOpen = false" @open-horde="openHorde" @open-run="openRun" />
   </div>
 </template>
 
 <style>
 .app {
   min-height: 100vh;
-}
-.shell {
-  display: flex;
+  background: var(--paper);
 }
 .main {
-  flex: 1;
   min-width: 0;
-  height: 100vh;
-  overflow-y: auto;
-  padding: 1.75rem 2.25rem 2.5rem;
-  background: var(--paper);
+  padding: 1.75rem 2.25rem 3rem;
+}
+.main.with-threads {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
 }
 @media (max-width: 1100px) {
   .main {
     padding: 1.25rem 1.25rem 2rem;
+  }
+}
+@media (max-width: 900px) {
+  .main.with-threads {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

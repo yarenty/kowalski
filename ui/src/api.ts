@@ -286,6 +286,12 @@ export type HordeCatalogItem = {
   prompt_tip?: string;
   sub_agents: HordeSubAgent[];
   run_form?: HordeRunFormSpec | null;
+  /** Catalogue group (`spreadsheets`, `web`, `documents`, `code`, `other`); see `hordeIcons.ts`. */
+  category?: string;
+  /** Icon name; empty means the category's icon. */
+  icon?: string;
+  /** Shipped as a suggested pin on the Hordes home. */
+  featured?: boolean;
 };
 
 export type HordeCatalogResponse = {
@@ -323,6 +329,31 @@ export type HordeRunRecord = {
   resume_count?: number;
   /** Incomplete in the store with no live orchestrator task (interrupted by a restart or awaiting input). */
   resumable?: boolean;
+  /** What the run was about, in a few words (server-built). */
+  title?: string;
+};
+
+/** One row of `GET /api/runs` (runs across hordes, newest first). */
+export type RunSummary = {
+  run_id: string;
+  horde_id: string;
+  title: string;
+  /** API vocabulary: `completed`, `failed`, `cancelled`, `awaiting_input`, `running`, `pending`. */
+  status: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  origin?: string | null;
+  current_step?: string | null;
+};
+
+/** `GET /api/runs` list filters. */
+export type RunFilter = "all" | "needs_you" | "running" | "failed" | "done" | "cancelled";
+
+export type RunsListResponse = {
+  runs: RunSummary[];
+  counts: Record<Exclude<RunFilter, "all"> | "all", number>;
+  limit: number;
+  offset: number;
 };
 
 export type OpenPathResponse = {
@@ -490,6 +521,15 @@ export const api = {
       throw new Error(`${res.status} ${res.statusText}: ${text.slice(0, 200)}`);
     }
     return res.json() as Promise<HordeImportResponse>;
+  },
+  runs: (q: { status?: RunFilter; horde?: string; limit?: number; offset?: number } = {}) => {
+    const p = new URLSearchParams();
+    if (q.status && q.status !== "all") p.set("status", q.status);
+    if (q.horde) p.set("horde", q.horde);
+    if (q.limit != null) p.set("limit", String(q.limit));
+    if (q.offset) p.set("offset", String(q.offset));
+    const qs = p.toString();
+    return json<RunsListResponse>(`/api/runs${qs ? `?${qs}` : ""}`);
   },
   hordeRuns: (hordeId: string) =>
     json<{ horde_id: string; runs: HordeRunRecord[] }>(`/api/hordes/${encodeURIComponent(hordeId)}/runs`),
