@@ -6,15 +6,11 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
-### Fixed
-- A workbook sheet without a header row (a form or report rather than a table) is still processed: the profile lists its text rows, the SQL finds values by their labels, and the answers end with a tip on preparing the file (one table per sheet, column names in the first row, no title rows or merged cells). The upload box carries the same hint, and failure messages lose the runner's technical prefixes.
-- A table the model spelled with the sheet's case (`"Sheet1"` for `sheet1`) is retried once with the registered name; the profile states each table's SQL name and samples a few rows, and descriptive questions ("what is this about", "list the fields") are answered from it instead of SQL.
-- Setup no longer shows the old settings after its automatic restart (it waited for the first answer, which could come from the server that was going down); `/api/health` carries a `boot_id` that changes on every start. Key fields have a show/hide button, and Save is offered only when something changed (connecting tableski saves by itself).
-- A horde's form no longer empties itself every few seconds while you type.
-- A horde with its own form shows only that form; the generic source, notes and question fields are gone. A horde without a form gets one request box.
-- Scheduled and webhook runs start from the form's defaults, with the trigger's `input` on top: the Morning brief's pages live in one place (its form) and fill the form too.
-- Run titles use the operator's form answers before a horde's default question, so runs of the same horde no longer share one name.
-- A hand-off file's leading `---` metadata block is left out of the finished-run payload.
+## [2.3.0] - 2026-09-27 — **Mission Control**
+
+> Many hordes, one calm screen: a home with icon tiles, every run in one list named by what was
+> asked, ⌘K to find anything, workbooks uploaded from kowalski, and follow-up questions that
+> run again on the same data.
 
 ### Added
 - Hordes declare `category`, `icon` and `featured` in `horde.md`; the built-in hordes are tagged (Spreadsheet analyst, Morning brief and Folder watcher are featured).
@@ -29,6 +25,14 @@ All notable changes to this project will be documented in this file, or at least
 - Operator UI: the horde page drops the horde list; it opens on the request form ("Send in the horde") with the horde's past runs beside it. A running horde shows the run's title, the stepper and one "Now" card with the activity log folded; a finished run shows the delivered answers first, with intermediate files, how it was computed, the activity log and the raw payload folded below. Runs open by link (`?horde=<id>&run=<run_id>`) and the browser's Back button works.
 
 ### Fixed
+- A workbook sheet without a header row (a form or report rather than a table) is still processed: the profile lists its text rows, the SQL finds values by their labels, and the answers end with a tip on preparing the file (one table per sheet, column names in the first row, no title rows or merged cells). The upload box carries the same hint, and failure messages lose the runner's technical prefixes.
+- A table the model spelled with the sheet's case (`"Sheet1"` for `sheet1`) is retried once with the registered name; the profile states each table's SQL name and samples a few rows, and descriptive questions ("what is this about", "list the fields") are answered from it instead of SQL.
+- Setup no longer shows the old settings after its automatic restart (it waited for the first answer, which could come from the server that was going down); `/api/health` carries a `boot_id` that changes on every start. Key fields have a show/hide button, and Save is offered only when something changed (connecting tableski saves by itself).
+- A horde's form no longer empties itself every few seconds while you type.
+- A horde with its own form shows only that form; the generic source, notes and question fields are gone. A horde without a form gets one request box.
+- Scheduled and webhook runs start from the form's defaults, with the trigger's `input` on top: the Morning brief's pages live in one place (its form) and fill the form too.
+- Run titles use the operator's form answers before a horde's default question, so runs of the same horde no longer share one name.
+- A hand-off file's leading `---` metadata block is left out of the finished-run payload.
 - Chat with tools: an answer containing a code block (a shell command, a JSON example) is no longer mistaken for a broken tool call, which used to send the model a correction turn and could start a tool loop on small models.
 - The tool loop never ends with an empty reply: a repeated identical tool call gets one "answer now" nudge instead of stopping, and a loop that still ends without text (repeats, iteration cap) returns the last tool result.
 - A `verify` step without a project folder runs its check in the horde's output folder (and says so) instead of failing; `apply` still needs a project and now says exactly that.
