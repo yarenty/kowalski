@@ -55,7 +55,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: Kowalski  
-**Release line**: **2.3.0 — Mission Control** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).
+**Release line**: **2.4.0 — Reconnect** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).
 **Purpose**: A Rust-native multi-agent framework: **`kowalski-core`** (agents, LLM, memory, MCP client), **`kowalski-cli`** (REPL + operators, extensions, **`agent-app`**), **`kowalski`** (HTTP **`/api/*`** server), Vue **`ui/`**, optional PostgreSQL (**pgvector**, **Apache AGE**).  
 **Core Value Proposition**: Modular, extensible deployment with MCP-first tools and federation-oriented APIs.  
 **Primary Mechanism**: `TemplateAgent` + pluggable tools (built-in + MCP), Ollama/OpenAI-compatible providers.  
@@ -391,7 +391,9 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-**2.3.0 — Mission Control** is the current release: a top bar and a Hordes home with icon tiles (hordes declare `category`, `icon`, `featured`), a Runs page across hordes with readable run titles (`GET /api/runs`), a ⌘K picker, workbooks uploaded to tableski from the horde page, follow-up questions as new runs (`[followup]`), and a Spreadsheet analyst that reads header-less sheets as forms. See `CHANGELOG.md` **[2.3.0]**.
+**2.4.0 — Reconnect** is the current release: MCP servers that are down when kowalski starts are retried and picked up once they run (background backoff plus an immediate retry when a tool is needed); a local tableski gets a clear Workbooks note; fixes to the horde form, the stall warning and fenced hand-offs; the demo re-recorded. See `CHANGELOG.md` **[2.4.0]**.
+
+**2.3.0 — Mission Control** was the previous release: a top bar and a Hordes home with icon tiles (hordes declare `category`, `icon`, `featured`), a Runs page across hordes with readable run titles (`GET /api/runs`), a ⌘K picker, workbooks uploaded to tableski from the horde page, follow-up questions as new runs (`[followup]`), and a Spreadsheet analyst that reads header-less sheets as forms. See `CHANGELOG.md` **[2.3.0]**.
 
 **2.2.0 — Commando** was the previous release: the operator UI redesigned (Commando theme: penguin black, snow white, signal red; light and dark; plain navigation with Hordes, Chat, Build, Setup; a stepper-first Hordes screen that renders the delivered answers), the docs reorganised around a new architecture page, and the kowalski blog at kowalski.yarenty.com. See `CHANGELOG.md` **[2.2.0]**.
 
