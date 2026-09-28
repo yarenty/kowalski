@@ -6,12 +6,16 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
-### Fixed
-- An MCP server that is not running when kowalski starts (a local tableski started afterwards, a gateway still booting) is picked up once it runs: kowalski retries it in the background (5 s, doubling to 60 s) and at once when a step or the model needs one of its tools, instead of reporting the tool unavailable until a restart.
+## [2.4.0] - 2026-09-28 — **Reconnect**
+
+> Start tableski when you like: kowalski finds it. Plus the rough edges a fresh recording of the
+> 2.3 flow turned up.
 
 ### Changed
-- The demo recording (README, blog) shows the 2.3 flow: the Hordes home, ⌘K to the Spreadsheet analyst, answers, a follow-up question on the same data, and the Runs page.
+- An MCP server that is not running when kowalski starts (a local tableski started afterwards, a gateway still booting) is picked up once it runs: kowalski retries it in the background (5 s, doubling to 60 s) and at once when a step or the model needs one of its tools, instead of reporting the tool unavailable until a restart.
+- `kowalski-core` API: `McpHub::new` returns a hub whenever servers are configured (unreachable ones stay pending), `McpHub::bindings()` (a snapshot) replaces `iter_bindings()`, `McpHub::attach` registers its tools with a `ToolManager` and keeps them coming, and `McpHub` is no longer `Clone`. `ToolManager` gains `set_refresher` / `get_or_refresh` (the `ToolRefresher` trait).
 - With a local tableski, the horde page's Workbooks card says it serves the files it was started with and how to add another (`tableski --file …`), instead of an upload box and an error; `GET /api/tableski/files` answers with `local` for it.
+- The demo recording (README, blog) shows the 2.3 flow: the Hordes home, ⌘K to the Spreadsheet analyst, answers, a follow-up question on the same data, and the Runs page.
 
 ### Fixed
 - A horde with its own form no longer shows the generic "Follow-up question" field under it.
