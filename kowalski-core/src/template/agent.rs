@@ -51,9 +51,7 @@ impl TemplateAgent {
         let task_handlers = Arc::new(RwLock::new(HashMap::new()));
 
         if let Some(hub) = McpHub::new(&config.mcp.servers).await? {
-            for proxy in hub.into_tool_proxies() {
-                base.tool_manager.register_boxed(proxy);
-            }
+            hub.attach(&base.tool_manager);
         }
 
         base.tool_manager.register(crate::tools::internal::FsTool);
