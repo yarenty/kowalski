@@ -279,12 +279,54 @@ fn context_files(path: &Path) -> Vec<PathBuf> {
 }
 
 /// Optional markdown normalization (H1 + required ## sections).
+/// A model that wraps its answer in a code fence (```` ```markdown ```` … ```` ``` ````) meant the
+/// document, not a code block: return the inside. An opener labelled `markdown`/`md` runs to the
+/// last closing fence, and a remark the model added after it ("This HANDOFF.md provides…") is
+/// dropped. A bare ```` ``` ```` wrapper is only unwrapped when it spans the whole answer and
+/// nothing inside is fenced, so a document that merely ends in a code block stays as written.
+pub fn unwrap_document_fence(raw: &str) -> &str {
+    let t = raw.trim();
+    let Some(first_nl) = t.find('\n') else { return t };
+    let Some(lang) = t[..first_nl].trim_end().strip_prefix("```") else { return t };
+    let lang = lang.trim().to_ascii_lowercase();
+    let rest = &t[first_nl + 1..];
+    let closer = |line: &str| line.trim_end() == "```";
+    match lang.as_str() {
+        "markdown" | "md" => {
+            let mut end = None;
+            let mut pos = 0;
+            for line in rest.split_inclusive('\n') {
+                if closer(line) {
+                    end = Some(pos);
+                }
+                pos += line.len();
+            }
+            match end {
+                Some(e) => rest[..e].trim(),
+                None => rest.trim(),
+            }
+        }
+        "" => {
+            let Some(body) = rest.strip_suffix("```") else { return t };
+            if !body.is_empty() && !body.ends_with('\n') {
+                return t;
+            }
+            if body.lines().any(|l| l.trim_start().starts_with("```")) {
+                return t;
+            }
+            body.trim()
+        }
+        _ => t,
+    }
+}
+
 pub fn maybe_normalize_markdown(agent: &StageAgentMeta, raw: &str) -> String {
+    let raw = unwrap_document_fence(raw);
     let Some(ref title) = agent.normalize_doc_title else {
-        return raw.trim().to_string();
+        return raw.to_string();
     };
     if agent.normalize_sections.is_empty() {
-        return raw.trim().to_string();
+        return raw.to_string();
     }
     let sections: Vec<String> = agent.normalize_sections.clone();
     let sec_refs: Vec<&str> = sections.iter().map(String::as_str).collect();
@@ -448,4 +490,18 @@ mod tests {
         assert!(!out.contains("# Vault paste pack\n\n---"));
         assert!(out.contains("# YarentY Profile"));
     }
+
+    #[test]
+    fn unwraps_a_whole_document_fence_only() {
+        let md = "```markdown\n# HANDOFF.md\n\n## Q1\n```sql\nSELECT 1\n```\n```\n";
+        assert_eq!(unwrap_document_fence(md), "# HANDOFF.md\n\n## Q1\n```sql\nSELECT 1\n```");
+        assert_eq!(unwrap_document_fence("```\n# Title\ntext\n```"), "# Title\ntext");
+        let tail = "```\nls\n```\nsome text\n```\npwd\n```";
+        assert_eq!(unwrap_document_fence(tail), tail, "a bare wrapper around inner fences stays");
+        assert_eq!(unwrap_document_fence("```sql\nSELECT 1\n```"), "```sql\nSELECT 1\n```");
+        assert_eq!(unwrap_document_fence("# Plain\n\ntext"), "# Plain\n\ntext");
+        let chatty = "```markdown\n# HANDOFF.md\n\n## Q1\nAnswer\n```\n\nThis HANDOFF.md provides a summary.";
+        assert_eq!(unwrap_document_fence(chatty), "# HANDOFF.md\n\n## Q1\nAnswer");
+    }
+
 }

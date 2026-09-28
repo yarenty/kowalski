@@ -203,6 +203,8 @@ export type TableskiFile = {
 export type TableskiFiles = {
   files: TableskiFile[];
   quota?: { files?: number | null; bytes_per_file?: number | null; retention_hours?: number | null };
+  /** Set for a local tableski: it serves the files it was started with and takes no uploads. */
+  local?: { url: string };
 };
 
 /** Whether a horde queries tableski (a step lists its tools or is a table step). */

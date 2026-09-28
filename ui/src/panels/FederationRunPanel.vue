@@ -328,11 +328,25 @@ const handoffHtml = computed(() =>
     : "",
 );
 
+const STALL_MSG =
+  "No progress arrived in 60 s. The run may still be working; check sub-agent workers under Admin → Federation.";
+
 function clearRunWatchdog() {
   if (runWatchdog.value !== null) {
     window.clearTimeout(runWatchdog.value);
     runWatchdog.value = null;
   }
+  if (runErr.value === STALL_MSG) runErr.value = null;
+}
+
+/** Warn when a new run shows no sign of life for 60 s (no worker picked it up); the first event ends the watch. */
+function armRunWatchdog() {
+  clearRunWatchdog();
+  runWatchdog.value = window.setTimeout(() => {
+    if (!runBusy.value) return;
+    feed("system", "no progress events within 60s — the run may still be working", "System");
+    runErr.value = STALL_MSG;
+  }, 60_000);
 }
 
 function titleCase(input: string): string {
@@ -416,6 +430,7 @@ function processFederationEvent(data: string) {
  */
 function applyEvent(payload: Record<string, unknown>, replay: boolean) {
   const kind = String(payload.kind ?? "");
+  if (!replay && runWatchdog.value !== null) clearRunWatchdog();
   const at = replay ? eventTime(payload) : Date.now();
   const evRunId = String(payload.run_id ?? "");
 
@@ -746,12 +761,7 @@ async function runHordeWithPayload(payload: {
     emit("run-started", out.run.run_id);
     feed("orchestrator", `run started: ${out.run.run_id}`, "Agent: Boss");
     void refreshRunLists();
-    runWatchdog.value = window.setTimeout(() => {
-      if (!runBusy.value) return;
-      feed("system", "no progress events within 60s — the run may still be working", "System");
-      runErr.value =
-        "No progress arrived in 60 s. The run may still be working; check sub-agent workers under Admin → Federation.";
-    }, 60_000);
+    armRunWatchdog();
   } catch (e) {
     runBusy.value = false;
     runErr.value = e instanceof Error ? e.message : String(e);

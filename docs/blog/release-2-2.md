@@ -32,7 +32,7 @@ The screens are named for what you do (**Hordes**, **Chat**, **Build**, **Setup*
 Hordes screen shows each run as a row of steps, then puts the answers on the page when it is done.
 The docs got the same treatment, starting with a new [architecture page](../architecture.html).
 
-![The Spreadsheet analyst answering three questions](../img/kowalski-demo.gif)
+![The Spreadsheet analyst answering two questions and a follow-up](../img/kowalski-demo.gif)
 
 ## Get it
 

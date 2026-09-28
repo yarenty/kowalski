@@ -23,7 +23,7 @@ open Kowalski, pick the **Spreadsheet analyst** and type your questions, one per
 >
 > How many people live in each city?
 
-![The Spreadsheet analyst answering three questions](../img/kowalski-demo.gif)
+![The Spreadsheet analyst answering two questions and a follow-up](../img/kowalski-demo.gif)
 
 A few minutes later you have two files. `report.xlsx` has an index sheet and one sheet per
 question, with real numbers you can sort and chart. `HANDOFF.md` has the short answers:

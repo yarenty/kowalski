@@ -26,6 +26,26 @@ pub fn api_base(mcp_url: &str) -> Option<String> {
     Some(format!("{}://api.{domain}", url.scheme()))
 }
 
+/// The listing for a local tableski (no upload API): no account files, and the address it
+/// serves so the UI can explain that it reads the files it was started with. `None` when the
+/// URL is a hosted tableski.
+pub fn local_listing(mcp_url: &str) -> Option<Value> {
+    match api_base(mcp_url) {
+        Some(_) => None,
+        None => Some(json!({ "files": [], "local": { "url": mcp_url } })),
+    }
+}
+
+fn tableski_url(state: &ApiState) -> Option<&str> {
+    state
+        .full_config
+        .mcp
+        .servers
+        .iter()
+        .find(|s| s.name == TABLESKI_SERVER_NAME)
+        .map(|s| s.url.as_str())
+}
+
 /// API base and a fresh bearer token for the connected tableski, or why there is none.
 async fn connection(state: &ApiState) -> Result<(String, String), (StatusCode, String)> {
     let entry = state
@@ -75,7 +95,11 @@ fn upstream(e: reqwest::Error) -> (StatusCode, String) {
 }
 
 /// `GET /api/tableski/files`: the account's files, their tables, usage and plan limits.
+/// A local tableski answers with [`local_listing`] instead.
 pub async fn list(State(state): State<ApiState>) -> ApiResult {
+    if let Some(local) = tableski_url(&state).and_then(local_listing) {
+        return Ok(Json(local));
+    }
     let (base, token) = connection(&state).await?;
     let res = reqwest::Client::new()
         .get(format!("{base}/v1/files"))
@@ -144,5 +168,13 @@ mod tests {
         assert_eq!(api_base("https://mcp.tableski.io/").as_deref(), Some("https://api.tableski.io"));
         assert_eq!(api_base("http://127.0.0.1:8088/"), None, "a local tableski has no upload API");
         assert_eq!(api_base("not a url"), None);
+    }
+
+    #[test]
+    fn local_tableski_lists_no_files_and_its_address() {
+        assert_eq!(local_listing("https://mcp.tableski.io/"), None);
+        let local = local_listing("http://127.0.0.1:8088/").expect("local listing");
+        assert_eq!(local["files"], serde_json::json!([]));
+        assert_eq!(local["local"]["url"], "http://127.0.0.1:8088/");
     }
 }
