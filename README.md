@@ -75,6 +75,32 @@ Try the analyst from a terminal against a running server:
 examples/spreadsheet-analyst/demo.sh "Who spent the most?" "How many customers per city?"
 ```
 
+## Your spreadsheets: tableski
+
+The Spreadsheet analyst reads your workbooks through [tableski](https://tableski.io), which turns
+every sheet into a SQL table an AI can query. Use the hosted service or run it yourself:
+
+- **Hosted at tableski.io.** In Setup, **Connect tableski** signs you in once in the browser (no
+  card, no token to copy); kowalski keeps the sign-in fresh. Then drop a workbook on the
+  **Workbooks** card of the analyst's page and ask.
+- **Your own tableski.** Start the local binary with your file, `tableski --file report.xlsx`, and
+  point kowalski at it; nothing leaves your machine.
+
+Setup writes the config for you. By hand, it is one block in `config.toml`, with a token from
+[tableski.io/app/tokens](https://tableski.io/app/tokens) or, for a local tableski, the local
+address and no token:
+
+```toml
+[[mcp.servers]]
+name = "tableski"
+url = "https://mcp.tableski.io/"      # local: "http://127.0.0.1:8080/"
+transport = "http"
+headers = { Authorization = "Bearer tsk_your_token" }
+```
+
+New to tableski? Its [five-minute demo](https://github.com/yarenty/tableski/tree/main/demo)
+loads a workbook and asks the first question.
+
 ## Make your own
 
 A horde is a folder of Markdown: `horde.md` (the pipeline and its triggers), `agents/*.md` (one
