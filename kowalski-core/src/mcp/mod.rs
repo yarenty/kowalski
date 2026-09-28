@@ -9,6 +9,8 @@
 //!   from responses and sent on later requests. Notifications may receive **202 Accepted**.
 //! - **`McpHub`**: Connects to multiple servers, merges tool lists, resolves name clashes with
 //!   `server_name::tool_name`, and routes `call_tool` to the owning client.
+//!   A server that is down at start stays pending and is retried (in the background, and when
+//!   one of its tools is asked for), so its tools appear once it runs.
 //! - **`McpToolProxy`**: Adapts MCP tools to the core [`crate::tools::Tool`] trait so the existing
 //!   `ToolManager` and ReAct loop can execute them.
 //! - **System prompt**: [`crate::template::TemplateAgent`] appends `ToolManager::generate_json_schema()`

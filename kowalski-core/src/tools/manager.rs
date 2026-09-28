@@ -8,10 +8,18 @@ use tokio::sync::Mutex;
 type SharedTool = Arc<Mutex<dyn Tool>>;
 type ToolMap = HashMap<String, SharedTool>;
 
+/// Supplies tools that were not available yet (an MCP server started after kowalski).
+#[async_trait::async_trait]
+pub trait ToolRefresher: Send + Sync {
+    /// Look again; `true` when new tools were registered.
+    async fn refresh(&self) -> bool;
+}
+
 /// Manages a collection of tools and handles their execution
 #[derive(Clone)]
 pub struct ToolManager {
     tools: Arc<RwLock<ToolMap>>,
+    refresher: Arc<RwLock<Option<Arc<dyn ToolRefresher>>>>,
 }
 
 impl Default for ToolManager {
@@ -25,6 +33,7 @@ impl ToolManager {
     pub fn new() -> Self {
         Self {
             tools: Arc::new(RwLock::new(HashMap::new())),
+            refresher: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -51,10 +60,35 @@ impl ToolManager {
         }
     }
 
+    /// Set who to ask when a tool is missing (see [`ToolManager::get_or_refresh`]).
+    pub fn set_refresher(&self, refresher: Arc<dyn ToolRefresher>) {
+        if let Ok(mut r) = self.refresher.write() {
+            *r = Some(refresher);
+        }
+    }
+
+    /// Ask the refresher (if any) for tools that are not here yet; `true` when some arrived.
+    pub async fn refresh(&self) -> bool {
+        let refresher = self.refresher.read().ok().and_then(|r| r.clone());
+        match refresher {
+            Some(r) => r.refresh().await,
+            None => false,
+        }
+    }
+
+    /// Get a tool by name, asking the refresher once when it is missing.
+    pub async fn get_or_refresh(&self, name: &str) -> Option<SharedTool> {
+        if let Some(tool) = self.get(name) {
+            return Some(tool);
+        }
+        if self.refresh().await { self.get(name) } else { None }
+    }
+
     /// Execute a tool
     pub async fn execute(&self, name: &str, input: ToolInput) -> Result<ToolOutput, KowalskiError> {
         let tool = self
-            .get(name)
+            .get_or_refresh(name)
+            .await
             .ok_or_else(|| KowalskiError::ToolExecution(format!("Tool '{}' not found", name)))?;
 
         let mut tool_guard = tool.lock().await;
@@ -105,6 +139,11 @@ impl ToolManager {
     /// ([`crate::llm::LLMProvider::chat_with_tool_defs`]), optionally filtered to an
     /// allowlist of tool names (horde stage `tool_ids`).
     pub async fn tool_definitions(&self, allowed: Option<&[String]>) -> Vec<ToolDefinition> {
+        if let Some(list) = allowed.filter(|l| !l.is_empty())
+            && list.iter().any(|name| self.get(name).is_none())
+        {
+            self.refresh().await;
+        }
         let tools_snapshot: Vec<SharedTool> = if let Ok(tools) = self.tools.read() {
             tools.values().cloned().collect()
         } else {

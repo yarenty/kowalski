@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Fixed
+- An MCP server that is not running when kowalski starts (a local tableski started afterwards, a gateway still booting) is picked up once it runs: kowalski retries it in the background (5 s, doubling to 60 s) and at once when a step or the model needs one of its tools, instead of reporting the tool unavailable until a restart.
+
 ### Changed
 - The demo recording (README, blog) shows the 2.3 flow: the Hordes home, ⌘K to the Spreadsheet analyst, answers, a follow-up question on the same data, and the Runs page.
 - With a local tableski, the horde page's Workbooks card says it serves the files it was started with and how to add another (`tableski --file …`), instead of an upload box and an error; `GET /api/tableski/files` answers with `local` for it.

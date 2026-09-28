@@ -201,9 +201,9 @@ impl StepHandler for SqlBatchStepHandler {
             return Err(KowalskiError::Validation("the plan contains no ```sql blocks".into()));
         }
         let tool = ctx.step.tool_ids.first().map(String::as_str).unwrap_or("query_sql").to_string();
-        if self.tools.get(&tool).is_none() {
+        if self.tools.get_or_refresh(&tool).await.is_none() {
             return Err(KowalskiError::Validation(format!(
-                "tool `{tool}` is not available; connect tableski (Setup) or add the MCP server that provides it"
+                "tool `{tool}` is not available: tableski is not connected or not running (kowalski keeps trying to reach it); start it, or connect it in Setup"
             )));
         }
         let out = artifact_path(ctx)?;
@@ -297,9 +297,9 @@ impl StepHandler for TableProfileStepHandler {
     }
 
     async fn execute(&self, ctx: &StepContext<'_>) -> Result<StepOutcome, StepError> {
-        if self.tools.get("list_tables").is_none() {
+        if self.tools.get_or_refresh("list_tables").await.is_none() {
             return Err(KowalskiError::Validation(
-                "tool `list_tables` is not available; connect tableski (Setup) or add the MCP server that provides it".into(),
+                "tool `list_tables` is not available: tableski is not connected or not running (kowalski keeps trying to reach it); start it, or connect it in Setup".into(),
             ));
         }
         let listing = self.call("list_tables", json!({})).await.map_err(KowalskiError::Validation)?;
