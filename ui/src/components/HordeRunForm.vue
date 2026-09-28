@@ -103,7 +103,7 @@ function submit() {
       <p class="muted small">Links and file paths in the text are fetched and read; everything else is passed on as your request.</p>
     </template>
 
-    <template v-else>
+    <template v-else-if="followUpMode">
       <p class="muted small">Ask about the completed run (refines against artifacts).</p>
       <label class="field">
         <span>Follow-up question</span>

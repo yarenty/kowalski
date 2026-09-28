@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Changed
+- The demo recording (README, blog) shows the 2.3 flow: the Hordes home, ⌘K to the Spreadsheet analyst, answers, a follow-up question on the same data, and the Runs page.
+- With a local tableski, the horde page's Workbooks card says it serves the files it was started with and how to add another (`tableski --file …`), instead of an upload box and an error; `GET /api/tableski/files` answers with `local` for it.
+
+### Fixed
+- A horde with its own form no longer shows the generic "Follow-up question" field under it.
+- A finished run no longer keeps the "No progress arrived in 60 s" warning: the warning only appears when a new run shows no sign of life, and goes away at the first event.
+- A stage whose model wraps its answer in a ```` ```markdown ```` fence (sometimes with a remark after it) is saved as the document itself, so hand-offs render as answers instead of a code block; the Spreadsheet analyst's deliver prompt asks for no fence.
+
 ## [2.3.1] - 2026-09-27
 
 ### Changed

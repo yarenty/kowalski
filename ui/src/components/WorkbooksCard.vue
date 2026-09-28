@@ -104,7 +104,7 @@ onMounted(load);
   <section class="card workbooks" aria-labelledby="wb-title">
     <div class="wb-head">
       <h2 id="wb-title">Your workbooks</h2>
-      <span class="muted small">on tableski · every sheet becomes a table</span>
+      <span class="muted small">{{ data?.local ? "on your local tableski" : "on tableski" }} · every sheet becomes a table</span>
     </div>
 
     <p v-if="loading" class="muted">Looking at your tableski account…</p>
@@ -112,6 +112,15 @@ onMounted(load);
     <template v-else-if="notConnected">
       <p>{{ problem }}</p>
       <p><button type="button" class="primary" @click="emit('setup')">Open Setup</button></p>
+    </template>
+
+    <template v-else-if="data?.local">
+      <p>
+        Your tableski runs on this machine (<code>{{ data.local.url }}</code>) and serves the files it
+        was started with. To ask about another workbook, restart it with that file:
+        <code>tableski --file your.xlsx</code>
+      </p>
+      <p class="muted small hint">Works best with one table per sheet, column names in the first row, no title rows or merged cells.</p>
     </template>
 
     <template v-else>

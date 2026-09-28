@@ -28,4 +28,5 @@ End with:
 - `report.xlsx`: every result in full, one sheet per question, plus an index.
 - `debug/results.md`: the SQL behind each answer.
 
-Be brief and factual. No marketing language.
+Be brief and factual. No marketing language. Write the document itself: no code fence around it,
+and nothing after the "Where to look" section.
