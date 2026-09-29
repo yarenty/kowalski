@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { api, type ModelChoice, type SetupStatus } from "../api";
 import SecretInput from "../components/SecretInput.vue";
+import { takeSetupOutcome } from "../nav";
 
 const emit = defineEmits<{ (e: "done"): void }>();
 
@@ -180,9 +181,8 @@ async function disconnectTableski() {
 }
 
 onMounted(async () => {
-  const q = new URLSearchParams(window.location.search).get("setup");
+  const q = takeSetupOutcome();
   if (q) {
-    window.history.replaceState({}, "", window.location.pathname);
     const messages: Record<string, string> = {
       "tableski-connected": "tableski connected.",
       "tableski-cancelled": "tableski sign-in was cancelled.",

@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file, or at least
 ## [Unreleased]
 
 ### Fixed
+- Connecting tableski in Setup restarts kowalski again when the sign-in returns, so agents get its tools and Setup shows it connected: the app's navigation dropped the sign-in result from the address before the Setup screen could read it.
 - A bundle imported while the server runs, with the id of a built-in or example horde, now replaces that horde at once (a user horde always wins, as it already did after a restart) instead of being ignored as a duplicate until the next start. The import's confirm step and result say which horde it replaces; deleting the import brings the original back. A horde skipped as a duplicate is no longer reloaded and logged on every catalog refresh.
 
 ## [2.4.0] - 2026-09-28 — **Reconnect**
