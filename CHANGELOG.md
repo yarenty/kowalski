@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Fixed
+- A bundle imported while the server runs, with the id of a built-in or example horde, now replaces that horde at once (a user horde always wins, as it already did after a restart) instead of being ignored as a duplicate until the next start. The import's confirm step and result say which horde it replaces; deleting the import brings the original back. A horde skipped as a duplicate is no longer reloaded and logged on every catalog refresh.
+
 ## [2.4.0] - 2026-09-28 — **Reconnect**
 
 > Start tableski when you like: kowalski finds it. Plus the rough edges a fresh recording of the
