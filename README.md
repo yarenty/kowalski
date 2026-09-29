@@ -43,9 +43,9 @@ Setup writes the config and restarts the server. The archives are also on the
 | Variable | Effect |
 |----------|--------|
 | `KOWALSKI_BIN_DIR=~/.local/bin` | Where the binaries go |
-| `KOWALSKI_RELEASE=v2.4.1` | A specific release instead of the latest |
+| `KOWALSKI_RELEASE=v2.4.2` | A specific release instead of the latest |
 | `KOWALSKI_FROM_SOURCE=1` | Build from crates.io with cargo instead (no UI inside) |
-| `KOWALSKI_VERSION=2.4.1` | crates.io version (source build) |
+| `KOWALSKI_VERSION=2.4.2` | crates.io version (source build) |
 | `KOWALSKI_FEATURES=postgres` | `cargo install --features postgres` (source build) |
 | `KOWALSKI_INSTALL_MCP=1` | Also install `kowalski-mcp-rookery` (source build) |
 | `KOWALSKI_SKIP_RUSTUP=1` | Fail instead of auto-installing Rust (source build) |

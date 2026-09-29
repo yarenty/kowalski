@@ -18,7 +18,9 @@ intake are context only; do not answer them again):
   add, round differently, reformat, add currency symbols or compute new numbers; if a figure you
   want is not in the results, say it was not computed. If the result has no number, state none.
   Every number you write must appear in the results table for that question.
-- **Key rows:** the top rows of the result as a small Markdown table (at most 10 rows).
+- **Key rows:** that question's result table from the results, copied as a plain Markdown table
+  (not in a code block), at most 10 rows. Never rows from the profile: its sample rows are raw
+  data, not answers.
 - If the query failed or the data could not answer the question, say so plainly and what would be
   needed.
 

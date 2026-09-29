@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+## [2.4.2] - 2026-09-29
+
+### Fixed
+- The Spreadsheet analyst's answers show each question's own result rows under "Key rows" (as a plain table), not sample rows from the table profile, which could read as if the model had added up the numbers itself.
+
 ## [2.4.1] - 2026-09-29
 
 ### Fixed
