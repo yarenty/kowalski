@@ -332,6 +332,7 @@ onMounted(async () => {
       <p class="muted small">
         {{ dirty ? "Saving restarts kowalski so every agent picks up the new settings." : "No changes to save. Connecting tableski saves by itself." }}
       </p>
+      <p v-if="err" class="note note-err save-err" role="alert">{{ err }}</p>
       <button type="button" class="primary" :disabled="busy !== null || !dirty" @click="saveAll">{{ busy === "save" || busy === "restart" ? "Working…" : dirty ? "Save changes and restart" : "Saved" }}</button>
     </div>
   </section>
@@ -391,6 +392,7 @@ onMounted(async () => {
   border-top: 2px solid var(--ink);
 }
 .save p { margin: 0; }
+.save .save-err { flex-basis: 100%; }
 .save .primary { padding: 0.7rem 1.5rem; font-size: 1rem; }
 @media (max-width: 720px) {
   .fields.two { grid-template-columns: 1fr; }

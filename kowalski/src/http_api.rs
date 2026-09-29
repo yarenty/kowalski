@@ -3801,9 +3801,21 @@ mod api_tests {
             assert_eq!(std::fs::metadata(&cfg).unwrap().permissions().mode() & 0o777, 0o600, "a key inside: owner-only");
         }
 
+        // The suggested folder does not exist yet on a first run: saving makes it.
+        let fresh = dir.path().join("Documents").join("kowalski");
+        let (status, saved) = call(&app, "POST", "/api/setup/save",
+            Some(json!({ "provider": "ollama", "model": "x", "files_dir": fresh.display().to_string() })), None).await;
+        assert_eq!(status, StatusCode::OK, "{saved}");
+        assert!(fresh.is_dir(), "missing files folder created");
+
+        let a_file = dir.path().join("notes.txt");
+        std::fs::write(&a_file, "x").unwrap();
         let (status, bad) = call(&app, "POST", "/api/setup/save",
-            Some(json!({ "provider": "ollama", "model": "x", "files_dir": "/definitely/not/here" })), None).await;
+            Some(json!({ "provider": "ollama", "model": "x", "files_dir": a_file.display().to_string() })), None).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");
+        let (status, bad) = call(&app, "POST", "/api/setup/save",
+            Some(json!({ "provider": "ollama", "model": "x", "files_dir": a_file.join("sub").display().to_string() })), None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "a folder that cannot be made: {bad}");
     }
 
     #[tokio::test]

@@ -248,9 +248,12 @@ pub async fn save(State(state): State<ApiState>, Json(c): Json<ModelChoice>) -> 
         let dir = dir.trim();
         if !dir.is_empty() {
             let expanded = expand_home(dir);
-            if !Path::new(&expanded).is_dir() {
-                return Err(bad(format!("`{dir}` is not a folder")));
+            let path = Path::new(&expanded);
+            if path.exists() && !path.is_dir() {
+                return Err(bad(format!("`{dir}` is a file, not a folder")));
             }
+            // A first-time user types the suggested folder before it exists: make it.
+            std::fs::create_dir_all(path).map_err(|e| bad(format!("cannot create the folder `{dir}`: {e}")))?;
             sub(&mut t, "files").insert("dir".into(), expanded.into());
         }
     }
