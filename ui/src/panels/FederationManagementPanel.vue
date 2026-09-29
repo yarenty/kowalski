@@ -5,6 +5,7 @@ import {
   type FederationRegistryResponse,
   type FederationWorkerProfile,
   type HordeCatalogItem,
+  type HordeImportResponse,
   type PortabilityReport,
 } from "../api";
 import { isDagHorde } from "../hordeGraph";
@@ -27,6 +28,7 @@ const importFileInput = ref<HTMLInputElement | null>(null);
 const importPending = ref<File | null>(null);
 const importReport = ref<PortabilityReport | null>(null);
 const importHordeId = ref<string | null>(null);
+const importReplaces = ref<HordeImportResponse["replaces"] | null>(null);
 const importBusy = ref(false);
 const importAction = ref<string | null>(null);
 const importErr = ref<string | null>(null);
@@ -164,6 +166,7 @@ async function onImportFileChosen(event: Event) {
     const res = await api.hordeImport(file, true);
     importReport.value = res.report;
     importHordeId.value = res.horde_id;
+    importReplaces.value = res.replaces ?? null;
   } catch (e) {
     importPending.value = null;
     importErr.value = e instanceof Error ? e.message : String(e);
@@ -179,7 +182,10 @@ async function confirmImport() {
   importErr.value = null;
   try {
     const res = await api.hordeImport(file, false);
-    importAction.value = `Imported \`${res.horde_id}\` — it appears below once the catalog picks it up (no restart needed).`;
+    importAction.value = res.replaces
+      ? `Imported \`${res.horde_id}\`: it replaces the ${res.replaces.builtin ? "built-in" : "example"} ${res.replaces.display_name} (delete the import to get that one back).`
+      : `Imported \`${res.horde_id}\` — it appears below once the catalog picks it up (no restart needed).`;
+    importReplaces.value = null;
     importPending.value = null;
     importReport.value = null;
     importHordeId.value = null;
@@ -192,6 +198,7 @@ async function confirmImport() {
 }
 
 function cancelImport() {
+  importReplaces.value = null;
   importPending.value = null;
   importReport.value = null;
   importHordeId.value = null;
@@ -302,7 +309,11 @@ onMounted(() => void refreshAll());
       <ul v-else class="muted">
         <li v-for="gap in importGaps" :key="gap">{{ gap }}</li>
       </ul>
-      <p v-for="note in importReport.migrations" :key="note" class="muted">Migrated: {{ note }}</p>
+      <p v-if="importReplaces" class="note">
+        A {{ importReplaces.builtin ? "built-in" : "example" }} horde already uses this id
+        ({{ importReplaces.display_name }}). The import replaces it; delete the import later to get it back.
+      </p>
+            <p v-for="note in importReport.migrations" :key="note" class="muted">Migrated: {{ note }}</p>
       <p v-if="importReport.triggers_disabled" class="muted">
         {{ importReport.triggers_disabled }} trigger(s) will be imported disabled — re-enable them on the Hordes screen.
       </p>

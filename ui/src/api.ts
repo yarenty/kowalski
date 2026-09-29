@@ -285,6 +285,8 @@ export type HordeImportResponse = {
   horde_id: string;
   horde_root?: string;
   report: PortabilityReport;
+  /** An existing horde with the same id (built-in or example) that the import replaces. */
+  replaces?: { display_name: string; root: string; builtin: boolean };
 };
 
 export type HordeTriggerFireResponse = {

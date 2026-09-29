@@ -2187,9 +2187,38 @@ async fn post_horde_import(
                 )
             })?;
     let context = live_portability_context(&state).await;
-    import_uploaded_bundle(&file_name, &bytes, &dest_root, query.dry_run, &context)
-        .map(Json)
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))
+    let mut out = import_uploaded_bundle(&file_name, &bytes, &dest_root, query.dry_run, &context)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let id = out.get("horde_id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let entries = state.horde_manager.catalog.list();
+    if let Some(note) = import_replaces(&id, &dest_root, &entries) {
+        out["replaces"] = note;
+    }
+    Ok(Json(out))
+}
+
+/// The horde an import takes the id of: one outside the user hordes root (a built-in or an
+/// example), which the imported copy replaces. `None` when the id is new, or when the
+/// catalog already lists the import itself.
+fn import_replaces(
+    horde_id: &str,
+    dest_root: &std::path::Path,
+    entries: &[crate::horde::HordeCatalogEntry],
+) -> Option<serde_json::Value> {
+    let existing = entries.iter().find(|e| e.spec.id == horde_id)?;
+    let root = &existing.spec.root_path;
+    if root.starts_with(dest_root) {
+        return None;
+    }
+    let builtin = root
+        .parent()
+        .and_then(|p| p.file_name())
+        .is_some_and(|n| n == crate::embedded::BUILTIN_HORDES_DIR);
+    Some(json!({
+        "display_name": existing.spec.display_name,
+        "root": root.display().to_string(),
+        "builtin": builtin,
+    }))
 }
 
 /// Stage uploaded bundle bytes under the client's file name (final path component

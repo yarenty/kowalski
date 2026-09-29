@@ -634,9 +634,12 @@ pub struct HordeCatalogEntry {
 /// at startup. Hot-added hordes get their workdir created on insert; a reload
 /// never re-runs `clean_on_startup`.
 pub struct HordeCatalog {
-    /// Roots scanned for horde dirs; empty for fixed test catalogs.
+    /// Roots scanned for horde dirs, highest priority first; empty for fixed test catalogs.
     roots: Vec<PathBuf>,
     entries: std::sync::RwLock<Vec<HordeCatalogEntry>>,
+    /// Horde dirs whose id is taken by a higher-priority root, with the fingerprint they were
+    /// skipped at: not reloaded (or logged) again until their files change.
+    shadowed: std::sync::Mutex<HashMap<PathBuf, HordeFingerprint>>,
 }
 
 impl HordeCatalog {
@@ -645,6 +648,7 @@ impl HordeCatalog {
         let catalog = Self {
             roots,
             entries: std::sync::RwLock::new(Vec::new()),
+            shadowed: std::sync::Mutex::new(HashMap::new()),
         };
         catalog.rescan();
         catalog
@@ -664,7 +668,16 @@ impl HordeCatalog {
                     })
                     .collect(),
             ),
+            shadowed: std::sync::Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Priority of the root a horde dir comes from (0 = highest); unknown dirs rank last.
+    fn root_rank(&self, dir: &std::path::Path) -> usize {
+        self.roots
+            .iter()
+            .position(|r| dir == r || dir.parent() == Some(r.as_path()))
+            .unwrap_or(usize::MAX)
     }
 
     /// Enumerate horde dirs under the roots (a root is itself a horde dir when it
@@ -699,6 +712,7 @@ impl HordeCatalog {
         let dirs = self.horde_dirs();
         let mut entries = self.entries.write().expect("horde catalog lock poisoned");
         // Drop hordes whose directory (or horde.md) disappeared.
+        let before = entries.len();
         entries.retain(|e| {
             let kept = dirs.iter().any(|d| *d == e.spec.root_path);
             if !kept {
@@ -706,6 +720,10 @@ impl HordeCatalog {
             }
             kept
         });
+        if entries.len() != before {
+            // A horde that shadowed another may be gone: let the shadowed ones be looked at again.
+            self.shadowed.lock().expect("horde catalog lock poisoned").clear();
+        }
         let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
         for dir in dirs {
             if let Some(entry) = entries.iter_mut().find(|e| e.spec.root_path == dir) {
@@ -738,14 +756,50 @@ impl HordeCatalog {
             }
             // New horde dir discovered while the server runs.
             let fingerprint = horde_fingerprint(&dir);
+            {
+                let shadowed = self.shadowed.lock().expect("horde catalog lock poisoned");
+                if shadowed.get(&dir) == Some(&fingerprint) {
+                    continue;
+                }
+            }
             match load_horde(&dir) {
                 Ok(spec) => {
+                    // Same id twice: the higher-priority root wins, as it does at startup, so a
+                    // horde imported into the user root while the server runs replaces a built-in
+                    // or example with that id instead of being shadowed by it.
+                    if let Some(pos) = entries.iter().position(|e| e.spec.id == spec.id) {
+                        let existing = entries[pos].spec.root_path.clone();
+                        if self.root_rank(&dir) < self.root_rank(&existing) {
+                            log::info!(
+                                "horde catalog: `{}` at {} replaces {}",
+                                spec.id,
+                                dir.display(),
+                                existing.display()
+                            );
+                            let _ = prepare_workdir_on_startup_with_policy(&spec, false);
+                            self.shadowed
+                                .lock()
+                                .expect("horde catalog lock poisoned")
+                                .insert(existing.clone(), horde_fingerprint(&existing));
+                            seen_ids.insert(spec.id.clone());
+                            entries[pos] = HordeCatalogEntry {
+                                fingerprint,
+                                spec: Arc::new(spec),
+                                load_error: None,
+                            };
+                            continue;
+                        }
+                    }
                     if entries.iter().any(|e| e.spec.id == spec.id) || seen_ids.contains(&spec.id) {
                         log::warn!(
-                            "horde catalog: duplicate id `{}` at {} ignored",
+                            "horde catalog: duplicate id `{}` at {} ignored (a higher-priority root has it)",
                             spec.id,
                             dir.display()
                         );
+                        self.shadowed
+                            .lock()
+                            .expect("horde catalog lock poisoned")
+                            .insert(dir.clone(), fingerprint);
                         continue;
                     }
                     // First reference of a hot-added horde: prepare (create) the
@@ -4643,6 +4697,34 @@ mod tests {
         // Remove: the horde disappears from the catalog.
         std::fs::remove_dir_all(&h1).unwrap();
         assert!(catalog.list().is_empty());
+    }
+
+    #[test]
+    fn catalog_user_root_replaces_a_lower_root_while_running() {
+        let user = tempfile::tempdir().unwrap();
+        let builtin = tempfile::tempdir().unwrap();
+        let catalog = HordeCatalog::with_roots(vec![user.path().to_path_buf(), builtin.path().to_path_buf()]);
+
+        let shipped = builtin.path().join("analyst");
+        std::fs::create_dir_all(&shipped).unwrap();
+        write_fixture_horde_with(&shipped, "analyst", "Shipped Analyst", &["a"]);
+        assert_eq!(catalog.list()[0].spec.display_name, "Shipped Analyst");
+
+        // An import lands in the user root while the server runs: it takes the id over.
+        let imported = user.path().join("analyst");
+        std::fs::create_dir_all(&imported).unwrap();
+        write_fixture_horde_with(&imported, "analyst", "Imported Analyst", &["a"]);
+        let entries = catalog.list();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].spec.display_name, "Imported Analyst");
+        assert_eq!(catalog.list()[0].spec.root_path, imported, "stays replaced on later listings");
+
+        // Removing the import brings the shipped horde back.
+        std::fs::remove_dir_all(&imported).unwrap();
+        catalog.list();
+        let entries = catalog.list();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].spec.display_name, "Shipped Analyst");
     }
 
     #[test]
