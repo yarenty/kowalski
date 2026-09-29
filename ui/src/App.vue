@@ -25,7 +25,7 @@ import {
   type RunFilter,
   type RunSummary,
 } from "./api";
-import { routeFromUrl, urlForRoute, type Route, type TabId } from "./nav";
+import { hasSetupOutcome, routeFromUrl, urlForRoute, type Route, type TabId } from "./nav";
 
 /** Where the operator is (tab + open horde page / run), mirrored into the URL. */
 const route = ref<Route>(routeFromUrl());
@@ -718,7 +718,7 @@ onMounted(async () => {
   }
   await ensureApiToken();
   // first run (no config yet) or returning from the tableski sign-in: the setup screen
-  const fromOAuth = new URLSearchParams(window.location.search).has("setup");
+  const fromOAuth = hasSetupOutcome();
   try {
     const s = await api.setupStatus();
     if (!s.configured || fromOAuth) navigate({ tab: "setup" }, { replace: true });

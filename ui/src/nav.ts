@@ -23,6 +23,24 @@ export function isTabId(v: string | null | undefined): v is TabId {
  */
 export type Route = { tab: TabId; horde: string | null; run: string | null };
 
+/**
+ * The tableski sign-in result (`?setup=tableski-connected` and friends) the page was opened
+ * with, captured once at load: the first navigation rewrites the URL and drops the parameter
+ * before the Setup screen mounts. [`takeSetupOutcome`] hands it over once.
+ */
+let setupOutcome: string | null = new URLSearchParams(window.location.search).get("setup");
+
+export function takeSetupOutcome(): string | null {
+  const outcome = setupOutcome;
+  setupOutcome = null;
+  return outcome;
+}
+
+/** Whether the page was opened by a tableski sign-in redirect (not yet handed over). */
+export function hasSetupOutcome(): boolean {
+  return setupOutcome !== null;
+}
+
 export function routeFromUrl(search = window.location.search): Route {
   const q = new URLSearchParams(search);
   const tab = q.get("tab");
