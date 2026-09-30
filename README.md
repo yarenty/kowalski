@@ -13,7 +13,7 @@ your machine.
 *Three questions to the Spreadsheet analyst, on a local 7B model; the minutes it spends thinking are
 cut from the recording.*
 
-**Current release: 2.4 — Reconnect.** What changed and when: [CHANGELOG.md](CHANGELOG.md) ·
+**Current release: 2.5 — Double Click.** What changed and when: [CHANGELOG.md](CHANGELOG.md) ·
 what is next: [ROADMAP.md](ROADMAP.md).
 
 ---
@@ -55,9 +55,9 @@ tableski sign-in itself is not shown):
 | Variable | Effect |
 |----------|--------|
 | `KOWALSKI_BIN_DIR=~/.local/bin` | Where the binaries go |
-| `KOWALSKI_RELEASE=v2.4.2` | A specific release instead of the latest |
+| `KOWALSKI_RELEASE=v2.5.0` | A specific release instead of the latest |
 | `KOWALSKI_FROM_SOURCE=1` | Build from crates.io with cargo instead (no UI inside) |
-| `KOWALSKI_VERSION=2.4.2` | crates.io version (source build) |
+| `KOWALSKI_VERSION=2.5.0` | crates.io version (source build) |
 | `KOWALSKI_FEATURES=postgres` | `cargo install --features postgres` (source build) |
 | `KOWALSKI_INSTALL_MCP=1` | Also install `kowalski-mcp-rookery` (source build) |
 | `KOWALSKI_SKIP_RUSTUP=1` | Fail instead of auto-installing Rust (source build) |

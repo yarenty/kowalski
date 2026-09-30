@@ -2,7 +2,7 @@
 
 > "The future is modular, and so is Kowalski. Want a feature? Open an issue or submit a PR!"
 
-**Shipped:** **2.4.0 — Reconnect** (MCP servers picked up when they start late, fixes, new demo), **2.3.0 — Mission Control** (Hordes home, Runs page, ⌘K, workbooks, follow-ups), **2.2.0 — Commando** (UI redesign, architecture docs, demo, blog), **2.1.0 — Standing Orders** (binaries, Morning Brief, Folder Watcher, safe defaults), **2.0.0 — Out of the Box** (one binary, first-run Setup, web tools, built-in Spreadsheet analyst), **1.8.0 — Ecosystem** (MCP layer extracted: emperor-mcp + tableski; slim 4-crate workspace) and **1.7.0 — Autonomy** — see [`CHANGELOG.md`](CHANGELOG.md).  
+**Shipped:** **2.5.0 — Double Click** (signed Mac app), **2.4.0 — Reconnect** (MCP servers picked up when they start late, fixes, new demo), **2.3.0 — Mission Control** (Hordes home, Runs page, ⌘K, workbooks, follow-ups), **2.2.0 — Commando** (UI redesign, architecture docs, demo, blog), **2.1.0 — Standing Orders** (binaries, Morning Brief, Folder Watcher, safe defaults), **2.0.0 — Out of the Box** (one binary, first-run Setup, web tools, built-in Spreadsheet analyst), **1.8.0 — Ecosystem** (MCP layer extracted: emperor-mcp + tableski; slim 4-crate workspace) and **1.7.0 — Autonomy** — see [`CHANGELOG.md`](CHANGELOG.md).  
 **Published on crates.io:** lags GitHub releases; `cargo install` from git works today.  
 **Per-crate roadmaps:** [`kowalski-core/ROADMAP.md`](kowalski-core/ROADMAP.md), [`kowalski-cli/ROADMAP.md`](kowalski-cli/ROADMAP.md), [`ui/ROADMAP.md`](ui/ROADMAP.md).
 
@@ -17,10 +17,18 @@ kowalski, answers three setup questions, drops a spreadsheet and gets a correct 
 | ~~2.1.0~~ | **Standing Orders** — *shipped 2026-09-26* | Safe defaults (auth when not on localhost, isolation for imported bundles, confirmation before `verify`/`apply` commands); built-in Morning brief (cron) and Folder watcher (watch) hordes; pre-built macOS and Linux binaries on releases |
 | ~~2.2.0~~ | **Commando** — *shipped 2026-09-26* | Full UI redesign (penguin black and white, signal red); docs reorganised with a new architecture page; demo recording and the official blog at kowalski.yarenty.com |
 | ~~2.3.0~~ | **Mission Control** — *shipped 2026-09-27* | Hordes home with icon tiles, Runs page, ⌘K picker, workbooks from kowalski, follow-up runs |
+| ~~2.5.0~~ | **Double Click** — *shipped 2026-09-30* | Kowalski.dmg: a signed, notarized Mac app that starts kowalski and opens the browser; first-run recording |
 | ~~2.4.0~~ | **Reconnect** — *shipped 2026-09-28* | MCP servers down at start picked up once they run; local tableski note; form, stall-warning and hand-off fixes; demo re-recorded |
 | later | **Support** | Chat tab becomes a kowalski-aware helper (install gaps, Rookery and horde intro) |
 | later | **Trading horde** | Market monitor and scheduled analysis over tableski's market data |
 | later | **Obsidian MCP** | An Obsidian vault server on `emperor-mcp` |
+
+## Shipped in 2.5.0 — **Double Click** (2026-09-30)
+
+See [`CHANGELOG.md`](CHANGELOG.md) (**[2.5.0]**). Highlights:
+
+- `Kowalski.dmg` on every release: a universal Mac app, signed and notarized, that starts kowalski and opens the browser; quitting it stops the server.
+- A first-run recording in the README, from the installer to the answers.
 
 ## Shipped in 2.4.0 — **Reconnect** (2026-09-28)
 
