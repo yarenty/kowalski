@@ -128,8 +128,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          case "$version" in [0-9]*) ;; *) version="0.0.0-dev" ;; esac
+          if [ "$GITHUB_REF_TYPE" = tag ]; then version="${GITHUB_REF_NAME#v}"; else version="0.0.0-dev"; fi
           packaging/macos/build-app.sh universal/kowalski universal/kowalski-cli "$version" dist
 
       - name: Attach to release

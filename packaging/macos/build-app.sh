@@ -16,7 +16,7 @@ dmg="$out/Kowalski.dmg"
 
 rm -rf "$app" "$dmg"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-sed "s/@VERSION@/$version/g" "$here/Info.plist" > "$app/Contents/Info.plist"
+sed "s|@VERSION@|$version|g" "$here/Info.plist" > "$app/Contents/Info.plist"
 # The launcher needs its own name: APFS is case-insensitive, so "Kowalski" would be "kowalski".
 # Universal: one slice per Mac architecture (kowalski itself may be single-arch for local tries).
 build="$(mktemp -d)"
