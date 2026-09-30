@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Added
+- More web search providers: **DuckDuckGo** (no key, the default: agents can search out of the box), **Tavily**, **Google via Serper** and **Google Programmable Search**, next to Brave, Staan and SearXNG. Setup's search picker lists them with their free allowances; a keyed provider asks for its key (Google also for its search engine ID), a saved key is kept, and `provider = "off"` turns search off. A provider set up without its key falls back to DuckDuckGo instead of turning search off. `web_search` results name the provider that answered.
+
 ## [2.5.0] - 2026-09-30 — **Double Click**
 
 > Download, drag to Applications, open: kowalski on a Mac without a terminal.

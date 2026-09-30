@@ -3794,6 +3794,37 @@ mod api_tests {
             kowalski_core::tools::internal::SearchBackend::from_config(&written),
             Some(kowalski_core::tools::internal::SearchBackend::Brave { api_key: "brv-test".into() })
         );
+        // Keyless DuckDuckGo drops the saved key; a keyed provider needs one; Google needs its cx.
+        let search = |c: &kowalski_core::config::Config| kowalski_core::tools::internal::SearchBackend::from_config(c);
+        let (status, _) = call(&app, "POST", "/api/setup/save",
+            Some(json!({ "provider": "openai", "model": "gpt-4o-mini", "search_provider": "duckduckgo" })), None).await;
+        assert_eq!(status, StatusCode::OK);
+        let written: kowalski_core::config::Config = toml::from_str(&std::fs::read_to_string(&cfg).unwrap()).unwrap();
+        assert_eq!(search(&written), Some(kowalski_core::tools::internal::SearchBackend::DuckDuckGo));
+        assert!(!std::fs::read_to_string(&cfg).unwrap().contains("brv-test"), "the old key is gone");
+        let (status, bad) = call(&app, "POST", "/api/setup/save",
+            Some(json!({ "provider": "openai", "model": "gpt-4o-mini", "search_provider": "tavily" })), None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "a keyed provider without a key: {bad}");
+        let (status, _) = call(&app, "POST", "/api/setup/save",
+            Some(json!({ "provider": "openai", "model": "gpt-4o-mini", "search_provider": "tavily", "search_api_key": "tvly-test" })), None).await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, _) = call(&app, "POST", "/api/setup/save",
+            Some(json!({ "provider": "openai", "model": "gpt-4o-mini", "search_provider": "tavily" })), None).await;
+        assert_eq!(status, StatusCode::OK, "the saved key is kept when none is typed");
+        let written: kowalski_core::config::Config = toml::from_str(&std::fs::read_to_string(&cfg).unwrap()).unwrap();
+        assert_eq!(search(&written), Some(kowalski_core::tools::internal::SearchBackend::Tavily { api_key: "tvly-test".into() }));
+        let (status, _) = call(&app, "POST", "/api/setup/save",
+            Some(json!({ "provider": "openai", "model": "gpt-4o-mini", "search_provider": "google", "search_api_key": "g-key" })), None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "google without an engine id");
+        let (status, _) = call(&app, "POST", "/api/setup/save",
+            Some(json!({ "provider": "openai", "model": "gpt-4o-mini", "search_provider": "google", "search_api_key": "g-key", "search_engine_id": "engine-1" })), None).await;
+        assert_eq!(status, StatusCode::OK);
+        let written: kowalski_core::config::Config = toml::from_str(&std::fs::read_to_string(&cfg).unwrap()).unwrap();
+        assert_eq!(search(&written), Some(kowalski_core::tools::internal::SearchBackend::Google { api_key: "g-key".into(), cx: "engine-1".into() }));
+        let st = crate::setup::search_status(&written);
+        assert_eq!(st["provider"], "google");
+        assert_eq!(st["has_key"], true);
+        assert_eq!(st["engine_id"], "engine-1");
         assert!(dir.path().join("config.toml.bak").is_file(), "previous file kept");
         #[cfg(unix)]
         {
