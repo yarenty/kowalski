@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+### Added
+- A first-run recording in the README: the installer, Setup, the tableski sign-in, a workbook dropped on the Spreadsheet analyst and its answers.
+
 ## [2.4.2] - 2026-09-29
 
 ### Fixed

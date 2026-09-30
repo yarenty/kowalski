@@ -37,6 +37,12 @@ opens the app in your browser, where Setup asks for:
 Setup writes the config and restarts the server. The archives are also on the
 [releases page](https://github.com/yarenty/kowalski/releases).
 
+A first run, start to finish: the installer, Setup's three questions, signing in to tableski, a
+workbook dropped on the Spreadsheet analyst and its answers (the model's time is sped up; the
+tableski sign-in itself is not shown):
+
+![A first run of kowalski: install, Setup, connect tableski, drop a workbook, get answers](docs/img/kowalski-first-run.gif)
+
 <details>
 <summary>Installer options</summary>
 
