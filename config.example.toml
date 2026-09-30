@@ -36,17 +36,20 @@ clean_on_startup = true
 # auth = true
 
 # ---- Web tools --------------------------------------------------------------------------------
-# `web_fetch` (read one public page) is always available. `web_search` needs a search API:
+# `web_fetch` (read one public page) is always available. `web_search` uses DuckDuckGo when no
+# [search] table is set: no key, but not an official API, so it may slow down or refuse at times.
+# A keyed provider is steadier (the key can also come from the environment variable shown):
 # [search]
-# provider = "brave"        # https://brave.com/search/api/ (free tier); or set BRAVE_API_KEY
+# provider = "brave"        # https://brave.com/search/api/ (free tier); BRAVE_API_KEY
+# provider = "staan"        # https://staan.ai, European index (free tier); STAAN_API_KEY; market = "en-us"
+# provider = "tavily"       # https://tavily.com, built for agents (free tier); TAVILY_API_KEY
+# provider = "serper"       # https://serper.dev, Google results (free credits); SERPER_API_KEY
+# provider = "google"       # Google Programmable Search (100/day free); GOOGLE_API_KEY + cx / GOOGLE_CSE_ID
 # api_key = "..."
-# or Staan, the European web index (https://staan.ai; 1,000 free requests a month; or STAAN_API_KEY):
-# provider = "staan"
-# api_key = "..."
-# market = "en-us"          # optional: de-de, fr-fr, ...
-# or your own SearXNG instance with the JSON format enabled:
-# provider = "searxng"
+# cx = "..."                # google only: the search engine ID
+# provider = "searxng"      # your own SearXNG with the JSON format enabled
 # url = "https://searx.example.org"
+# provider = "off"          # no web_search at all
 
 # Chat's file tool is confined to this folder unless a request names another one.
 # [files]

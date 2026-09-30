@@ -164,6 +164,9 @@ impl Tool for WebFetchTool {
 /// Which search backend `web_search` uses (`[search]` in the config).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SearchBackend {
+    /// DuckDuckGo's plain-HTML results page: no key, the default. Unofficial (DuckDuckGo has no
+    /// web search API), so it may be rate-limited; a keyed provider is the steadier choice.
+    DuckDuckGo,
     /// Brave Search API (free tier available); key from config or `BRAVE_API_KEY`.
     Brave { api_key: String },
     /// A SearXNG instance with the JSON format enabled.
@@ -171,30 +174,118 @@ pub enum SearchBackend {
     /// Staan (European web index, staan.ai); key from config or `STAAN_API_KEY`, optional
     /// `market` such as `en-us`, `de-de`, `fr-fr`.
     Staan { api_key: String, market: Option<String> },
+    /// Tavily (search built for agents); key from config or `TAVILY_API_KEY`.
+    Tavily { api_key: String },
+    /// Google results through Serper (serper.dev); key from config or `SERPER_API_KEY`.
+    Serper { api_key: String },
+    /// Google Programmable Search: key (`GOOGLE_API_KEY`) plus a search engine id `cx`
+    /// (`GOOGLE_CSE_ID`).
+    Google { api_key: String, cx: String },
 }
 
+/// Providers `[search] provider` accepts, for messages and the Setup screen.
+pub const SEARCH_PROVIDERS: &[&str] = &["duckduckgo", "brave", "staan", "tavily", "serper", "google", "searxng", "off"];
+
 impl SearchBackend {
-    /// From the config's `[search]` table: `provider = "brave"` (+ `api_key`, or `BRAVE_API_KEY`)
-    /// or `provider = "searxng"` + `url`. `None` when not configured: the tool is not offered.
+    /// From the config's `[search]` table (`provider`, `api_key`, and `url` for SearXNG, `cx`
+    /// for Google, `market` for Staan). No table means DuckDuckGo; `provider = "off"` turns
+    /// search off (`None`: the tool is not offered). A keyed provider without its key falls back
+    /// to DuckDuckGo, with a warning, rather than leaving the agents without search.
     pub fn from_config(config: &crate::config::Config) -> Option<Self> {
-        let s = config.additional.get("search")?;
+        let Some(s) = config.additional.get("search") else {
+            return Some(Self::DuckDuckGo);
+        };
         let get = |k: &str| s.get(k).and_then(Value::as_str).map(str::trim).filter(|v| !v.is_empty()).map(str::to_string);
-        match get("provider")?.to_ascii_lowercase().as_str() {
-            "brave" => {
-                let api_key = get("api_key").or_else(|| std::env::var("BRAVE_API_KEY").ok().filter(|k| !k.is_empty()))?;
-                Some(Self::Brave { api_key })
-            }
-            "searxng" => Some(Self::Searxng { url: get("url")?.trim_end_matches('/').to_string() }),
-            "staan" => {
-                let api_key = get("api_key").or_else(|| std::env::var("STAAN_API_KEY").ok().filter(|k| !k.is_empty()))?;
-                Some(Self::Staan { api_key, market: get("market") })
-            }
+        let env = |k: &str| std::env::var(k).ok().map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+        let key = |var: &str| get("api_key").or_else(|| env(var));
+        let provider = get("provider").unwrap_or_else(|| "duckduckgo".into()).to_ascii_lowercase();
+        let keyed = |name: &str, backend: Option<Self>| {
+            backend.or_else(|| {
+                log::warn!("[search] provider `{name}` has no API key; using DuckDuckGo");
+                Some(Self::DuckDuckGo)
+            })
+        };
+        match provider.as_str() {
+            "off" | "none" => None,
+            "duckduckgo" | "ddg" => Some(Self::DuckDuckGo),
+            "brave" => keyed("brave", key("BRAVE_API_KEY").map(|api_key| Self::Brave { api_key })),
+            "staan" => keyed("staan", key("STAAN_API_KEY").map(|api_key| Self::Staan { api_key, market: get("market") })),
+            "tavily" => keyed("tavily", key("TAVILY_API_KEY").map(|api_key| Self::Tavily { api_key })),
+            "serper" => keyed("serper", key("SERPER_API_KEY").map(|api_key| Self::Serper { api_key })),
+            "google" => keyed(
+                "google",
+                key("GOOGLE_API_KEY")
+                    .zip(get("cx").or_else(|| env("GOOGLE_CSE_ID")))
+                    .map(|(api_key, cx)| Self::Google { api_key, cx }),
+            ),
+            "searxng" => match get("url") {
+                Some(url) => Some(Self::Searxng { url: url.trim_end_matches('/').to_string() }),
+                None => {
+                    log::warn!("[search] provider `searxng` has no url; using DuckDuckGo");
+                    Some(Self::DuckDuckGo)
+                }
+            },
             other => {
-                log::warn!("[search] provider `{other}` is not supported (brave, staan, searxng); web_search disabled");
-                None
+                log::warn!("[search] provider `{other}` is not supported ({}); using DuckDuckGo", SEARCH_PROVIDERS.join(", "));
+                Some(Self::DuckDuckGo)
             }
         }
     }
+
+    /// The provider's name as `[search] provider` spells it.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::DuckDuckGo => "duckduckgo",
+            Self::Brave { .. } => "brave",
+            Self::Searxng { .. } => "searxng",
+            Self::Staan { .. } => "staan",
+            Self::Tavily { .. } => "tavily",
+            Self::Serper { .. } => "serper",
+            Self::Google { .. } => "google",
+        }
+    }
+}
+
+/// Results from DuckDuckGo's plain-HTML page: organic hits only (ads skipped), the target URL
+/// taken out of DuckDuckGo's redirect link.
+fn parse_duckduckgo_html(html: &str, count: usize) -> Vec<Value> {
+    use once_cell::sync::Lazy;
+    use regex::Regex;
+    static TITLE: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r#"(?s)class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>"#).expect("title regex"));
+    static SNIPPET: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r#"(?s)class="result__snippet"[^>]*>(.*?)</a>"#).expect("snippet regex"));
+    static TAG: Lazy<Regex> = Lazy::new(|| Regex::new(r"<[^>]+>").expect("tag regex"));
+    let text = |raw: &str| {
+        let t = TAG.replace_all(raw, "");
+        let t = t
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&#x27;", "'")
+            .replace("&#39;", "'")
+            .replace("&nbsp;", " ");
+        t.split_whitespace().collect::<Vec<_>>().join(" ")
+    };
+    let target = |href: &str| {
+        let href = href.replace("&amp;", "&");
+        let absolute = if href.starts_with("//") { format!("https:{href}") } else { href };
+        let url = reqwest::Url::parse(&absolute).ok()?;
+        let real = url.query_pairs().find(|(k, _)| k == "uddg").map(|(_, v)| v.into_owned()).unwrap_or(absolute);
+        (!real.contains("duckduckgo.com/y.js")).then_some(real)
+    };
+    html.split("<div class=\"result ")
+        .skip(1)
+        .filter(|block| !block.split('>').next().unwrap_or("").contains("result--ad"))
+        .filter_map(|block| {
+            let t = TITLE.captures(block)?;
+            let url = target(&t[1])?;
+            let snippet = SNIPPET.captures(block).map(|c| text(&c[1])).unwrap_or_default();
+            Some(json!({ "title": text(&t[2]), "url": url, "snippet": snippet }))
+        })
+        .take(count)
+        .collect()
 }
 
 /// `web_search`: top results (title, URL, snippet) for a query.
@@ -221,7 +312,75 @@ impl WebSearchTool {
         let hit = |title: Option<&str>, url: Option<&str>, snippet: Option<&str>| {
             json!({ "title": title.unwrap_or(""), "url": url.unwrap_or(""), "snippet": snippet.unwrap_or("") })
         };
+        let hits = |v: &Value, list: &str, title: &str, url: &str, snippet: &str| -> Vec<Value> {
+            v[list]
+                .as_array()
+                .map(|a| a.iter().take(count).map(|r| hit(r[title].as_str(), r[url].as_str(), r[snippet].as_str())).collect())
+                .unwrap_or_default()
+        };
         match &self.backend {
+            SearchBackend::DuckDuckGo => {
+                let res = self
+                    .http
+                    .get("https://html.duckduckgo.com/html/")
+                    .query(&[("q", query)])
+                    .send()
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let status = res.status();
+                let body = res.text().await.map_err(|e| e.to_string())?;
+                let results = parse_duckduckgo_html(&body, count);
+                if results.is_empty() && (!status.is_success() || body.contains("anomaly")) {
+                    return Err(format!(
+                        "DuckDuckGo did not answer ({status}); it limits automated searches. Add a Brave, Staan or Tavily key in Setup for steadier search."
+                    ));
+                }
+                Ok(results)
+            }
+            SearchBackend::Tavily { api_key } => {
+                let res = self
+                    .http
+                    .post("https://api.tavily.com/search")
+                    .bearer_auth(api_key)
+                    .json(&json!({ "query": query, "max_results": count }))
+                    .send()
+                    .await
+                    .map_err(|e| e.to_string())?;
+                if !res.status().is_success() {
+                    return Err(format!("Tavily answered {}", res.status()));
+                }
+                let v: Value = res.json().await.map_err(|e| e.to_string())?;
+                Ok(hits(&v, "results", "title", "url", "content"))
+            }
+            SearchBackend::Serper { api_key } => {
+                let res = self
+                    .http
+                    .post("https://google.serper.dev/search")
+                    .header("X-API-KEY", api_key)
+                    .json(&json!({ "q": query, "num": count }))
+                    .send()
+                    .await
+                    .map_err(|e| e.to_string())?;
+                if !res.status().is_success() {
+                    return Err(format!("Serper answered {}", res.status()));
+                }
+                let v: Value = res.json().await.map_err(|e| e.to_string())?;
+                Ok(hits(&v, "organic", "title", "link", "snippet"))
+            }
+            SearchBackend::Google { api_key, cx } => {
+                let res = self
+                    .http
+                    .get("https://www.googleapis.com/customsearch/v1")
+                    .query(&[("key", api_key.as_str()), ("cx", cx.as_str()), ("q", query), ("num", &count.to_string())])
+                    .send()
+                    .await
+                    .map_err(|e| e.to_string())?;
+                if !res.status().is_success() {
+                    return Err(format!("Google Programmable Search answered {}", res.status()));
+                }
+                let v: Value = res.json().await.map_err(|e| e.to_string())?;
+                Ok(hits(&v, "items", "title", "link", "snippet"))
+            }
             SearchBackend::Brave { api_key } => {
                 let res = self
                     .http
@@ -287,7 +446,7 @@ impl Tool for WebSearchTool {
         let query = arg_str(&input, "query").ok_or_else(|| KowalskiError::ToolInvalidInput("missing `query`".into()))?;
         let count = arg_usize(&input, "count").unwrap_or(5).clamp(1, 10);
         let results = self.search(query, count).await.map_err(KowalskiError::ToolExecution)?;
-        Ok(ToolOutput::new(json!({ "query": query, "results": results }), None))
+        Ok(ToolOutput::new(json!({ "query": query, "provider": self.backend.name(), "results": results }), None))
     }
 
     fn name(&self) -> &str {
@@ -342,24 +501,36 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn agents_get_web_fetch_always_and_web_search_when_configured() {
+    async fn agents_get_web_fetch_and_web_search_unless_search_is_off() {
         let dir = tempfile::tempdir().unwrap();
         let mut c = crate::config::Config::default();
         c.memory.episodic_path = dir.path().join("episodic").display().to_string();
         let names = |tools: Vec<(String, String)>| tools.into_iter().map(|(n, _)| n).collect::<Vec<_>>();
         let plain = crate::template::agent::TemplateAgent::new(c.clone()).await.unwrap();
         let tools = names(plain.list_tools().await);
-        assert!(tools.contains(&"web_fetch".to_string()) && !tools.contains(&"web_search".to_string()), "{tools:?}");
-        c.additional.insert("search".into(), json!({ "provider": "searxng", "url": "https://search.example" }));
-        let searching = crate::template::agent::TemplateAgent::new(c).await.unwrap();
-        let tools = names(searching.list_tools().await);
-        assert!(tools.contains(&"web_search".to_string()), "{tools:?}");
+        assert!(tools.contains(&"web_fetch".to_string()) && tools.contains(&"web_search".to_string()), "{tools:?}");
+        c.additional.insert("search".into(), json!({ "provider": "off" }));
+        let quiet = crate::template::agent::TemplateAgent::new(c).await.unwrap();
+        let tools = names(quiet.list_tools().await);
+        assert!(!tools.contains(&"web_search".to_string()), "{tools:?}");
     }
 
     #[test]
     fn search_backend_from_config() {
         let mut c = crate::config::Config::default();
+        assert_eq!(SearchBackend::from_config(&c), Some(SearchBackend::DuckDuckGo), "no [search]: DuckDuckGo");
+        c.additional.insert("search".into(), json!({ "provider": "off" }));
         assert_eq!(SearchBackend::from_config(&c), None);
+        c.additional.insert("search".into(), json!({ "provider": "tavily", "api_key": "t" }));
+        assert_eq!(SearchBackend::from_config(&c), Some(SearchBackend::Tavily { api_key: "t".into() }));
+        c.additional.insert("search".into(), json!({ "provider": "serper", "api_key": "p" }));
+        assert_eq!(SearchBackend::from_config(&c), Some(SearchBackend::Serper { api_key: "p".into() }));
+        c.additional.insert("search".into(), json!({ "provider": "google", "api_key": "g", "cx": "engine" }));
+        assert_eq!(SearchBackend::from_config(&c), Some(SearchBackend::Google { api_key: "g".into(), cx: "engine".into() }));
+        c.additional.insert("search".into(), json!({ "provider": "google", "api_key": "g" }));
+        if std::env::var("GOOGLE_CSE_ID").is_err() {
+            assert_eq!(SearchBackend::from_config(&c), Some(SearchBackend::DuckDuckGo), "google without cx falls back");
+        }
         c.additional.insert("search".into(), json!({ "provider": "searxng", "url": "https://search.example/" }));
         assert_eq!(SearchBackend::from_config(&c), Some(SearchBackend::Searxng { url: "https://search.example".into() }));
         c.additional.insert("search".into(), json!({ "provider": "brave", "api_key": "k" }));
@@ -367,6 +538,45 @@ mod tests {
         c.additional.insert("search".into(), json!({ "provider": "staan", "api_key": "s", "market": "de-de" }));
         assert_eq!(SearchBackend::from_config(&c), Some(SearchBackend::Staan { api_key: "s".into(), market: Some("de-de".into()) }));
         c.additional.insert("search".into(), json!({ "provider": "bing", "api_key": "k" }));
-        assert_eq!(SearchBackend::from_config(&c), None);
+        assert_eq!(SearchBackend::from_config(&c), Some(SearchBackend::DuckDuckGo), "unknown provider falls back");
+        if std::env::var("TAVILY_API_KEY").is_err() {
+            c.additional.insert("search".into(), json!({ "provider": "tavily" }));
+            assert_eq!(SearchBackend::from_config(&c), Some(SearchBackend::DuckDuckGo), "keyed provider without a key falls back");
+        }
+    }
+
+    #[test]
+    fn duckduckgo_html_results_skip_ads_and_unwrap_links() {
+        let html = r##"<html><body>
+<div class="result results_links results_links_deep result--ad ">
+  <h2 class="result__title"><a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fduckduckgo.com%2Fy.js%3Fad_domain%3Dexample.com&amp;rut=1">Buy a course</a></h2>
+  <a class="result__snippet" href="#">An ad.</a>
+</div>
+<div class="result results_links results_links_deep web-result ">
+  <h2 class="result__title"><a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Frust%2Dlang.org%2F&amp;rut=2">Rust Programming Language</a></h2>
+  <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Frust%2Dlang.org%2F">A language empowering <b>everyone</b> to build reliable &amp; efficient software.</a>
+</div>
+<div class="result results_links results_links_deep web-result ">
+  <h2 class="result__title"><a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fen.wikipedia.org%2Fwiki%2FRust_(programming_language)&amp;rut=3">Rust (programming language) - Wikipedia</a></h2>
+  <a class="result__snippet" href="#">Rust is a general-purpose language.</a>
+</div>
+</body></html>"##;
+        let hits = parse_duckduckgo_html(html, 5);
+        assert_eq!(hits.len(), 2, "{hits:?}");
+        assert_eq!(hits[0]["url"], "https://rust-lang.org/");
+        assert_eq!(hits[0]["title"], "Rust Programming Language");
+        assert_eq!(hits[0]["snippet"], "A language empowering everyone to build reliable & efficient software.");
+        assert_eq!(hits[1]["url"], "https://en.wikipedia.org/wiki/Rust_(programming_language)");
+        assert_eq!(parse_duckduckgo_html(html, 1).len(), 1);
+    }
+
+    #[tokio::test]
+    async fn live_duckduckgo_when_asked() {
+        if std::env::var("KOWALSKI_LIVE_WEB").is_err() {
+            return; // network check, opt in with KOWALSKI_LIVE_WEB=1
+        }
+        let tool = WebSearchTool::new(SearchBackend::DuckDuckGo);
+        let hits = tool.search("rust programming language", 5).await.unwrap();
+        assert!(!hits.is_empty() && hits.iter().all(|h| h["url"].as_str().is_some_and(|u| u.starts_with("http"))), "{hits:?}");
     }
 }

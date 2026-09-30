@@ -128,12 +128,21 @@ pub async fn status(State(state): State<ApiState>) -> Json<Value> {
                     "url": format!("http://{}:{}", cfg.ollama.host, cfg.ollama.port) },
         "files_dir": files_dir(cfg),
         "web_search": kowalski_core::tools::internal::SearchBackend::from_config(cfg).is_some(),
+        "search": search_status(cfg),
         "tableski": {
             "connected": tableski.is_some(),
             "url": tableski.map(|s| s.url.clone()),
             "signed_in": tableski.and_then(|s| s.oauth.as_ref()).is_some(),
         },
     }))
+}
+
+/// Which search provider agents use, whether its key is set, and Google's engine id (not secret).
+pub(crate) fn search_status(cfg: &kowalski_core::config::Config) -> Value {
+    let table = cfg.additional.get("search");
+    let field = |k: &str| table.and_then(|t| t.get(k)).and_then(|v| v.as_str()).filter(|v| !v.trim().is_empty());
+    let provider = kowalski_core::tools::internal::SearchBackend::from_config(cfg).map_or("off", |b| b.name());
+    json!({ "provider": provider, "has_key": field("api_key").is_some(), "engine_id": field("cx") })
 }
 
 /// The folder chat's file tool is confined to when a request names none (`[files] dir`).
@@ -157,12 +166,15 @@ pub struct ModelChoice {
     api_key: Option<String>,
     #[serde(default)]
     files_dir: Option<String>,
-    /// Search API key: turns on the `web_search` tool (`[search]`).
+    /// Key for a keyed search provider (`[search] api_key`); empty keeps the saved one.
     #[serde(default)]
     search_api_key: Option<String>,
-    /// `brave` (default) or `staan`.
+    /// One of `SEARCH_PROVIDERS` (`duckduckgo`, the no-key default, … `off`).
     #[serde(default)]
     search_provider: Option<String>,
+    /// Google Programmable Search's search engine id (`[search] cx`).
+    #[serde(default)]
+    search_engine_id: Option<String>,
 }
 
 /// `POST /api/setup/test-model`: Ollama must list the model; a hosted endpoint must accept the
@@ -257,15 +269,49 @@ pub async fn save(State(state): State<ApiState>, Json(c): Json<ModelChoice>) -> 
             sub(&mut t, "files").insert("dir".into(), expanded.into());
         }
     }
-    if let Some(key) = c.search_api_key.as_deref().map(str::trim).filter(|k| !k.is_empty()) {
+    let key = c.search_api_key.as_deref().map(str::trim).filter(|k| !k.is_empty());
+    // A key without a provider is what older clients sent for Brave.
+    let provider = c
+        .search_provider
+        .as_deref()
+        .map(|p| p.trim().to_ascii_lowercase())
+        .filter(|p| !p.is_empty())
+        .or_else(|| key.map(|_| "brave".to_string()));
+    if let Some(p) = provider.filter(|p| p != "searxng") {
+        use kowalski_core::tools::internal::SEARCH_PROVIDERS;
+        if !SEARCH_PROVIDERS.contains(&p.as_str()) {
+            return Err(bad(format!("unknown search provider `{p}`")));
+        }
         let search = sub(&mut t, "search");
-        let provider = match c.search_provider.as_deref() {
-            Some("staan") => "staan",
-            _ => "brave",
-        };
-        search.insert("provider".into(), provider.into());
-        search.insert("api_key".into(), key.into());
-        secret = true;
+        let saved_provider = search.get("provider").and_then(|v| v.as_str()).map(str::to_ascii_lowercase);
+        let has_saved_key = saved_provider.as_deref() == Some(p.as_str())
+            && search.get("api_key").and_then(|v| v.as_str()).is_some_and(|k| !k.trim().is_empty());
+        search.insert("provider".into(), p.clone().into());
+        if p == "duckduckgo" || p == "off" {
+            search.remove("api_key");
+            search.remove("cx");
+        } else {
+            match key {
+                Some(k) => {
+                    search.insert("api_key".into(), k.into());
+                }
+                None if has_saved_key => {}
+                None => return Err(bad(format!("paste a {p} key, or choose DuckDuckGo (no key)"))),
+            }
+            if p == "google" {
+                let cx = c.search_engine_id.as_deref().map(str::trim).filter(|v| !v.is_empty());
+                match cx {
+                    Some(cx) => {
+                        search.insert("cx".into(), cx.into());
+                    }
+                    None if search.get("cx").is_some() => {}
+                    None => return Err(bad("Google Programmable Search needs its search engine ID (cx)")),
+                }
+            } else {
+                search.remove("cx");
+            }
+        }
+        secret |= search.contains_key("api_key");
     }
     write_table(&path, &t, secret).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     log::info!("setup: config written to {}", path.display());

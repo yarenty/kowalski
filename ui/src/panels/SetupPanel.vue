@@ -18,7 +18,20 @@ const hostedModel = ref("gpt-4o-mini");
 const apiKey = ref("");
 const filesDir = ref("");
 const searchKey = ref("");
-const searchProvider = ref<"brave" | "staan">("brave");
+const searchProvider = ref("duckduckgo");
+const searchEngineId = ref("");
+
+/** Search providers Setup offers (`[search] provider`); SearXNG is set in the config file. */
+const SEARCH_CHOICES: Record<string, { label: string; key?: string; link?: string; note: string }> = {
+  duckduckgo: { label: "DuckDuckGo (no key)", note: "Free and works right away. It is not an official API, so it may slow down or refuse now and then; a key below is steadier." },
+  brave: { label: "Brave Search", key: "Brave Search API key", link: "https://brave.com/search/api/", note: "Free monthly allowance, then paid." },
+  staan: { label: "Staan (European index)", key: "Staan API key", link: "https://staan.ai/", note: "Free monthly allowance, then paid." },
+  tavily: { label: "Tavily (built for agents)", key: "Tavily API key", link: "https://tavily.com/", note: "About 1,000 free searches a month, then paid." },
+  serper: { label: "Google, via Serper", key: "Serper API key", link: "https://serper.dev/", note: "About 2,500 free searches to start, then paid per search." },
+  google: { label: "Google Programmable Search", key: "Google API key", link: "https://developers.google.com/custom-search/v1/overview", note: "100 free searches a day, then paid. Needs a key and a search engine ID." },
+  off: { label: "Off", note: "Agents only read pages you give them." },
+};
+const searchChoice = computed(() => SEARCH_CHOICES[searchProvider.value]);
 
 const check = ref<{ ok: boolean; message: string } | null>(null);
 /** The form as last loaded from the server: Save is offered only when something differs. */
@@ -43,7 +56,7 @@ function applyPreset() {
 
 const choice = computed<ModelChoice>(() =>
   provider.value === "ollama"
-    ? { provider: "ollama", model: ollamaModel.value.trim(), files_dir: filesDir.value.trim() || undefined, search_api_key: searchKey.value.trim() || undefined, search_provider: searchProvider.value }
+    ? { provider: "ollama", model: ollamaModel.value.trim(), files_dir: filesDir.value.trim() || undefined, search_api_key: searchKey.value.trim() || undefined, search_provider: searchProvider.value, search_engine_id: searchEngineId.value.trim() || undefined }
     : {
         provider: "openai",
         model: hostedModel.value.trim(),
@@ -52,6 +65,7 @@ const choice = computed<ModelChoice>(() =>
         files_dir: filesDir.value.trim() || undefined,
         search_api_key: searchKey.value.trim() || undefined,
         search_provider: searchProvider.value,
+        search_engine_id: searchEngineId.value.trim() || undefined,
       },
 );
 
@@ -79,6 +93,8 @@ async function load() {
       ollamaModel.value = s.ollama.models.find(same) ?? s.ollama.models[0] ?? s.model ?? "llama3.2";
     }
     filesDir.value = s.files_dir ?? "";
+    searchProvider.value = s.search.provider in SEARCH_CHOICES || s.search.provider === "searxng" ? s.search.provider : "duckduckgo";
+    searchEngineId.value = s.search.engine_id ?? "";
     apiKey.value = "";
     searchKey.value = "";
     saved.value = snapshot();
@@ -293,18 +309,31 @@ onMounted(async () => {
         <p class="muted small">Chat's file tool reads and writes only inside this folder. Leave empty to decide per chat.</p>
         <div class="fields two">
           <label class="field">
-            <span>Web search (optional)</span>
+            <span>Web search</span>
             <select v-model="searchProvider">
-              <option value="brave">Brave Search</option>
-              <option value="staan">Staan (European index)</option>
+              <option v-for="(c, k) in SEARCH_CHOICES" :key="k" :value="k">{{ c.label }}</option>
+              <option v-if="searchProvider === 'searxng'" value="searxng">SearXNG (from the config file)</option>
             </select>
           </label>
-          <label class="field">
-            <span>Search API key</span>
-            <SecretInput v-model="searchKey" label="Search API key" :placeholder="status.web_search ? 'web search is on; leave empty to keep it' : (searchProvider === 'staan' ? 'Staan API key' : 'Brave Search API key')" />
+          <label v-if="searchChoice?.key" class="field">
+            <span>{{ searchChoice.key }}</span>
+            <SecretInput
+              v-model="searchKey"
+              :label="searchChoice.key"
+              :placeholder="status.search.has_key && status.search.provider === searchProvider ? 'saved; leave empty to keep it' : 'paste the key'"
+            />
           </label>
         </div>
-        <p class="muted small">Agents can always read a web page you give them. To let them search too, paste a <a href="https://brave.com/search/api/" target="_blank" rel="noopener">Brave Search</a> or <a href="https://staan.ai/" target="_blank" rel="noopener">Staan</a> key; both have a free monthly allowance.</p>
+        <div v-if="searchProvider === 'google'" class="fields">
+          <label class="field"><span>Search engine ID (cx)</span><input v-model="searchEngineId" placeholder="from programmablesearchengine.google.com" spellcheck="false" /></label>
+        </div>
+        <p class="muted small">
+          Agents can always read a web page you give them; this is what they search with.
+          <template v-if="searchChoice">
+            {{ searchChoice.note }}
+            <a v-if="searchChoice.link" :href="searchChoice.link" target="_blank" rel="noopener">Get a key</a>
+          </template>
+        </p>
       </li>
 
       <li class="step card">

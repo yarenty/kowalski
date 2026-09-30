@@ -28,4 +28,4 @@ pub use file_system::{
 pub use fs_tool::FsTool;
 pub use github::{fetch_url_for_ingest, FetchedUrlBody, GithubFetchKind, resolve_github_fetch};
 pub use web::{fetch_url_as_markdown, html_body_to_markdown, looks_like_html};
-pub use web_tools::{SearchBackend, WebFetchTool, WebSearchTool};
+pub use web_tools::{SEARCH_PROVIDERS, SearchBackend, WebFetchTool, WebSearchTool};

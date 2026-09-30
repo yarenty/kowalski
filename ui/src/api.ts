@@ -409,6 +409,7 @@ export type SetupStatus = {
   ollama: { reachable: boolean; models: string[]; url: string };
   files_dir: string | null;
   web_search: boolean;
+  search: { provider: string; has_key: boolean; engine_id: string | null };
   tableski: { connected: boolean; url: string | null; signed_in: boolean };
 };
 export type ModelChoice = {
@@ -418,7 +419,8 @@ export type ModelChoice = {
   api_key?: string;
   files_dir?: string;
   search_api_key?: string;
-  search_provider?: "brave" | "staan";
+  search_provider?: string;
+  search_engine_id?: string;
 };
 
 export const api = {
