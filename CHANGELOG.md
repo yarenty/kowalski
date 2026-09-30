@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file, or at least
 ## [Unreleased]
 
 ### Added
+- **Kowalski.dmg** on every release: a Mac app (Apple Silicon and Intel) that starts kowalski and opens the browser, with Open Kowalski and Show Logs in its Dock menu; quitting it stops the server. Signed with a Developer ID and notarized, so it opens without a terminal or a security override.
 - A first-run recording in the README: the installer, Setup, the tableski sign-in, a workbook dropped on the Spreadsheet analyst and its answers.
 
 ## [2.4.2] - 2026-09-29
