@@ -6,7 +6,7 @@
 use crate::operator_input::parse_operator_answer_block;
 use crate::tools::internal::file_system::{self, DEFAULT_MAX_READ_BYTES};
 use crate::tools::internal::github::{fetch_url_for_ingest, GithubFetchKind, resolve_github_fetch};
-use crate::tools::internal::web::{fetch_url_as_markdown, html_to_markdown_at, looks_like_html};
+use crate::tools::internal::web::{fetch_url_as_markdown, looks_like_html};
 use chrono::Utc;
 use std::collections::{HashSet, VecDeque};
 use std::fs;
@@ -80,11 +80,7 @@ fn md_cell(input: &str) -> String {
 }
 
 fn normalize_fetched_url_body(text: &str, url: &str) -> String {
-    if looks_like_html(text) {
-        html_to_markdown_at(text, reqwest::Url::parse(url).ok().as_ref())
-    } else {
-        text.to_string()
-    }
+    crate::tools::internal::web::page_to_markdown(text, reqwest::Url::parse(url).ok().as_ref())
 }
 
 /// **GitHub.com URLs** → [`fetch_url_for_ingest`](crate::tools::internal::github::fetch_url_for_ingest) (README API / raw / token).

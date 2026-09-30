@@ -12,7 +12,7 @@ id = "sources"
 type = "textarea"
 label = "Pages to read, one per line"
 required = true
-default = "https://github.com/trending/rust\nhttps://tldr.tech/\nhttps://arxiv.org/list/cs/recent\nhttps://news.ycombinator.com/"
+default = "https://github.com/trending/rust\nhttps://tldr.tech/\nhttps://rss.arxiv.org/rss/cs.AI\nhttps://news.ycombinator.com/"
 placeholder = "One link per line"
 [[inputs]]
 id = "focus"

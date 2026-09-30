@@ -7,7 +7,6 @@
 //! checked the same way.
 
 use crate::error::KowalskiError;
-use crate::tools::internal::web::{html_to_markdown_at, looks_like_html};
 use crate::tools::{ParameterType, Tool, ToolInput, ToolOutput, ToolParameter};
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -16,7 +15,8 @@ use std::time::Duration;
 
 const FETCH_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_REDIRECTS: usize = 5;
-const MAX_BODY_BYTES: usize = 5 * 1024 * 1024;
+/// Largest page body read before it is cleaned up; shared by `web_fetch` and ingest fetches.
+pub(crate) const MAX_BODY_BYTES: usize = 5 * 1024 * 1024;
 const DEFAULT_MAX_CHARS: usize = 20_000;
 
 fn param(name: &str, description: &str, required: bool, ty: ParameterType, default: Option<&str>) -> ToolParameter {
@@ -121,7 +121,7 @@ pub async fn fetch_public_as_markdown(url: &str) -> Result<(String, String), Str
         let bytes = res.bytes().await.map_err(|e| e.to_string())?;
         let bytes = &bytes[..bytes.len().min(MAX_BODY_BYTES)];
         let text = String::from_utf8_lossy(bytes).into_owned();
-        let text = if looks_like_html(&text) { html_to_markdown_at(&text, Some(&current)) } else { text };
+        let text = super::web::page_to_markdown(&text, Some(&current));
         return Ok((final_url, text));
     }
     Err(format!("more than {MAX_REDIRECTS} redirects"))

@@ -9,7 +9,6 @@ use reqwest::blocking::{Client, Response};
 use std::time::Duration;
 
 const DEFAULT_TIMEOUT_SECS: u64 = 90;
-const MAX_BODY_CHARS: usize = 240_000;
 
 /// How the URL was resolved for diagnostics (metadata table + section headers).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -173,20 +172,7 @@ impl ResolvedGithub {
 }
 
 fn read_response_text(resp: Response) -> Result<String, String> {
-    if !resp.status().is_success() {
-        return Err(format!(
-            "HTTP {} {}",
-            resp.status().as_u16(),
-            resp.status().canonical_reason().unwrap_or("")
-        ));
-    }
-    let text = resp
-        .text()
-        .map_err(|e| e.to_string())?
-        .chars()
-        .take(MAX_BODY_CHARS)
-        .collect::<String>();
-    Ok(text)
+    super::web::read_body_text(resp)
 }
 
 /// Fetch URL body with GitHub-specific resolution when applicable.
@@ -209,7 +195,7 @@ pub fn fetch_url_for_ingest(original_url: &str) -> Result<FetchedUrlBody, String
         // GitHub resolution failed; fall through to plain GET of the browser URL.
     }
 
-    let resp = client.get(original_url).send().map_err(|e| e.to_string())?;
+    let resp = super::web::get_politely(&client, original_url)?;
     let text = read_response_text(resp)?;
     Ok(FetchedUrlBody {
         text,
