@@ -1,6 +1,6 @@
 # Kowalski UI (Vue 3 + Vite)
 
-**Version 2.4.2** · Operator-facing web shell for Kowalski, calling **`kowalski`** under `/api/*`.
+**Version 2.5.0** · Operator-facing web shell for Kowalski, calling **`kowalski`** under `/api/*`.
 
 Features: health, MCP ping, **Chat** (`POST /api/chat`, SSE **`POST /api/chat/stream`** with optional **Tool-aware stream** / `tools_stream`), federation, graph extension status. See [`ROADMAP.md`](./ROADMAP.md).
 

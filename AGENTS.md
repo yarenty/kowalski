@@ -55,7 +55,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: Kowalski  
-**Release line**: **2.4.0 — Reconnect** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).
+**Release line**: **2.5.0 — Double Click** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).
 **Purpose**: A Rust-native multi-agent framework: **`kowalski-core`** (agents, LLM, memory, MCP client), **`kowalski-cli`** (REPL + operators, extensions, **`agent-app`**), **`kowalski`** (HTTP **`/api/*`** server), Vue **`ui/`**, optional PostgreSQL (**pgvector**, **Apache AGE**).  
 **Core Value Proposition**: Modular, extensible deployment with MCP-first tools and federation-oriented APIs.  
 **Primary Mechanism**: `TemplateAgent` + pluggable tools (built-in + MCP), Ollama/OpenAI-compatible providers.  
@@ -391,7 +391,9 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-**2.4.0 — Reconnect** is the current release: MCP servers that are down when kowalski starts are retried and picked up once they run (background backoff plus an immediate retry when a tool is needed); a local tableski gets a clear Workbooks note; fixes to the horde form, the stall warning and fenced hand-offs; the demo re-recorded. See `CHANGELOG.md` **[2.4.0]**.
+**2.5.0 — Double Click** is the current release: `Kowalski.dmg` on every release, a Mac app (universal, signed with a Developer ID and notarized) whose native launcher (`packaging/macos/`) starts kowalski, opens the browser and stops the server on quit; and a first-run recording in the README. See `CHANGELOG.md` **[2.5.0]**.
+
+**2.4.0 — Reconnect** was the previous release (with the 2.4.1 and 2.4.2 first-run fixes): MCP servers that are down when kowalski starts are retried and picked up once they run (background backoff plus an immediate retry when a tool is needed); a local tableski gets a clear Workbooks note; fixes to the horde form, the stall warning and fenced hand-offs; the demo re-recorded. See `CHANGELOG.md` **[2.4.0]**.
 
 **2.3.0 — Mission Control** was the previous release: a top bar and a Hordes home with icon tiles (hordes declare `category`, `icon`, `featured`), a Runs page across hordes with readable run titles (`GET /api/runs`), a ⌘K picker, workbooks uploaded to tableski from the horde page, follow-up questions as new runs (`[followup]`), and a Spreadsheet analyst that reads header-less sheets as forms. See `CHANGELOG.md` **[2.3.0]**.
 

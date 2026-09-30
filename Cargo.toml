@@ -11,7 +11,7 @@ default-members = ["kowalski", "kowalski-core", "kowalski-cli", "kowalski-mcp-ro
 
 
 [workspace.package]
-version = "2.4.2"
+version = "2.5.0"
 edition = "2024"
 description = "A Rust multi-agent framework: agents with MCP tools and memory, and hordes (step pipelines with triggers) over Ollama or OpenAI-compatible models"
 license = "MIT"
@@ -37,8 +37,8 @@ keywords = [
 
 [workspace.dependencies]
 # Workspace crates: keep these versions equal to [workspace.package] version (scripts/release-version.sh does)
-kowalski-core = { path = "kowalski-core", version = "2.4.2" }
-kowalski-cli = { path = "kowalski-cli", version = "2.4.2" }
+kowalski-core = { path = "kowalski-core", version = "2.5.0" }
+kowalski-cli = { path = "kowalski-cli", version = "2.5.0" }
 # Core async/runtime dependencies
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.13", features = ["json", "stream"] }
