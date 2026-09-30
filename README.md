@@ -20,6 +20,12 @@ what is next: [ROADMAP.md](ROADMAP.md).
 
 ## Install
 
+**Mac:** download [**Kowalski.dmg**](https://github.com/yarenty/kowalski/releases/latest/download/Kowalski.dmg),
+open it, drag **Kowalski** to Applications and open it. It starts kowalski and opens your
+browser; quit it from the Dock to stop. Apple Silicon and Intel, signed and notarized.
+
+**Mac or Linux, from a terminal:**
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yarenty/kowalski/main/install.sh | bash
 kowalski

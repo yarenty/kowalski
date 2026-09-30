@@ -9,7 +9,7 @@ on:
     tags: ["v*"]
   # a change to this workflow builds every target (artifacts only) before a tag depends on it
   pull_request:
-    paths: [".github/workflows/release.yml"]
+    paths: [".github/workflows/release.yml", "packaging/**"]
   workflow_dispatch:
 
 permissions:
@@ -75,9 +75,74 @@ jobs:
             kowalski-*.tar.gz
             kowalski-*.tar.gz.sha256
 
-      - name: Keep as a workflow artifact (manual runs)
-        if: "!startsWith(github.ref, 'refs/tags/')"
+      - name: Keep as a workflow artifact (the macOS app job and manual runs)
         uses: actions/upload-artifact@v4
         with:
           name: kowalski-${{ matrix.target }}
           path: kowalski-*.tar.gz*
+
+  # Kowalski.app in Kowalski.dmg: universal, signed with the Developer ID and notarized when the
+  # signing secrets are set (unsigned otherwise, e.g. on pull requests). See packaging/macos.
+  macos-app:
+    name: Kowalski.dmg
+    needs: build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: kowalski-*-apple-darwin
+          merge-multiple: true
+
+      - name: Universal binaries
+        run: |
+          for t in aarch64-apple-darwin x86_64-apple-darwin; do tar xzf "kowalski-$t.tar.gz"; done
+          mkdir universal
+          for bin in kowalski kowalski-cli; do
+            lipo -create -output "universal/$bin" "kowalski-aarch64-apple-darwin/$bin" "kowalski-x86_64-apple-darwin/$bin"
+          done
+          lipo -info universal/kowalski
+
+      - name: Signing keychain
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          if [ -z "$MACOS_CERT_P12" ]; then echo "no signing certificate: the app stays unsigned"; exit 0; fi
+          kc="$RUNNER_TEMP/signing.keychain-db"
+          kcpass="$(openssl rand -hex 16)"
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$kcpass" "$kc"
+          security set-keychain-settings -lut 3600 "$kc"
+          security unlock-keychain -p "$kcpass" "$kc"
+          security import "$RUNNER_TEMP/cert.p12" -P "$MACOS_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$kc"
+          security set-key-partition-list -S apple-tool:,apple: -k "$kcpass" "$kc" >/dev/null
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+
+      - name: Build, sign and notarize
+        env:
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then version="${GITHUB_REF_NAME#v}"; else version="0.0.0-dev"; fi
+          packaging/macos/build-app.sh universal/kowalski universal/kowalski-cli "$version" dist
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            dist/Kowalski.dmg
+            dist/Kowalski.dmg.sha256
+
+      - name: Keep as a workflow artifact
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kowalski-dmg
+          path: dist/Kowalski.dmg*
