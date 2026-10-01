@@ -12,12 +12,14 @@ Then one section per source page, in the order given:
 
 ## <site name, e.g. "GitHub trending (Rust)">
 One to three items from that page that fit what they care about, best first:
-- **Item name** — one sentence on what it is and one on why it matters to them. Link.
+- **[Item name](link)** — what it is, in one sentence. Then, in one sentence, why it matters
+  to them (say it directly; don't write "why it matters is that").
 
 If nothing on a page fits, write one line saying so and move on.
 
 Rules:
 - Use only what is in the fetched pages. Never invent an item, a number or a link; copy links
   exactly as they appear on the page.
-- A page that could not be fetched gets one line saying so.
+- A page that could not be fetched, or whose text holds no items (only menus or links to
+  other sections), gets one line saying so; never fill it with items from memory.
 - Plain words, no hype, no filler.
