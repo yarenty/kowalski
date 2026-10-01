@@ -25,4 +25,4 @@ Set **`GITHUB_TOKEN`** in the worker environment for private repos or better rat
 
 ## Vault / Obsidian
 
-There is **no** Obsidian import API in this repo. After a full pipeline, copy **`workdir/PASTE_ME.md`** into your vault (or use the UI paste). Raw captures live under **`workdir/debug/raw/`** for debugging only.
+With a notes vault set (Setup → Notes vault, or `[vault] dir`), the finished note is saved into the vault's **`Kowalski`** folder by itself. Without one, copy **`workdir/PASTE_ME.md`** into your vault. Raw captures live under **`workdir/debug/raw/`** for debugging only.

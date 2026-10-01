@@ -11,6 +11,7 @@ default_topic = "federation"
 artifacts_root = "."
 workdir = "output"
 delivery_title = "Obsidian Delivery"
+vault = true
 delivery_note = "When the run finishes, open **`workdir/PASTE_ME.md`** (final stage `output`). Intermediate files live under **`workdir/debug/`** per each agent’s declared `output` path."
 delivery_root_rel = "PASTE_ME.md"
 delivery_summary_note = "This example ingests a source, builds one digest markdown file, answers your question, then merges both into a single paste-ready note."

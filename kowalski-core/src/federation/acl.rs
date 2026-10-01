@@ -145,6 +145,9 @@ pub enum AclMessage {
         /// Markdown hand-off for operators (copy into docs, tickets, etc.). Capped on the server when read from disk.
         #[serde(default, alias = "paste_for_obsidian")]
         handoff_markdown: Option<String>,
+        /// Where the delivered note was saved in the notes vault, when the horde opts in.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        vault_note: Option<String>,
     },
     /// Horde run lifecycle: orchestrator declares the run failed.
     RunFailed {
@@ -280,6 +283,7 @@ mod tests {
             artifacts: vec![],
             text: None,
             handoff_markdown: Some("body".into()),
+            vault_note: None,
         };
         let j = serde_json::to_string(&msg).unwrap();
         assert!(j.contains("handoff_markdown"));

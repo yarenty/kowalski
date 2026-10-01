@@ -269,6 +269,7 @@ pub async fn serve(
     if let Some(secs) = horde_config_step_timeout_secs(&full_config) {
         horde_manager.step_timeout = std::time::Duration::from_secs(secs);
     }
+    horde_manager.vault_dir = kowalski_core::config::vault_dir(&full_config);
     horde_manager.confirm_commands =
         horde_config_confirm_commands(&full_config).unwrap_or(crate::horde::DEFAULT_CONFIRM_COMMANDS);
     if !horde_manager.confirm_commands {
@@ -3383,9 +3384,14 @@ mod api_tests {
     }
 
     async fn fixture_with(dir: &Path, api_token: Option<&str>, confirm_commands: bool) -> Router {
+        fixture_full(dir, api_token, confirm_commands, None).await
+    }
+
+    async fn fixture_full(dir: &Path, api_token: Option<&str>, confirm_commands: bool, vault: Option<PathBuf>) -> Router {
         let hordes = dir.join("hordes");
         write_horde(&hordes, "api-horde", "true", "\n[[triggers]]\nwebhook = { route = \"api-hook\" }\n");
         write_horde(&hordes, "slow-horde", "sleep 30", "");
+        write_horde(&hordes, "vault-horde", "echo found it", "vault = true\ndelivery_root_rel = \"debug/check.md\"\n");
 
         let config = Config::default();
         let config_path = dir.join("config.toml");
@@ -3401,6 +3407,7 @@ mod api_tests {
         manager.step_handlers =
             Arc::new(kowalski_core::StepHandlerRegistry::with_builtin_deterministic());
         manager.confirm_commands = confirm_commands;
+        manager.vault_dir = vault;
         crate::horde::spawn_orchestrator_loop(manager.clone());
         let trigger_manager = crate::triggers::TriggerManager::new(manager.clone());
         trigger_manager.rearm().await;
@@ -3461,6 +3468,28 @@ mod api_tests {
         let value = serde_json::from_slice(&bytes)
             .unwrap_or_else(|_| json!({ "text": String::from_utf8_lossy(&bytes) }));
         (status, value)
+    }
+
+    #[tokio::test]
+    async fn a_vault_horde_leaves_its_note_in_the_vault() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let app = fixture_full(dir.path(), None, false, Some(vault.path().to_path_buf())).await;
+        for (horde, expect_note) in [("vault-horde", true), ("api-horde", false)] {
+            let (status, started) = call(&app, "POST", &format!("/api/hordes/{horde}/run"),
+                Some(json!({ "prompt": "Rust async notes", "source": project.path().display().to_string() })), None).await;
+            assert_eq!(status, StatusCode::OK, "{started}");
+            let id = run_id(&started);
+            let run = wait_for(&app, horde, &id, &["completed", "failed"]).await;
+            assert_eq!(run["status"], "completed", "{run}");
+            let finished = run["events"].as_array().unwrap().iter().find(|e| e["kind"] == "run_finished").cloned().unwrap();
+            assert_eq!(finished["vault_note"].is_string(), expect_note, "{horde}: {finished}");
+        }
+        let notes: Vec<_> = std::fs::read_dir(vault.path().join(kowalski_core::vault::VAULT_FOLDER)).unwrap().flatten().map(|e| e.path()).collect();
+        assert_eq!(notes.len(), 1, "only the opted-in horde writes: {notes:?}");
+        let text = std::fs::read_to_string(&notes[0]).unwrap();
+        assert!(text.contains("horde: vault-horde") && text.contains("source: kowalski"), "{text}");
     }
 
     async fn wait_for(app: &Router, horde: &str, run_id: &str, want: &[&str]) -> serde_json::Value {
@@ -3831,6 +3860,23 @@ mod api_tests {
             use std::os::unix::fs::PermissionsExt;
             assert_eq!(std::fs::metadata(&cfg).unwrap().permissions().mode() & 0o777, 0o600, "a key inside: owner-only");
         }
+
+        // The notes vault must exist; saving keeps it as typed, an empty value removes it.
+        let vault = dir.path().join("Vault");
+        let (status, _) = call(&app, "POST", "/api/setup/save",
+            Some(json!({ "provider": "ollama", "model": "x", "vault_dir": vault.display().to_string() })), None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "a vault that does not exist");
+        std::fs::create_dir_all(&vault).unwrap();
+        let (status, _) = call(&app, "POST", "/api/setup/save",
+            Some(json!({ "provider": "ollama", "model": "x", "vault_dir": vault.display().to_string() })), None).await;
+        assert_eq!(status, StatusCode::OK);
+        let written: kowalski_core::config::Config = toml::from_str(&std::fs::read_to_string(&cfg).unwrap()).unwrap();
+        assert_eq!(kowalski_core::config::vault_dir(&written), Some(vault.clone()));
+        let (status, _) = call(&app, "POST", "/api/setup/save",
+            Some(json!({ "provider": "ollama", "model": "x", "vault_dir": "" })), None).await;
+        assert_eq!(status, StatusCode::OK);
+        let written: kowalski_core::config::Config = toml::from_str(&std::fs::read_to_string(&cfg).unwrap()).unwrap();
+        assert_eq!(kowalski_core::config::vault_dir(&written), None, "empty removes the vault");
 
         // The suggested folder does not exist yet on a first run: saving makes it.
         let fresh = dir.path().join("Documents").join("kowalski");

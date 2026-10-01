@@ -27,6 +27,7 @@ pub mod template;
 pub mod tool_chain;
 pub mod tools;
 pub mod utils;
+pub mod vault;
 
 pub use agent::repl_trace::ReplTraceGuard;
 pub use agent::{Agent, BaseAgent, MessageHandler};

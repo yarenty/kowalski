@@ -1018,6 +1018,7 @@ mod tests {
             category: "other".into(),
             icon: String::new(),
             featured: false,
+            vault: false,
             followup: None,
             root_path: dir.to_path_buf(),
             sub_agents: vec![sub("a")],

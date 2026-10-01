@@ -51,6 +51,11 @@ clean_on_startup = true
 # url = "https://searx.example.org"
 # provider = "off"          # no web_search at all
 
+# Notes vault: an Obsidian vault, or any folder of notes. Hordes with `vault = true` (the
+# Knowledge compiler, the Morning brief) save their note into its `Kowalski` folder.
+# [vault]
+# dir = "~/Documents/Obsidian/My vault"
+
 # Chat's file tool is confined to this folder unless a request names another one.
 # [files]
 # dir = "~/Documents/kowalski"

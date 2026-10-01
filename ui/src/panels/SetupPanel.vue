@@ -20,6 +20,7 @@ const filesDir = ref("");
 const searchKey = ref("");
 const searchProvider = ref("duckduckgo");
 const searchEngineId = ref("");
+const vaultDir = ref("");
 
 /** Search providers Setup offers (`[search] provider`); SearXNG is set in the config file. */
 const SEARCH_CHOICES: Record<string, { label: string; key?: string; link?: string; note: string }> = {
@@ -56,7 +57,7 @@ function applyPreset() {
 
 const choice = computed<ModelChoice>(() =>
   provider.value === "ollama"
-    ? { provider: "ollama", model: ollamaModel.value.trim(), files_dir: filesDir.value.trim() || undefined, search_api_key: searchKey.value.trim() || undefined, search_provider: searchProvider.value, search_engine_id: searchEngineId.value.trim() || undefined }
+    ? { provider: "ollama", model: ollamaModel.value.trim(), files_dir: filesDir.value.trim() || undefined, search_api_key: searchKey.value.trim() || undefined, search_provider: searchProvider.value, search_engine_id: searchEngineId.value.trim() || undefined, vault_dir: vaultDir.value.trim() }
     : {
         provider: "openai",
         model: hostedModel.value.trim(),
@@ -66,6 +67,7 @@ const choice = computed<ModelChoice>(() =>
         search_api_key: searchKey.value.trim() || undefined,
         search_provider: searchProvider.value,
         search_engine_id: searchEngineId.value.trim() || undefined,
+        vault_dir: vaultDir.value.trim(),
       },
 );
 
@@ -95,6 +97,7 @@ async function load() {
     filesDir.value = s.files_dir ?? "";
     searchProvider.value = s.search.provider in SEARCH_CHOICES || s.search.provider === "searxng" ? s.search.provider : "duckduckgo";
     searchEngineId.value = s.search.engine_id ?? "";
+    vaultDir.value = s.vault_dir ?? "";
     apiKey.value = "";
     searchKey.value = "";
     saved.value = snapshot();
@@ -307,6 +310,10 @@ onMounted(async () => {
           <label class="field"><span>Folder</span><input v-model="filesDir" placeholder="~/Documents/kowalski" spellcheck="false" /></label>
         </div>
         <p class="muted small">Chat's file tool reads and writes only inside this folder. Leave empty to decide per chat.</p>
+        <div class="fields">
+          <label class="field"><span>Notes vault (optional)</span><input v-model="vaultDir" placeholder="~/Documents/Obsidian/My vault" spellcheck="false" /></label>
+        </div>
+        <p class="muted small">An Obsidian vault, or any folder of notes: the Knowledge compiler and the Morning brief save their notes into its <code>Kowalski</code> folder.</p>
         <div class="fields two">
           <label class="field">
             <span>Web search</span>
