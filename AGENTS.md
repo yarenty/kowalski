@@ -55,7 +55,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ## 2. Project Identity
 
 **Name**: Kowalski  
-**Release line**: **2.5.0 — Double Click** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).
+**Release line**: **2.6.0 — Field Notes** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).
 **Purpose**: A Rust-native multi-agent framework: **`kowalski-core`** (agents, LLM, memory, MCP client), **`kowalski-cli`** (REPL + operators, extensions, **`agent-app`**), **`kowalski`** (HTTP **`/api/*`** server), Vue **`ui/`**, optional PostgreSQL (**pgvector**, **Apache AGE**).  
 **Core Value Proposition**: Modular, extensible deployment with MCP-first tools and federation-oriented APIs.  
 **Primary Mechanism**: `TemplateAgent` + pluggable tools (built-in + MCP), Ollama/OpenAI-compatible providers.  
@@ -391,7 +391,9 @@ If you can answer these questions, your context management is solid:
 ## 9. Implementation Status
 
 ### Current Status
-**2.5.0 — Double Click** is the current release: `Kowalski.dmg` on every release, a Mac app (universal, signed with a Developer ID and notarized) whose native launcher (`packaging/macos/`) starts kowalski, opens the browser and stops the server on quit; and a first-run recording in the README. See `CHANGELOG.md` **[2.5.0]**.
+**2.6.0 — Field Notes** is the current release: a notes vault (`[vault] dir`; hordes with `vault = true` save their note into an Obsidian vault's `Kowalski` folder), the Knowledge Compiler with a question and pages form, web search with no key (DuckDuckGo by default; Tavily, Serper and Google Programmable Search added), RSS/Atom feeds read as item lists, and horde ingest that reads whole pages before cleaning them up. See `CHANGELOG.md` **[2.6.0]**.
+
+**2.5.0 — Double Click** was the previous release: `Kowalski.dmg` on every release, a Mac app (universal, signed with a Developer ID and notarized) whose native launcher (`packaging/macos/`) starts kowalski, opens the browser and stops the server on quit; and a first-run recording in the README. See `CHANGELOG.md` **[2.5.0]**.
 
 **2.4.0 — Reconnect** was the previous release (with the 2.4.1 and 2.4.2 first-run fixes): MCP servers that are down when kowalski starts are retried and picked up once they run (background backoff plus an immediate retry when a tool is needed); a local tableski gets a clear Workbooks note; fixes to the horde form, the stall warning and fenced hand-offs; the demo re-recorded. See `CHANGELOG.md` **[2.4.0]**.
 
