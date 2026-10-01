@@ -11,6 +11,10 @@ All notable changes to this project will be documented in this file, or at least
 - RSS and Atom feeds are read as a list of their items (title, link and the start of the summary) wherever kowalski fetches a page (`web_fetch`, horde ingest), instead of as raw XML. The Morning brief follows arXiv through its cs.AI feed, which arXiv asks automated readers to use.
 - More web search providers: **DuckDuckGo** (no key, the default: agents can search out of the box), **Tavily**, **Google via Serper** and **Google Programmable Search**, next to Brave, Staan and SearXNG. Setup's search picker lists them with their free allowances; a keyed provider asks for its key (Google also for its search engine ID), a saved key is kept, and `provider = "off"` turns search off. A provider set up without its key falls back to DuckDuckGo instead of turning search off. `web_search` results name the provider that answered.
 
+### Changed
+- The Knowledge Compiler (renamed from "Knowledge Sucking Swarm") has a form: **What should the note answer?** and **Pages or notes to read**, so the question you type is the one it answers (the UI used to send its default question), and the run and its vault note are named after it. It is featured on the Hordes home.
+- A typed request with words of its own, not only links, names its run, instead of the horde's default question.
+
 ### Fixed
 - Horde ingest reads a whole page (up to the 5 MB `web_fetch` also uses) before cleaning it up. It used to cut the raw HTML at 240,000 characters, so on a busy page such as GitHub trending the list itself was lost behind half a megabyte of menus, and the Morning brief's model filled the gap with repositories that were not there.
 - A site that answers "429 Too Many Requests" is asked once more after the wait it names (at most 10 s).

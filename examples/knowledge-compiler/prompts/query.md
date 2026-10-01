@@ -1,7 +1,8 @@
 You are the **ask** stage for a markdown pipeline.
 
 Input:
-- The operator question (in the user message block from the runner).
+- The operator's question: the "What should the note answer?" line of the intake's operator
+  input (attached). When the intake has none, the question in the user message block.
 - Attached context: the **compile** digest (and any other paths the manifest lists).
 
 Tasks:

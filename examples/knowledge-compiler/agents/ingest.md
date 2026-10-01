@@ -6,6 +6,18 @@ default_agent_id = "kc-ingest"
 display_name = "Ingest Agent"
 description = "Collects raw source material and stores normalized markdown."
 output = "debug/raw/"
+[[inputs]]
+id = "question"
+type = "text"
+label = "What should the note answer?"
+required = true
+placeholder = "What are the main ways to learn Rust?"
+[[inputs]]
+id = "sources"
+type = "textarea"
+label = "Pages or notes to read, one per line"
+required = true
+placeholder = "https://www.rust-lang.org/learn\nhttps://github.com/rust-lang/rustlings"
 ---
 
 # Ingest Agent

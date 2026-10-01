@@ -114,7 +114,7 @@ cargo run -p kowalski
 cd ui && bun install && bun run dev
 ```
 
-3. Open the app → **Horde** → pick **Knowledge Sucking Swarm** (id `knowledge-compiler`).  
+3. Open the app → **Horde** → pick **Knowledge Compiler** (id `knowledge-compiler`).  
 
 4. Obsidian: set your vault in Setup (**Notes vault**) and each finished note lands in its **`Kowalski`** folder, with front matter (source, horde, run, date, tags); the run page links it with **Open in Obsidian**. The compiled wiki is also in **`workdir/debug/wiki/`**.  
    Use **Open output folder** — it invokes **`POST /api/system/open-path`** so the desktop file manager opens the path (avoid `file://` in the browser).

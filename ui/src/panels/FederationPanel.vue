@@ -203,7 +203,7 @@ async function runKnowledgeCompiler() {
     if (!out.delegated_to) {
       runBusy.value = false;
       runResult.value =
-        "No federation worker matched capability `kc.run`.\n\nHow to fix:\n- **Preferred (operator UI):** open **Hordes** → select **Knowledge Sucking Swarm** → **Run horde** (workers start automatically; manage them under **Admin → Federation**) (four-step pipeline; matches what the UI expects).\n- **Legacy single worker:** `cargo run -p kowalski-cli -- agent-app worker <id> --path examples/knowledge-compiler --api http://127.0.0.1:3456` (omit `--role` so the process accepts `kc.run`; see examples/knowledge-compiler README).\n- Click **Refresh registry** and confirm an agent lists `kc.run`.\n- Retry this run.";
+        "No federation worker matched capability `kc.run`.\n\nHow to fix:\n- **Preferred (operator UI):** open **Hordes** → select **Knowledge Compiler** → **Run horde** (workers start automatically; manage them under **Admin → Federation**) (four-step pipeline; matches what the UI expects).\n- **Legacy single worker:** `cargo run -p kowalski-cli -- agent-app worker <id> --path examples/knowledge-compiler --api http://127.0.0.1:3456` (omit `--role` so the process accepts `kc.run`; see examples/knowledge-compiler README).\n- Click **Refresh registry** and confirm an agent lists `kc.run`.\n- Retry this run.";
       runTimeline.value = [
         ...runTimeline.value,
         "blocked: no target worker available for capability kc.run",
