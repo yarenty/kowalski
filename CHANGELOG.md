@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-10-04 — **Field Notes**
+
+> Research that lands where you keep your notes, search that works the moment you install it, and
+> a Morning brief that reports only what is really on the page.
+
 ### Added
 - **Notes vault:** set an Obsidian vault (or any folder of notes) in Setup, and hordes that opt in with `vault = true` save their finished note into its `Kowalski` folder, named by date and title, with front matter (source, horde, run, date, tags) and never over an existing note. The Knowledge compiler and the Morning brief opt in; the run page says where the note went and links **Open in Obsidian**. `[vault] dir` in the config; `kowalski-core` has `config::vault_dir`, `config::expand_home` and the `vault` module.
 - RSS and Atom feeds are read as a list of their items (title, link and the start of the summary) wherever kowalski fetches a page (`web_fetch`, horde ingest), instead of as raw XML. The Morning brief follows arXiv through its cs.AI feed, which arXiv asks automated readers to use.

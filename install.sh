@@ -9,9 +9,9 @@
 #
 # Environment:
 #   KOWALSKI_BIN_DIR=~/.local/bin  Where the binaries go (download mode)
-#   KOWALSKI_RELEASE=v2.5.0        A specific release tag instead of the latest
+#   KOWALSKI_RELEASE=v2.6.0        A specific release tag instead of the latest
 #   KOWALSKI_FROM_SOURCE=1         Build with cargo from crates.io (no UI inside)
-#   KOWALSKI_VERSION=2.5.0         crates.io version (source mode; default: latest)
+#   KOWALSKI_VERSION=2.6.0         crates.io version (source mode; default: latest)
 #   KOWALSKI_FEATURES=postgres     Features for kowalski + kowalski-cli (source mode)
 #   KOWALSKI_INSTALL_MCP=1         Also install kowalski-mcp-rookery (source mode)
 #   KOWALSKI_SKIP_RUSTUP=1         Do not auto-install Rust when missing (source mode)
