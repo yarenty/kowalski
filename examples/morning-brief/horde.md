@@ -12,6 +12,7 @@ default_topic = "federation"
 artifacts_root = "."
 workdir = "output"
 delivery_title = "Your morning brief"
+vault = true
 delivery_note = "Open **`workdir/BRIEF.md`**. The fetched pages are kept in `debug/raw/`, one file per run."
 delivery_root_rel = "BRIEF.md"
 delivery_summary_note = "A one-page brief from the pages you follow."

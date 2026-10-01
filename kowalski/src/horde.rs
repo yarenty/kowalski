@@ -115,6 +115,10 @@ pub struct HordeMeta {
     /// Shown on the Hordes home page until the operator pins their own.
     #[serde(default)]
     pub featured: bool,
+    /// Leave the delivered note in the operator's notes vault (`[vault] dir`) when a run
+    /// finishes ([`kowalski_core::vault`]).
+    #[serde(default)]
+    pub vault: bool,
     /// How a finished run is followed up: a new run of this horde with the operator's text in
     /// one form field and the previous answers in another (`[followup]`).
     #[serde(default)]
@@ -243,6 +247,9 @@ pub struct HordeSpec {
     /// Shown on the Hordes home page by default.
     #[serde(default)]
     pub featured: bool,
+    /// Delivered note goes to the notes vault when one is set.
+    #[serde(default)]
+    pub vault: bool,
     /// Follow-ups as new runs (checked against the run form at load).
     #[serde(default)]
     pub followup: Option<HordeFollowup>,
@@ -258,13 +265,7 @@ pub struct HordeSpec {
 
 /// `text` without a leading `---` … `---` metadata block.
 fn strip_front_matter(text: &str) -> &str {
-    let Some(rest) = text.strip_prefix("---\n").or_else(|| text.strip_prefix("---\r\n")) else {
-        return text;
-    };
-    match rest.find("\n---") {
-        Some(end) => rest[end + 4..].trim_start_matches(['\r', '\n']),
-        None => text,
-    }
+    kowalski_core::vault::split_front_matter(text).1
 }
 
 fn default_category() -> String {
@@ -503,6 +504,7 @@ pub fn load_horde(root: &Path) -> Result<HordeSpec, Box<dyn std::error::Error>> 
         category,
         icon: meta.icon.unwrap_or_default().trim().to_string(),
         featured: meta.featured,
+        vault: meta.vault,
         followup,
         root_path: root.to_path_buf(),
         sub_agents,
@@ -1072,6 +1074,9 @@ pub struct HordeManager {
     /// Approved `(run_id, step)` pairs: one approval covers every later attempt of that step
     /// in that run (loops do not ask again).
     pub approvals: Arc<Mutex<std::collections::HashSet<(String, String)>>>,
+    /// The operator's notes vault (`[vault] dir`); hordes with `vault = true` leave their
+    /// delivered note there. `None` for a bare manager.
+    pub vault_dir: Option<PathBuf>,
 }
 
 impl HordeManager {
@@ -1100,6 +1105,7 @@ impl HordeManager {
             exec_step_config: None,
             confirm_commands: false,
             approvals: Arc::new(Mutex::new(std::collections::HashSet::new())),
+            vault_dir: None,
         }
     }
 
@@ -2373,6 +2379,7 @@ impl HordeManager {
     }
 
     async fn complete_run(&self, spec: &HordeSpec, run_id: &str) {
+        let title = self.runs.lock().await.runs.get(run_id).map(|r| r.title.clone()).unwrap_or_default();
         let artifacts: Vec<(String, String)> = {
             let mut runs = self.runs.lock().await;
             let Some(run) = runs.runs.get_mut(run_id) else {
@@ -2410,6 +2417,7 @@ impl HordeManager {
                 )
             }
         });
+        let vault_note = self.save_to_vault(spec, run_id, &title, &paste_path);
         let env = self.build_envelope(
             &spec.topic,
             AclMessage::RunFinished {
@@ -2417,12 +2425,14 @@ impl HordeManager {
                 horde: spec.id.clone(),
                 artifacts: artifacts.clone(),
                 text: Some(format!(
-                    "{} run completed; {} artifact(s). Hand-off: {}.",
+                    "{} run completed; {} artifact(s). Hand-off: {}.{}",
                     spec.display_name,
                     artifacts.len(),
-                    paste_path.display()
+                    paste_path.display(),
+                    vault_note.as_deref().map(|p| format!(" Saved to the vault: {p}.")).unwrap_or_default()
                 )),
                 handoff_markdown,
+                vault_note,
             },
         );
         {
@@ -2433,6 +2443,29 @@ impl HordeManager {
             }
         }
         self.publish(&env).await;
+    }
+
+    /// The delivered note, saved in the notes vault for a horde with `vault = true` when a vault
+    /// is set; the saved path, or `None` (a failure to save is logged, never fails the run).
+    fn save_to_vault(&self, spec: &HordeSpec, run_id: &str, title: &str, delivered: &Path) -> Option<String> {
+        if !spec.vault || !delivered.extension().is_some_and(|e| e == "md") {
+            return None;
+        }
+        let vault = self.vault_dir.as_ref()?;
+        let body = std::fs::read_to_string(delivered).ok()?;
+        let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let title = if title.trim().is_empty() { spec.display_name.as_str() } else { title };
+        let note = kowalski_core::vault::VaultNote { title, horde: &spec.id, run_id, date: &date, body: &body };
+        match kowalski_core::vault::save_note(vault, &note) {
+            Ok(path) => {
+                log::info!("horde `{}` run {run_id}: note saved to the vault at {}", spec.id, path.display());
+                Some(path.display().to_string())
+            }
+            Err(e) => {
+                log::warn!("horde `{}` run {run_id}: could not save to the vault: {e}", spec.id);
+                None
+            }
+        }
     }
 
     async fn fail_run(&self, spec: &HordeSpec, run_id: &str, reason: &str, step: Option<&str>) {
@@ -3103,6 +3136,7 @@ mod tests {
             category: "other".into(),
             icon: String::new(),
             featured: false,
+            vault: false,
             followup: None,
             root_path: dir.to_path_buf(),
             sub_agents: vec![sub("a"), sub("b")],

@@ -321,6 +321,23 @@ const handoffMarkdown = computed(() => {
     return "";
   }
 });
+/** Where the run's note was saved in the notes vault (hordes with `vault = true`). */
+const vaultNote = computed(() => {
+  if (!runResult.value) return "";
+  try {
+    const p = JSON.parse(runResult.value) as { vault_note?: string };
+    return typeof p.vault_note === "string" ? p.vault_note : "";
+  } catch {
+    return "";
+  }
+});
+/** The note's place inside the vault, for display (`Kowalski/2026-10-01 Title.md`). */
+const vaultNoteShort = computed(() => {
+  const i = vaultNote.value.lastIndexOf("/Kowalski/");
+  return i >= 0 ? vaultNote.value.slice(i + 1) : vaultNote.value;
+});
+const obsidianLink = computed(() => (vaultNote.value ? `obsidian://open?path=${encodeURIComponent(vaultNote.value)}` : ""));
+
 /** The hand-off rendered for reading (sanitised; the raw Markdown stays one click away). */
 const handoffHtml = computed(() =>
   handoffMarkdown.value
@@ -1105,6 +1122,10 @@ onUnmounted(() => {
           <template v-if="view === 'done'">
             <section class="card delivery">
               <p class="eyebrow">Delivered</p>
+              <p v-if="vaultNote" class="note note-ok vault-note">
+                Saved to your vault: <code>{{ vaultNoteShort }}</code> ·
+                <a :href="obsidianLink">Open in Obsidian</a>
+              </p>
               <template v-if="handoffMarkdown">
                 <div class="handoff-rendered md-content" v-html="handoffHtml" />
               </template>

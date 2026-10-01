@@ -408,6 +408,7 @@ export type SetupStatus = {
   has_api_key: boolean;
   ollama: { reachable: boolean; models: string[]; url: string };
   files_dir: string | null;
+  vault_dir: string | null;
   web_search: boolean;
   search: { provider: string; has_key: boolean; engine_id: string | null };
   tableski: { connected: boolean; url: string | null; signed_in: boolean };
@@ -421,6 +422,7 @@ export type ModelChoice = {
   search_api_key?: string;
   search_provider?: string;
   search_engine_id?: string;
+  vault_dir?: string;
 };
 
 export const api = {

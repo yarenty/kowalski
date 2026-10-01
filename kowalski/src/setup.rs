@@ -127,6 +127,7 @@ pub async fn status(State(state): State<ApiState>) -> Json<Value> {
         "ollama": { "reachable": models.is_some(), "models": models.unwrap_or_default(),
                     "url": format!("http://{}:{}", cfg.ollama.host, cfg.ollama.port) },
         "files_dir": files_dir(cfg),
+        "vault_dir": cfg.additional.get("vault").and_then(|v| v.get("dir")).and_then(|v| v.as_str()).filter(|s| !s.trim().is_empty()),
         "web_search": kowalski_core::tools::internal::SearchBackend::from_config(cfg).is_some(),
         "search": search_status(cfg),
         "tableski": {
@@ -175,6 +176,9 @@ pub struct ModelChoice {
     /// Google Programmable Search's search engine id (`[search] cx`).
     #[serde(default)]
     search_engine_id: Option<String>,
+    /// The notes vault (an Obsidian vault folder, `[vault] dir`); empty removes it.
+    #[serde(default)]
+    vault_dir: Option<String>,
 }
 
 /// `POST /api/setup/test-model`: Ollama must list the model; a hosted endpoint must accept the
@@ -269,6 +273,17 @@ pub async fn save(State(state): State<ApiState>, Json(c): Json<ModelChoice>) -> 
             sub(&mut t, "files").insert("dir".into(), expanded.into());
         }
     }
+    if let Some(dir) = c.vault_dir.as_deref().map(str::trim) {
+        if dir.is_empty() {
+            t.remove("vault");
+        } else {
+            // A vault already exists; a typo must not quietly create a folder notes vanish into.
+            if !Path::new(&expand_home(dir)).is_dir() {
+                return Err(bad(format!("`{dir}` is not a folder: choose your vault's folder (in Obsidian: the vault's location)")));
+            }
+            sub(&mut t, "vault").insert("dir".into(), dir.into());
+        }
+    }
     let key = c.search_api_key.as_deref().map(str::trim).filter(|k| !k.is_empty());
     // A key without a provider is what older clients sent for Brave.
     let provider = c
@@ -318,12 +333,7 @@ pub async fn save(State(state): State<ApiState>, Json(c): Json<ModelChoice>) -> 
     Ok(Json(json!({ "ok": true, "config_path": path.display().to_string(), "restart_needed": true })))
 }
 
-fn expand_home(p: &str) -> String {
-    match (p.strip_prefix("~/"), std::env::var("HOME")) {
-        (Some(rest), Ok(home)) => format!("{home}/{rest}"),
-        _ => p.to_string(),
-    }
-}
+use kowalski_core::config::expand_home;
 
 struct Pending {
     server: oauth::AuthServer,

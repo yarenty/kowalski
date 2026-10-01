@@ -109,6 +109,28 @@ pub fn user_hordes_root(config_dir: Option<&std::path::Path>) -> Option<std::pat
     config_dir.map(|c| c.join("hordes"))
 }
 
+/// `~/…` → the home folder; anything else unchanged. The one place paths from the config and
+/// the Setup screen are expanded.
+pub fn expand_home(p: &str) -> String {
+    match (p.strip_prefix("~/"), std::env::var("HOME")) {
+        (Some(rest), Ok(home)) => format!("{home}/{rest}"),
+        _ => p.to_string(),
+    }
+}
+
+/// The notes vault (`[vault] dir`), `~` expanded; `None` when not set. Hordes with
+/// `vault = true` leave their delivered note there ([`crate::vault`]).
+pub fn vault_dir(config: &Config) -> Option<std::path::PathBuf> {
+    config
+        .additional
+        .get("vault")
+        .and_then(|v| v.get("dir"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| std::path::PathBuf::from(expand_home(s)))
+}
+
 /// Single source of truth for the Ollama base URL a config resolves to:
 /// `http://<ollama.host>:<ollama.port>`.
 pub fn ollama_base_url(config: &Config) -> String {

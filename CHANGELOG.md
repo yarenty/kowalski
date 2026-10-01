@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file, or at least
 ## [Unreleased]
 
 ### Added
+- **Notes vault:** set an Obsidian vault (or any folder of notes) in Setup, and hordes that opt in with `vault = true` save their finished note into its `Kowalski` folder, named by date and title, with front matter (source, horde, run, date, tags) and never over an existing note. The Knowledge compiler and the Morning brief opt in; the run page says where the note went and links **Open in Obsidian**. `[vault] dir` in the config; `kowalski-core` has `config::vault_dir`, `config::expand_home` and the `vault` module.
 - RSS and Atom feeds are read as a list of their items (title, link and the start of the summary) wherever kowalski fetches a page (`web_fetch`, horde ingest), instead of as raw XML. The Morning brief follows arXiv through its cs.AI feed, which arXiv asks automated readers to use.
 - More web search providers: **DuckDuckGo** (no key, the default: agents can search out of the box), **Tavily**, **Google via Serper** and **Google Programmable Search**, next to Brave, Staan and SearXNG. Setup's search picker lists them with their free allowances; a keyed provider asks for its key (Google also for its search engine ID), a saved key is kept, and `provider = "off"` turns search off. A provider set up without its key falls back to DuckDuckGo instead of turning search off. `web_search` results name the provider that answered.
 
