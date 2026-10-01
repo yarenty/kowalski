@@ -13,6 +13,8 @@ exclude_path = [
   ".git",
   # Archived articles / HTML; relative assets not maintained
   "docs/purgatory",
+  # Model prompts, not documentation: they show the model link *shapes* such as `[Item](link)`
+  "examples/.*/prompts",
   # Local-only agent planning (gitignored; not on GitHub)
   "PLAN.md",
   "continuity_prompt.md",
