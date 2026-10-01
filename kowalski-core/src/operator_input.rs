@@ -203,7 +203,14 @@ const RUN_TITLE_MAX: usize = 80;
 pub fn run_title(prompt: &str, question: &str, source: Option<&str>) -> String {
     // the operator's own form answers say what the run is about; a horde's default question
     // (used when the form has no free-text question) would name every run the same
-    let text = if first_answer(prompt).is_some() || question.trim().is_empty() { prompt } else { question };
+    // A typed request (no form) with words of its own, not just links, says what the run is
+    // about better than the question, which from the UI is the horde's default.
+    let is_link = |l: &str| l.starts_with("http://") || l.starts_with("https://") || l.starts_with('/') || l.starts_with("~/");
+    let content_line = |t: &str| {
+        t.lines().map(str::trim).find(|l| !l.is_empty() && !l.starts_with('#') && !is_link(l)).map(str::to_string)
+    };
+    let typed_words = first_answer(prompt).is_none() && content_line(prompt).is_some();
+    let text = if first_answer(prompt).is_some() || typed_words || question.trim().is_empty() { prompt } else { question };
     if let Some(kind) = source
         .and_then(|s| s.strip_prefix(crate::horde_trigger::TRIGGER_SOURCE_PREFIX))
         .and_then(|rest| rest.split(':').next())
@@ -217,12 +224,15 @@ pub fn run_title(prompt: &str, question: &str, source: Option<&str>) -> String {
     let answer = first_answer(text);
     let lines: Vec<&str> = match answer.as_deref() {
         Some(answer) => answer.lines().map(str::trim).filter(|l| !l.is_empty()).collect(),
-        None => text
-            .lines()
-            .map(str::trim)
-            .filter(|l| !l.is_empty() && !l.starts_with("# Operator input"))
-            .take(1)
-            .collect(),
+        None => {
+            let lines: Vec<&str> = text
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty() && !l.starts_with("# Operator input"))
+                .collect();
+            // the first line with words, else the first line (a link becomes its short label)
+            lines.iter().find(|l| !is_link(l)).or(lines.first()).copied().into_iter().collect()
+        }
     };
     let Some(first) = lines.first() else {
         return "Untitled run".to_string();
@@ -286,6 +296,9 @@ mod tests {
         assert_eq!(run_title(brief, brief, None), "news.ycombinator.com +1 more");
         assert_eq!(run_title("## Summarise this repo please", "", None), "Summarise this repo please");
         assert_eq!(run_title("", "", None), "Untitled run");
+        let typed = "https://www.rust-lang.org/learn\nWhat are the main ways to learn Rust?";
+        assert_eq!(run_title(typed, "What changed in the latest source?", None), "What are the main ways to learn Rust?", "typed words beat the default question");
+        assert_eq!(run_title("https://www.rust-lang.org/learn", "What are the main ways to learn Rust?", None), "What are the main ways to learn Rust?", "a links-only request keeps the question");
         let brief = "# Operator input (Brief)\n\n**What should be checked?:** Is the release ready?";
         assert_eq!(run_title(brief, "Are the checks green?", None), "Is the release ready?", "form answers beat the default question");
         let long = "x".repeat(200);
