@@ -3,20 +3,37 @@
 
 *October 2026*
 
-Kowalski is a small team of AI agents that runs on your own computer. You give it a chore: a
-question about a spreadsheet, the five pages you read every morning, a stack of documents, a
-topic to research. It hands the chore to a **horde**, a short pipeline of specialised agents we
-call penguins, and gives you back something you can use: a report workbook, a one-page brief, a
-note in your Obsidian vault.
+Welcome to the [Kowalski blog](https://kowalski.yarenty.com). This is the first post written for
+people who have never heard of Kowalski, so let's start at the beginning.
 
-It's open source (MIT), written in Rust, and it works with a free local model through
-[Ollama](https://ollama.com) or with your own key for a hosted one.
+**Kowalski is a small team of AI agents that lives on your own computer and does chores for
+you.** Not a chatbot you have to keep talking to, and not a platform you have to administer. You
+hand it a job, it does the job, and you get a file back. It's open source (MIT), written in Rust,
+and it runs on a free local model through [Ollama](https://ollama.com), or on any hosted model
+with your own key.
+
+There are two well-known open-source projects in the same neighbourhood, and they help to
+explain what Kowalski is by what it isn't. [OpenClaw](https://github.com/openclaw/openclaw) is a
+personal assistant you chat with: it gets wide access to your machine and your apps, and it
+works best with a big frontier model behind it. [Paperclip](https://github.com/paperclipai/paperclip)
+goes one level up: it runs a whole "company" of paid coding agents, with org charts, budgets and
+approvals. Both are impressive. Kowalski makes the opposite bet. Each job is a small, fixed
+pipeline you can read. The agents only touch the one folder you give them, and they ask before
+doing anything risky. The hard parts (fetching pages, running SQL, building spreadsheets) are
+ordinary code, so a small free model on a laptop is enough. The result is cheaper (€0 a run on a
+local model), more private (nothing leaves your machine), and easier to trust (every number
+comes from a query, not from the model's imagination). Penguins: no lobsters, no corporation.
+
+So what do you actually give it? A chore: a question about a spreadsheet, the five pages you read
+every morning, a document that just landed in your inbox, a topic to research. Kowalski hands the
+chore to a **horde**, a short pipeline of specialised agents we call penguins, and gives you back
+something you can use: a report workbook, a one-page brief, a note in your Obsidian vault.
 
 ![A first run of kowalski: install, Setup, connect tableski, drop a workbook, get answers](../img/kowalski-first-run.gif)
 
 ## What it does today
 
-Five hordes come with it:
+Five hordes come with it:h
 
 - **Spreadsheet analyst.** Ask questions about your workbooks in plain words and get a report
   workbook back. The model writes the SQL; every number comes from a query engine, never from
@@ -74,3 +91,7 @@ kowalski
 Your browser opens on Setup: pick a model, a folder, and optionally your tableski account. Then
 pick a horde and send it in. Everything is at
 [github.com/yarenty/kowalski](https://github.com/yarenty/kowalski).
+
+If something goes wrong, [open an issue](https://github.com/yarenty/kowalski/issues). Kowalski
+does the analysis; I do the apologising. And if everything works first time, just smile and
+wave, boys. Smile and wave. 🐧
