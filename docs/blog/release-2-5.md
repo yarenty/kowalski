@@ -87,5 +87,7 @@ curl -fsSL https://raw.githubusercontent.com/yarenty/kowalski/main/install.sh | 
 kowalski
 ```
 
-Or `cargo add kowalski`. New here? Start with [Mission Control](release-2-3.md), the release that
-gave kowalski its calm home screen.
+Or `cargo add kowalski`. New here? Start with [Meet Kowalski](meet-kowalski.md), then
+[Mission Control](release-2-3.md), the release that gave kowalski its calm home screen.
+
+*No penguins were harmed in the making of this release. One was mildly confused by a CSV.* 🐧
