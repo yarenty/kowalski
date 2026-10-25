@@ -33,7 +33,7 @@ something you can use: a report workbook, a one-page brief, a note in your Obsid
 
 ## What it does today
 
-Five hordes come with it:h
+Five hordes come with it:
 
 - **Spreadsheet analyst.** Ask questions about your workbooks in plain words and get a report
   workbook back. The model writes the SQL; every number comes from a query engine, never from
