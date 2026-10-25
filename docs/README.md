@@ -26,6 +26,7 @@ system, one run, and the run lifecycle. Operational entry points stay in the rep
 
 | Article | About |
 |---|---|
+| [`meet-kowalski.md`](blog/meet-kowalski.md) | Meet Kowalski: what it does, how it got here, how to try it |
 | [`release-2-2.md`](blog/release-2-2.md) | Kowalski 2.2: download it, answer three questions, send in a horde |
 | [`architecture-history.md`](blog/architecture-history.md) | Eighteen months of kowalski: how the architecture kept getting smaller |
 | [`article_memory.md`](blog/article_memory.md) | Building human-like memory for agents |
