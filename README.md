@@ -87,6 +87,20 @@ Try the analyst from a terminal against a running server:
 examples/spreadsheet-analyst/demo.sh "Who spent the most?" "How many customers per city?"
 ```
 
+## Is Kowalski for you?
+
+| You want… | Kowalski | Better elsewhere |
+|---|---|---|
+| Answers from your own spreadsheets, pages and documents, as files you open | ✓ | |
+| To run on a laptop with a free local model, nothing leaving the machine | ✓ | |
+| Every number in a report traced to a SQL query | ✓ (with tableski) | |
+| One download, no Docker, no database server | ✓ (about 20 MB) | |
+| A chat assistant with wide access to your machine and apps | | a personal assistant such as [OpenClaw](https://github.com/openclaw/openclaw) |
+| To manage many paid coding agents as a team, with org charts and budgets | | an agent control plane such as [Paperclip](https://github.com/paperclipai/paperclip) |
+| Hundreds of SaaS connectors and click-built workflows | | a workflow tool (n8n, Zapier) |
+
+Penguins: no lobsters, no corporation. More in [Meet Kowalski](https://kowalski.yarenty.com/blog/meet-kowalski/).
+
 ## Your spreadsheets: tableski
 
 The Spreadsheet analyst reads your workbooks through [tableski](https://tableski.io), which turns
