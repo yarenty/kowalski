@@ -104,7 +104,7 @@ pub async fn serve(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let _ = boot_id();
     let config_path = crate::http_ops::mcp_config_path(config.as_deref());
-    let full_config = crate::http_ops::load_kowalski_config_for_serve(&config_path)?;
+    let full_config = kowalski_core::config::load_config_file(&config_path)?;
     // Server state dir (`<config-dir>/db`): API token file, run store, trigger overrides.
     let state_root = state_config_dir(&config_path)
         .unwrap_or_else(|| PathBuf::from("."))
@@ -3393,7 +3393,8 @@ mod api_tests {
         write_horde(&hordes, "slow-horde", "sleep 30", "");
         write_horde(&hordes, "vault-horde", "echo found it", "vault = true\ndelivery_root_rel = \"debug/check.md\"\n");
 
-        let config = Config::default();
+        let mut config = Config::default();
+        config.memory.episodic_path = dir.join("episodic").display().to_string();
         let config_path = dir.join("config.toml");
         let broker = Arc::new(MpscBroker::new());
         let registry = Arc::new(AgentRegistry::new());
@@ -3779,6 +3780,11 @@ mod api_tests {
         std::fs::write(builtin.join("url-summarizer/output/HANDOFF.md"), "mine").unwrap();
         crate::embedded::install_builtin_hordes(&builtin).unwrap();
         assert_eq!(std::fs::read_to_string(builtin.join("url-summarizer/output/HANDOFF.md")).unwrap(), "mine");
+        // a step a newer binary no longer ships is removed; run output still stays
+        std::fs::write(builtin.join("url-summarizer/agents/dropped.md"), "old step").unwrap();
+        crate::embedded::install_builtin_hordes(&builtin).unwrap();
+        assert!(!builtin.join("url-summarizer/agents/dropped.md").exists());
+        assert!(builtin.join("url-summarizer/output/HANDOFF.md").is_file());
         let catalog = crate::horde::HordeCatalog::with_roots(vec![builtin]);
         let ids: Vec<String> = catalog.list().iter().map(|e| e.spec.id.clone()).collect();
         assert!(ids.contains(&"url-summarizer".to_string()) && ids.contains(&"knowledge-compiler".to_string()), "{ids:?}");

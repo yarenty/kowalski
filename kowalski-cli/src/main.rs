@@ -10,7 +10,7 @@ use kowalski_core::config::default_model as determine_model;
     author,
     version,
     about = "Kowalski CLI — chat with an agent, run hordes, and operate memory and MCP.",
-    long_about = "`kowalski-cli` with no command (or `chat`, `run`) starts a chat with an agent that uses your config's model and MCP tools. Hordes: `agent-app`. Operators: `config check`, `db migrate`, `doctor`, `mcp ping`, `mcp tools`, `federation ping-notify` (with `--features postgres`). See --help on each."
+    long_about = "`kowalski-cli` with no command (or `chat`, `run`) starts a chat with an agent that uses your config's model and MCP tools; `kowalski-cli chat \"hello\"` asks once and prints the answer. Hordes: `agent-app`. Operators: `config check`, `db migrate`, `doctor`, `mcp ping`, `mcp tools`, `federation ping-notify` (with `--features postgres`). See --help on each."
 )]
 struct Cli {
     #[clap(subcommand)]
@@ -58,6 +58,9 @@ enum Commands {
         /// Config TOML (default: $KOWALSKI_CONFIG, ./config.toml, then ~/.config/kowalski/config.toml)
         #[clap(short, long)]
         config: Option<String>,
+        /// A message to send once: prints the answer and exits (`kowalski-cli chat "hello"`).
+        /// Without it the chat is interactive.
+        message: Vec<String>,
     },
     /// Federation operators (Postgres `NOTIFY` smoke test when built with `--features postgres`)
     Federation {
@@ -401,8 +404,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::Doctor { ollama_url }) => {
             kowalski_cli::ops::run_doctor(ollama_url).await?;
         }
-        Some(Commands::Run { config }) => {
-            kowalski_cli::run_ops::run_orchestrator(config.as_deref()).await?;
+        Some(Commands::Run { config, message }) => {
+            if message.is_empty() {
+                kowalski_cli::run_ops::run_orchestrator(config.as_deref()).await?;
+            } else {
+                kowalski_cli::run_ops::run_once(config.as_deref(), &message.join(" ")).await?;
+            }
         }
         Some(Commands::Federation { command }) => match command {
             FederationCommands::PingNotify { config } => {
@@ -556,7 +563,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         Some(Commands::Consolidate { delete, config }) => {
             let path = kowalski_cli::ops::mcp_config_path(config.as_deref());
-            let config = kowalski_cli::ops::load_kowalski_config_for_serve(&path)?;
+            let config = kowalski_core::config::load_config_file(&path)?;
             let model = determine_model(&config);
 
             // Create the appropriate LLM provider for consolidation
@@ -584,4 +591,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Cli, Commands};
+    use clap::Parser;
+
+    #[test]
+    fn chat_takes_a_one_shot_message() {
+        let cli = Cli::try_parse_from(["kowalski-cli", "chat", "hello", "there"]).unwrap();
+        match cli.command {
+            Some(Commands::Run { message, .. }) => assert_eq!(message, ["hello", "there"]),
+            other => panic!("{other:?}"),
+        }
+        let cli = Cli::try_parse_from(["kowalski-cli", "chat"]).unwrap();
+        assert!(matches!(cli.command, Some(Commands::Run { message, .. }) if message.is_empty()));
+    }
 }

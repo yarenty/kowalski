@@ -843,7 +843,7 @@ async fn isolated_step_registry(
     let mut registry = StepHandlerRegistry::with_builtin_deterministic();
     if LLM_STEP_KINDS.contains(&kind) {
         let path = crate::ops::mcp_config_path(config_path);
-        let cfg = crate::ops::load_kowalski_config_for_serve(&path)?;
+        let cfg = kowalski_core::config::load_config_file(&path)?;
         kowalski_core::db::run_memory_migrations_if_configured(&cfg).await?;
         let model = kowalski_core::config::default_model(&cfg);
         let agent = TemplateAgent::new(cfg).await?;
@@ -1591,7 +1591,7 @@ async fn cli_portability_context(
 ) -> kowalski_core::manifest::PortabilityContext {
     let path = crate::ops::mcp_config_path(config_path);
     let mut context = kowalski_core::manifest::PortabilityContext::default();
-    let Ok(cfg) = crate::ops::load_kowalski_config_for_serve(&path) else {
+    let Ok(cfg) = kowalski_core::config::load_config_file(&path) else {
         return context;
     };
     match TemplateAgent::new(cfg.clone()).await {

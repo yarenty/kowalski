@@ -617,6 +617,32 @@ impl LlmStepHandler {
     }
 }
 
+/// Follow-up sent when an LLM stage answers with no text.
+const EMPTY_REPLY_NUDGE: &str = "Your answer was empty. Write the result now, as Markdown, using \
+only the material above. Do not call any tool.";
+
+/// One LLM stage turn: with the stage's tools when it has any, else a plain reply.
+async fn ask_stage(
+    agent: &mut crate::template::agent::TemplateAgent,
+    conversation_id: &str,
+    message: &str,
+    policy: Option<&crate::tools::policy::ToolExecutionPolicy>,
+) -> Result<String, KowalskiError> {
+    match policy {
+        Some(policy) => {
+            agent
+                .chat_with_tools_with_policy(conversation_id, message, false, Some(policy))
+                .await
+        }
+        None => {
+            agent
+                .base_mut()
+                .chat_with_history_with_options(conversation_id, message, None, false)
+                .await
+        }
+    }
+}
+
 #[async_trait]
 impl StepHandler for LlmStepHandler {
     fn kind(&self) -> &'static str {
@@ -675,27 +701,31 @@ impl StepHandler for LlmStepHandler {
         let reply = {
             let mut agent = self.agent.lock().await;
             agent
-                .ensure_conversation_with_tools(
-                    &self.model,
-                    &conversation_id,
-                    use_tools.then_some(tool_ids.as_slice()),
-                )
+                .ensure_conversation_with_tools(&self.model, &conversation_id, Some(&tool_ids))
                 .await?;
-            if use_tools {
-                let policy = crate::tools::policy::ToolExecutionPolicy {
-                    allowed_tools: Some(tool_ids.clone()),
-                    sandbox_root: ctx.project_path.clone(),
-                    quiet: true,
-                };
-                agent
-                    .chat_with_tools_with_policy(&conversation_id, &message, false, Some(&policy))
-                    .await?
-            } else {
-                agent
-                    .base_mut()
-                    .chat_with_history_with_options(&conversation_id, &message, None, false)
-                    .await?
+            let policy = use_tools.then(|| crate::tools::policy::ToolExecutionPolicy {
+                allowed_tools: Some(tool_ids.clone()),
+                sandbox_root: ctx.project_path.clone(),
+                quiet: true,
+            });
+            let mut reply = ask_stage(&mut agent, &conversation_id, &message, policy.as_ref()).await?;
+            // Small models sometimes plan a tool call in their reasoning and return no text.
+            // Ask once more, plainly; an empty answer is never delivered as a result.
+            if reply.trim().is_empty() {
+                ctx.events
+                    .message(&format!("`{step}`: the model returned no text; asking once more"))
+                    .await;
+                reply = ask_stage(&mut agent, &conversation_id, EMPTY_REPLY_NUDGE, policy.as_ref())
+                    .await?;
             }
+            if reply.trim().is_empty() {
+                return Err(KowalskiError::Validation(format!(
+                    "step `{step}`: the model `{}` returned no text twice. Run it again, or pick \
+                     another model on the Setup screen.",
+                    self.model
+                )));
+            }
+            reply
         };
         let reply = crate::markdown_pipeline::maybe_normalize_markdown(&meta, &reply);
         std::fs::write(&out_path, reply).map_err(|e| {
@@ -978,5 +1008,65 @@ mod tests {
         let ctx = make_ctx(&step, dir.path(), None, None, None, &cancel);
         let err = VerifyStepHandler.execute(&ctx).await.unwrap_err();
         assert!(err.to_string().contains("cancelled"));
+    }
+
+    /// A model that hands out scripted replies in order (then empty ones).
+    struct ScriptedLlm(std::sync::Mutex<std::collections::VecDeque<String>>);
+
+    #[async_trait]
+    impl crate::llm::LLMProvider for ScriptedLlm {
+        async fn chat(&self, _model: &str, _messages: &[crate::conversation::Message]) -> Result<String, KowalskiError> {
+            Ok(self.0.lock().unwrap().pop_front().unwrap_or_default())
+        }
+        async fn embed(&self, _text: &str) -> Result<Vec<f32>, KowalskiError> {
+            Ok(Vec::new())
+        }
+        fn supports_streaming(&self) -> bool {
+            false
+        }
+        fn chat_stream(
+            &self,
+            _model: &str,
+            _messages: Vec<crate::conversation::Message>,
+        ) -> crate::llm::provider::TokenStream<'_> {
+            Box::pin(futures::stream::empty())
+        }
+    }
+
+    async fn llm_stage(replies: &[&str], dir: &Path) -> Result<StepOutcome, StepError> {
+        std::fs::create_dir_all(dir.join("agents")).unwrap();
+        std::fs::create_dir_all(dir.join("prompts")).unwrap();
+        std::fs::write(
+            dir.join("agents/summarize.md"),
+            "---\nname = \"summarize\"\nkind = \"process\"\nprompt_file = \"prompts/summarize.md\"\noutput = \"HANDOFF.md\"\n---\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("prompts/summarize.md"), "Summarize.").unwrap();
+        let mut config = crate::config::Config::default();
+        config.memory.episodic_path = dir.join("episodic").display().to_string();
+        let mut agent = crate::template::agent::TemplateAgent::new(config).await.unwrap();
+        agent.base_mut().llm_provider = std::sync::Arc::new(ScriptedLlm(std::sync::Mutex::new(
+            replies.iter().map(|r| r.to_string()).collect(),
+        )));
+        let handler = LlmStepHandler::new("process", std::sync::Arc::new(tokio::sync::Mutex::new(agent)), "m");
+        let step = spec("process", "summarize");
+        let cancel = CancellationToken::new();
+        let ctx = make_ctx(&step, dir, None, None, None, &cancel);
+        handler.execute(&ctx).await
+    }
+
+    #[tokio::test]
+    async fn llm_stage_asks_again_after_an_empty_answer() {
+        let dir = tempfile::tempdir().unwrap();
+        llm_stage(&["", "## Done"], dir.path()).await.unwrap();
+        assert_eq!(std::fs::read_to_string(dir.path().join("HANDOFF.md")).unwrap(), "## Done");
+    }
+
+    #[tokio::test]
+    async fn llm_stage_fails_instead_of_delivering_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = llm_stage(&["", "  "], dir.path()).await.unwrap_err();
+        assert!(err.to_string().contains("returned no text"), "{err}");
+        assert!(!dir.path().join("HANDOFF.md").exists());
     }
 }

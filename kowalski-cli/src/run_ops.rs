@@ -7,10 +7,34 @@ use std::io::{self, Write};
 
 use kowalski_core::config::default_model as determine_model;
 
+/// One message, one answer: `kowalski-cli chat "hello"` prints the reply and exits.
+pub async fn run_once(
+    config_path: Option<&str>,
+    message: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = crate::ops::mcp_config_path(config_path);
+    let cfg = kowalski_core::config::load_config_file(&path)?;
+    kowalski_core::db::run_memory_migrations_if_configured(&cfg).await?;
+
+    let mut agent = TemplateAgent::new(cfg.clone()).await?;
+    let conv_id = agent.start_conversation(&determine_model(&cfg));
+    // Quiet tool loop: stdout carries the answer alone, so it can be piped.
+    let quiet = kowalski_core::tools::policy::ToolExecutionPolicy {
+        allowed_tools: None,
+        sandbox_root: None,
+        quiet: true,
+    };
+    let answer = agent
+        .chat_with_tools_with_policy(&conv_id, message, true, Some(&quiet))
+        .await?;
+    println!("{}", answer.trim());
+    Ok(())
+}
+
 /// Multi-line aware REPL: loads config, one `TemplateAgent`, then `chat_with_tools` per input.
 pub async fn run_orchestrator(config_path: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     let path = crate::ops::mcp_config_path(config_path);
-    let cfg = crate::ops::load_kowalski_config_for_serve(&path)?;
+    let cfg = kowalski_core::config::load_config_file(&path)?;
     kowalski_core::db::run_memory_migrations_if_configured(&cfg).await?;
 
     let mut agent = TemplateAgent::new(cfg.clone()).await?;

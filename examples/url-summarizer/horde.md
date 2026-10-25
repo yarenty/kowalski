@@ -1,35 +1,34 @@
 ---
 id = "url-summarizer"
 display_name = "URL Summarizer Horde"
-description = "Ingests URLs from the operator, summarizes their content into Markdown, and compiles a final handoff file."
+description = "Reads the pages at the URLs you give it and writes a short Markdown summary of each into one hand-off file."
 capability_prefix = "url-summarizer"
 category = "web"
 icon = "link"
-pipeline = ["ingest", "summarize", "deliver"]
+pipeline = ["ingest", "summarize"]
 default_question = "What should we do with the latest output?"
 default_topic = "federation"
 artifacts_root = "."
 workdir = "output"
 delivery_title = "Delivery"
-delivery_note = "When the run finishes, open **`workdir/HANDOFF.md`**. Intermediates live under **`workdir/debug/`** per agent `output` paths."
+delivery_note = "When the run finishes, open **`workdir/HANDOFF.md`**. The fetched pages live under **`workdir/debug/raw/`**."
 delivery_root_rel = "HANDOFF.md"
-delivery_summary_note = "Ingests URLs from the operator, summarizes their content into Markdown, and compiles a final handoff file."
+delivery_summary_note = "Reads the pages at the URLs you give it and writes a short Markdown summary of each into one hand-off file."
 ---
 
 # URL Summarizer Horde
 
-Ingests URLs from the operator, summarizes their content into Markdown, and compiles a final handoff file.
+Reads the pages at the URLs you give it and writes a short Markdown summary of each into one hand-off file.
 
 ## Sub-agents (penguins)
 
 - `ingest` (ingest): Receives the list of URLs provided by the operator via input form.
-- `summarize` (process): Processes each ingested URL, extracts content, and generates a simple Markdown summary.
-- `deliver` (deliver): Compiles all individual summaries into the final HANDOFF file.
+- `summarize` (process): Summarizes each fetched page and writes the hand-off file.
 
 ## Orchestration model
 
 Linear pipeline:
 
 ```
-ingest -> summarize -> deliver
+ingest -> summarize
 ```

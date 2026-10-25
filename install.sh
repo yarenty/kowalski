@@ -15,6 +15,7 @@
 #   KOWALSKI_FEATURES=postgres     Features for kowalski + kowalski-cli (source mode)
 #   KOWALSKI_INSTALL_MCP=1         Also install kowalski-mcp-rookery (source mode)
 #   KOWALSKI_SKIP_RUSTUP=1         Do not auto-install Rust when missing (source mode)
+#   KOWALSKI_NO_MODIFY_PATH=1      Do not add the bin dir to your shell profile (download mode)
 set -euo pipefail
 
 KOWALSKI_REPO="${KOWALSKI_REPO:-https://github.com/yarenty/kowalski}"
@@ -30,7 +31,7 @@ warn() { printf 'warning: %s\n' "$*" >&2; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
 }
 
@@ -93,8 +94,8 @@ check_ollama() {
     info "ollama found: $(command -v ollama)"
     return 0
   fi
-  warn "ollama not found — default config uses local Ollama (https://ollama.com)"
-  warn "or set [llm] provider = \"openai\" in your config.toml"
+  warn "ollama not found — install it for a free local model (https://ollama.com),"
+  warn "or pick a hosted model with your own key on the Setup screen"
 }
 
 # Release asset target for this machine, or nothing when no pre-built binary exists.
@@ -106,6 +107,28 @@ release_target() {
     Linux/aarch64 | Linux/arm64) echo "aarch64-unknown-linux-gnu" ;;
     *) echo "" ;;
   esac
+}
+
+# Put the bin dir on PATH for new terminals (the way rustup and bun do): one line in the profile
+# of the user's shell. The current terminal cannot be changed from here, so the closing message
+# shows the full path to run now.
+add_to_path() {
+  local dir="$1" line profile
+  line="export PATH=\"${dir}:\$PATH\""
+  if [[ "${KOWALSKI_NO_MODIFY_PATH:-0}" == "1" ]]; then
+    warn "${dir} is not on PATH — add: ${line}"
+    return 0
+  fi
+  case "$(basename "${SHELL:-}")" in
+    zsh) profile="${ZDOTDIR:-$HOME}/.zshrc" ;;
+    bash) [[ "$(uname -s)" == "Darwin" ]] && profile="${HOME}/.bash_profile" || profile="${HOME}/.bashrc" ;;
+    *) profile="${HOME}/.profile" ;;
+  esac
+  if [[ -f "$profile" ]] && grep -qF "$line" "$profile"; then
+    return 0
+  fi
+  printf '\n# Added by the kowalski installer\n%s\n' "$line" >> "$profile"
+  info "added ${dir} to PATH in ${profile} (new terminals pick it up)"
 }
 
 install_binary() {
@@ -131,12 +154,16 @@ install_binary() {
   install -m 0755 "${tmp}/kowalski-${target}/kowalski" "${tmp}/kowalski-${target}/kowalski-cli" "$KOWALSKI_BIN_DIR/"
   rm -rf "$tmp"
   info "installed kowalski and kowalski-cli into ${KOWALSKI_BIN_DIR}"
+  local run="kowalski"
   case ":${PATH}:" in
     *":${KOWALSKI_BIN_DIR}:"*) ;;
-    *) warn "${KOWALSKI_BIN_DIR} is not on PATH — add: export PATH=\"${KOWALSKI_BIN_DIR}:\$PATH\"" ;;
+    *)
+      add_to_path "$KOWALSKI_BIN_DIR"
+      run="${KOWALSKI_BIN_DIR}/kowalski"
+      ;;
   esac
   check_ollama
-  printf '\nKowalski installed.\n\n  kowalski        # opens the app in your browser; first start asks three setup questions\n\n'
+  printf '\nKowalski installed.\n\n  %s        # opens the app in your browser; first start asks three setup questions\n\n' "$run"
   printf 'Model: local Ollama (free, https://ollama.com) or any OpenAI-compatible endpoint with your key.\n'
   printf 'Docs:  %s\n' "$KOWALSKI_REPO"
 }

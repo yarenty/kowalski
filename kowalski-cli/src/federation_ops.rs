@@ -8,7 +8,7 @@ pub async fn run_ping_notify(config_path: Option<&str>) -> Result<(), Box<dyn st
     #[cfg(feature = "postgres")]
     {
         let path = crate::ops::mcp_config_path(config_path);
-        let cfg = crate::ops::load_kowalski_config_for_serve(&path)?;
+        let cfg = kowalski_core::config::load_config_file(&path)?;
         let url = cfg
             .memory
             .database_url
