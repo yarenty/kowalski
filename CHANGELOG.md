@@ -4,7 +4,7 @@
 
 All notable changes to this project will be documented in this file, or at least we'll try to remember to do so.
 
-## [Unreleased]
+## [2.6.1] - 2026-10-26
 
 > The first five minutes, walked through as a newcomer: install, Setup, a first run.
 
