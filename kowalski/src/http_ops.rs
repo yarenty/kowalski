@@ -22,18 +22,6 @@ pub fn mcp_config_path(config_path: Option<&str>) -> PathBuf {
         .unwrap_or_else(kowalski_core::config::default_config_path)
 }
 
-pub fn load_kowalski_config_for_serve(path: &Path) -> Result<Config, Box<dyn std::error::Error>> {
-    if !path.exists() {
-        log::warn!(
-            "No config at {} — using defaults (Ollama localhost; copy config.example.toml to config.toml for MCP/tools)",
-            path.display()
-        );
-        return Ok(Config::default());
-    }
-    let raw = fs::read_to_string(path)?;
-    Ok(toml::from_str(&raw)?)
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct McpServerPublic {
     pub name: String,

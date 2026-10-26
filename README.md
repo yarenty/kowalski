@@ -32,15 +32,18 @@ kowalski
 ```
 
 macOS and Linux, Intel or ARM. The installer downloads the pre-built `kowalski` and `kowalski-cli`
-from the latest release into `~/.local/bin` and checks their checksum; no Rust needed. `kowalski`
-opens the app in your browser, where Setup asks for:
+from the latest release into `~/.local/bin`, checks their checksum and adds that folder to your
+shell's PATH for new terminals (it prints the full path to use right away); no Rust needed.
+`kowalski` opens the app in your browser, where Setup asks for:
 
 1. **A model** — Ollama if it is running (its models are listed), or an OpenAI-compatible endpoint
    and key. A Check button tests it without spending tokens.
 2. **A files folder** — the only place the agents' file tools may read and write.
 3. **tableski** (optional) — sign in and your spreadsheets become SQL tables the agents can query.
 
-Setup writes the config and restarts the server. The archives are also on the
+Setup writes the config to `~/.config/kowalski/config.toml` and restarts the server. Everything
+kowalski keeps (the config, built-in hordes and their output, run history, memory) lives in that
+folder, whichever folder you start it from. The archives are also on the
 [releases page](https://github.com/yarenty/kowalski/releases).
 
 A first run, start to finish: the installer, Setup's three questions, signing in to tableski, a
@@ -60,6 +63,7 @@ tableski sign-in itself is not shown):
 | `KOWALSKI_VERSION=2.6.0` | crates.io version (source build) |
 | `KOWALSKI_FEATURES=postgres` | `cargo install --features postgres` (source build) |
 | `KOWALSKI_INSTALL_MCP=1` | Also install `kowalski-mcp-rookery` (source build) |
+| `KOWALSKI_NO_MODIFY_PATH=1` | Leave your shell profile alone (download mode) |
 | `KOWALSKI_SKIP_RUSTUP=1` | Fail instead of auto-installing Rust (source build) |
 
 </details>
@@ -171,6 +175,7 @@ graph queries.
 |---|---|
 | `kowalski` | Server with the UI (`--bind`, `--no-open`, `--auth`) |
 | `kowalski-cli` / `kowalski-cli chat` | Terminal chat with your model and MCP tools |
+| `kowalski-cli chat "hello"` | Ask once, print the answer, exit |
 | `kowalski-cli agent-app export <horde>` / `import <bundle>` | Move a horde as one file |
 | `kowalski-cli mcp ping` / `mcp tools` | Check the MCP servers in your config |
 | `kowalski-cli doctor` | Environment check |

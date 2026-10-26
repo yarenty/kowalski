@@ -14,6 +14,13 @@ here="$(cd "$(dirname "$0")" && pwd)"
 app="$out/Kowalski.app"
 dmg="$out/Kowalski.dmg"
 
+notarizing() { [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ]; }
+notarize() {
+  echo "==> notarizing $(basename "$1") (Apple usually answers within minutes)"
+  xcrun notarytool submit "$1" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+    --password "$APPLE_APP_PASSWORD" --wait
+}
+
 rm -rf "$app" "$dmg"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 sed "s|@VERSION@|$version|g" "$here/Info.plist" > "$app/Contents/Info.plist"
@@ -37,6 +44,13 @@ if [ -n "${MACOS_SIGN_IDENTITY:-}" ]; then
   done
   codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "$app"
   codesign --verify --deep --strict --verbose=2 "$app"
+  # The app gets its own ticket: once dragged out of the DMG it opens without asking Apple online.
+  if notarizing; then
+    ditto -c -k --keepParent "$app" "$out/Kowalski.zip"
+    notarize "$out/Kowalski.zip"
+    rm -f "$out/Kowalski.zip"
+    xcrun stapler staple "$app"
+  fi
 else
   echo "==> no MACOS_SIGN_IDENTITY: unsigned app (macOS will ask the user to allow it)"
 fi
@@ -49,10 +63,8 @@ rm -rf "$staging"
 
 if [ -n "${MACOS_SIGN_IDENTITY:-}" ]; then
   codesign --force --timestamp --sign "$MACOS_SIGN_IDENTITY" "$dmg"
-  if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ]; then
-    echo "==> notarizing (Apple usually answers within minutes)"
-    xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
-      --password "$APPLE_APP_PASSWORD" --wait
+  if notarizing; then
+    notarize "$dmg"
     xcrun stapler staple "$dmg"
     spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
   else

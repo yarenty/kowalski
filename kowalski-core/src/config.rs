@@ -29,9 +29,10 @@ pub const CLI_BIN_ENV: &str = "KOWALSKI_CLI_BIN";
 pub const CONFIG_ENV: &str = "KOWALSKI_CONFIG";
 
 /// Single source of truth for which config file the server and the CLI read when `-c` is not
-/// given: [`CONFIG_ENV`], else `./config.toml` when it exists, else the per-user file that
-/// `install.sh` writes (`$XDG_CONFIG_HOME/kowalski/config.toml`, default
-/// `~/.config/kowalski/config.toml`) when it exists, else `./config.toml` (missing: defaults).
+/// given: [`CONFIG_ENV`], else `./config.toml` when it exists, else the per-user file
+/// (`$XDG_CONFIG_HOME/kowalski/config.toml`, default `~/.config/kowalski/config.toml`), whether
+/// or not it exists yet. A first start therefore keeps its state (built-in hordes, runs, memory)
+/// beside the per-user config, never in the folder it was started from.
 pub fn default_config_path() -> std::path::PathBuf {
     use std::path::PathBuf;
     if let Ok(p) = std::env::var(CONFIG_ENV)
@@ -43,12 +44,28 @@ pub fn default_config_path() -> std::path::PathBuf {
     if local.is_file() {
         return local;
     }
-    if let Some(user) = user_config_path()
-        && user.is_file()
+    user_config_path().unwrap_or(local)
+}
+
+/// Load the config the server and the CLI run with: the file at `path`, or the defaults when it
+/// does not exist yet. A relative [`MemoryConfig::episodic_path`] is resolved against the config
+/// file's folder, so memory lands in the same place whichever folder kowalski starts from.
+pub fn load_config_file(path: &std::path::Path) -> Result<Config, Box<dyn std::error::Error>> {
+    let mut cfg = if path.exists() {
+        toml::from_str(&std::fs::read_to_string(path)?)?
+    } else {
+        log::warn!(
+            "No config at {} yet — using defaults (local Ollama); the Setup screen writes it",
+            path.display()
+        );
+        Config::default()
+    };
+    if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty())
+        && std::path::Path::new(&cfg.memory.episodic_path).is_relative()
     {
-        return user;
+        cfg.memory.episodic_path = dir.join(&cfg.memory.episodic_path).display().to_string();
     }
-    local
+    Ok(cfg)
 }
 
 /// The per-user config file location (`$XDG_CONFIG_HOME/kowalski/config.toml`, default
@@ -313,6 +330,10 @@ fn default_embedding_vector_dimensions() -> usize {
     768
 }
 
+/// Default [`MemoryConfig::episodic_path`]: relative, so it sits beside the config file
+/// (see [`load_config_file`]).
+pub const DEFAULT_EPISODIC_PATH: &str = "db/episodic_buffer";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MemoryConfig {
@@ -331,7 +352,7 @@ pub struct MemoryConfig {
 impl Default for MemoryConfig {
     fn default() -> Self {
         Self {
-            episodic_path: "../target/episodic_db".to_string(), //just for testing!
+            episodic_path: DEFAULT_EPISODIC_PATH.to_string(),
             database_url: None,
             embedding_vector_dimensions: default_embedding_vector_dimensions(),
             additional: HashMap::new(),
@@ -453,4 +474,37 @@ pub enum McpTransport {
     Http,
     /// Subprocess MCP (newline-delimited JSON-RPC on stdin/stdout).
     Stdio,
+}
+
+#[cfg(test)]
+mod load_config_file_tests {
+    use super::{DEFAULT_EPISODIC_PATH, load_config_file};
+
+    #[test]
+    fn missing_file_keeps_memory_beside_the_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = load_config_file(&dir.path().join("config.toml")).unwrap();
+        assert_eq!(
+            cfg.memory.episodic_path,
+            dir.path().join(DEFAULT_EPISODIC_PATH).display().to_string()
+        );
+    }
+
+    #[test]
+    fn relative_episodic_path_resolves_against_the_config_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "[memory]\nepisodic_path = \"mem\"\n").unwrap();
+        let cfg = load_config_file(&path).unwrap();
+        assert_eq!(cfg.memory.episodic_path, dir.path().join("mem").display().to_string());
+    }
+
+    #[test]
+    fn absolute_episodic_path_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let abs = dir.path().join("elsewhere").display().to_string();
+        std::fs::write(&path, format!("[memory]\nepisodic_path = \"{abs}\"\n")).unwrap();
+        assert_eq!(load_config_file(&path).unwrap().memory.episodic_path, abs);
+    }
 }

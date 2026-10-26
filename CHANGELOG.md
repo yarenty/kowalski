@@ -6,6 +6,21 @@ All notable changes to this project will be documented in this file, or at least
 
 ## [Unreleased]
 
+> The first five minutes, walked through as a newcomer: install, Setup, a first run.
+
+### Changed
+- Kowalski keeps everything in one place from the first start: with no `config.toml` in the current folder, the server and the CLI use `~/.config/kowalski/config.toml` whether or not it exists yet, so built-in hordes, runs and memory sit beside it instead of in whatever folder kowalski was started from. A relative `[memory] episodic_path` resolves against the config's folder, and its default is now `db/episodic_buffer` (it was `../target/episodic_db`, outside the config folder). Chat memory from before starts fresh; the old `~/.config/target/episodic_db` can be deleted. `kowalski_core::config::load_config_file` is the one loader for the server and the CLI.
+- The URL summarizer is two steps: ingest reads the pages, then one model step writes `HANDOFF.md` with a summary per page. Its prompts say the pages are already fetched, so a small model no longer tries to fetch them again.
+- The installer adds `~/.local/bin` to PATH in your shell profile for new terminals (`KOWALSKI_NO_MODIFY_PATH=1` skips it) and ends with the full path to run right away; without Ollama it points at Setup for a hosted model.
+
+### Added
+- `kowalski-cli chat "hello"`: one message, one answer on stdout, then exit.
+
+### Fixed
+- A first horde run on a small local model delivered an empty file and called it a success. A model step with no tools no longer has tools listed in its prompt (`ensure_conversation_with_tools` with an empty list lists none); a model step that answers with no text is asked once more, and fails with a clear message rather than delivering nothing.
+- Built-in hordes drop step and prompt files the running version no longer ships when they are refreshed on start.
+- The Mac app's own copy is notarized and stapled before it goes into `Kowalski.dmg`, so it opens without a network check after being dragged to Applications.
+
 ## [2.6.0] - 2026-10-04 — **Field Notes**
 
 > Research that lands where you keep your notes, search that works the moment you install it, and

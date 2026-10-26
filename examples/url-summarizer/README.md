@@ -1,6 +1,6 @@
 # URL Summarizer Horde
 
-Ingests URLs from the operator, summarizes their content into Markdown, and compiles a final handoff file.
+Reads the pages at the URLs you give it and writes a short Markdown summary of each into one hand-off file.
 
 ## Quick start
 

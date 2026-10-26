@@ -70,10 +70,16 @@ pub async fn serve_ui(uri: Uri) -> Response {
     res
 }
 
+/// Folders of a built-in horde that hold its definition; files in them that this binary no
+/// longer ships are removed on start (a step dropped in an update must not linger).
+const BUILTIN_DEFINITION_DIRS: &[&str] = &["agents", "prompts"];
+
 /// Write the built-in hordes under `dir` (refreshed on every start; run output in each
 /// horde's workdir is left alone). Returns how many hordes were written.
 pub fn install_builtin_hordes(dir: &Path) -> std::io::Result<usize> {
     let mut hordes = std::collections::BTreeSet::new();
+    let shipped: std::collections::HashSet<&str> =
+        BUILTIN_HORDE_FILES.iter().map(|(rel, _)| *rel).collect();
     for (rel, bytes) in BUILTIN_HORDE_FILES {
         let target = dir.join(rel);
         if let Some(parent) = target.parent() {
@@ -84,6 +90,19 @@ pub fn install_builtin_hordes(dir: &Path) -> std::io::Result<usize> {
         }
         if let Some(id) = rel.split('/').next() {
             hordes.insert(id.to_string());
+        }
+    }
+    for id in &hordes {
+        for sub in BUILTIN_DEFINITION_DIRS {
+            let Ok(entries) = std::fs::read_dir(dir.join(id).join(sub)) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let rel = format!("{id}/{sub}/{}", entry.file_name().to_string_lossy());
+                if entry.path().is_file() && !shipped.contains(rel.as_str()) {
+                    std::fs::remove_file(entry.path())?;
+                }
+            }
         }
     }
     Ok(hordes.len())

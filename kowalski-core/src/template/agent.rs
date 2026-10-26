@@ -107,7 +107,8 @@ impl TemplateAgent {
         )
     }
 
-    /// Start (or reuse) a conversation with optional tool allowlist in the system prompt.
+    /// Start (or reuse) a conversation whose system prompt lists the tools it may call:
+    /// `None` lists every tool, `Some(list)` only those, `Some(&[])` none.
     pub async fn ensure_conversation_with_tools(
         &mut self,
         model: &str,
@@ -125,10 +126,13 @@ impl TemplateAgent {
         if system_prompt.trim().is_empty() {
             system_prompt = "You are a helpful assistant.".to_string();
         }
-        let appendix = if let Some(list) = allowed_tools.filter(|l| !l.is_empty()) {
-            Self::build_tool_prompt_appendix_filtered(&self.base.tool_manager, list).await
-        } else {
-            self.config.tool_prompt_appendix.clone()
+        // `None`: every tool; an empty list: none, so the prompt advertises no tool it cannot run.
+        let appendix = match allowed_tools {
+            None => self.config.tool_prompt_appendix.clone(),
+            Some([]) => String::new(),
+            Some(list) => {
+                Self::build_tool_prompt_appendix_filtered(&self.base.tool_manager, list).await
+            }
         };
         system_prompt.push_str(&appendix);
         let mut conversation = crate::conversation::Conversation::with_id(model, conversation_id);
