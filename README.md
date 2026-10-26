@@ -58,9 +58,9 @@ tableski sign-in itself is not shown):
 | Variable | Effect |
 |----------|--------|
 | `KOWALSKI_BIN_DIR=~/.local/bin` | Where the binaries go |
-| `KOWALSKI_RELEASE=v2.6.0` | A specific release instead of the latest |
+| `KOWALSKI_RELEASE=v2.6.1` | A specific release instead of the latest |
 | `KOWALSKI_FROM_SOURCE=1` | Build from crates.io with cargo instead (no UI inside) |
-| `KOWALSKI_VERSION=2.6.0` | crates.io version (source build) |
+| `KOWALSKI_VERSION=2.6.1` | crates.io version (source build) |
 | `KOWALSKI_FEATURES=postgres` | `cargo install --features postgres` (source build) |
 | `KOWALSKI_INSTALL_MCP=1` | Also install `kowalski-mcp-rookery` (source build) |
 | `KOWALSKI_NO_MODIFY_PATH=1` | Leave your shell profile alone (download mode) |
