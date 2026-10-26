@@ -4,6 +4,12 @@
 
 All notable changes to this project will be documented in this file, or at least we'll try to remember to do so.
 
+## [Unreleased]
+
+### Added
+- **Chat knows kowalski.** Every Chat reply gets a short live snapshot of this install (version, model, folders, notes vault, web search, tableski and its tools, the hordes and whether their schedules are on, the latest failed runs and why) and, when the message is about kowalski, the matching sections of the user guide. The model answers from those facts instead of guessing, says so when they don't cover a question, and links to the right screen (`?tab=setup`, `?horde=<id>`), which opens inside the app. Read-only: it explains and links, it changes nothing. Keys are reported only as set or not set. `POST /api/chat` and `/api/chat/stream` take `kowalski_context` (the Chat screen sets it; workers and API clients don't); `GET /api/help/context?q=` shows exactly what a reply would be given. An empty Chat offers starter questions.
+- **User guide** in `docs/guide/` (getting started, Setup, the built-in hordes, schedules and approvals, building a horde, tableski, the notes vault, troubleshooting): built into kowalski for Chat and published on kowalski.yarenty.com under Guide.
+
 ## [2.6.1] - 2026-10-26
 
 > The first five minutes, walked through as a newcomer: install, Setup, a first run.

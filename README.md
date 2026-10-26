@@ -231,6 +231,7 @@ the runtime.
 ## Documentation
 
 - [kowalski.yarenty.com](https://kowalski.yarenty.com) — the blog
+- [docs/guide/](docs/guide/README.md) — the user guide (also built into kowalski, so Chat can answer from it)
 - [docs/architecture.html](docs/architecture.html) — how it is built
 - [docs/](docs/README.md) — technical notes (`dev/`), articles (`blog/`), ideas (`concepts/`)
 - [examples/](examples/) — every built-in horde, readable as plain files

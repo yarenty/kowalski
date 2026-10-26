@@ -30,7 +30,22 @@ const emit = defineEmits<{
   (e: "toggle-tools-stream", value: boolean): void;
   (e: "toggle-use-memory", value: boolean): void;
   (e: "inspect-chat-messages"): void;
+  /** An in-app link in an answer (`?tab=setup`, `?horde=morning-brief`). */
+  (e: "open-app-link", href: string): void;
 }>();
+
+/** Questions an empty Chat offers; Chat answers them from this kowalski's settings and guide. */
+const STARTERS = [
+  "What can kowalski do for me?",
+  "Why did my last run fail?",
+  "How do I connect tableski?",
+  "How do I switch on the Morning brief schedule?",
+  "Help me build a horde that summarises my inbox",
+];
+
+function ask(question: string) {
+  emit("send-chat", { message: question, stream: false });
+}
 
 const chatIn = ref("");
 
@@ -95,6 +110,13 @@ function renderAssistantMarkdown(content: string): string {
 
 async function onTranscriptClick(ev: MouseEvent) {
   const target = ev.target as HTMLElement | null;
+  const link = target?.closest("a") as HTMLAnchorElement | null;
+  const href = link?.getAttribute("href") ?? "";
+  if (href.startsWith("?")) {
+    ev.preventDefault();
+    emit("open-app-link", href);
+    return;
+  }
   const btn = target?.closest(".copy-code-btn") as HTMLElement | null;
   if (!btn) return;
   const wrap = btn.closest(".code-block-wrap");
@@ -176,7 +198,10 @@ function send(stream: boolean) {
       </article>
       <div v-if="!(activeConversation?.turns?.length)" class="empty-state chat-empty">
         <h3>Start a conversation</h3>
-        <p>Type a question below — for example “Summarise https://example.com in five bullet points”.</p>
+        <p>Ask anything. Kowalski also knows itself: your settings, your hordes and runs, and its guide.</p>
+        <div class="starters">
+          <button v-for="q in STARTERS" :key="q" type="button" class="starter" :disabled="chatBusy" @click="ask(q)">{{ q }}</button>
+        </div>
       </div>
       <p v-if="chatBusy" class="typing" aria-live="polite"><span class="dot-running" aria-hidden="true"></span> Kowalski is thinking…</p>
     </div>
@@ -303,6 +328,8 @@ function send(stream: boolean) {
 .md-content :deep(.copy-code-btn.copied) { border-color: var(--ok); color: var(--ok); }
 .md-content :deep(.copy-code-btn.copied)::before { content: "✓"; }
 .chat-empty { margin-top: 1rem; }
+.starters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+.starter { font-size: 0.9rem; padding: 0.45rem 0.8rem; border-radius: 999px; }
 .typing { display: flex; align-items: center; gap: 0.5rem; color: var(--muted); font-size: 0.9rem; margin: 0; }
 .composer {
   position: sticky;

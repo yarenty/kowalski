@@ -58,15 +58,15 @@ struct ChatState {
 pub(crate) struct ApiState {
     pub(crate) config_path: PathBuf,
     ollama_url: Option<String>,
-    model: String,
+    pub(crate) model: String,
     pub(crate) full_config: Config,
     chat: Arc<Mutex<ChatState>>,
     federation_broker: Arc<MpscBroker>,
     federation: Arc<FederationOrchestrator>,
     managed_workers: Arc<Mutex<HashMap<String, Child>>>,
     managed_worker_last_exit: Arc<Mutex<HashMap<String, String>>>,
-    horde_manager: crate::horde::HordeManager,
-    trigger_manager: crate::triggers::TriggerManager,
+    pub(crate) horde_manager: crate::horde::HordeManager,
+    pub(crate) trigger_manager: crate::triggers::TriggerManager,
     /// This server's own base URL (from `--bind` + TLS scheme) — passed to spawned
     /// workers as `--api` so they call back to the right address.
     pub(crate) api_url: String,
@@ -466,6 +466,7 @@ fn build_app(
         .route("/api/chat/reset", post(post_chat_reset))
         .route("/api/chat/sync", post(post_chat_sync))
         .route("/api/chat/messages", get(get_chat_messages))
+        .route("/api/help/context", get(get_help_context))
         .route("/api/system/open-path", post(post_open_path))
         .route("/api/federation/stream", get(get_federation_stream))
         .route("/api/federation/ws", get(get_federation_ws))
@@ -885,6 +886,42 @@ struct ChatBody {
     /// When true, `POST /api/chat/stream` runs the tool loop and streams **only** the first LLM turn after a tool result (final answer); earlier turns are non-streamed like `POST /api/chat`.
     #[serde(default)]
     tools_stream: bool,
+    /// The Chat screen sets this: the reply gets a live snapshot of this kowalski and the
+    /// matching user-guide sections ([`crate::help`]). Workers and API clients leave it off.
+    #[serde(default)]
+    kowalski_context: bool,
+}
+
+/// Refresh the kowalski context in `conv_id`'s system message for the reply to `message`.
+async fn apply_kowalski_context(state: &ApiState, chat: &mut ChatState, conv_id: &str, message: &str) {
+    let tools: Vec<String> = chat.agent.list_tools().await.into_iter().map(|(name, _)| name).collect();
+    let snapshot = crate::help::snapshot(state, &tools).await;
+    let context = crate::help::chat_context(&snapshot, message, &crate::help::guide_sections());
+    if let Some(conversation) = chat.agent.base_mut().conversations.get_mut(conv_id) {
+        conversation.set_context(&context);
+    }
+}
+
+#[derive(Deserialize)]
+struct HelpContextQuery {
+    #[serde(default)]
+    q: String,
+}
+
+/// `GET /api/help/context?q=…`: the context Chat's next reply to `q` would get (live snapshot
+/// plus matching guide sections), to see exactly what the model is told. Read-only, no secrets.
+async fn get_help_context(
+    State(state): State<ApiState>,
+    Query(query): Query<HelpContextQuery>,
+) -> Json<serde_json::Value> {
+    let tools: Vec<String> = state.chat.lock().await.agent.list_tools().await.into_iter().map(|(name, _)| name).collect();
+    let snapshot = crate::help::snapshot(&state, &tools).await;
+    let sections = crate::help::guide_sections();
+    let picked: Vec<String> = crate::help::relevant_sections(&query.q, &sections, 3).into_iter().map(|s| s.title).collect();
+    Json(json!({
+        "context": crate::help::chat_context(&snapshot, &query.q, &sections),
+        "guide_sections": picked,
+    }))
 }
 
 fn default_true() -> bool {
@@ -1080,6 +1117,9 @@ async fn post_chat(
     } else {
         guard.conv_id.clone()
     };
+    if body.kowalski_context {
+        apply_kowalski_context(&state, &mut guard, &conv_id, body.message.trim()).await;
+    }
     let memory_debug = guard
         .agent
         .preview_memory_debug(&conv_id, body.message.trim(), body.use_memory)
@@ -1174,6 +1214,7 @@ async fn post_chat_stream(
     let tools_stream = body.tools_stream;
     let use_memory = body.use_memory;
     let requested_conv_id = body.conversation_id.clone();
+    let kowalski_context = body.kowalski_context;
     let api = state.clone();
     tokio::spawn(async move {
         let (conv_id, memory_debug) = {
@@ -1195,6 +1236,9 @@ async fn post_chat_stream(
             } else {
                 g.conv_id.clone()
             };
+            if kowalski_context {
+                apply_kowalski_context(&api, &mut g, &cid, &msg).await;
+            }
             let dbg = g.agent.preview_memory_debug(&cid, &msg, use_memory).await;
             (cid, dbg)
         };
@@ -3491,6 +3535,24 @@ mod api_tests {
         assert_eq!(notes.len(), 1, "only the opted-in horde writes: {notes:?}");
         let text = std::fs::read_to_string(&notes[0]).unwrap();
         assert!(text.contains("horde: vault-horde") && text.contains("source: kowalski"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn chat_context_knows_this_kowalski_and_matches_the_guide() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = fixture(dir.path(), None).await;
+        let (status, v) = call(&app, "GET", "/api/help/context?q=How%20do%20I%20connect%20tableski%3F", None, None).await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        let ctx = v["context"].as_str().unwrap();
+        assert!(ctx.contains(concat!("kowalski ", env!("CARGO_PKG_VERSION"))), "{ctx}");
+        assert!(ctx.contains("api-horde (id api-horde)") && ctx.contains("webhook"), "hordes and their triggers: {ctx}");
+        assert!(ctx.contains("tableski: not connected") && ctx.contains("recent failed runs: none"), "{ctx}");
+        assert!(ctx.contains("From the kowalski guide"), "a kowalski question gets the guide: {ctx}");
+        assert!(v["guide_sections"].as_array().unwrap().iter().any(|t| t.as_str().unwrap().contains("tableski")), "{v}");
+
+        let (_, v) = call(&app, "GET", "/api/help/context?q=Write%20a%20haiku%20about%20the%20sea", None, None).await;
+        assert!(!v["context"].as_str().unwrap().contains("From the kowalski guide"), "small talk gets no guide");
+        assert!(!v["context"].as_str().unwrap().to_lowercase().contains("sk-"), "no key material");
     }
 
     async fn wait_for(app: &Router, horde: &str, run_id: &str, want: &[&str]) -> serde_json::Value {

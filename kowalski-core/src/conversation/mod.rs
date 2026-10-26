@@ -66,6 +66,24 @@ pub struct FunctionCall {
 }
 
 impl Conversation {
+    /// Replace the per-turn context kept at the end of the system message (a system message is
+    /// added first when the conversation has none). Callers refresh it before each reply, so it
+    /// never accumulates and never shows in the transcript; an empty `context` removes it.
+    pub fn set_context(&mut self, context: &str) {
+        const MARKER: &str = "\n\n<!-- context: refreshed every turn -->\n";
+        if self.messages.first().is_none_or(|m| m.role != "system") {
+            self.messages.insert(0, Message::text("system", ""));
+        }
+        let system = &mut self.messages[0].content;
+        if let Some(at) = system.find(MARKER) {
+            system.truncate(at);
+        }
+        if !context.trim().is_empty() {
+            system.push_str(MARKER);
+            system.push_str(context.trim());
+        }
+    }
+
     pub fn new(model: &str) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
@@ -92,5 +110,30 @@ impl Conversation {
 
     pub fn clear(&mut self) {
         self.messages.clear();
+    }
+}
+
+
+#[cfg(test)]
+mod context_tests {
+    use super::*;
+
+    #[test]
+    fn context_is_replaced_each_turn_not_accumulated() {
+        let mut c = Conversation::with_id("m", "c1");
+        c.add_message("system", "You are helpful.");
+        c.add_message("user", "hi");
+        c.set_context("facts one");
+        c.set_context("facts two");
+        let system = &c.messages[0].content;
+        assert!(system.starts_with("You are helpful.") && system.ends_with("facts two"), "{system}");
+        assert!(!system.contains("facts one"));
+        c.set_context("");
+        assert_eq!(c.messages[0].content, "You are helpful.");
+        let mut bare = Conversation::with_id("m", "c2");
+        bare.add_message("user", "hi");
+        bare.set_context("facts");
+        assert_eq!(bare.messages[0].role, "system");
+        assert_eq!(bare.messages[1].content, "hi");
     }
 }
