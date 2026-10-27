@@ -828,7 +828,7 @@ async function cancelActiveRun() {
   }
 }
 
-async function approvePending(pending: PendingApproval) {
+async function approvePending(pending: PendingApproval, remember = false) {
   if (approvalBusy.value) return;
   approvalBusy.value = true;
   runErr.value = null;
@@ -839,12 +839,12 @@ async function approvePending(pending: PendingApproval) {
       await openRun(pending.runId);
     }
     connectStream();
-    await api.hordeRunApprove(props.hordeId, pending.runId);
+    await api.hordeRunApprove(props.hordeId, pending.runId, remember);
     approval.value = null;
     emit("runs-changed");
     runBusy.value = true;
     setStep(pending.step, "running");
-    feed("user", `Approved \`${pending.step}\``, "You");
+    feed("user", remember ? `Always allowed \`${pending.step}\`` : `Approved \`${pending.step}\``, "You");
   } catch (e) {
     runErr.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -1025,6 +1025,7 @@ onUnmounted(() => {
           <button type="button" class="primary" :disabled="approvalBusy" @click="approvePending(shownApproval)">
             {{ approvalBusy ? "Working…" : "Approve and continue" }}
           </button>
+          <button type="button" :disabled="approvalBusy" @click="approvePending(shownApproval, true)">Always allow</button>
           <button type="button" class="danger" :disabled="approvalBusy" @click="rejectPending(shownApproval)">Cancel run</button>
           <button
             v-if="shownApproval.runId !== runId"
@@ -1035,7 +1036,10 @@ onUnmounted(() => {
             Show this run
           </button>
         </div>
-        <p class="muted small approval-foot">Approval covers this step for the rest of the run.</p>
+        <p class="muted small approval-foot">
+          Approval covers this step for the rest of the run. Always allow also skips this stop on later
+          runs while the step does the same thing; revoke it in Setup.
+        </p>
       </section>
 
       <div class="horde-layout">

@@ -29,7 +29,7 @@ Features: health, MCP ping, **Chat** (`POST /api/chat`, SSE **`POST /api/chat/st
   **Delivered** card with the rendered hand-off and the output file, then folded rows for
   intermediate files, how it was computed, the Markdown source, the activity log and the raw
   payload, then **Follow-up**. A run waiting before a command step shows the red approval box at
-  the top (Approve / Cancel run); interrupted runs sit in a calm banner with **Resume**.
+  the top (Approve / Always allow / Cancel run); interrupted runs sit in a calm banner with **Resume**.
 - **Runs page**: every run across hordes, grouped by day, with filter chips (All / Needs you /
   Failed, Running while any run works) and an **Any horde** select; 25 at a time with **Load
   older**. A row opens that run on its horde page.

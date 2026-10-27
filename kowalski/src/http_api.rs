@@ -13,7 +13,7 @@ use axum::extract::ws::{WebSocket, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::response::sse::{Event, Sse};
-use axum::routing::{get, patch, post};
+use axum::routing::{delete, get, patch, post};
 use axum::{Extension, Json, Router};
 use futures::Stream;
 use futures::StreamExt;
@@ -544,6 +544,8 @@ fn build_app(
             "/api/hordes/{horde_id}/runs/{run_id}/approve",
             post(post_horde_run_approve),
         )
+        .route("/api/approvals", get(get_approvals))
+        .route("/api/approvals/{id}", delete(delete_approval))
         .route("/api/federation/register", post(post_federation_register))
         .route(
             "/api/federation/deregister",
@@ -3240,10 +3242,50 @@ async fn get_runs(
     })))
 }
 
+/// `GET /api/approvals`: the remembered ("always allow") approvals, newest first.
+async fn get_approvals(
+    State(state): State<ApiState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let approvals = state
+        .horde_manager
+        .store
+        .list_approvals()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(json!({ "approvals": approvals })))
+}
+
+/// `DELETE /api/approvals/{id}`: revoke one; the step asks again on its next run.
+async fn delete_approval(
+    State(state): State<ApiState>,
+    AxumPath(id): AxumPath<i64>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let removed = state
+        .horde_manager
+        .store
+        .revoke_approval(id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if !removed {
+        return Err((StatusCode::NOT_FOUND, format!("approval {id} not found")));
+    }
+    Ok(Json(json!({ "ok": true })))
+}
+
+/// Optional body of `POST /api/hordes/{id}/runs/{run_id}/approve`.
+#[derive(Debug, Default, Deserialize)]
+struct ApproveBody {
+    /// "Always allow": remember the approval for this step of this horde.
+    #[serde(default)]
+    remember: bool,
+}
+
 async fn post_horde_run_approve(
     State(state): State<ApiState>,
     AxumPath((horde_id, run_id)): AxumPath<(String, String)>,
+    body: Option<Json<ApproveBody>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let remember = body.map(|Json(b)| b.remember).unwrap_or_default();
     let snap = state
         .horde_manager
         .persisted_run(&run_id)
@@ -3258,7 +3300,7 @@ async fn post_horde_run_approve(
     }
     let record = state
         .horde_manager
-        .approve_run(&run_id)
+        .approve_run(&run_id, remember)
         .await
         .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
     Ok(Json(json!({
@@ -3648,6 +3690,58 @@ mod api_tests {
         assert_eq!(run["status"], "completed", "{run}");
         let (status, _) = call(&app, "POST", &format!("/api/hordes/api-horde/runs/{id}/approve"), None, None).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "nothing left to approve");
+    }
+
+    #[tokio::test]
+    async fn always_allow_skips_the_stop_until_revoked() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let app = fixture_with(dir.path(), None, true).await;
+        let start = |folder: &std::path::Path| {
+            json!({ "prompt": "check it", "source": folder.display().to_string() })
+        };
+
+        let (_, started) = call(&app, "POST", "/api/hordes/api-horde/run", Some(start(project.path())), None).await;
+        let first = run_id(&started);
+        wait_for(&app, "api-horde", &first, &["awaiting_input"]).await;
+        let (status, approved) = call(
+            &app,
+            "POST",
+            &format!("/api/hordes/api-horde/runs/{first}/approve"),
+            Some(json!({ "remember": true })),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{approved}");
+        assert_eq!(wait_for(&app, "api-horde", &first, &["completed", "failed"]).await["status"], "completed");
+
+        let (_, list) = call(&app, "GET", "/api/approvals", None, None).await;
+        let approvals = list["approvals"].as_array().unwrap().clone();
+        assert_eq!(approvals.len(), 1, "{list}");
+        assert_eq!(approvals[0]["horde_id"], "api-horde");
+        assert!(approvals[0]["summary"].as_str().unwrap().contains("`true`"), "{list}");
+
+        // same horde, same step, same folder: no stop, and the log says why
+        let (_, started) = call(&app, "POST", "/api/hordes/api-horde/run", Some(start(project.path())), None).await;
+        let second = run_id(&started);
+        let run = wait_for(&app, "api-horde", &second, &["awaiting_input", "completed", "failed"]).await;
+        assert_eq!(run["status"], "completed", "{run}");
+        assert!(run["events"].as_array().unwrap().iter().any(|e| e["kind"] == "approval_remembered"), "{run}");
+
+        // another project folder is not what was approved
+        let (_, started) = call(&app, "POST", "/api/hordes/api-horde/run", Some(start(other.path())), None).await;
+        let elsewhere = run_id(&started);
+        assert_eq!(wait_for(&app, "api-horde", &elsewhere, &["awaiting_input", "completed", "failed"]).await["status"], "awaiting_input");
+
+        let id = approvals[0]["id"].as_i64().unwrap();
+        let (status, _) = call(&app, "DELETE", &format!("/api/approvals/{id}"), None, None).await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, _) = call(&app, "DELETE", &format!("/api/approvals/{id}"), None, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let (_, started) = call(&app, "POST", "/api/hordes/api-horde/run", Some(start(project.path())), None).await;
+        let revoked = run_id(&started);
+        assert_eq!(wait_for(&app, "api-horde", &revoked, &["awaiting_input", "completed", "failed"]).await["status"], "awaiting_input");
     }
 
     #[tokio::test]

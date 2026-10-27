@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { api, type ModelChoice, type SetupStatus } from "../api";
+import { api, type ModelChoice, type SetupStatus, type StandingApproval } from "../api";
 import SecretInput from "../components/SecretInput.vue";
 import { takeSetupOutcome } from "../nav";
 
@@ -199,7 +199,37 @@ async function disconnectTableski() {
   }
 }
 
+/** Remembered "always allow" approvals; the card shows only when there are some. */
+const approvals = ref<StandingApproval[]>([]);
+
+async function loadApprovals() {
+  try {
+    approvals.value = (await api.approvals()).approvals;
+  } catch {
+    approvals.value = [];
+  }
+}
+
+/** Summary text split on backticks: odd pieces are code (no HTML from the server). */
+function summaryParts(summary: string) {
+  return summary.split("`").map((text, i) => ({ text, code: i % 2 === 1 }));
+}
+
+async function revokeApproval(a: StandingApproval) {
+  busy.value = `revoke-${a.id}`;
+  err.value = null;
+  try {
+    await api.approvalRevoke(a.id);
+    await loadApprovals();
+  } catch (e) {
+    err.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    busy.value = null;
+  }
+}
+
 onMounted(async () => {
+  void loadApprovals();
   const q = takeSetupOutcome();
   if (q) {
     const messages: Record<string, string> = {
@@ -364,6 +394,28 @@ onMounted(async () => {
     </ol>
     <p v-else-if="!err" class="muted">Loading your current settings…</p>
 
+    <section v-if="approvals.length" class="card allowed">
+      <p class="eyebrow plain">Approvals</p>
+      <h2>Always allowed</h2>
+      <p class="muted small">These steps run without stopping for you while they do exactly this. Revoke one and it asks again next time.</p>
+      <ul>
+        <li v-for="a in approvals" :key="a.id">
+          <div>
+            <strong>{{ a.horde_id }}</strong>
+            <span class="allowed-what"
+              ><template v-for="(p, i) in summaryParts(a.summary)" :key="i"
+                ><code v-if="p.code">{{ p.text }}</code
+                ><template v-else>{{ p.text }}</template></template
+              ></span
+            >
+          </div>
+          <button type="button" class="danger" :disabled="busy !== null" @click="revokeApproval(a)">
+            {{ busy === `revoke-${a.id}` ? "Revoking…" : "Revoke" }}
+          </button>
+        </li>
+      </ul>
+    </section>
+
     <div v-if="status" class="save">
       <p class="muted small">
         {{ dirty ? "Saving restarts kowalski so every agent picks up the new settings." : "No changes to save. Connecting tableski saves by itself." }}
@@ -427,6 +479,12 @@ onMounted(async () => {
   padding-top: 1rem;
   border-top: 2px solid var(--ink);
 }
+.allowed { padding: 1.25rem 1.35rem; margin-bottom: 1.25rem; }
+.allowed h2 { margin: 0 0 0.3rem; font-size: 1.25rem; }
+.allowed .eyebrow { margin: 0 0 0.15rem; }
+.allowed ul { list-style: none; padding: 0; margin: 0.8rem 0 0; display: grid; gap: 0.6rem; }
+.allowed li { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; flex-wrap: wrap; }
+.allowed-what { display: block; color: var(--body); font-size: 0.9rem; overflow-wrap: anywhere; }
 .save p { margin: 0; }
 .save .save-err { flex-basis: 100%; }
 .save .primary { padding: 0.7rem 1.5rem; font-size: 1rem; }
