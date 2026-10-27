@@ -11,6 +11,9 @@ All notable changes to this project will be documented in this file, or at least
 - **User guide** in `docs/guide/` (getting started, Setup, the built-in hordes, schedules and approvals, building a horde, tableski, the notes vault, troubleshooting): built into kowalski for Chat and published on kowalski.yarenty.com under Guide.
 - **Always allow.** The approval box has **Always allow** next to **Approve and continue**: later runs of that horde go through the step without stopping, as long as it does exactly what was approved (same command, working folder, apply mode and project folder); change any of these and it asks again. Each pass is noted in the run's activity log (`approval_remembered`). **Setup → Always allowed** lists them with **Revoke**. API: `POST /api/hordes/{id}/runs/{run_id}/approve` takes `{"remember": true}`; `GET /api/approvals`, `DELETE /api/approvals/{id}`. Stored in the run database (new migration).
 
+### Fixed
+- The Spreadsheet analyst delivers "these tables can't answer that" when the plan finds no question answerable from the loaded tables (asking about orders when only market data is loaded), instead of failing the run with "the plan contains no sql blocks". Such a run needs no query, so it works even when tableski is unreachable; an unanswerable question no longer counts as a failed query.
+
 ## [2.6.1] - 2026-10-26
 
 > The first five minutes, walked through as a newcomer: install, Setup, a first run.

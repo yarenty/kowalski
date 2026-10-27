@@ -4154,8 +4154,8 @@ mod api_tests {
         }
     }
 
-    #[tokio::test]
-    async fn sql_batch_and_xlsx_report_run_without_a_model() {
+    /// Runs a plan through `sql_batch` and `xlsx_report` (no model); returns the run and its output folder.
+    async fn run_data_horde(plan: &str, with_query_tool: bool) -> (crate::horde::RunRecord, tempfile::TempDir, PathBuf) {
         let dir = tempfile::tempdir().unwrap();
         let hordes = dir.path().join("hordes");
         let h = hordes.join("data-horde");
@@ -4174,7 +4174,9 @@ mod api_tests {
         let mut manager = crate::horde::HordeManager::new(Vec::new(), broker, federation, store);
         manager.catalog = Arc::new(crate::horde::HordeCatalog::with_roots(vec![hordes]));
         let tools = kowalski_core::tools::manager::ToolManager::new();
-        tools.register(FakeQuerySql);
+        if with_query_tool {
+            tools.register(FakeQuerySql);
+        }
         let mut steps = kowalski_core::StepHandlerRegistry::with_builtin_deterministic();
         steps.register(Arc::new(kowalski_core::horde_table_steps::TableProfileStepHandler::new(tools.clone())));
         steps.register(Arc::new(kowalski_core::horde_table_steps::SqlBatchStepHandler::new(tools)));
@@ -4182,7 +4184,6 @@ mod api_tests {
         manager.step_handlers = Arc::new(steps);
         crate::horde::spawn_orchestrator_loop(manager.clone());
 
-        let plan = "### Q1: Who spent the most?\n```sql\nSELECT name, SUM(amount) AS total FROM orders GROUP BY name ORDER BY total DESC\n```\n### Q2: A broken one\n```sql\nSELECT nope FROM orders\n```\n### Q3: Cities\nThere is no city column.\n";
         let record = manager
             // as the API does: the operator's text is both the prompt and the ingest source
             .start_run("data-horde", plan, Some(plan), Some(plan), kowalski_core::db::run_store::RUN_ORIGIN_OPERATOR)
@@ -4198,9 +4199,16 @@ mod api_tests {
             tokio::time::sleep(std::time::Duration::from_millis(25)).await;
         }
         let run = done.expect("run finished");
+        let out = h.join("output");
+        (run, dir, out)
+    }
+
+    #[tokio::test]
+    async fn sql_batch_and_xlsx_report_run_without_a_model() {
+        let plan = "### Q1: Who spent the most?\n```sql\nSELECT name, SUM(amount) AS total FROM orders GROUP BY name ORDER BY total DESC\n```\n### Q2: A broken one\n```sql\nSELECT nope FROM orders\n```\n### Q3: Cities\nThere is no city column.\n";
+        let (run, _dir, out) = run_data_horde(plan, true).await;
         assert_eq!(run.status, kowalski_core::db::run_store::RunStatus::Done, "{:?}", run.events);
 
-        let out = h.join("output");
         let md = std::fs::read_to_string(out.join("debug/results.md")).unwrap();
         assert!(md.contains("## Q1: Who spent the most?") && md.contains("| ada | 150.5 |"), "{md}");
         assert!(md.contains("no such column: nope"), "a failed query is recorded, not hidden: {md}");
@@ -4211,6 +4219,18 @@ mod api_tests {
         assert_eq!(results[0].grid.as_ref().unwrap().rows[1], vec!["linus", "99.99"]);
         let xlsx = std::fs::read(out.join("report.xlsx")).unwrap();
         assert!(xlsx.starts_with(b"PK"), "report workbook written");
+    }
+
+    #[tokio::test]
+    async fn a_plan_that_declines_every_question_delivers_that_instead_of_failing() {
+        let plan = "### Q1: Who spent the most?\nThese tables hold market bars, not orders.\n### Q2: Which city buys most?\nThere is no city column.\n";
+        // no data tool registered: nothing to run, so tableski is not needed
+        let (run, _dir, out) = run_data_horde(plan, false).await;
+        assert_eq!(run.status, kowalski_core::db::run_store::RunStatus::Done, "{:?}", run.events);
+        let md = std::fs::read_to_string(out.join("debug/results.md")).unwrap();
+        assert!(md.contains("## Q1: Who spent the most?\n\n**Not answerable from these tables:** These tables hold market bars, not orders."), "{md}");
+        assert!(md.contains("**Not answerable from these tables:** There is no city column."), "{md}");
+        assert!(std::fs::read(out.join("report.xlsx")).unwrap().starts_with(b"PK"), "report workbook written");
     }
 
     /// A stand-in for one of tableski's read-only tools: answers `text` inside a data frame.
