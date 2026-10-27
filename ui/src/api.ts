@@ -458,6 +458,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({
         message,
+        // Chat knows this kowalski: live settings and the user guide go with every reply
+        kowalski_context: true,
         ...(options?.useMemory !== undefined ? { use_memory: options.useMemory } : {}),
         ...(options?.conversationId ? { conversation_id: options.conversationId } : {}),
       }),
@@ -894,6 +896,7 @@ export async function chatStream(
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({
       message,
+      kowalski_context: true,
       ...(options?.toolsStream ? { tools_stream: true } : {}),
       ...(options?.useMemory !== undefined ? { use_memory: options.useMemory } : {}),
       ...(options?.conversationId ? { conversation_id: options.conversationId } : {}),

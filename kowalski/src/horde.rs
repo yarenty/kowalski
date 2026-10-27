@@ -2448,7 +2448,7 @@ impl HordeManager {
     /// The delivered note, saved in the notes vault for a horde with `vault = true` when a vault
     /// is set; the saved path, or `None` (a failure to save is logged, never fails the run).
     fn save_to_vault(&self, spec: &HordeSpec, run_id: &str, title: &str, delivered: &Path) -> Option<String> {
-        if !spec.vault || !delivered.extension().is_some_and(|e| e == "md") {
+        if !spec.vault || delivered.extension().is_none_or(|e| e != "md") {
             return None;
         }
         let vault = self.vault_dir.as_ref()?;

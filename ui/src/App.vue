@@ -47,6 +47,11 @@ function navigate(next: Partial<Route>, opts: { replace?: boolean } = {}) {
     else window.history.pushState(null, "", url);
   }
 }
+/** A link inside the app (`?tab=setup`, `?horde=morning-brief`), e.g. from a Chat answer. */
+function openAppLink(href: string) {
+  navigate(routeFromUrl(href.slice(href.indexOf("?"))));
+}
+
 function onPopState() {
   route.value = routeFromUrl();
 }
@@ -812,6 +817,7 @@ onUnmounted(() => {
           @inspect-chat-messages="inspectChatMessages"
           @send-chat="sendChat"
           @new-conversation="newConversation"
+          @open-app-link="openAppLink"
         />
       </template>
       <FederationManagementPanel v-else-if="tab === 'federation-management'" @new-chat-session="newConversation" />
