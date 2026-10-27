@@ -11,7 +11,7 @@ export function runStatusLabel(status: string): { label: string; tone: RunTone }
       return { label: "Failed", tone: "red" };
     case "running":
     case "pending":
-      return { label: "Running", tone: "running" };
+      return { label: "Working", tone: "running" };
     case "cancelled":
       return { label: "Cancelled", tone: "muted" };
     default:
