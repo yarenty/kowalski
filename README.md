@@ -223,6 +223,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 |---|---|
 | [**tableski**](https://github.com/yarenty/tableski) | Every spreadsheet is a table: Excel, CSV and Parquet as SQL over MCP. Local binary or hosted at tableski.io. |
 | [**emperor-mcp**](https://github.com/yarenty/emperor-mcp) | The MCP server framework first-party servers are built on (stateless HTTP, credential forwarding, output framing). |
+| [**Paperclip**](https://github.com/paperclipai/paperclip) | Hire a horde as an employee in a Paperclip company: assign it an issue, the answers come back in the thread ([guide](docs/guide/09-paperclip.md)). |
 
 New first-party MCP servers get their own repositories on `emperor-mcp`; this repository stays
 the runtime.
