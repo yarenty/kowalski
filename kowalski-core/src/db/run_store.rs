@@ -192,6 +192,18 @@ pub struct StepUpdate {
     pub summary: Option<String>,
 }
 
+/// A remembered ("always allow") approval: `step` of `horde_id` may do exactly what
+/// `fingerprint` describes without asking again. `summary` is the operator-facing wording.
+#[derive(Debug, Clone, Serialize)]
+pub struct StandingApproval {
+    pub id: i64,
+    pub horde_id: String,
+    pub step: String,
+    pub fingerprint: String,
+    pub summary: String,
+    pub created_at: String,
+}
+
 fn now_rfc3339() -> String {
     chrono::Utc::now().to_rfc3339()
 }
@@ -519,6 +531,78 @@ impl RunStore {
         rows.iter().map(run_from_row).collect()
     }
 
+    /// Remember that `step` of `horde_id` may do what `fingerprint` describes. Remembering the
+    /// same thing twice keeps the first row.
+    pub async fn remember_approval(
+        &self,
+        horde_id: &str,
+        step: &str,
+        fingerprint: &str,
+        summary: &str,
+    ) -> Result<(), KowalskiError> {
+        sqlx::query(
+            "INSERT OR IGNORE INTO standing_approval (horde_id, step, fingerprint, summary, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+        )
+        .bind(horde_id)
+        .bind(step)
+        .bind(fingerprint)
+        .bind(summary)
+        .bind(now_rfc3339())
+        .execute(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(())
+    }
+
+    /// Whether an approval for exactly this (horde, step, fingerprint) is remembered.
+    pub async fn is_approved(
+        &self,
+        horde_id: &str,
+        step: &str,
+        fingerprint: &str,
+    ) -> Result<bool, KowalskiError> {
+        let row = sqlx::query(
+            "SELECT 1 FROM standing_approval WHERE horde_id = ?1 AND step = ?2 AND fingerprint = ?3",
+        )
+        .bind(horde_id)
+        .bind(step)
+        .bind(fingerprint)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(row.is_some())
+    }
+
+    /// Every remembered approval, newest first.
+    pub async fn list_approvals(&self) -> Result<Vec<StandingApproval>, KowalskiError> {
+        let rows = sqlx::query("SELECT * FROM standing_approval ORDER BY id DESC")
+            .fetch_all(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(rows
+            .iter()
+            .map(|row| StandingApproval {
+                id: row.get("id"),
+                horde_id: row.get("horde_id"),
+                step: row.get("step"),
+                fingerprint: row.get("fingerprint"),
+                summary: row.get("summary"),
+                created_at: row.get("created_at"),
+            })
+            .collect())
+    }
+
+    /// Forget one remembered approval; `false` when there was no such row.
+    pub async fn revoke_approval(&self, id: i64) -> Result<bool, KowalskiError> {
+        let done = sqlx::query("DELETE FROM standing_approval WHERE id = ?1")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(done.rows_affected() > 0)
+    }
+
     async fn steps_for(&self, run_id: &str) -> Result<Vec<PersistedRunStep>, KowalskiError> {
         let rows = sqlx::query(
             "SELECT * FROM horde_run_step WHERE run_id = ?1 ORDER BY started_at ASC, step ASC",
@@ -756,5 +840,22 @@ mod tests {
         assert!(state_dir.join(RUN_DB_FILE_NAME).exists());
         let reopened = RunStore::open_default(&state_dir).await.unwrap();
         assert!(reopened.get_run("r1").await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn approvals_are_remembered_per_exact_fingerprint_and_revocable() {
+        let store = memory_store().await;
+        assert!(!store.is_approved("h1", "check", "fp-a").await.unwrap());
+        store.remember_approval("h1", "check", "fp-a", "runs `true`").await.unwrap();
+        store.remember_approval("h1", "check", "fp-a", "runs `true`").await.unwrap();
+        assert!(store.is_approved("h1", "check", "fp-a").await.unwrap());
+        assert!(!store.is_approved("h1", "check", "fp-b").await.unwrap(), "a changed step asks again");
+        assert!(!store.is_approved("h2", "check", "fp-a").await.unwrap(), "per horde");
+
+        let all = store.list_approvals().await.unwrap();
+        assert_eq!(all.len(), 1, "remembering twice keeps one row");
+        assert!(store.revoke_approval(all[0].id).await.unwrap());
+        assert!(!store.revoke_approval(all[0].id).await.unwrap());
+        assert!(!store.is_approved("h1", "check", "fp-a").await.unwrap());
     }
 }

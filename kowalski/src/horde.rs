@@ -50,6 +50,44 @@ pub const DEFAULT_CONFIRM_COMMANDS: bool = true;
 pub const HORDE_CATEGORIES: &[&str] = &["spreadsheets", "web", "documents", "code", "other"];
 /// Step kinds that run commands or write into the operator's project.
 const COMMAND_STEP_KINDS: &[&str] = &["verify", "apply"];
+
+/// What a command step would do, in the operator's words: the approval box and the remembered
+/// approvals in Setup both say it this way.
+fn command_step_action(sub: &SubAgentSpec) -> String {
+    match (sub.kind.as_str(), sub.verify_command.as_deref()) {
+        ("verify", Some(cmd)) => format!("runs the command `{cmd}`"),
+        ("verify", None) => "runs the project's check command".to_string(),
+        _ => "writes the proposed changes into the project folder".to_string(),
+    }
+}
+
+/// What an approval of `sub` covers: the step's kind, command, working folder and apply mode,
+/// and the run's project folder (from `source`). An "always allow" holds only while all of these
+/// stay the same, so a horde edit that changes the command makes the step ask again.
+fn approval_fingerprint(sub: &SubAgentSpec, source: Option<&str>) -> String {
+    json!({
+        "kind": sub.kind,
+        "command": sub.verify_command,
+        "cwd": sub.verify_cwd,
+        "apply_mode": sub.apply_mode,
+        "project": run_project_folder(source),
+    })
+    .to_string()
+}
+
+/// The line Setup shows for a remembered approval.
+fn approval_summary(sub: &SubAgentSpec, source: Option<&str>) -> String {
+    match run_project_folder(source) {
+        Some(project) => format!("Step `{}` {} in {project}", sub.name, command_step_action(sub)),
+        None => format!("Step `{}` {}", sub.name, command_step_action(sub)),
+    }
+}
+
+fn run_project_folder(source: Option<&str>) -> Option<String> {
+    source
+        .and_then(kowalski_core::source_bundle::extract_project_path_from_source)
+        .map(|p| p.display().to_string())
+}
 /// Relative path under `workdir` for managed federation worker stdout/stderr logs (HTTP server convention).
 pub const AGENTS_LOG_REL: &str = "agents_log";
 /// Relative path under `workdir` for follow-up chat markdown from `POST .../followup` (HTTP server convention).
@@ -1232,11 +1270,7 @@ impl HordeManager {
             .sub_agent(step)
             .map(|s| s.tool_ids.clone())
             .unwrap_or_default();
-        let project_path = run
-            .source
-            .as_deref()
-            .and_then(kowalski_core::source_bundle::extract_project_path_from_source)
-            .map(|p| p.display().to_string());
+        let project_path = run_project_folder(run.source.as_deref());
         let payload = json!({
             "horde": spec.id,
             "run_id": run.run_id,
@@ -1415,6 +1449,7 @@ impl HordeManager {
                 .lock()
                 .await
                 .contains(&(run_id.to_string(), step_name.to_string()))
+            && !self.use_remembered_approval(spec, run_id, &sub).await
         {
             self.park_for_approval(spec, run_id, &sub).await;
             return Ok(());
@@ -1530,11 +1565,7 @@ impl HordeManager {
     /// Stop `run_id` before `sub` (a command step) and wait for the operator: the run goes to
     /// `awaiting_input` with an `approval_required` event saying what would run.
     async fn park_for_approval(&self, spec: &HordeSpec, run_id: &str, sub: &SubAgentSpec) {
-        let what = match (sub.kind.as_str(), sub.verify_command.as_deref()) {
-            ("verify", Some(cmd)) => format!("runs the command `{cmd}`"),
-            ("verify", None) => "runs the project's check command".to_string(),
-            _ => "writes the proposed changes into the project folder".to_string(),
-        };
+        let what = command_step_action(sub);
         let envelope = self.build_envelope(
             &spec.topic,
             AclMessage::ApprovalRequired {
@@ -1561,9 +1592,38 @@ impl HordeManager {
         self.publish(&envelope).await;
     }
 
+    /// Skip the approval stop when the operator chose "always allow" for exactly what `sub` is
+    /// about to do in this run; the run log says so. A store error asks, it never allows.
+    async fn use_remembered_approval(&self, spec: &HordeSpec, run_id: &str, sub: &SubAgentSpec) -> bool {
+        let source = {
+            let runs = self.runs.lock().await;
+            runs.runs.get(run_id).and_then(|r| r.source.clone())
+        };
+        let fingerprint = approval_fingerprint(sub, source.as_deref());
+        match self.store.is_approved(&spec.id, &sub.name, &fingerprint).await {
+            Ok(true) => {}
+            Ok(false) => return false,
+            Err(e) => {
+                log::warn!("run store: approval lookup failed run={run_id}: {e}");
+                return false;
+            }
+        }
+        self.approvals.lock().await.insert((run_id.to_string(), sub.name.clone()));
+        let text = format!("Step `{}` {}: always allowed for this horde.", sub.name, command_step_action(sub));
+        self.record_run_event(
+            run_id,
+            json!({ "kind": "approval_remembered", "step": sub.name, "text": text, "ts": now_ts() }),
+        )
+        .await;
+        log::info!("run {run_id} step {} passes on a remembered approval", sub.name);
+        true
+    }
+
     /// Approve the command step `run_id` is waiting on and continue the run. The approval
     /// holds for that step for the rest of the run; it does not use up a resume attempt.
-    pub async fn approve_run(&self, run_id: &str) -> Result<RunRecord, String> {
+    /// With `remember`, later runs of this horde skip the stop while the step still does the
+    /// same thing (see [`approval_fingerprint`]); Setup lists and revokes these.
+    pub async fn approve_run(&self, run_id: &str, remember: bool) -> Result<RunRecord, String> {
         let persisted = self
             .store
             .get_run(run_id)
@@ -1580,10 +1640,32 @@ impl HordeManager {
             .current_step
             .clone()
             .ok_or_else(|| format!("run {run_id} has no step waiting"))?;
+        if remember {
+            let spec = persisted
+                .manifest_snapshot
+                .as_ref()
+                .and_then(HordeSpec::from_snapshot)
+                .map(Arc::new)
+                .or_else(|| self.find(&persisted.horde_id))
+                .ok_or_else(|| format!("horde {} is no longer in the catalog", persisted.horde_id))?;
+            let sub = spec
+                .sub_agent(&step)
+                .ok_or_else(|| format!("missing step {step} in horde {}", spec.id))?;
+            let fingerprint = approval_fingerprint(sub, persisted.source.as_deref());
+            self.store
+                .remember_approval(&spec.id, &step, &fingerprint, &approval_summary(sub, persisted.source.as_deref()))
+                .await
+                .map_err(|e| format!("run store: {e}"))?;
+        }
         self.approvals.lock().await.insert((run_id.to_string(), step.clone()));
+        let text = if remember {
+            format!("Step `{step}` approved by the operator, and always allowed for this horde from now on.")
+        } else {
+            format!("Step `{step}` approved by the operator.")
+        };
         self.persist_event(
             run_id,
-            &json!({ "kind": "approval_granted", "step": step, "text": format!("Step `{step}` approved by the operator."), "ts": now_ts() }),
+            &json!({ "kind": "approval_granted", "step": step, "text": text, "remembered": remember, "ts": now_ts() }),
         )
         .await;
         self.resume_run_inner(run_id, false).await

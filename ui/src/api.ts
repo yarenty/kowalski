@@ -39,6 +39,15 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** A remembered ("always allow") approval, listed and revoked in Setup. */
+export type StandingApproval = {
+  id: number;
+  horde_id: string;
+  step: string;
+  summary: string;
+  created_at: string;
+};
+
 export type Health = {
   status: string;
   service: string;
@@ -612,11 +621,15 @@ export const api = {
       `/api/hordes/${encodeURIComponent(hordeId)}/runs/${encodeURIComponent(runId)}/resume`,
       { method: "POST", body: "{}" },
     ),
-  hordeRunApprove: (hordeId: string, runId: string) =>
+  /** `remember`: "always allow" this step of this horde while it does the same thing. */
+  hordeRunApprove: (hordeId: string, runId: string, remember = false) =>
     json<{ ok: boolean; run: HordeRunRecord }>(
       `/api/hordes/${encodeURIComponent(hordeId)}/runs/${encodeURIComponent(runId)}/approve`,
-      { method: "POST", body: "{}" },
+      { method: "POST", body: JSON.stringify({ remember }) },
     ),
+  approvals: () => json<{ approvals: StandingApproval[] }>("/api/approvals"),
+  approvalRevoke: (id: number) =>
+    json<{ ok: boolean }>(`/api/approvals/${id}`, { method: "DELETE" }),
   hordeRunCancel: (hordeId: string, runId: string) =>
     json<{ ok: boolean; run: HordeRunRecord }>(
       `/api/hordes/${encodeURIComponent(hordeId)}/runs/${encodeURIComponent(runId)}/cancel`,

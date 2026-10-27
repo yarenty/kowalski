@@ -83,7 +83,8 @@ Five hordes ship inside the binary and appear in the Hordes screen on first star
 | **Knowledge compiler** | Articles, repos, notes | A compiled knowledge pack you can ask questions of. |
 
 Scheduled and watching hordes ship switched off: nothing runs, or costs, until you turn it on.
-Steps that would run a command or write into a project stop and ask for your approval first.
+Steps that would run a command or write into a project stop and ask for your approval first;
+**Always allow** remembers it for a step you trust, until the step changes or you revoke it in Setup.
 
 Try the analyst from a terminal against a running server:
 
