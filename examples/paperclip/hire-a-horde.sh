@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Hire a horde as a Paperclip employee: the `process` adapter runs this script on each heartbeat.
-# It takes the oldest issue assigned to the agent, runs the horde on it, posts the answers as a
-# comment and marks the issue done (blocked when the run fails or waits for an approval).
+# It takes the issue the heartbeat was woken for (or else the oldest one assigned to the agent),
+# runs the horde on it, posts the answers as a comment and marks the issue done; when the run
+# fails or waits for an approval, it marks the issue blocked with what the board has to do.
 #
 #   hire-a-horde.sh <horde-id> [form-field]
 #
@@ -25,32 +26,46 @@ kw() {
     curl -sf "$@"
   fi
 }
-pc() {
-  curl -sf -H "authorization: Bearer $PAPERCLIP_API_KEY" -H "x-paperclip-run-id: $PAPERCLIP_RUN_ID" \
-    -H 'content-type: application/json' "$@"
+pc() {  # Paperclip API call; on an error the response goes to stderr, where the run log shows it
+  local out
+  out=$(curl -sS --fail-with-body -H "authorization: Bearer $PAPERCLIP_API_KEY" \
+    -H "x-paperclip-run-id: $PAPERCLIP_RUN_ID" -H 'content-type: application/json' "$@") \
+    || { echo "Paperclip refused ${*: -1}: $out" >&2; return 1; }
+  printf '%s\n' "$out"
 }
 json() { python3 -c "$1" "${@:2}"; }
 
-issues=$(pc "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/issues?assigneeAgentId=$PAPERCLIP_AGENT_ID&status=todo,in_progress")
-issue=$(json '
+# The process adapter does not pass the issue: the run's context names it when the wake was for
+# one. An agent may only write to that issue, so other assigned issues wait for their own wake.
+ISSUE=$(pc "$PAPERCLIP_API_URL/api/heartbeat-runs/$PAPERCLIP_RUN_ID" | json '
 import json, sys
-data = json.loads(sys.argv[1])
+ctx = json.load(sys.stdin).get("contextSnapshot") or {}
+print(ctx.get("issueId") or ctx.get("taskId") or "")')
+if [ -z "$ISSUE" ]; then
+  ISSUE=$(pc "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/issues?assigneeAgentId=$PAPERCLIP_AGENT_ID&status=todo,in_progress" | json '
+import json, sys
+data = json.load(sys.stdin)
 issues = data if isinstance(data, list) else data.get("issues", data.get("items", []))
-issues.sort(key=lambda i: i.get("createdAt", ""))
-if issues:
-    i = issues[0]
-    print(i["id"], json.dumps((i.get("title", "") + "\n\n" + (i.get("description") or "")).strip()), sep="\t")
-' "$issues")
-[ -n "$issue" ] || { echo "No assigned issues; nothing to do."; exit 0; }
-IFS=$'\t' read -r ISSUE TASK <<<"$issue"
+print(min(issues, key=lambda i: i.get("createdAt", ""))["id"] if issues else "")')
+fi
+[ -n "$ISSUE" ] || { echo "No assigned issues; nothing to do."; exit 0; }
+TASK=$(pc "$PAPERCLIP_API_URL/api/issues/$ISSUE" | json '
+import json, sys
+i = json.load(sys.stdin)
+print(json.dumps((i.get("title", "") + "\n\n" + (i.get("description") or "")).strip()))')
 echo "issue $ISSUE"
 
 pc -X POST -d "{\"agentId\":\"$PAPERCLIP_AGENT_ID\",\"expectedStatuses\":[\"todo\",\"in_progress\"]}" \
   "$PAPERCLIP_API_URL/api/issues/$ISSUE/checkout" >/dev/null || echo "checkout refused; working on it anyway" >&2
 
-finish() {  # status, comment
-  pc -X PATCH -d "$(json 'import json, sys; print(json.dumps({"status": sys.argv[1], "comment": sys.argv[2]}))' "$1" "$2")" \
-    "$PAPERCLIP_API_URL/api/issues/$ISSUE" >/dev/null
+finish() {  # status, comment, [what the board has to do, for blocked]
+  pc -X PATCH -d "$(json '
+import json, sys
+status, comment, action, agent = sys.argv[1:5]
+body = {"status": status, "comment": comment}
+if action:  # an agent may only name itself as the owner; the action says what the board does
+    body["unblockDescriptor"] = {"owner": {"agentId": agent}, "action": action}
+print(json.dumps(body))' "$1" "$2" "${3:-}" "$PAPERCLIP_AGENT_ID")" "$PAPERCLIP_API_URL/api/issues/$ISSUE" >/dev/null
 }
 
 body=$(json '
@@ -60,7 +75,8 @@ print(json.dumps({"form_answers": {field: task}} if field else {"prompt": task})
 ' "$TASK" "$FIELD")
 run=$(kw -H 'content-type: application/json' -d "$body" "$URL/api/hordes/$HORDE/run" \
   | json 'import json, sys; print(json.load(sys.stdin)["run"]["run_id"])' 2>/dev/null) \
-  || { finish blocked "Could not start the kowalski horde \`$HORDE\` at $URL."; exit 1; }
+  || { finish blocked "Could not start the kowalski horde \`$HORDE\` at $URL." \
+         "Start kowalski, then set this issue back to todo."; exit 1; }
 echo "run $run"
 
 while :; do
@@ -85,11 +101,13 @@ case "$status" in
     finish done "$answer"
     ;;
   awaiting_input)
-    finish blocked "Kowalski run \`$run\` is waiting for an approval: open the horde \`$HORDE\` in kowalski."
+    finish blocked "Kowalski run \`$run\` is waiting for an approval." \
+      "Approve the step on the horde \`$HORDE\` in kowalski, then set this issue back to todo."
     exit 1
     ;;
   *)
-    finish blocked "Kowalski run \`$run\` ended: $status."
+    finish blocked "Kowalski run \`$run\` ended: $status." \
+      "Look at the run on the horde \`$HORDE\` in kowalski, then set this issue back to todo."
     exit 1
     ;;
 esac
