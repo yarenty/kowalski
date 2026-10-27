@@ -210,6 +210,11 @@ async function loadApprovals() {
   }
 }
 
+/** Summary text split on backticks: odd pieces are code (no HTML from the server). */
+function summaryParts(summary: string) {
+  return summary.split("`").map((text, i) => ({ text, code: i % 2 === 1 }));
+}
+
 async function revokeApproval(a: StandingApproval) {
   busy.value = `revoke-${a.id}`;
   err.value = null;
@@ -397,7 +402,12 @@ onMounted(async () => {
         <li v-for="a in approvals" :key="a.id">
           <div>
             <strong>{{ a.horde_id }}</strong>
-            <span class="allowed-what">{{ a.summary }}</span>
+            <span class="allowed-what"
+              ><template v-for="(p, i) in summaryParts(a.summary)" :key="i"
+                ><code v-if="p.code">{{ p.text }}</code
+                ><template v-else>{{ p.text }}</template></template
+              ></span
+            >
           </div>
           <button type="button" class="danger" :disabled="busy !== null" @click="revokeApproval(a)">
             {{ busy === `revoke-${a.id}` ? "Revoking…" : "Revoke" }}
