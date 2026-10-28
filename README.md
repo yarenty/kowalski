@@ -16,6 +16,8 @@ cut from the recording.*
 **Current release: 2.6 — Field Notes.** What changed and when: [CHANGELOG.md](CHANGELOG.md) ·
 what is next: [ROADMAP.md](ROADMAP.md).
 
+<a href="https://alternativeto.net/software/kowalski/about/?utm_source=badge&utm_medium=referral"><img src="https://alternativeto.net/static/badges/badge-compact-color.svg" alt="Kowalski | AlternativeTo" width="164" height="53"></a>
+
 ---
 
 ## Install
