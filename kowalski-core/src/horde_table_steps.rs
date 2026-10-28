@@ -197,11 +197,14 @@ impl StepHandler for SqlBatchStepHandler {
         let plan = std::fs::read_to_string(&plan_path)
             .map_err(|e| KowalskiError::Validation(format!("read plan {}: {e}", plan_path.display())))?;
         let queries = parse_sql_plan(&plan);
-        if queries.iter().all(|q| q.sql.is_empty()) {
-            return Err(KowalskiError::Validation("the plan contains no ```sql blocks".into()));
+        if queries.is_empty() {
+            return Err(KowalskiError::Validation("the plan contains no questions and no ```sql blocks".into()));
         }
+        // every question declined ("these tables can't answer it") is an answer, not a failure,
+        // and needs no data tool
+        let any_sql = queries.iter().any(|q| !q.sql.is_empty());
         let tool = ctx.step.tool_ids.first().map(String::as_str).unwrap_or("query_sql").to_string();
-        if self.tools.get_or_refresh(&tool).await.is_none() {
+        if any_sql && self.tools.get_or_refresh(&tool).await.is_none() {
             return Err(KowalskiError::Validation(format!(
                 "tool `{tool}` is not available: tableski is not connected or not running (kowalski keeps trying to reach it); start it, or connect it in Setup"
             )));
@@ -256,11 +259,13 @@ impl StepHandler for SqlBatchStepHandler {
         std::fs::write(&out, &md).map_err(|e| KowalskiError::Validation(e.to_string()))?;
         std::fs::write(sidecar(&out), serde_json::to_vec_pretty(&results).unwrap_or_default())
             .map_err(|e| KowalskiError::Validation(e.to_string()))?;
-        let failed = results.iter().filter(|r| r.error.is_some()).count();
+        let declined = results.iter().filter(|r| r.sql.is_empty()).count();
+        let ran = results.len() - declined;
+        let failed = results.iter().filter(|r| !r.sql.is_empty() && r.error.is_some()).count();
         Ok(StepOutcome::Completed {
-            summary: format!("{} queries run, {failed} failed: {}", results.len(), out.display()),
+            summary: format!("{ran} queries run, {failed} failed, {declined} not answerable: {}", out.display()),
             artifact: Some(out),
-            status: if failed == results.len() { StageStatus::Fail } else { StageStatus::Pass },
+            status: if ran > 0 && failed == ran { StageStatus::Fail } else { StageStatus::Pass },
         })
     }
 }

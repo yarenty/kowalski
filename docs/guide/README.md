@@ -8,6 +8,7 @@
 6. [tableski: your spreadsheets as SQL](06-tableski.md)
 7. [Notes vault (Obsidian)](07-notes-vault.md)
 8. [Troubleshooting](08-troubleshooting.md)
+9. [Hire a horde in Paperclip](09-paperclip.md)
 
 The same pages are built into kowalski: Chat answers questions about kowalski from them and from
 your install's live settings.
