@@ -52,7 +52,7 @@ watch([filter, hordeFilter], () => void load(true));
 const chips = computed(() => [
   { id: "all" as const, label: "All", n: counts.value?.all ?? 0, alert: false },
   { id: "needs_you" as const, label: "Needs you", n: counts.value?.needs_you ?? 0, alert: true },
-  { id: "running" as const, label: "Running", n: counts.value?.running ?? 0, alert: false },
+  { id: "running" as const, label: "Working", n: counts.value?.running ?? 0, alert: false },
   { id: "failed" as const, label: "Failed", n: counts.value?.failed ?? 0, alert: false },
 ]);
 const visibleChips = computed(() => chips.value.filter((c) => c.id === "all" || c.id === filter.value || c.n > 0 || c.id === "needs_you" || c.id === "failed"));

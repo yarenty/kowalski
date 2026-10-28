@@ -112,28 +112,81 @@ async function loadTileStatus(list: HordeCatalogItem[]) {
 }
 watch(visible, (list) => void loadTileStatus(list), { immediate: true });
 
-function statusLine(h: HordeCatalogItem): { text: string; tone: string } {
+/** Tiles follow their runs: one request for the newest runs across hordes, every few seconds. */
+const TILE_REFRESH_MS = 10_000;
+const RECENT_RUNS = 25;
+/** A finished run says "Done" on its tile for a day, then the tile goes quiet. */
+const DONE_SHOWN_MS = 24 * 3600_000;
+const isActive = (status: string) => ["running", "pending", "awaiting_input"].includes(status);
+
+async function refreshTileRuns() {
+  let recent: RunSummary[];
+  try {
+    recent = (await api.runs({ limit: RECENT_RUNS })).runs;
+  } catch {
+    return;
+  }
+  const next = { ...lastRun.value };
+  const fresh = new Set<string>();
+  for (const r of recent) {
+    // newest first: the first run of a horde is its latest
+    if (fresh.has(r.horde_id)) continue;
+    fresh.add(r.horde_id);
+    next[r.horde_id] = r;
+  }
+  // a run still working or waiting but older than that page: ask its horde
+  const older = Object.entries(next).filter(([id, r]) => r && !fresh.has(id) && isActive(r.status));
+  await Promise.all(
+    older.map(async ([id]) => {
+      try {
+        next[id] = (await api.runs({ horde: id, limit: 1 })).runs[0] ?? null;
+      } catch {
+        /* keep what the tile shows */
+      }
+    }),
+  );
+  lastRun.value = next;
+}
+
+/** The status word for the latest run: Working, Needs you, Failed, or Done for a day. */
+function tileWord(h: HordeCatalogItem): { label: string; tone: string; detail: string } | null {
+  const r = lastRun.value[h.id];
+  if (!r) return null;
+  const s = runStatusLabel(r.status);
+  if (r.status === "running" || r.status === "pending") {
+    return { ...s, detail: r.current_step ? `step ${r.current_step}` : relativeTime(r.started_at) };
+  }
+  if (r.status === "awaiting_input") return { ...s, detail: relativeTime(r.started_at) };
+  const ended = r.finished_at ?? r.started_at;
+  if (r.status === "failed") return { ...s, detail: relativeTime(ended) };
+  const at = ended ? new Date(ended).getTime() : NaN;
+  if (r.status === "completed" && Date.now() - at < DONE_SHOWN_MS) return { ...s, detail: relativeTime(ended) };
+  return null;
+}
+
+/** The quiet line when there is no status word: next run, watched folder, or the last run. */
+function statusLine(h: HordeCatalogItem): string {
   const triggers = h.triggers ?? [];
   const cron = triggers.find((t) => t.kind === "cron" && t.effective_enabled);
-  if (cron && nextFire.value[h.id]) return { text: `Next: ${upcomingTime(nextFire.value[h.id])}`, tone: "" };
+  if (cron && nextFire.value[h.id]) return `Next: ${upcomingTime(nextFire.value[h.id])}`;
   const watchT = triggers.find((t) => t.kind === "watch" && t.effective_enabled);
-  if (watchT) return { text: `Watching ${watchT.watch?.path ?? watchT.detail.replace(/^watch\s+/, "")}`, tone: "" };
+  if (watchT) return `Watching ${watchT.watch?.path ?? watchT.detail.replace(/^watch\s+/, "")}`;
   const r = lastRun.value[h.id];
-  if (r) {
-    const s = runStatusLabel(r.status);
-    const when = relativeTime(r.started_at);
-    if (s.tone === "red" || s.tone === "running") return { text: `${s.label} · ${when}`, tone: s.tone };
-    return { text: `Last run ${when}`, tone: "" };
-  }
-  if (h.id in lastRun.value) return { text: "Not run yet", tone: "" };
-  return { text: "", tone: "" };
+  if (r) return `Last run ${relativeTime(r.started_at)}`;
+  if (h.id in lastRun.value) return "Not run yet";
+  return "";
 }
 
 let stopPolling: (() => void) | null = null;
+let tileTimer: ReturnType<typeof setInterval> | null = null;
 onMounted(() => {
   stopPolling = useHordePolling();
+  tileTimer = setInterval(() => void refreshTileRuns(), TILE_REFRESH_MS);
 });
-onUnmounted(() => stopPolling?.());
+onUnmounted(() => {
+  stopPolling?.();
+  if (tileTimer) clearInterval(tileTimer);
+});
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 const shortcut = isMac ? "⌘K" : "Ctrl K";
@@ -196,9 +249,11 @@ const shortcut = isMac ? "⌘K" : "Ctrl K";
             <span class="tile-name">{{ h.display_name }}</span>
             <span class="tile-desc">{{ firstSentence(h.description) }}</span>
             <span v-if="h.load_error" class="tile-status tone-red">Latest edit failed to load</span>
-            <span v-else-if="statusLine(h).text" class="tile-status" :class="statusLine(h).tone && `tone-${statusLine(h).tone}`">
-              {{ statusLine(h).text }}
+            <span v-else-if="tileWord(h)" class="tile-status">
+              <span class="run-status" :class="`tone-${tileWord(h)!.tone}`">{{ tileWord(h)!.label }}</span>
+              <template v-if="tileWord(h)!.detail"> · {{ tileWord(h)!.detail }}</template>
             </span>
+            <span v-else-if="statusLine(h)" class="tile-status">{{ statusLine(h) }}</span>
           </span>
         </button>
         <button
@@ -299,7 +354,7 @@ const shortcut = isMac ? "⌘K" : "Ctrl K";
 }
 .tile-status { font-size: 0.8rem; color: var(--muted); font-family: var(--font-mono); letter-spacing: 0.01em; margin-top: 0.15rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile-status.tone-red { color: var(--red-ink); font-weight: 600; }
-.tile-status.tone-running { color: var(--ink); }
+.tile-status .run-status { font-family: var(--font-body); font-size: 0.84rem; vertical-align: baseline; }
 .tiles.compact .tile-desc { font-size: 0.84rem; }
 
 .pin {

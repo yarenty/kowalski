@@ -14,8 +14,10 @@ Features: health, MCP ping, **Chat** (`POST /api/chat`, SSE **`POST /api/chat/st
   on **Runs** says how many runs wait for approval. Internal tab ids are unchanged.
 - **Hordes home**: "What do you need done?" with filter chips (Pinned · Spreadsheets · Web &
   news · Documents · Code when present · All N) over a grid of horde tiles: a coloured square with
-  the horde's icon, its name, the first sentence of its description and one quiet status line
-  (next scheduled time, the folder it watches, or the last run). **Pinned** shows the operator's
+  the horde's icon, its name, the first sentence of its description and a status line. The
+  latest run's status word comes first: **Working** (with its step), **Needs you**, **Failed**, or
+  **Done** for a day after it finished; otherwise a quiet line (next scheduled time, the folder it
+  watches, or the last run). Tiles follow their runs every 10 seconds. **Pinned** shows the operator's
   starred hordes (kept in this browser under `kowalski.ui.hordes.pinned.v1`), or the horde's
   shipped `featured` flag until something is starred. **All** uses smaller tiles and shows at most
   12 before **Show all**, so 100 hordes stay calm. A red strip at the top appears only when a run
@@ -31,7 +33,7 @@ Features: health, MCP ping, **Chat** (`POST /api/chat`, SSE **`POST /api/chat/st
   payload, then **Follow-up**. A run waiting before a command step shows the red approval box at
   the top (Approve / Always allow / Cancel run); interrupted runs sit in a calm banner with **Resume**.
 - **Runs page**: every run across hordes, grouped by day, with filter chips (All / Needs you /
-  Failed, Running while any run works) and an **Any horde** select; 25 at a time with **Load
+  Failed, Working while any run works) and an **Any horde** select; 25 at a time with **Load
   older**. A row opens that run on its horde page.
 - **⌘K picker** (Cmd+K / Ctrl+K anywhere, or the top-bar box): search hordes (name,
   description, category) and the last 50 runs (title); ↑↓ move, ↵ open, Esc close.

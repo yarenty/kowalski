@@ -511,7 +511,7 @@ button.filter-chip.alert { border-color: var(--red); color: var(--red-ink); }
 button.filter-chip.alert[aria-pressed="true"] { background: var(--red); border-color: var(--red); color: var(--on-red); }
 .filter-chip .n { font-family: var(--font-mono); font-size: 0.74rem; opacity: 0.8; }
 
-/* Run status as quiet text: "Done", "Needs you", "Failed", "Running". */
+/* Run status as quiet text: "Done", "Needs you", "Failed", "Working". */
 .run-status {
   display: inline-flex;
   align-items: center;
