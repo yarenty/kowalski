@@ -225,6 +225,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 |---|---|
 | [**tableski**](https://github.com/yarenty/tableski) | Every spreadsheet is a table: Excel, CSV and Parquet as SQL over MCP. Local binary or hosted at tableski.io. |
 | [**emperor-mcp**](https://github.com/yarenty/emperor-mcp) | The MCP server framework first-party servers are built on (stateless HTTP, credential forwarding, output framing). |
+| [**emperor-folder**](https://github.com/yarenty/emperor-folder), [**-pdf**](https://github.com/yarenty/emperor-pdf), [**-mail**](https://github.com/yarenty/emperor-mail), [**-vikunja**](https://github.com/yarenty/emperor-vikunja) | A folder, PDFs, mail and Vikunja tasks as MCP tools for agents; read-only unless started otherwise ([guide](docs/guide/10-files-pdf-mail-tasks.md)). |
 | [**Paperclip**](https://github.com/paperclipai/paperclip) | Hire a horde as an employee in a Paperclip company: assign it an issue, the answers come back in the thread ([guide](docs/guide/09-paperclip.md)). |
 
 New first-party MCP servers get their own repositories on `emperor-mcp`; this repository stays
