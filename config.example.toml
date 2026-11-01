@@ -72,6 +72,26 @@ clean_on_startup = true
 # transport = "http"
 # headers = { Authorization = "Bearer tsk_your_token" }
 
+# emperor servers: a folder, PDFs, mail and Vikunja tasks (`cargo install emperor-folder` etc.).
+# kowalski starts them; use full paths (no shell, so no ~). Mail and Vikunja read their login
+# from the environment kowalski runs in (MAIL_*, VIKUNJA_TOKEN). Guide: docs/guide/10-files-pdf-mail-tasks.md
+# [[mcp.servers]]
+# name = "folder"
+# transport = "stdio"
+# command = ["emperor-folder", "serve", "--stdio", "--root", "/Users/me/notes"]
+# [[mcp.servers]]
+# name = "pdf"
+# transport = "stdio"
+# command = ["emperor-pdf", "serve", "--stdio", "--root", "/Users/me/Documents", "--pdfium-dir", "/Users/me/pdfium"]
+# [[mcp.servers]]
+# name = "mail"
+# transport = "stdio"
+# command = ["emperor-mail", "serve", "--stdio"]
+# [[mcp.servers]]
+# name = "vikunja"
+# transport = "stdio"
+# command = ["emperor-vikunja", "serve", "--stdio", "--base-url", "https://vikunja.example.com"]
+
 # Docker MCP gateway: one stdio connection to the Docker MCP Toolkit catalog
 # (needs Docker Desktop + MCP Toolkit; `docker mcp version`).
 # [[mcp.servers]]
