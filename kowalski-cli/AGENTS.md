@@ -62,9 +62,9 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 **Target Users**: Kowalski framework agents and developers integrating kowalski-cli.  
 
 ### Business Context
-- **Problem Solved**: Complexity in building and managing secure, federated multi-agent LLM systems.
-- **Success Metrics**: Extensibility of tools, performance of async operations, successful federated task execution.
-- **Key Constraints**: Rust-based architecture, efficient execution, secure multi-party computation.
+- **Problem Solved**: Running useful multi-agent chores on one person's own machine, with small local models.
+- **Success Metrics**: Runs that finish and deliver a file, on a laptop CPU; extensibility of tools; small footprint.
+- **Key Constraints**: Rust-based architecture, one binary, local-first, works on 2B-class models.
 
 ---
 
@@ -86,7 +86,7 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 ### Cross-Cutting Concerns
 - **Logging**: Standard Rust tracing/logging
 - **Error Handling**: Centralized error types (`KowalskiError`)
-- **Security**: Secure multi-party computation (MPC) and role-based access
+- **Security**: Local-first: localhost bind, opt-in API token, approval before commands run, process isolation for untrusted hordes
 - **Performance**: Async-first using Tokio
 - **Monitoring**: Built-in activity tracking and LLM observability
 
