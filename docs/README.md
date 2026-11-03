@@ -40,7 +40,7 @@ Published copies live on the kowalski blog.
 |---|---|
 | [`architecture_v03_future.md`](concepts/architecture_v03_future.md) | An earlier future-state architecture |
 | [`DESIGN_A2A_FEDERATION_EDGE.md`](concepts/DESIGN_A2A_FEDERATION_EDGE.md) | Agent-to-agent protocol at the federation edge |
-| [`key_technology.md`](concepts/key_technology.md) | Technology, business and research perspectives |
+| [`key_technology.md`](concepts/key_technology.md) | Technology, research and community perspectives |
 
 ## Link checking
 

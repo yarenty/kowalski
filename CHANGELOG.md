@@ -14,6 +14,9 @@ All notable changes to this project will be documented in this file, or at least
 - **Hire a horde in Paperclip.** `examples/paperclip/hire-a-horde.sh` makes a horde an employee in a [Paperclip](https://github.com/paperclipai/paperclip) company through its `process` adapter: on each heartbeat it runs the horde on the issue the agent was woken for, posts the answers as a comment and marks the issue done, or blocked with what to do when the run fails or waits for an approval. Guide: `docs/guide/09-paperclip.md`.
 - **Status words on the Hordes tiles.** Each tile says what its latest run is doing: **Working** (with the step it is on), **Needs you**, **Failed**, or **Done** for a day after it finished, ahead of the next scheduled time. Tiles follow their runs every 10 seconds instead of only when the page opens. Runs are called **Working** while they run, on the Runs page too.
 
+### Changed
+- **Docs say who Kowalski is for.** The agent guides describe a local-first runtime for one person's machine; the old business-model section of the key technologies page, the role-based access roadmap item and the archived enterprise pitch are gone.
+
 ### Fixed
 - The Spreadsheet analyst delivers "these tables can't answer that" when the plan finds no question answerable from the loaded tables (asking about orders when only market data is loaded), instead of failing the run with "the plan contains no sql blocks". Such a run needs no query, so it works even when tableski is unreachable; an unanswerable question no longer counts as a failed query.
 

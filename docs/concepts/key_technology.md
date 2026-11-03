@@ -1,6 +1,6 @@
 # Kowalski: Key Perspectives & Core Technologies
 
-This document outlines the key technological, business, and strategic pillars of the Kowalski framework. It is intended to provide a clear, multi-faceted view for internal teams, potential investors, and the wider developer community.
+This document outlines the technical, research and community pillars of Kowalski, an open-source agent runtime for one person's own machine. It is written for contributors and the wider developer community.
 
 ---
 
@@ -28,23 +28,7 @@ This document outlines the key technological, business, and strategic pillars of
 
 ---
 
-## 2. Business Perspective
-
-*This is about **why** Kowalski creates commercial value and a defensible market position.*
-
-*   **Core Value Proposition: Drastic Acceleration of Time-to-Value.** Kowalski allows enterprises to go from raw data or a complex problem to an automated, AI-driven solution in a fraction of the time it would take to build from scratch.
-
-*   **Key Market Differentiator: Enterprise-Grade Reliability.** In a market flooded with Python-based prototypes, Kowalski's Rust foundation offers the security, performance, and stability that enterprises demand for mission-critical deployments. This is our moat.
-
-*   **Primary Business Model: Open-Core SaaS.** We will leverage a proven model:
-    *   The powerful, open-source core drives bottom-up adoption, builds a community, and establishes Kowalski as the industry standard.
-    *   A commercial layer (hosted or on-premise) provides enterprise-critical features: advanced security, role-based access control, audit logs, dedicated support, and managed agent fleets.
-
-*   **Target Market: High-Performance Domains.** We are initially targeting sectors where performance and reliability are paramount and where the cost of failure is high: **Telecommunications, Finance, Cloud Infrastructure (DevOps/SRE), and Data Engineering.**
-
----
-
-## 3. Research Perspective
+## 2. Research Perspective
 
 *This is about the **what if**—the new scientific and academic questions Kowalski allows us to explore.*
 
@@ -56,7 +40,7 @@ This document outlines the key technological, business, and strategic pillars of
 
 ---
 
-## 4. Community & Ecosystem Perspective
+## 3. Community & Ecosystem Perspective
 
 *This is about **who** will build with us and how the project will grow and sustain itself.*
 
@@ -68,7 +52,7 @@ This document outlines the key technological, business, and strategic pillars of
 
 ---
 
-## 5. Ethical & Governance Perspective
+## 4. Safety Perspective
 
 *This is about **how we ensure** these powerful autonomous systems are deployed safely and responsibly.*
 

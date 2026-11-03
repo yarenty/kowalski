@@ -101,7 +101,7 @@ See [`CHANGELOG.md`](CHANGELOG.md) (**[2.0.0]**). Highlights:
 
 See [`CHANGELOG.md`](CHANGELOG.md) (**[1.8.0]**). The MCP layer graduated to standalone projects:
 
-- **[emperor-mcp](https://github.com/yarenty/emperor-mcp)** — the enterprise MCP server framework (stateless Streamable HTTP, credential forwarding, output framing, versioned deployment profile); kowalski consumes it from crates.io
+- **[emperor-mcp](https://github.com/yarenty/emperor-mcp)** — the MCP server framework (stateless Streamable HTTP, credential forwarding, output framing, versioned deployment profile); kowalski consumes it from crates.io
 - **[tableski](https://github.com/yarenty/tableski)** — "every spreadsheet is a table": Excel/CSV/Parquet/NDJSON as SQL tables over MCP, hardened for real-world workbooks, binaries for 4 platforms
 - Workspace slimmed to `kowalski`, `kowalski-core`, `kowalski-cli`, `kowalski-mcp-rookery` (in-tree by design: core-coupled); `install.sh` updated; README Ecosystem section + framework-only policy
 
@@ -326,7 +326,6 @@ Workspace layout:
 
 ## Security & Privacy
 - [ ] End-to-end encryption (planned)
-- [ ] Role-based access control (planned)
 - [ ] Conversation anonymization (planned)
 - [ ] Audit logging (planned)
 - [ ] Content filtering (planned)
