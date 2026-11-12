@@ -17,6 +17,9 @@ cut from the recording.*
 **Current release: 2.6 — Field Notes.** What changed and when: [CHANGELOG.md](CHANGELOG.md) ·
 what is next: [ROADMAP.md](ROADMAP.md).
 
+**Tried it?** [Tell me what you ran and where it broke](https://github.com/yarenty/kowalski/discussions/146).
+One line is enough; there is no telemetry, so this is the only way I find out.
+
 <a href="https://alternativeto.net/software/kowalski/about/?utm_source=badge&utm_medium=referral"><img src="https://alternativeto.net/static/badges/badge-compact-color.svg" alt="Kowalski | AlternativeTo" width="164" height="53"></a>
 
 ---

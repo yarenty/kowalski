@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Changed
 - **One sentence for what Kowalski is.** The README, `AGENTS.md` and the crate descriptions now say the same thing: you already have a local model, and Kowalski gives it jobs. "Is Kowalski for you?" starts with the person who runs Ollama.
+- **A place to say how it went.** GitHub Discussions are open, and the README links one thread: what you ran, on what, and where it broke.
 - **Docs say who Kowalski is for.** The agent guides describe a local-first runtime for one person's machine; the old business-model section of the key technologies page, the role-based access roadmap item and the archived enterprise pitch are gone.
 
 ### Fixed
