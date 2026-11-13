@@ -2,11 +2,12 @@
 
 > "Kowalski, analysis!"
 
-**Hordes of small AI agents that do real work on your machine.** Kowalski is one binary: download
-it, answer three setup questions, and give your spreadsheets, pages and documents to a horde.
-The answers come back as files you can open: a report workbook, a morning brief, a note with
-deadlines. Your model (local Ollama, or any OpenAI-compatible endpoint with your key), your files,
-your machine.
+**You already have a local model. Kowalski gives it jobs.** A horde is a pipeline of small steps:
+ordinary code does the fetching, the SQL and the file writing, and the model only writes a query
+or a paragraph, so a 2B model on a laptop CPU finishes real chores. Kowalski is one binary: point
+it at Ollama (or any OpenAI-compatible endpoint with your key) and give a horde your
+spreadsheets, pages and documents. The answers come back as files you can open: a report
+workbook, a morning brief, a note with deadlines.
 
 ![Kowalski's Spreadsheet analyst: plain questions in, answers and a workbook out](docs/img/kowalski-demo.gif)
 
@@ -15,6 +16,9 @@ cut from the recording.*
 
 **Current release: 2.6 — Field Notes.** What changed and when: [CHANGELOG.md](CHANGELOG.md) ·
 what is next: [ROADMAP.md](ROADMAP.md).
+
+**Tried it?** [Tell me what you ran and where it broke](https://github.com/yarenty/kowalski/discussions/146).
+One line is enough; there is no telemetry, so this is the only way I find out.
 
 <a href="https://alternativeto.net/software/kowalski/about/?utm_source=badge&utm_medium=referral"><img src="https://alternativeto.net/static/badges/badge-compact-color.svg" alt="Kowalski | AlternativeTo" width="164" height="53"></a>
 
@@ -98,6 +102,7 @@ examples/spreadsheet-analyst/demo.sh "Who spent the most?" "How many customers p
 
 | You want… | Kowalski | Better elsewhere |
 |---|---|---|
+| Something useful to do with the model you already run in Ollama | ✓ | |
 | Answers from your own spreadsheets, pages and documents, as files you open | ✓ | |
 | To run on a laptop with a free local model, nothing leaving the machine | ✓ | |
 | Every number in a report traced to a SQL query | ✓ (with tableski) | |

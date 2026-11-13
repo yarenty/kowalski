@@ -57,9 +57,9 @@ Our codebase follows SOLID principles to ensure maintainable, scalable software.
 **Name**: Kowalski  
 **Release line**: **2.6.0 — Field Notes** (workspace; see root `Cargo.toml` and `CHANGELOG.md`).
 **Purpose**: A Rust-native multi-agent framework: **`kowalski-core`** (agents, LLM, memory, MCP client), **`kowalski-cli`** (REPL + operators, extensions, **`agent-app`**), **`kowalski`** (HTTP **`/api/*`** server), Vue **`ui/`**, optional PostgreSQL (**pgvector**, **Apache AGE**).  
-**Core Value Proposition**: Modular, extensible deployment with MCP-first tools and federation-oriented APIs.  
+**Core Value Proposition**: Jobs for a local model. A horde is a pipeline of small steps where code does the fetching, SQL and file writing and the model only writes a query or a paragraph; tools are MCP-first.  
 **Primary Mechanism**: `TemplateAgent` + pluggable tools (built-in + MCP), Ollama/OpenAI-compatible providers.  
-**Target Users**: Developers building operator-run or embedded agent systems on CPU-friendly stacks.  
+**Target Users**: People who already run a local model (Ollama) on their own machine and want it to do useful chores. Developers extend it with hordes and MCP servers.  
 
 ### Business Context
 - **Problem Solved**: Running useful multi-agent chores on one person's own machine, with small local models.
