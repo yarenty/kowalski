@@ -1,11 +1,11 @@
-<!-- post: date=2026-11-01; slug=kowalski-2-6; summary=Kowalski 2.6 Field Notes: research notes saved straight into your Obsidian vault, web search with no key, and a Morning brief that only reports what is really on the page. -->
+<!-- post: date=2026-11-14; slug=kowalski-2-6; summary=Kowalski 2.6 Field Notes: research notes saved straight into your Obsidian vault, web search with no key, and a Morning brief that only reports what is really on the page. -->
 # Kowalski 2.6: Field Notes
 
 *November 2026*
 
 ![Asking the Knowledge Compiler a question in kowalski, then the note arriving in an Obsidian vault](../img/knowledge-compiler.gif)
 
-Yesterday's release was about getting kowalski onto your machine. Today's is about what it brings
+The last release was about getting kowalski onto your machine. This one is about what it brings
 back: notes that land where you keep your notes, search that works the moment you install it, and
 a brief you can trust.
 
