@@ -1,4 +1,4 @@
-<!-- post: date=2026-11-28; slug=small-mcp-servers; summary=Every MCP tool is sent to the model on every request. A big server set costs tens of thousands of tokens before you say hello, minutes of waiting on a local model and real money on a hosted one. Why the emperor MCP servers keep to eight tools or fewer, and four servers built that way: folder, pdf, mail and Vikunja. -->
+<!-- post: date=2026-11-15; slug=small-mcp-servers; summary=Every MCP tool is sent to the model on every request. A big server set costs tens of thousands of tokens before you say hello, minutes of waiting on a local model and real money on a hosted one. Why the emperor MCP servers keep to eight tools or fewer, and four servers built that way: folder, pdf, mail and Vikunja. -->
 # Eight tools or fewer: what a big MCP server really costs
 
 *November 2026*
