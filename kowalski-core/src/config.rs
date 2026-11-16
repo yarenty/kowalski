@@ -277,7 +277,7 @@ impl Default for LLMConfig {
 
 /// Default [`OllamaConfig::context_window`]. Ollama's own default on a machine with little
 /// memory is 4096 tokens, and a longer prompt silently loses its beginning.
-pub const DEFAULT_OLLAMA_CONTEXT_WINDOW: u32 = 16384;
+pub const DEFAULT_OLLAMA_CONTEXT_WINDOW: u32 = 32768;
 
 /// Configuration for Ollama integration
 #[derive(Debug, Clone, Serialize, Deserialize)]

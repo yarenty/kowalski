@@ -10,7 +10,7 @@ port = 11434
 model = "llama3.2"
 # Context window in tokens asked of Ollama on every request. A bigger one reads longer prompts
 # and uses more memory; 0 leaves it to Ollama (4096 on a machine with little memory).
-# context_window = 16384
+# context_window = 32768
 
 # Hosted instead: any OpenAI-compatible Chat Completions endpoint (OpenAI, Groq, LM Studio, vLLM, ...).
 # Uncomment, set the base URL and model, and export OPENAI_API_KEY in your shell.
