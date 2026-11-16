@@ -1,5 +1,6 @@
 use super::provider::{ChatOutcome, LLMProvider, TokenStream, ToolDefinition};
-use crate::agent::types::ChatRequest;
+use crate::agent::types::{ChatOptions, ChatRequest};
+use crate::config::Config;
 use crate::conversation::{FunctionCall, Message, ToolCall};
 use crate::error::KowalskiError;
 use crate::rookery::ensure_schema_supported;
@@ -12,6 +13,7 @@ pub struct OllamaProvider {
     client: Client,
     native_tools: bool,
     structured_output: bool,
+    options: ChatOptions,
 }
 
 impl OllamaProvider {
@@ -23,7 +25,21 @@ impl OllamaProvider {
             client,
             native_tools: false,
             structured_output: false,
+            options: ChatOptions::default(),
         }
+    }
+
+    /// The chat provider for a configuration: `[ollama]` host, port and context window,
+    /// `[chat] temperature`, and the `[llm]` capability flags.
+    pub fn from_config(config: &Config) -> Self {
+        let mut provider = Self::new(&config.ollama.host, config.ollama.port)
+            .with_native_tools(config.llm.native_tools)
+            .with_structured_output(config.llm.structured_output);
+        provider.options = ChatOptions {
+            temperature: Some(config.chat.temperature),
+            num_ctx: (config.ollama.context_window > 0).then_some(config.ollama.context_window),
+        };
+        provider
     }
 
     /// Opt in to native tool calling (`[llm] native_tools`); requires a tool-capable model.
@@ -53,8 +69,7 @@ impl OllamaProvider {
             model: model.to_string(),
             messages: messages.to_vec(),
             stream,
-            temperature: 0.7,
-            max_tokens: 2048,
+            options: self.options.clone(),
             tools: tools
                 .map(|defs| serde_json::Value::Array(defs.iter().map(|d| d.wire_json()).collect())),
             format: format.cloned(),
@@ -456,6 +471,39 @@ mod tests {
             tools[0]["function"]["parameters"]["required"],
             json!(["location"])
         );
+    }
+
+    #[test]
+    fn request_from_config_carries_settings_under_options() {
+        let mut config = Config::default();
+        config.chat.temperature = 0.2;
+        let messages = vec![Message::text("user", "hi")];
+        let wire = serde_json::to_value(
+            OllamaProvider::from_config(&config).build_request("m", &messages, false, None, None),
+        )
+        .unwrap();
+        assert_eq!(
+            wire["options"]["num_ctx"],
+            crate::config::DEFAULT_OLLAMA_CONTEXT_WINDOW
+        );
+        assert!((wire["options"]["temperature"].as_f64().unwrap() - 0.2).abs() < 1e-6);
+        let top = wire.as_object().unwrap();
+        assert!(!top.contains_key("temperature") && !top.contains_key("max_tokens"));
+
+        config.ollama.context_window = 0;
+        let wire = serde_json::to_value(
+            OllamaProvider::from_config(&config).build_request("m", &messages, false, None, None),
+        )
+        .unwrap();
+        assert!(wire["options"].get("num_ctx").is_none());
+    }
+
+    #[test]
+    fn request_without_config_omits_options() {
+        let messages = vec![Message::text("user", "hi")];
+        let request = provider().build_request("llama3.2", &messages, false, None, None);
+        let wire = serde_json::to_value(&request).unwrap();
+        assert!(!wire.as_object().unwrap().contains_key("options"));
     }
 
     #[test]

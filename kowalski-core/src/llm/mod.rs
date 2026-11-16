@@ -23,11 +23,7 @@ pub fn create_llm_provider(config: &Config) -> Result<Arc<dyn LLMProvider>, Kowa
                     .with_structured_output(config.llm.structured_output),
             ))
         }
-        _ => Ok(Arc::new(
-            OllamaProvider::new(&config.ollama.host, config.ollama.port)
-                .with_native_tools(config.llm.native_tools)
-                .with_structured_output(config.llm.structured_output),
-        )),
+        _ => Ok(Arc::new(OllamaProvider::from_config(config))),
     }
 }
 

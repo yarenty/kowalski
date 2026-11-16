@@ -7,7 +7,9 @@ agent picks up the change. You can also edit the file by hand.
 
 - **Local, free:** [Ollama](https://ollama.com) on your machine. Setup lists the models it has;
   pick one and press **Check the model**. No models yet: `ollama pull gemma4:e2b` (small, works on
-  a CPU) or a larger one if your machine has the memory.
+  a CPU) or a larger one if your machine has the memory. Kowalski asks Ollama for a context
+  window of 16384 tokens; for longer prompts, or less memory use, set `context_window` under
+  `[ollama]` in the config file (`0` leaves the choice to Ollama).
 - **Hosted:** any OpenAI-compatible endpoint with your own key. The provider bills you per use.
   **Check the model** tests the key without spending tokens. The key is stored in the config file
   with owner-only permissions, or set `OPENAI_API_KEY` instead.

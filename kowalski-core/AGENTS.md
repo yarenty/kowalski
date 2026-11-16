@@ -221,7 +221,9 @@ and — since native tool calling landed — `chat_with_tool_defs` + `supports_n
 Implementations: `OllamaProvider` (`ollama.rs`, raw `/api/chat` JSON) and `OpenAIProvider`
 (`openai.rs`, async-openai — works against any OpenAI-compatible Chat Completions server).
 `create_llm_provider(config)` (`mod.rs`) is the only factory; both binaries and step
-handlers get providers through it.
+handlers get providers through it. `OllamaProvider::from_config` owns what an Ollama chat
+request carries under `options` (`[chat] temperature`, `[ollama] context_window` as
+`num_ctx`); Ollama ignores generation settings sent at the top level.
 
 **Native tool calling (opt-in, `[llm] native_tools = true`):**
 

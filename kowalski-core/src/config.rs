@@ -275,6 +275,10 @@ impl Default for LLMConfig {
     }
 }
 
+/// Default [`OllamaConfig::context_window`]. Ollama's own default on a machine with little
+/// memory is 4096 tokens, and a longer prompt silently loses its beginning.
+pub const DEFAULT_OLLAMA_CONTEXT_WINDOW: u32 = 16384;
+
 /// Configuration for Ollama integration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -285,6 +289,9 @@ pub struct OllamaConfig {
     pub port: u16,
     /// The model to use
     pub model: String,
+    /// Context window in tokens asked of Ollama on every chat request (`num_ctx`).
+    /// `0` leaves it to Ollama, which picks by the machine's memory.
+    pub context_window: u32,
     /// Additional Ollama-specific settings
     #[serde(flatten)]
     pub additional: HashMap<String, serde_json::Value>,
@@ -296,6 +303,7 @@ impl Default for OllamaConfig {
             host: "localhost".to_string(),
             port: 11434,
             model: "llama3.2".to_string(), //llama3.2 //deepseek-r1:1.5b
+            context_window: DEFAULT_OLLAMA_CONTEXT_WINDOW,
             additional: HashMap::new(),
         }
     }
