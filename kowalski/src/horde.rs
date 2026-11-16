@@ -2463,14 +2463,10 @@ impl HordeManager {
     async fn complete_run(&self, spec: &HordeSpec, run_id: &str) {
         let title = self.runs.lock().await.runs.get(run_id).map(|r| r.title.clone()).unwrap_or_default();
         let artifacts: Vec<(String, String)> = {
-            let mut runs = self.runs.lock().await;
-            let Some(run) = runs.runs.get_mut(run_id) else {
+            let runs = self.runs.lock().await;
+            let Some(run) = runs.runs.get(run_id) else {
                 return;
             };
-            run.status = RunStatus::Done;
-            run.finished_at = Some(now_ts());
-            self.persist_run_status(run_id, RunStatus::Done, None).await;
-            self.drop_cancel_token(run_id).await;
             run.steps
                 .iter()
                 .filter_map(|s| s.artifact.clone().map(|a| (s.step.clone(), a)))
@@ -2517,12 +2513,19 @@ impl HordeManager {
                 vault_note,
             },
         );
+        // The status and the finish event change together: whoever reads the run as done also
+        // finds its hand-off and vault note.
         {
             let mut runs = self.runs.lock().await;
-            if let Some(run) = runs.runs.get_mut(run_id) {
-                run.events.push(envelope_summary(&env));
-                self.persist_event(run_id, &envelope_summary(&env)).await;
-            }
+            let Some(run) = runs.runs.get_mut(run_id) else {
+                return;
+            };
+            run.events.push(envelope_summary(&env));
+            run.status = RunStatus::Done;
+            run.finished_at = Some(now_ts());
+            self.persist_event(run_id, &envelope_summary(&env)).await;
+            self.persist_run_status(run_id, RunStatus::Done, None).await;
+            self.drop_cancel_token(run_id).await;
         }
         self.publish(&env).await;
     }

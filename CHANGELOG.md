@@ -26,6 +26,7 @@ All notable changes to this project will be documented in this file, or at least
 
 ### Fixed
 - A run whose sources could not be read fails at the ingest step and shows why (for example `HTTP 502 Bad Gateway` for each feed), instead of ending as completed with an answer the model made up from an empty file. When only some sources fail, the run goes on: the step's summary names the skipped ones, and the collected sources start with a **Skipped Sources** list so the model says what is missing instead of guessing. A local file that could not be read is marked as an error too; it used to be marked ok.
+- A run that reads as completed always has its hand-off and vault note with it. For a moment after the last step, the Hordes screen and `GET /api/hordes/{id}/runs/{run_id}` could show a completed run with no answer yet.
 - The Spreadsheet analyst delivers "these tables can't answer that" when the plan finds no question answerable from the loaded tables (asking about orders when only market data is loaded), instead of failing the run with "the plan contains no sql blocks". Such a run needs no query, so it works even when tableski is unreachable; an unanswerable question no longer counts as a failed query.
 
 ## [2.6.1] - 2026-10-26
