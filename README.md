@@ -30,6 +30,13 @@ One line is enough; there is no telemetry, so this is the only way I find out.
 open it, drag **Kowalski** to Applications and open it. It starts kowalski and opens your
 browser; quit it from the Dock to stop. Apple Silicon and Intel, signed and notarized.
 
+**Mac, with Homebrew:**
+
+```bash
+brew install yarenty/tap/kowalski
+kowalski
+```
+
 **Mac or Linux, from a terminal:**
 
 ```bash

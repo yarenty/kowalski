@@ -9,6 +9,7 @@ workbook, a one-page brief, a note.
 - **Mac:** download [Kowalski.dmg](https://github.com/yarenty/kowalski/releases/latest/download/Kowalski.dmg),
   open it, drag **Kowalski** to Applications and open it. It starts kowalski and opens your
   browser. Quit it from the Dock to stop kowalski. Its log is in `~/Library/Logs/Kowalski/kowalski.log`.
+- **Mac, with Homebrew:** `brew install yarenty/tap/kowalski`, then `kowalski`.
 - **Mac or Linux, from a terminal:**
   `curl -fsSL https://raw.githubusercontent.com/yarenty/kowalski/main/install.sh | bash`, then
   `kowalski`. The installer puts `kowalski` and `kowalski-cli` in `~/.local/bin` and adds that
