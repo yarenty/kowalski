@@ -11,6 +11,8 @@ agent picks up the change. You can also edit the file by hand.
 - **Hosted:** any OpenAI-compatible endpoint with your own key. The provider bills you per use.
   **Check the model** tests the key without spending tokens. The key is stored in the config file
   with owner-only permissions, or set `OPENAI_API_KEY` instead.
+  A gateway that needs an extra request header: add
+  `openai_headers = { "X-Org" = "my-team" }` under `[llm]` in the config file.
 
 ## 2. Files and the web
 

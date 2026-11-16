@@ -34,7 +34,40 @@ impl OpenAIProvider {
     /// `api_key` may be empty for some local OpenAI-compatible servers.
     /// `api_base` should be the full OpenAI API root (e.g. `https://api.openai.com/v1` or `http://localhost:1234/v1`).
     pub fn new(api_key: &str, api_base: Option<&str>) -> Self {
+        Self::with_headers(api_key, api_base, &std::collections::BTreeMap::new())
+            .expect("no extra headers to reject")
+    }
+
+    /// The provider `[llm]` describes: key, base URL and `openai_headers`. Single owner of the
+    /// config-to-provider mapping, so every caller sends the same headers.
+    pub fn from_config(llm: &crate::config::LLMConfig) -> Result<Self, KowalskiError> {
+        Self::with_headers(
+            llm.openai_api_key.as_deref().unwrap_or_default(),
+            llm.openai_api_base.as_deref(),
+            &llm.openai_headers,
+        )
+    }
+
+    /// [`Self::new`] plus extra HTTP headers on every request (`[llm] openai_headers`). Fails
+    /// when a name or value is not a valid HTTP header.
+    pub fn with_headers(
+        api_key: &str,
+        api_base: Option<&str>,
+        headers: &std::collections::BTreeMap<String, String>,
+    ) -> Result<Self, KowalskiError> {
         let mut config = OpenAIConfig::new().with_api_key(api_key);
+        for (name, value) in headers {
+            let invalid = |e: String| {
+                KowalskiError::Configuration(format!(
+                    "[llm] openai_headers: `{name}` is not a valid HTTP header: {e}"
+                ))
+            };
+            let header = reqwest::header::HeaderName::from_bytes(name.as_bytes())
+                .map_err(|e| invalid(e.to_string()))?;
+            config = config
+                .with_header(header, value.clone())
+                .map_err(|e| invalid(e.to_string()))?;
+        }
         let api_base_display = if let Some(base) = api_base {
             let trimmed = base.trim();
             if !trimmed.is_empty() {
@@ -47,13 +80,13 @@ impl OpenAIProvider {
             "https://api.openai.com/v1".to_string()
         };
         let client = Client::with_config(config);
-        Self {
+        Ok(Self {
             client,
             embedding_model: "text-embedding-3-small".to_string(),
             api_base_display,
             native_tools: false,
             structured_output: false,
-        }
+        })
     }
 
     /// Opt in to native tool calling (`[llm] native_tools`); requires a tool-capable model.

@@ -206,6 +206,10 @@ pub struct LLMConfig {
     /// `http://127.0.0.1:1234/v1` for LM Studio). If unset, the official OpenAI API base is used.
     #[serde(default)]
     pub openai_api_base: Option<String>,
+    /// Extra HTTP headers sent with every request to the `openai` provider's endpoint, for
+    /// gateways that route or bill by a header (`openai_headers = { "X-Org" = "my-team" }`).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub openai_headers: std::collections::BTreeMap<String, String>,
     /// Model name for the LLM provider. When using `openai` provider, this is the model ID to use.
     /// For Ollama, this can be left empty to use `ollama.model` as fallback.
     #[serde(default)]
@@ -261,6 +265,7 @@ impl Default for LLMConfig {
             provider: "ollama".to_string(),
             openai_api_key: openai_key_from_env(),
             openai_api_base: None,
+            openai_headers: std::collections::BTreeMap::new(),
             model: None,
             embeddings_provider: "llm".to_string(),
             native_tools: false,

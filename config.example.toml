@@ -15,6 +15,7 @@ model = "llama3.2"
 # provider = "openai"
 # openai_api_base = "https://api.openai.com/v1"   # or "http://127.0.0.1:1234/v1" for LM Studio
 # model = "gpt-4o-mini"
+# openai_headers = { "X-Org" = "my-team" }        # extra request headers, when a gateway needs them
 
 [chat]
 temperature = 0.7

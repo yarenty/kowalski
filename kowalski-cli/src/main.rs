@@ -569,9 +569,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Create the appropriate LLM provider for consolidation
             let llm_provider: std::sync::Arc<dyn kowalski_core::llm::LLMProvider> =
                 if config.llm.provider == "openai" {
-                    let api_key = config.llm.openai_api_key.clone().unwrap_or_default();
-                    let base = config.llm.openai_api_base.as_deref();
-                    std::sync::Arc::new(kowalski_core::llm::OpenAIProvider::new(&api_key, base))
+                    std::sync::Arc::new(kowalski_core::llm::OpenAIProvider::from_config(&config.llm)?)
                 } else {
                     std::sync::Arc::new(kowalski_core::llm::OllamaProvider::new(
                         &config.ollama.host,

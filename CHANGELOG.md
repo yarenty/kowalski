@@ -15,6 +15,8 @@ All notable changes to this project will be documented in this file, or at least
 - **Hire a horde in Paperclip.** `examples/paperclip/hire-a-horde.sh` makes a horde an employee in a [Paperclip](https://github.com/paperclipai/paperclip) company through its `process` adapter: on each heartbeat it runs the horde on the issue the agent was woken for, posts the answers as a comment and marks the issue done, or blocked with what to do when the run fails or waits for an approval. Guide: `docs/guide/09-paperclip.md`.
 - **Status words on the Hordes tiles.** Each tile says what its latest run is doing: **Working** (with the step it is on), **Needs you**, **Failed**, or **Done** for a day after it finished, ahead of the next scheduled time. Tiles follow their runs every 10 seconds instead of only when the page opens. Runs are called **Working** while they run, on the Runs page too.
 
+- **Extra request headers for a hosted model.** `[llm] openai_headers = { "X-Org" = "my-team" }` sends those headers with every request to an OpenAI-compatible endpoint, for gateways that route or bill by a header. A name or value that is not a valid HTTP header stops kowalski at start with a message naming it.
+
 ### Changed
 - **One sentence for what Kowalski is.** The README, `AGENTS.md` and the crate descriptions now say the same thing: you already have a local model, and Kowalski gives it jobs. "Is Kowalski for you?" starts with the person who runs Ollama.
 - **A place to say how it went.** GitHub Discussions are open, and the README links one thread: what you ran, on what, and where it broke.

@@ -17,10 +17,8 @@ use std::sync::Arc;
 pub fn create_llm_provider(config: &Config) -> Result<Arc<dyn LLMProvider>, KowalskiError> {
     match config.llm.provider.as_str() {
         "openai" => {
-            let api_key = config.llm.openai_api_key.clone().unwrap_or_default();
-            let base = config.llm.openai_api_base.as_deref();
             Ok(Arc::new(
-                OpenAIProvider::new(&api_key, base)
+                OpenAIProvider::from_config(&config.llm)?
                     .with_native_tools(config.llm.native_tools)
                     .with_structured_output(config.llm.structured_output),
             ))
@@ -37,6 +35,18 @@ pub fn create_llm_provider(config: &Config) -> Result<Arc<dyn LLMProvider>, Kowa
 mod tests {
     use super::create_llm_provider;
     use crate::config::Config;
+
+    #[test]
+    fn openai_headers_are_accepted_and_bad_ones_rejected() {
+        let mut c = Config::default();
+        c.llm.provider = "openai".to_string();
+        c.llm.openai_api_key = Some("test-key".to_string());
+        c.llm.openai_headers.insert("X-Org".into(), "my-team".into());
+        assert!(create_llm_provider(&c).is_ok());
+        c.llm.openai_headers.insert("bad name".into(), "x".into());
+        let err = create_llm_provider(&c).err().expect("invalid header name").to_string();
+        assert!(err.contains("openai_headers"), "{err}");
+    }
 
     #[test]
     fn openai_compatible_provider_with_custom_base() {
