@@ -8,11 +8,13 @@
 //! - `POST /api/setup/tableski/start`    begin the tableski OAuth sign-in (returns the URL)
 //! - `GET  /api/setup/tableski/callback` finish it (browser redirect), write the MCP entry
 //! - `POST /api/setup/tableski/disconnect`
+//! - `POST /api/setup/servers/{name}/connect`    switch on a server kowalski ships with (a folder)
+//! - `POST /api/setup/servers/{name}/disconnect`
 //! - `POST /api/setup/restart`           re-exec the server with the new config
 
 use crate::http_api::ApiState;
 use axum::Json;
-use axum::extract::{Query, State};
+use axum::extract::{Path as UrlPath, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use kowalski_core::mcp::oauth;
@@ -26,6 +28,18 @@ use std::sync::Mutex;
 pub const TABLESKI_MCP_URL: &str = "https://mcp.tableski.io/";
 /// Name of the MCP server entry setup writes for tableski.
 pub const TABLESKI_SERVER_NAME: &str = "tableski";
+
+/// A server of our own that ships with kowalski and is switched on from the setup screen. It
+/// reads one folder, named when it is switched on.
+pub struct OwnServer {
+    /// Name of its `[[mcp.servers]]` entry.
+    pub name: &'static str,
+    /// Its program, found by [`own_server_binary`].
+    pub binary: &'static str,
+}
+
+/// The servers the setup screen can switch on. One list for the status, the routes and the UI.
+pub const OWN_SERVERS: &[OwnServer] = &[OwnServer { name: "pdf", binary: "emperor-pdf" }];
 
 type ApiResult = Result<Json<Value>, (StatusCode, String)>;
 
@@ -106,6 +120,98 @@ async fn ollama_models(host: &str, port: u16) -> Option<Vec<String>> {
     )
 }
 
+fn own_server(name: &str) -> Option<&'static OwnServer> {
+    OWN_SERVERS.iter().find(|s| s.name == name)
+}
+
+/// The first of `dirs` that holds the program `binary`.
+fn binary_in(dirs: impl IntoIterator<Item = PathBuf>, binary: &str) -> Option<PathBuf> {
+    let file = format!("{binary}{}", std::env::consts::EXE_SUFFIX);
+    dirs.into_iter().map(|d| d.join(&file)).find(|p| p.is_file())
+}
+
+/// Where a shipped server's program is: the folder named by `KOWALSKI_SERVERS_DIR`, else beside
+/// the running `kowalski` (where a release puts it), else on `PATH`.
+pub fn own_server_binary(binary: &str) -> Option<PathBuf> {
+    let named = std::env::var_os(kowalski_core::config::SERVERS_DIR_ENV).map(PathBuf::from);
+    let beside = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf));
+    let on_path = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect::<Vec<_>>()).unwrap_or_default();
+    binary_in(named.into_iter().chain(beside).chain(on_path), binary)
+}
+
+/// The `[[mcp.servers]]` entry that starts `server` on `dir`: kowalski runs the program itself
+/// and talks to it over stdio, read-only.
+fn own_server_entry(server: &OwnServer, program: &Path, dir: &str) -> toml::Table {
+    let mut e = toml::Table::new();
+    e.insert("name".into(), server.name.into());
+    e.insert("transport".into(), "stdio".into());
+    let command = [program.display().to_string().as_str(), "serve", "--stdio", "--root", dir].map(toml::Value::from);
+    e.insert("command".into(), toml::Value::Array(command.to_vec()));
+    e
+}
+
+/// The folder a switched-on server reads: the value after `--root` in its command.
+fn own_server_dir(entry: &kowalski_core::config::McpServerConfig) -> Option<&str> {
+    let at = entry.command.iter().position(|a| a == "--root")?;
+    entry.command.get(at + 1).map(String::as_str)
+}
+
+fn own_servers_status(cfg: &kowalski_core::config::Config) -> Value {
+    OWN_SERVERS
+        .iter()
+        .map(|s| {
+            let entry = cfg.mcp.servers.iter().find(|e| e.name == s.name);
+            json!({
+                "name": s.name,
+                "available": own_server_binary(s.binary).is_some(),
+                "connected": entry.is_some(),
+                "dir": entry.and_then(own_server_dir),
+            })
+        })
+        .collect()
+}
+
+/// A folder for a shipped server.
+#[derive(Deserialize)]
+pub struct ServerFolder {
+    pub dir: String,
+}
+
+/// `POST /api/setup/servers/{name}/connect`: write the entry that starts the server on a folder.
+pub async fn server_connect(
+    State(state): State<ApiState>,
+    UrlPath(name): UrlPath<String>,
+    Json(body): Json<ServerFolder>,
+) -> ApiResult {
+    let server = own_server(&name).ok_or_else(|| bad(format!("`{name}` is not a server kowalski ships with")))?;
+    let dir = body.dir.trim();
+    if dir.is_empty() {
+        return Err(bad("choose the folder it should read"));
+    }
+    let expanded = expand_home(dir);
+    if !Path::new(&expanded).is_dir() {
+        return Err(bad(format!("`{dir}` is not a folder")));
+    }
+    let program = own_server_binary(server.binary).ok_or_else(|| {
+        bad(format!(
+            "`{}` was not found beside kowalski or on your PATH. It comes with kowalski's releases; from a source build, install it with `cargo install {}`",
+            server.binary, server.binary
+        ))
+    })?;
+    let entry = own_server_entry(server, &program, &expanded);
+    upsert_server_entry(&write_target(&state.config_path), server.name, Some(entry))
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(json!({ "ok": true, "restart_needed": true })))
+}
+
+/// `POST /api/setup/servers/{name}/disconnect`: drop the entry.
+pub async fn server_disconnect(State(state): State<ApiState>, UrlPath(name): UrlPath<String>) -> ApiResult {
+    let server = own_server(&name).ok_or_else(|| bad(format!("`{name}` is not a server kowalski ships with")))?;
+    upsert_server_entry(&write_target(&state.config_path), server.name, None)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(json!({ "ok": true, "restart_needed": true })))
+}
+
 fn tableski_entry(config: &kowalski_core::config::Config) -> Option<&kowalski_core::config::McpServerConfig> {
     config.mcp.servers.iter().find(|s| s.name == TABLESKI_SERVER_NAME)
 }
@@ -135,6 +241,7 @@ pub async fn status(State(state): State<ApiState>) -> Json<Value> {
             "url": tableski.map(|s| s.url.clone()),
             "signed_in": tableski.and_then(|s| s.oauth.as_ref()).is_some(),
         },
+        "servers": own_servers_status(cfg),
     }))
 }
 
@@ -416,12 +523,7 @@ pub async fn tableski_callback(State(state): State<ApiState>, Query(q): Query<Ha
 }
 
 fn upsert_mcp_server(path: &Path, url: &str, token_file: Option<&Path>) -> Result<(), String> {
-    let mut t = read_table(path)?;
-    let mcp = sub(&mut t, "mcp");
-    let servers = mcp.entry("servers".to_string()).or_insert_with(|| toml::Value::Array(Vec::new()));
-    let arr = servers.as_array_mut().ok_or("mcp.servers is not a list")?;
-    arr.retain(|v| v.get("name").and_then(|n| n.as_str()) != Some(TABLESKI_SERVER_NAME));
-    if let Some(tf) = token_file {
+    let entry = token_file.map(|tf| {
         let mut e = toml::Table::new();
         e.insert("name".into(), TABLESKI_SERVER_NAME.into());
         e.insert("url".into(), url.into());
@@ -429,6 +531,20 @@ fn upsert_mcp_server(path: &Path, url: &str, token_file: Option<&Path>) -> Resul
         let mut o = toml::Table::new();
         o.insert("token_file".into(), tf.display().to_string().into());
         e.insert("oauth".into(), toml::Value::Table(o));
+        e
+    });
+    upsert_server_entry(path, TABLESKI_SERVER_NAME, entry)
+}
+
+/// Replace the `[[mcp.servers]]` entry called `name` with `entry`, or remove it (`None`). Every
+/// other setting in the file is kept.
+fn upsert_server_entry(path: &Path, name: &str, entry: Option<toml::Table>) -> Result<(), String> {
+    let mut t = read_table(path)?;
+    let mcp = sub(&mut t, "mcp");
+    let servers = mcp.entry("servers".to_string()).or_insert_with(|| toml::Value::Array(Vec::new()));
+    let arr = servers.as_array_mut().ok_or("mcp.servers is not a list")?;
+    arr.retain(|v| v.get("name").and_then(|n| n.as_str()) != Some(name));
+    if let Some(e) = entry {
         arr.push(toml::Value::Table(e));
     }
     let secret = t.get("llm").and_then(|l| l.get("openai_api_key")).is_some();
@@ -479,4 +595,52 @@ pub async fn restart() -> Json<Value> {
         }
     });
     Json(json!({ "ok": true, "restarting": true }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_shipped_server_is_found_in_the_first_folder_that_has_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let (empty, bundled) = (dir.path().join("empty"), dir.path().join("bundled"));
+        std::fs::create_dir_all(&empty).unwrap();
+        std::fs::create_dir_all(&bundled).unwrap();
+        let program = bundled.join(format!("emperor-pdf{}", std::env::consts::EXE_SUFFIX));
+        std::fs::write(&program, "").unwrap();
+
+        assert_eq!(binary_in([empty.clone(), bundled.clone()], "emperor-pdf"), Some(program));
+        assert_eq!(binary_in([empty], "emperor-pdf"), None);
+        assert_eq!(binary_in([bundled], "emperor-folder"), None);
+    }
+
+    #[test]
+    fn switching_a_server_on_and_off_keeps_the_other_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("config.toml");
+        std::fs::write(&cfg, "[files]\ndir = \"/data\"\n\n[[mcp.servers]]\nname = \"tableski\"\nurl = \"https://mcp.tableski.io/\"\ntransport = \"http\"\n").unwrap();
+        let pdf = own_server("pdf").unwrap();
+        let load = || toml::from_str::<kowalski_core::config::Config>(&std::fs::read_to_string(&cfg).unwrap()).unwrap();
+
+        let entry = own_server_entry(pdf, Path::new("/opt/kowalski/emperor-pdf"), "/Users/me/Invoices");
+        upsert_server_entry(&cfg, pdf.name, Some(entry)).unwrap();
+        let written = load();
+        let server = written.mcp.servers.iter().find(|s| s.name == "pdf").expect("pdf entry");
+        assert!(matches!(server.transport, kowalski_core::config::McpTransport::Stdio));
+        assert_eq!(server.command, ["/opt/kowalski/emperor-pdf", "serve", "--stdio", "--root", "/Users/me/Invoices"]);
+        assert_eq!(own_server_dir(server), Some("/Users/me/Invoices"));
+        assert!(tableski_entry(&written).is_some(), "tableski stays connected");
+        assert_eq!(files_dir(&written).as_deref(), Some("/data"));
+
+        let moved = own_server_entry(pdf, Path::new("/opt/kowalski/emperor-pdf"), "/Users/me/Papers");
+        upsert_server_entry(&cfg, pdf.name, Some(moved)).unwrap();
+        let written = load();
+        assert_eq!(written.mcp.servers.iter().filter(|s| s.name == "pdf").count(), 1, "one entry, not two");
+
+        upsert_server_entry(&cfg, pdf.name, None).unwrap();
+        let written = load();
+        assert!(written.mcp.servers.iter().all(|s| s.name != "pdf"));
+        assert!(tableski_entry(&written).is_some());
+    }
 }

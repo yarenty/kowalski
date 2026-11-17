@@ -85,6 +85,11 @@ pub fn user_config_path() -> Option<std::path::PathBuf> {
 /// (where imported bundles land).
 pub const HORDES_DIR_ENV: &str = "KOWALSKI_HORDES_DIR";
 
+/// Environment variable naming the folder that holds the servers kowalski ships with
+/// (`emperor-pdf` and friends). Unset, they are looked for beside the running `kowalski`, then
+/// on `PATH`.
+pub const SERVERS_DIR_ENV: &str = "KOWALSKI_SERVERS_DIR";
+
 /// Single source of truth for horde discovery roots, in priority order:
 /// [`HORDES_DIR_ENV`] entries, `<config-dir>/hordes`, `<config-dir>/../examples`,
 /// and `<cwd>/examples`. Used by the server catalog and by CLI horde-id resolution.

@@ -331,6 +331,9 @@ execute from a manifest directly — import regenerates a horde dir first.
   dirs), `user_hordes_root` (where imports land — first env entry, else
   `<config-dir>/hordes`, never `examples/`), and `ollama_base_url` — shared by the
   server catalog and the CLI so the two never drift (root Rule 8).
+  `SERVERS_DIR_ENV` = `KOWALSKI_SERVERS_DIR` names the folder of the servers kowalski ships
+  with (`emperor-pdf`); the setup screen (`kowalski/src/setup.rs`, `OWN_SERVERS`) looks there,
+  then beside the running `kowalski`, then on `PATH`.
 
 ### Tool execution model (three sources, one abstraction)
 

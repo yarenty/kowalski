@@ -32,6 +32,14 @@ agent picks up the change. You can also edit the file by hand.
 **Connect tableski** signs you in to tableski.io once (free plan, no card); kowalski keeps the
 sign-in fresh and restarts so agents get its tools. See [tableski](06-tableski.md).
 
+## 4. PDFs (optional)
+
+Type the folder that holds your PDFs and press **Switch on**: kowalski starts
+[emperor-pdf](https://github.com/yarenty/emperor-pdf) on that folder, read-only, and restarts so
+agents get its tools (`pdf_text`, `pdf_search` and others). **Switch off** removes it again. The
+card needs the `emperor-pdf` program beside `kowalski` or on your `PATH`; when it is missing, the
+card says how to get it. More in [Files, PDFs, mail and tasks](10-files-pdf-mail-tasks.md).
+
 ## Always allowed
 
 Shown once you have pressed **Always allow** on an approval: each step that may run without

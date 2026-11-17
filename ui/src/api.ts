@@ -421,6 +421,8 @@ export type SetupStatus = {
   web_search: boolean;
   search: { provider: string; has_key: boolean; engine_id: string | null };
   tableski: { connected: boolean; url: string | null; signed_in: boolean };
+  /** Servers kowalski ships with: found on this machine, switched on, and the folder each reads. */
+  servers: { name: string; available: boolean; connected: boolean; dir: string | null }[];
 };
 export type ModelChoice = {
   provider: "ollama" | "openai";
@@ -443,6 +445,10 @@ export const api = {
   setupTableskiStart: () =>
     json<{ authorize_url: string }>("/api/setup/tableski/start", { method: "POST", body: "{}" }),
   setupTableskiDisconnect: () => json<{ ok: boolean }>("/api/setup/tableski/disconnect", { method: "POST" }),
+  setupServerConnect: (name: string, dir: string) =>
+    json<{ ok: boolean }>(`/api/setup/servers/${encodeURIComponent(name)}/connect`, { method: "POST", body: JSON.stringify({ dir }) }),
+  setupServerDisconnect: (name: string) =>
+    json<{ ok: boolean }>(`/api/setup/servers/${encodeURIComponent(name)}/disconnect`, { method: "POST" }),
   setupRestart: () => json<{ ok: boolean }>("/api/setup/restart", { method: "POST" }),
   health: () => json<Health>("/api/health"),
   agents: () => json<AgentsResponse>("/api/agents"),

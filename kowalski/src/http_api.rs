@@ -453,6 +453,8 @@ fn build_app(
         .route("/api/setup/tableski/start", post(crate::setup::tableski_start))
         .route("/api/setup/tableski/callback", get(crate::setup::tableski_callback))
         .route("/api/setup/tableski/disconnect", post(crate::setup::tableski_disconnect))
+        .route("/api/setup/servers/{name}/connect", post(crate::setup::server_connect))
+        .route("/api/setup/servers/{name}/disconnect", post(crate::setup::server_disconnect))
         .route("/api/setup/restart", post(crate::setup::restart))
         .route("/api/agents", get(get_agents))
         .route("/api/sessions", get(get_sessions))
@@ -3945,6 +3947,30 @@ mod api_tests {
         let ids: Vec<String> = catalog.list().iter().map(|e| e.spec.id.clone()).collect();
         assert!(ids.contains(&"url-summarizer".to_string()) && ids.contains(&"knowledge-compiler".to_string()), "{ids:?}");
         assert!(catalog.list().iter().all(|e| e.load_error.is_none()));
+    }
+
+    #[tokio::test]
+    async fn setup_lists_shipped_servers_and_refuses_what_it_cannot_switch_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = fixture(dir.path(), None).await;
+
+        let (status, st) = call(&app, "GET", "/api/setup/status", None, None).await;
+        assert_eq!(status, StatusCode::OK);
+        let pdf = st["servers"].as_array().unwrap().iter().find(|s| s["name"] == "pdf").expect("pdf listed");
+        assert_eq!(pdf["connected"], false);
+        assert!(pdf["dir"].is_null());
+
+        let (status, _) = call(&app, "POST", "/api/setup/servers/nope/connect", Some(json!({ "dir": dir.path() })), None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let missing = dir.path().join("not-there");
+        let (status, _) = call(&app, "POST", "/api/setup/servers/pdf/connect", Some(json!({ "dir": missing })), None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (status, _) = call(&app, "POST", "/api/setup/servers/pdf/connect", Some(json!({ "dir": " " })), None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+
+        let (status, off) = call(&app, "POST", "/api/setup/servers/pdf/disconnect", None, None).await;
+        assert_eq!(status, StatusCode::OK, "{off}");
+        assert_eq!(off["restart_needed"], true);
     }
 
     #[tokio::test]

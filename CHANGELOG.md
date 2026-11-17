@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file, or at least
 ## [Unreleased]
 
 ### Added
+- **PDFs from Setup.** A **Read your PDFs** card in Setup: type a folder, press **Switch on**, and agents can read the PDFs in it through [emperor-pdf](https://github.com/yarenty/emperor-pdf), read-only. No config file to edit. kowalski looks for the `emperor-pdf` program beside itself, then on `PATH` (`KOWALSKI_SERVERS_DIR` names another folder).
 - **Homebrew.** `brew install yarenty/tap/kowalski` installs the pre-built `kowalski` and `kowalski-cli` on a Mac, and `brew upgrade` follows new releases.
 - **Article: eight tools or fewer.** What a big MCP tool list costs on every request (tokens, waiting time on a local model, money on a hosted one), measured, and the rules the emperor servers keep because of it: `docs/blog/small-mcp-servers.md`.
 - **Files, PDFs, mail and tasks.** A user guide page and `config.example.toml` blocks for connecting emperor-folder, emperor-pdf, emperor-mail and emperor-vikunja: what each lets agents do, the `[[mcp.servers]]` block for each, and how to limit a horde step to some of their tools with `tool_ids`. Guide: `docs/guide/10-files-pdf-mail-tasks.md`.

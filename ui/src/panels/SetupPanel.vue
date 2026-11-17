@@ -22,6 +22,19 @@ const searchProvider = ref("duckduckgo");
 const searchEngineId = ref("");
 const vaultDir = ref("");
 
+/** Words for each server kowalski ships with (`status.servers`, by name). */
+const SERVER_COPY: Record<string, { step: string; title: string; blurb: string; placeholder: string; program: string }> = {
+  pdf: {
+    step: "PDFs",
+    title: "Read your PDFs",
+    blurb: "Choose a folder and your agents can read the PDFs in it: invoices, contracts, papers. Read-only, and nothing outside the folder.",
+    placeholder: "~/Documents/Invoices",
+    program: "emperor-pdf",
+  },
+};
+/** The folder typed for each server, by name. */
+const serverDirs = ref<Record<string, string>>({});
+
 /** Search providers Setup offers (`[search] provider`); SearXNG is set in the config file. */
 const SEARCH_CHOICES: Record<string, { label: string; key?: string; link?: string; note: string }> = {
   duckduckgo: { label: "DuckDuckGo (no key)", note: "Free and works right away. It is not an official API, so it may slow down or refuse now and then; a key below is steadier." },
@@ -98,6 +111,7 @@ async function load() {
     searchProvider.value = s.search.provider in SEARCH_CHOICES || s.search.provider === "searxng" ? s.search.provider : "duckduckgo";
     searchEngineId.value = s.search.engine_id ?? "";
     vaultDir.value = s.vault_dir ?? "";
+    for (const server of s.servers) serverDirs.value[server.name] = server.dir ?? serverDirs.value[server.name] ?? "";
     apiKey.value = "";
     searchKey.value = "";
     saved.value = snapshot();
@@ -187,6 +201,33 @@ async function connectTableski() {
   }
 }
 
+/** The three fixed steps plus one per shipped server the screen knows. */
+const stepCount = computed(() => 3 + (status.value?.servers.filter((x) => SERVER_COPY[x.name]).length ?? 0));
+
+async function connectServer(name: string) {
+  err.value = null;
+  busy.value = name;
+  try {
+    await api.setupServerConnect(name, (serverDirs.value[name] ?? "").trim());
+    await restart(`${SERVER_COPY[name]?.step ?? name} switched on. Restarting kowalski so agents get the tools…`);
+  } catch (e) {
+    err.value = e instanceof Error ? e.message : String(e);
+    busy.value = null;
+  }
+}
+
+async function disconnectServer(name: string) {
+  err.value = null;
+  busy.value = name;
+  try {
+    await api.setupServerDisconnect(name);
+    await restart("Switched off. Restarting kowalski…");
+  } catch (e) {
+    err.value = e instanceof Error ? e.message : String(e);
+    busy.value = null;
+  }
+}
+
 async function disconnectTableski() {
   if (!window.confirm("Disconnect tableski? Agents lose its SQL tools until you connect again.")) return;
   busy.value = "tableski";
@@ -269,7 +310,7 @@ onMounted(async () => {
         <div class="step-head">
           <span class="n" aria-hidden="true">1</span>
           <div>
-            <p class="eyebrow plain">Step 1 of 3 · Model</p>
+            <p class="eyebrow plain">Step 1 of {{ stepCount }} · Model</p>
             <h2>Which brain?</h2>
           </div>
         </div>
@@ -332,7 +373,7 @@ onMounted(async () => {
         <div class="step-head">
           <span class="n" aria-hidden="true">2</span>
           <div>
-            <p class="eyebrow plain">Step 2 of 3 · Files folder</p>
+            <p class="eyebrow plain">Step 2 of {{ stepCount }} · Files folder</p>
             <h2>Files and the web</h2>
           </div>
         </div>
@@ -377,7 +418,7 @@ onMounted(async () => {
         <div class="step-head">
           <span class="n" :class="{ done: status.tableski.connected }" aria-hidden="true">{{ status.tableski.connected ? "✓" : "3" }}</span>
           <div>
-            <p class="eyebrow plain">Step 3 of 3 · tableski (optional)</p>
+            <p class="eyebrow plain">Step 3 of {{ stepCount }} · tableski (optional)</p>
             <h2>Spreadsheets as SQL</h2>
           </div>
         </div>
@@ -390,6 +431,31 @@ onMounted(async () => {
           <button v-if="!status.tableski.connected" type="button" :disabled="busy !== null" @click="connectTableski">{{ busy === "tableski" ? "Opening tableski…" : "Connect tableski" }}</button>
           <button v-else type="button" class="danger" :disabled="busy !== null" @click="disconnectTableski">Disconnect</button>
         </div>
+      </li>
+
+      <li v-for="(server, i) in status.servers.filter((x) => SERVER_COPY[x.name])" :key="server.name" class="step card">
+        <div class="step-head">
+          <span class="n" :class="{ done: server.connected }" aria-hidden="true">{{ server.connected ? "✓" : 4 + i }}</span>
+          <div>
+            <p class="eyebrow plain">Step {{ 4 + i }} of {{ stepCount }} · {{ SERVER_COPY[server.name].step }} (optional)</p>
+            <h2>{{ SERVER_COPY[server.name].title }}</h2>
+          </div>
+        </div>
+        <p v-if="server.connected" class="note note-ok"><strong>On</strong>: reading {{ server.dir }}. Saved already; nothing else to press.</p>
+        <p v-else>{{ SERVER_COPY[server.name].blurb }}</p>
+        <p v-if="!server.available && !server.connected" class="note note-info">
+          <code>{{ SERVER_COPY[server.name].program }}</code> was not found beside kowalski. It comes with kowalski's releases; from a source build, run
+          <code>cargo install {{ SERVER_COPY[server.name].program }}</code> and reload this page.
+        </p>
+        <template v-else>
+          <div v-if="!server.connected" class="fields">
+            <label class="field"><span>Folder</span><input v-model="serverDirs[server.name]" :placeholder="SERVER_COPY[server.name].placeholder" spellcheck="false" /></label>
+          </div>
+          <div class="row">
+            <button v-if="!server.connected" type="button" :disabled="busy !== null || !(serverDirs[server.name] ?? '').trim()" @click="connectServer(server.name)">{{ busy === server.name ? "Switching on…" : "Switch on" }}</button>
+            <button v-else type="button" class="danger" :disabled="busy !== null" @click="disconnectServer(server.name)">Switch off</button>
+          </div>
+        </template>
       </li>
     </ol>
     <p v-else-if="!err" class="muted">Loading your current settings…</p>
