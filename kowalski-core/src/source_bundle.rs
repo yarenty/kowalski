@@ -19,6 +19,41 @@ pub enum SourceToken {
     Text(String),
 }
 
+/// One source the ingest could not read, with the reason.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceFailure {
+    pub source: String,
+    pub error: String,
+}
+
+/// What an ingest read and what it had to skip.
+#[derive(Debug, Clone)]
+pub struct IngestReport {
+    /// The raw-collection markdown written under `root/raw/`.
+    pub path: PathBuf,
+    /// Sources whose content is in the collection (pages, files, prompt text, project tree).
+    pub read: usize,
+    /// Sources that could not be fetched or read.
+    pub failed: Vec<SourceFailure>,
+}
+
+impl IngestReport {
+    /// True when sources were named and none of them could be read: the collection holds only
+    /// error notes, so nothing downstream has anything to work from.
+    pub fn nothing_read(&self) -> bool {
+        self.read == 0 && !self.failed.is_empty()
+    }
+
+    /// `source (reason); source (reason)` for run summaries and error messages.
+    pub fn failed_summary(&self) -> String {
+        self.failed
+            .iter()
+            .map(|f| format!("{} ({})", f.source, f.error))
+            .collect::<Vec<_>>()
+            .join("; ")
+    }
+}
+
 fn trim_token(raw: &str) -> String {
     raw.trim()
         .trim_matches(|c: char| c == '"' || c == '\'' || c == '(' || c == ')')
@@ -333,6 +368,15 @@ pub fn write_raw_sources_markdown(
     root: &Path,
     source_input: &str,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    ingest_sources(root, source_input).map(|report| report.path)
+}
+
+/// [`write_raw_sources_markdown`] plus the count of sources read and the list of those skipped,
+/// so the caller can fail a run that has nothing to work from.
+pub fn ingest_sources(
+    root: &Path,
+    source_input: &str,
+) -> Result<IngestReport, Box<dyn std::error::Error>> {
     let assets = parse_source_tokens(source_input);
     let project_root = extract_project_path_from_source(source_input);
     let project_entries = project_root
@@ -362,12 +406,15 @@ pub fn write_raw_sources_markdown(
     doc.push_str("|---:|---|---|---|---:|---|\n");
 
     let mut sections = String::new();
+    let mut read = usize::from(project_entries.as_ref().is_some_and(|e| !e.is_empty()));
+    let mut failed: Vec<SourceFailure> = Vec::new();
 
     for (idx, asset) in assets.iter().enumerate() {
         match asset {
             SourceToken::Url(url) => {
                 let section = match fetch_url_for_bundle(url) {
                     Ok((body, note, resolved)) => {
+                        read += 1;
                         let clipped = body.chars().take(24000).collect::<String>();
                         doc.push_str(&format!(
                             "| {} | url | {} | ok | {} | {} |\n",
@@ -389,6 +436,7 @@ pub fn write_raw_sources_markdown(
                     }
                     Err(e) => {
                         let err = format!("Fetch error: {}", e);
+                        failed.push(SourceFailure { source: url.clone(), error: e.clone() });
                         doc.push_str(&format!(
                             "| {} | url | {} | error | 0 | {} |\n",
                             idx + 1,
@@ -408,17 +456,24 @@ pub fn write_raw_sources_markdown(
                 sections.push_str(&section);
             }
             SourceToken::FilePath(path) => {
-                let content = match file_system::read_file_bounded(Path::new(path), DEFAULT_MAX_READ_BYTES)
+                let (content, status) = match file_system::read_file_bounded(Path::new(path), DEFAULT_MAX_READ_BYTES)
                 {
-                    Ok(s) => s,
-                    Err(e) => format!("(unable to read file: {e})"),
+                    Ok(s) => {
+                        read += 1;
+                        (s, "ok")
+                    }
+                    Err(e) => {
+                        failed.push(SourceFailure { source: path.clone(), error: e.to_string() });
+                        (format!("(unable to read file: {e})"), "error")
+                    }
                 };
                 let clipped = content.chars().take(24000).collect::<String>();
                 doc.push_str(&format!(
-                    "| {} | file | {} | ok | {} | local file |\n",
+                    "| {} | file | {} | {} | {} | local file |\n",
                     idx + 1,
                     path,
-                    clipped.chars().count()
+                    status,
+                    if status == "ok" { clipped.chars().count() } else { 0 }
                 ));
                 sections.push_str(&format!(
                     "<!-- source:{}:file:begin -->\n## Source {}: File\n\n- Path: `{}`\n\n{}\n\n<!-- source:{}:file:end -->\n\n",
@@ -430,6 +485,7 @@ pub fn write_raw_sources_markdown(
                 ));
             }
             SourceToken::Text(text) => {
+                read += 1;
                 let slug = slugify(text);
                 doc.push_str(&format!(
                     "| {} | text | {} | ok | {} | direct prompt text |\n",
@@ -449,6 +505,16 @@ pub fn write_raw_sources_markdown(
         }
     }
     doc.push('\n');
+    if !failed.is_empty() {
+        doc.push_str("## Skipped Sources\n\n");
+        doc.push_str(
+            "These sources could not be read. Nothing below comes from them; say so instead of guessing their content.\n\n",
+        );
+        for f in &failed {
+            doc.push_str(&format!("- `{}`: {}\n", f.source, f.error));
+        }
+        doc.push('\n');
+    }
     doc.push_str("## Source Collection\n\n");
     if let (Some(root), Some(entries)) = (project_root.as_ref(), project_entries.as_ref()) {
         doc.push_str(&render_project_tree_section(root, entries));
@@ -458,7 +524,7 @@ pub fn write_raw_sources_markdown(
         fs::create_dir_all(parent)?;
     }
     fs::write(&out, doc)?;
-    Ok(out)
+    Ok(IngestReport { path: out, read, failed })
 }
 
 /// Alias for older naming (`InputAsset` in the CLI crate).
@@ -496,6 +562,48 @@ mod tests {
         assert!(paths.contains(&"README.md"));
         assert!(!paths.iter().any(|p| p.contains(".git")));
         assert!(!paths.iter().any(|p| p.contains("target")));
+    }
+
+    /// Nothing listens on port 1, so the fetch is refused at once with no network needed.
+    const DEAD_URL: &str = "http://127.0.0.1:1/feed.xml";
+
+    #[test]
+    fn ingest_reports_nothing_read_when_every_source_fails() {
+        let out = tempfile::tempdir().unwrap();
+        let input = format!("{DEAD_URL} http://127.0.0.1:1/other.xml");
+        let report = ingest_sources(out.path(), &input).unwrap();
+        assert_eq!(report.read, 0);
+        assert_eq!(report.failed.len(), 2);
+        assert!(report.nothing_read());
+        assert!(report.failed_summary().contains(DEAD_URL));
+        let body = fs::read_to_string(&report.path).unwrap();
+        assert!(body.contains("## Skipped Sources"));
+        assert!(body.contains("| error |"));
+    }
+
+    #[test]
+    fn ingest_names_skipped_sources_when_some_are_read() {
+        let out = tempfile::tempdir().unwrap();
+        let notes = tempfile::tempdir().unwrap();
+        let file = notes.path().join("notes.md");
+        fs::write(&file, "alpha beta").unwrap();
+        let input = format!("{DEAD_URL} {}", file.display());
+        let report = ingest_sources(out.path(), &input).unwrap();
+        assert_eq!(report.read, 1);
+        assert_eq!(report.failed.len(), 1);
+        assert!(!report.nothing_read());
+        let body = fs::read_to_string(&report.path).unwrap();
+        assert!(body.contains("alpha beta"));
+        assert!(body.contains(&format!("- `{DEAD_URL}`")));
+    }
+
+    #[test]
+    fn ingest_of_plain_text_reads_one_source_and_skips_none() {
+        let out = tempfile::tempdir().unwrap();
+        let report = ingest_sources(out.path(), "summarise the quarter").unwrap();
+        assert_eq!(report.read, 1);
+        assert!(report.failed.is_empty());
+        assert!(!fs::read_to_string(&report.path).unwrap().contains("Skipped Sources"));
     }
 
     #[test]

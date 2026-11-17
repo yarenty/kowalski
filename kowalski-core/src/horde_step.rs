@@ -23,7 +23,7 @@ use crate::horde_stages::{
 };
 use crate::llm::provider::LLMProvider;
 use crate::source_bundle::{
-    extract_project_path_from_source, ingest_assets_markdown, parse_input_assets,
+    extract_project_path_from_source, ingest_sources, parse_input_assets,
 };
 use crate::tools::manager::ToolManager;
 use async_trait::async_trait;
@@ -483,21 +483,36 @@ impl StepHandler for IngestStepHandler {
             .map(|p| format!("; project tree from {}", p.display()))
             .unwrap_or_default();
 
-        let path = tokio::task::spawn_blocking(move || {
-            ingest_assets_markdown(&debug_root, &source).map_err(|e| e.to_string())
+        let report = tokio::task::spawn_blocking(move || {
+            ingest_sources(&debug_root, &source).map_err(|e| e.to_string())
         })
         .await
         .map_err(|e| KowalskiError::Validation(format!("ingest task join: {e}")))?
         .map_err(KowalskiError::Validation)?;
 
+        // Nothing to work from: stop here instead of letting a model step answer from error notes.
+        if report.nothing_read() {
+            return Err(KowalskiError::Validation(format!(
+                "none of the {} source(s) could be read: {}",
+                report.failed.len(),
+                report.failed_summary()
+            )));
+        }
+        let skipped_note = if report.failed.is_empty() {
+            String::new()
+        } else {
+            format!("; skipped {}: {}", report.failed.len(), report.failed_summary())
+        };
+
         Ok(StepOutcome::Completed {
             summary: format!(
-                "Captured {} source token(s) into raw collection: {}{}",
+                "Captured {} source token(s) into raw collection: {}{}{}",
                 source_count,
-                path.display(),
-                project_note
+                report.path.display(),
+                project_note,
+                skipped_note
             ),
-            artifact: Some(path),
+            artifact: Some(report.path),
             status: StageStatus::Pass,
         })
     }
@@ -894,6 +909,35 @@ mod tests {
         assert!(artifact.starts_with(dir.path().join(WORKDIR_DEBUG_DIR)));
         assert!(artifact.is_file());
         assert!(summary.contains("source token(s)"));
+    }
+
+    #[tokio::test]
+    async fn ingest_handler_fails_when_no_source_can_be_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let step = spec("ingest", "test-ingest");
+        // nothing listens on port 1: refused at once, no network needed
+        let source = "http://127.0.0.1:1/a.xml http://127.0.0.1:1/b.xml";
+        let ctx = make_ctx(&step, dir.path(), Some(source), None, None, &cancel);
+        let err = IngestStepHandler.execute(&ctx).await.unwrap_err().to_string();
+        assert!(err.contains("none of the 2 source(s) could be read"), "{err}");
+        assert!(err.contains("http://127.0.0.1:1/a.xml"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn ingest_handler_goes_on_and_names_skipped_sources() {
+        let dir = tempfile::tempdir().unwrap();
+        let notes = tempfile::tempdir().unwrap();
+        let file = notes.path().join("notes.md");
+        std::fs::write(&file, "alpha beta").unwrap();
+        let cancel = CancellationToken::new();
+        let step = spec("ingest", "test-ingest");
+        let source = format!("http://127.0.0.1:1/a.xml {}", file.display());
+        let ctx = make_ctx(&step, dir.path(), Some(&source), None, None, &cancel);
+        let StepOutcome::Completed { status, summary, .. } =
+            IngestStepHandler.execute(&ctx).await.unwrap();
+        assert_eq!(status, StageStatus::Pass);
+        assert!(summary.contains("skipped 1: http://127.0.0.1:1/a.xml"), "{summary}");
     }
 
     #[test]

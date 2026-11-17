@@ -12,7 +12,7 @@ use kowalski_core::markdown_pipeline::{
     maybe_normalize_markdown, parse_app_manifest, parse_stage_agent, render_context_attachments,
     resolve_manifest_path, AppManifestMeta, StageAgentMeta,
 };
-use kowalski_core::source_bundle::{extract_project_path_from_source, ingest_assets_markdown};
+use kowalski_core::source_bundle::{extract_project_path_from_source, ingest_sources};
 use kowalski_core::{
     apply_patches_dry_run, format_apply_artifact, format_verify_artifact, resolve_verify_cwd,
     run_verify_command, DEFAULT_VERIFY_MAX_OUTPUT_BYTES, DEFAULT_VERIFY_TIMEOUT_SECS,
@@ -507,7 +507,20 @@ where
         log.push_str(&format!("## Step: {} ({})\n\n", step, agent.meta.kind));
 
         let out_path = if agent.meta.kind == "ingest" {
-            let p = ingest_assets_markdown(&work_debug(&work), source)?;
+            let report = ingest_sources(&work_debug(&work), source)?;
+            if report.nothing_read() {
+                return Err(format!(
+                    "none of the {} source(s) could be read: {}",
+                    report.failed.len(),
+                    report.failed_summary()
+                )
+                .into());
+            }
+            if !report.failed.is_empty() {
+                println!("  skipped {}: {}", report.failed.len(), report.failed_summary());
+                log.push_str(&format!("- skipped: {}\n", report.failed_summary()));
+            }
+            let p = report.path;
             log.push_str(&format!("- output: {}\n\n", p.display()));
             task_outputs.push((step.clone(), p.clone()));
             on_step(&step, agent.meta.kind.as_str(), p.as_path());
