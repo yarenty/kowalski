@@ -571,10 +571,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if config.llm.provider == "openai" {
                     std::sync::Arc::new(kowalski_core::llm::OpenAIProvider::from_config(&config.llm)?)
                 } else {
-                    std::sync::Arc::new(kowalski_core::llm::OllamaProvider::new(
-                        &config.ollama.host,
-                        config.ollama.port,
-                    ))
+                    std::sync::Arc::new(kowalski_core::llm::OllamaProvider::from_config(&config))
                 };
 
             kowalski_core::db::run_memory_migrations_if_configured(&config).await?;
