@@ -6,7 +6,7 @@
 use crate::operator_input::parse_operator_answer_block;
 use crate::tools::internal::file_system::{self, DEFAULT_MAX_READ_BYTES};
 use crate::tools::internal::github::{fetch_url_for_ingest, GithubFetchKind, resolve_github_fetch};
-use crate::tools::internal::web::{fetch_url_as_markdown, looks_like_html};
+use crate::tools::internal::web::{FeedItems, fetch_url_as_markdown_with, looks_like_html};
 use chrono::Utc;
 use std::collections::{HashSet, VecDeque};
 use std::fs;
@@ -114,14 +114,18 @@ fn md_cell(input: &str) -> String {
     input.replace('|', "\\|").replace('\n', " ")
 }
 
-fn normalize_fetched_url_body(text: &str, url: &str) -> String {
-    crate::tools::internal::web::page_to_markdown(text, reqwest::Url::parse(url).ok().as_ref())
+fn normalize_fetched_url_body(text: &str, url: &str, feed_items: FeedItems) -> String {
+    crate::tools::internal::web::page_to_markdown_with(
+        text,
+        reqwest::Url::parse(url).ok().as_ref(),
+        feed_items,
+    )
 }
 
 /// **GitHub.com URLs** → [`fetch_url_for_ingest`](crate::tools::internal::github::fetch_url_for_ingest) (README API / raw / token).
 /// **All other HTTP(S) URLs** → [`fetch_url_as_markdown`](crate::tools::internal::web::fetch_url_as_markdown) (GET + HTML→MD when needed).
 /// If GitHub-specific fetch fails, falls back once to the web path.
-fn fetch_url_for_bundle(url: &str) -> Result<(String, String, String), String> {
+fn fetch_url_for_bundle(url: &str, feed_items: FeedItems) -> Result<(String, String, String), String> {
     let github_shape = resolve_github_fetch(url).is_some();
     if github_shape
         && let Ok(fetched) = fetch_url_for_ingest(url)
@@ -131,7 +135,7 @@ fn fetch_url_for_bundle(url: &str) -> Result<(String, String, String), String> {
                 GithubFetchKind::RawUserContent => "github raw",
                 GithubFetchKind::PlainHttp => "github plain http",
             };
-            let body = normalize_fetched_url_body(&fetched.text, url);
+            let body = normalize_fetched_url_body(&fetched.text, url, feed_items);
             let note = if looks_like_html(&fetched.text) {
                 format!("{via}; html→md")
             } else {
@@ -139,7 +143,7 @@ fn fetch_url_for_bundle(url: &str) -> Result<(String, String, String), String> {
             };
             return Ok((body, note, fetched.resolved_url));
     }
-    let body = fetch_url_as_markdown(url).map_err(|e| e.to_string())?;
+    let body = fetch_url_as_markdown_with(url, feed_items).map_err(|e| e.to_string())?;
     let note = if github_shape {
         "web fetch (GitHub ingest failed or non-API body)".to_string()
     } else {
@@ -377,6 +381,48 @@ pub fn ingest_sources(
     root: &Path,
     source_input: &str,
 ) -> Result<IngestReport, Box<dyn std::error::Error>> {
+    ingest_sources_with(root, source_input, FeedItems::Summaries)
+}
+
+/// The links in `text`, in order, each once: bare links and Markdown `[title](link)` alike.
+pub fn links_in_text(text: &str) -> Vec<String> {
+    let re = regex::Regex::new(r#"https?://[^\s<>"'\]\)]+"#).expect("valid regex");
+    let mut seen = HashSet::new();
+    re.find_iter(text)
+        .map(|m| m.as_str().trim_end_matches([',', ';', ':', '.', '!', '?', '*', '_']).to_string())
+        .filter(|link| seen.insert(link.clone()))
+        .collect()
+}
+
+/// What an `ingest` step reads, decided in one place for every runner.
+///
+/// The first step of a pipeline reads the operator's sources, and a feed becomes a short list
+/// of its items to choose from. An `ingest` step that follows another step reads the links
+/// that step wrote (for example the threads a model picked), and a feed is then kept whole,
+/// because these are pages to read. When the earlier step wrote no link, its text is passed on
+/// as it is, so the next step sees why there is nothing to read.
+pub fn ingest_for_step(
+    root: &Path,
+    operator_source: &str,
+    previous_artifact: Option<&Path>,
+) -> Result<IngestReport, Box<dyn std::error::Error>> {
+    let Some(previous) = previous_artifact else {
+        return ingest_sources(root, operator_source);
+    };
+    let text = std::fs::read_to_string(previous)
+        .map_err(|e| format!("read {}: {e}", previous.display()))?;
+    let links = links_in_text(&text);
+    let input = if links.is_empty() { text } else { links.join("\n") };
+    ingest_sources_with(root, &input, FeedItems::Whole)
+}
+
+/// [`ingest_sources`] with a choice of how much of a feed's items is kept: a list to choose
+/// from, or pages to read in full.
+pub fn ingest_sources_with(
+    root: &Path,
+    source_input: &str,
+    feed_items: FeedItems,
+) -> Result<IngestReport, Box<dyn std::error::Error>> {
     let assets = parse_source_tokens(source_input);
     let project_root = extract_project_path_from_source(source_input);
     let project_entries = project_root
@@ -412,7 +458,7 @@ pub fn ingest_sources(
     for (idx, asset) in assets.iter().enumerate() {
         match asset {
             SourceToken::Url(url) => {
-                let section = match fetch_url_for_bundle(url) {
+                let section = match fetch_url_for_bundle(url, feed_items) {
                     Ok((body, note, resolved)) => {
                         read += 1;
                         let clipped = body.chars().take(24000).collect::<String>();
@@ -630,5 +676,26 @@ mod tests {
         assert!(body.contains("## Project tree"));
         assert!(body.contains("main.rs"));
         assert!(body.contains("fn main()"));
+    }
+
+    #[test]
+    fn links_are_found_once_each_bare_or_in_markdown() {
+        let text = "- **Link:** https://example.com/t/1/.rss\n\
+                    see [the thread](https://example.com/t/2), and again https://example.com/t/1/.rss.";
+        assert_eq!(links_in_text(text), vec!["https://example.com/t/1/.rss", "https://example.com/t/2"]);
+        assert!(links_in_text("Nothing worth answering today.").is_empty());
+    }
+
+    #[test]
+    fn an_ingest_step_after_another_step_passes_on_text_without_links() {
+        let out = tempfile::tempdir().unwrap();
+        let picks = out.path().join("PICKS.md");
+        std::fs::write(&picks, "Nothing worth answering today.").unwrap();
+        let report = ingest_for_step(out.path(), "https://example.invalid/feed", Some(&picks)).unwrap();
+        assert_eq!(report.read, 1);
+        assert!(report.failed.is_empty());
+        let doc = std::fs::read_to_string(&report.path).unwrap();
+        assert!(doc.contains("Nothing worth answering today."));
+        assert!(!doc.contains("example.invalid"), "the operator's sources are not read again");
     }
 }
