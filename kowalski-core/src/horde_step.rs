@@ -23,7 +23,7 @@ use crate::horde_stages::{
 };
 use crate::llm::provider::LLMProvider;
 use crate::source_bundle::{
-    extract_project_path_from_source, ingest_sources, parse_input_assets,
+    extract_project_path_from_source, ingest_for_step, parse_input_assets,
 };
 use crate::tools::manager::ToolManager;
 use async_trait::async_trait;
@@ -452,7 +452,9 @@ impl StepHandler for ApplyStepHandler {
 }
 
 /// `ingest`: capture operator source tokens (URLs, file/dir paths, text) into
-/// the raw-collection markdown under `workdir/debug/` (source_bundle walk).
+/// the raw-collection markdown under `workdir/debug/` (source_bundle walk). An ingest step
+/// that follows another step reads the links that step wrote instead (see
+/// [`ingest_for_step`]).
 pub struct IngestStepHandler;
 
 #[async_trait]
@@ -478,17 +480,21 @@ impl StepHandler for IngestStepHandler {
         std::fs::create_dir_all(&debug_root).map_err(|e| {
             KowalskiError::Validation(format!("create {}: {e}", debug_root.display()))
         })?;
-        let source_count = parse_input_assets(&source).len();
+        // an ingest step after another step reads the links that step wrote
+        let previous = ctx.previous_artifact.map(Path::to_path_buf);
+        let operator_sources = previous.is_none().then(|| parse_input_assets(&source).len());
         let project_note = extract_project_path_from_source(&source)
+            .filter(|_| previous.is_none())
             .map(|p| format!("; project tree from {}", p.display()))
             .unwrap_or_default();
 
         let report = tokio::task::spawn_blocking(move || {
-            ingest_sources(&debug_root, &source).map_err(|e| e.to_string())
+            ingest_for_step(&debug_root, &source, previous.as_deref()).map_err(|e| e.to_string())
         })
         .await
         .map_err(|e| KowalskiError::Validation(format!("ingest task join: {e}")))?
         .map_err(KowalskiError::Validation)?;
+        let source_count = operator_sources.unwrap_or(report.read + report.failed.len());
 
         // Nothing to work from: stop here instead of letting a model step answer from error notes.
         if report.nothing_read() {

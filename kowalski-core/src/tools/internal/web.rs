@@ -163,15 +163,23 @@ pub(crate) fn get_politely(client: &Client, url: &str) -> Result<reqwest::blocki
     if resp.status() != reqwest::StatusCode::TOO_MANY_REQUESTS {
         return Ok(resp);
     }
-    let wait = resp
-        .headers()
-        .get(reqwest::header::RETRY_AFTER)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .unwrap_or(5)
-        .min(10);
-    std::thread::sleep(Duration::from_secs(wait));
+    std::thread::sleep(retry_wait(resp.headers()));
     client.get(url).send().map_err(|e| e.to_string())
+}
+
+/// Longest pause before the one retry of a rate-limited request.
+const MAX_RETRY_WAIT_SECS: u64 = 65;
+
+/// How long a server that answered 429 asks us to wait: `Retry-After`, else the seconds until
+/// its rate-limit window resets (`x-ratelimit-reset`, as Reddit sends), else five seconds.
+fn retry_wait(headers: &reqwest::header::HeaderMap) -> Duration {
+    let seconds = |name: &str| {
+        headers.get(name).and_then(|v| v.to_str().ok()).and_then(|v| v.trim().parse::<f64>().ok())
+    };
+    let wait = seconds(reqwest::header::RETRY_AFTER.as_str())
+        .or_else(|| seconds("x-ratelimit-reset").map(|s| s + 1.0))
+        .unwrap_or(5.0);
+    Duration::from_secs((wait.max(0.0).ceil() as u64).min(MAX_RETRY_WAIT_SECS))
 }
 
 /// A response body as text, or the HTTP status as the error. The whole page (up to the shared
@@ -197,24 +205,46 @@ pub fn fetch_http_body(url: &str) -> Result<String, String> {
     read_body_text(get_politely(&client, url)?)
 }
 
+/// How much of each item of an RSS or Atom feed is kept.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FeedItems {
+    /// A list to choose from: one line per item, its text cut to about two sentences.
+    #[default]
+    Summaries,
+    /// Pages to read: each item under its own heading with its whole text (a discussion
+    /// thread's feed is the post followed by its replies).
+    Whole,
+}
+
 /// Fetch URL as readable text (see [`page_to_markdown`]).
 pub fn fetch_url_as_markdown(url: &str) -> Result<String, String> {
+    fetch_url_as_markdown_with(url, FeedItems::Summaries)
+}
+
+/// [`fetch_url_as_markdown`] with a choice of how much of a feed's items is kept.
+pub fn fetch_url_as_markdown_with(url: &str, feed_items: FeedItems) -> Result<String, String> {
     let text = fetch_http_body(url)?;
-    Ok(page_to_markdown(&text, reqwest::Url::parse(url).ok().as_ref()))
+    Ok(page_to_markdown_with(&text, reqwest::Url::parse(url).ok().as_ref(), feed_items))
 }
 
 /// A fetched body as readable Markdown: an RSS or Atom feed becomes a list of its items, HTML
 /// becomes its main content, anything else is kept as it is.
 pub fn page_to_markdown(text: &str, base: Option<&reqwest::Url>) -> String {
-    if let Some(md) = feed_to_markdown(text) {
+    page_to_markdown_with(text, base, FeedItems::Summaries)
+}
+
+/// [`page_to_markdown`] with a choice of how much of a feed's items is kept.
+pub fn page_to_markdown_with(text: &str, base: Option<&reqwest::Url>, feed_items: FeedItems) -> String {
+    if let Some(md) = feed_to_markdown(text, feed_items) {
         return md;
     }
     if looks_like_html(text) { html_to_markdown_at(text, base) } else { text.to_string() }
 }
 
-/// An RSS or Atom feed as `- [title](link) — summary` lines (summary cut to about two
-/// sentences); `None` when `text` is not a feed.
-fn feed_to_markdown(text: &str) -> Option<String> {
+/// An RSS or Atom feed as Markdown; `None` when `text` is not a feed. [`FeedItems::Summaries`]
+/// gives `- [title](link) — summary` lines (summary cut to about two sentences),
+/// [`FeedItems::Whole`] gives a `## [title](link)` heading and the whole text per item.
+fn feed_to_markdown(text: &str, feed_items: FeedItems) -> Option<String> {
     let head = &text[..text.len().min(2048)];
     if !(head.contains("<rss") || head.contains("<feed") || head.contains("<rdf:RDF")) {
         return None;
@@ -251,7 +281,7 @@ fn feed_to_markdown(text: &str) -> Option<String> {
             .or_else(|| re_link_href.captures(body).map(|m| m[1].to_string()))
             .unwrap_or_default();
         let mut summary = re_summary.captures(body).map(|m| clean(&m[2])).unwrap_or_default();
-        if summary.chars().count() > 240 {
+        if feed_items == FeedItems::Summaries && summary.chars().count() > 240 {
             let cut: String = summary.chars().take(240).collect();
             summary = format!("{}…", cut.rsplit_once(' ').map_or(cut.as_str(), |(a, _)| a));
         }
@@ -259,7 +289,12 @@ fn feed_to_markdown(text: &str) -> Option<String> {
             continue;
         }
         let head = if link.is_empty() { title } else { format!("[{title}]({link})") };
-        out.push_str(&if summary.is_empty() { format!("- {head}\n") } else { format!("- {head} — {summary}\n") });
+        out.push_str(&match (feed_items, summary.is_empty()) {
+            (FeedItems::Whole, true) => format!("## {head}\n\n"),
+            (FeedItems::Whole, false) => format!("## {head}\n\n{summary}\n\n"),
+            (FeedItems::Summaries, true) => format!("- {head}\n"),
+            (FeedItems::Summaries, false) => format!("- {head} — {summary}\n"),
+        });
         items += 1;
     }
     (items > 0).then_some(out)
@@ -333,6 +368,45 @@ mod tests {
 <entry><title>Post</title><link href="https://example.com/post"/><summary>Hello.</summary></entry></feed>"#;
         assert!(page_to_markdown(atom, None).contains("- [Post](https://example.com/post) — Hello."));
         assert!(!page_to_markdown("<html><body><p>Not a feed</p></body></html>", None).contains("RSS"));
+    }
+
+    #[test]
+    fn a_rate_limited_request_waits_as_long_as_the_server_asks() {
+        use reqwest::header::{HeaderMap, HeaderValue};
+        let headers = |pairs: &[(&'static str, &'static str)]| {
+            let mut map = HeaderMap::new();
+            for (name, value) in pairs {
+                map.insert(*name, HeaderValue::from_static(value));
+            }
+            map
+        };
+        assert_eq!(retry_wait(&headers(&[])), Duration::from_secs(5));
+        assert_eq!(retry_wait(&headers(&[("retry-after", "3")])), Duration::from_secs(3));
+        assert_eq!(retry_wait(&headers(&[("x-ratelimit-reset", "46")])), Duration::from_secs(47));
+        assert_eq!(
+            retry_wait(&headers(&[("retry-after", "2"), ("x-ratelimit-reset", "46")])),
+            Duration::from_secs(2)
+        );
+        assert_eq!(retry_wait(&headers(&[("retry-after", "3600")])), Duration::from_secs(65));
+    }
+
+    #[test]
+    fn a_feed_read_whole_keeps_every_item_in_full() {
+        let long = "word ".repeat(200);
+        let atom = format!(
+            r#"<feed xmlns="http://www.w3.org/2005/Atom"><title>Thread</title>
+<entry><title>The post</title><link href="https://example.com/t/1"/><content type="html">&lt;p&gt;{long}&lt;/p&gt;</content></entry>
+<entry><title>A reply</title><link href="https://example.com/t/1/c"/><content>Short reply.</content></entry></feed>"#
+        );
+        let listed = page_to_markdown(&atom, None);
+        assert!(listed.contains("- [The post](https://example.com/t/1) — word"));
+        assert!(listed.contains('…'), "a listing cuts long items");
+
+        let whole = page_to_markdown_with(&atom, None, FeedItems::Whole);
+        assert!(whole.contains("## [The post](https://example.com/t/1)\n\nword word"));
+        assert!(whole.contains(long.trim()), "the whole text is kept");
+        assert!(!whole.contains('…'));
+        assert!(whole.contains("## [A reply](https://example.com/t/1/c)\n\nShort reply."));
     }
 
 }

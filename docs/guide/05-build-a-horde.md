@@ -21,3 +21,8 @@ their triggers switched off and run their steps in a separate process.
 Step kinds include reading sources (`ingest`), model steps, `table_profile` / `sql_batch` /
 `xlsx_report` for spreadsheets through tableski, and `verify` / `apply` for commands and project
 changes (both ask first).
+
+An `ingest` step can also come later in the pipeline. There it reads the links the step before
+it wrote, each in full: a model step picks a few items from a feed, the next `ingest` fetches
+those pages, and the step after that works from the whole text. A feed fetched this way keeps
+every item whole; for a discussion thread that is the post and its replies.
