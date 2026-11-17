@@ -156,21 +156,32 @@ mod html_entities {
     }
 }
 
-/// A GET that waits once and tries again when the site answers "429 Too Many Requests": the
-/// `Retry-After` it asks for, at most 10 s, else 5 s. Shared by every ingest fetch.
+/// A GET that waits once and tries again when the site says it is busy: "429 Too Many Requests"
+/// or a passing server error (500, 502, 503, 504). The wait is the one the server names, see
+/// [`retry_wait`]. Shared by every ingest fetch.
 pub(crate) fn get_politely(client: &Client, url: &str) -> Result<reqwest::blocking::Response, String> {
     let resp = client.get(url).send().map_err(|e| e.to_string())?;
-    if resp.status() != reqwest::StatusCode::TOO_MANY_REQUESTS {
+    if !worth_one_retry(resp.status()) {
         return Ok(resp);
     }
     std::thread::sleep(retry_wait(resp.headers()));
     client.get(url).send().map_err(|e| e.to_string())
 }
 
-/// Longest pause before the one retry of a rate-limited request.
+/// Statuses that often pass on their own: a rate limit, or a server or gateway that is briefly
+/// down. Anything else (404, 403, 501) would answer the same a second time.
+fn worth_one_retry(status: reqwest::StatusCode) -> bool {
+    use reqwest::StatusCode as S;
+    matches!(
+        status,
+        S::TOO_MANY_REQUESTS | S::INTERNAL_SERVER_ERROR | S::BAD_GATEWAY | S::SERVICE_UNAVAILABLE | S::GATEWAY_TIMEOUT
+    )
+}
+
+/// Longest pause before the one retry of a request.
 const MAX_RETRY_WAIT_SECS: u64 = 65;
 
-/// How long a server that answered 429 asks us to wait: `Retry-After`, else the seconds until
+/// How long a busy server asks us to wait: `Retry-After`, else the seconds until
 /// its rate-limit window resets (`x-ratelimit-reset`, as Reddit sends), else five seconds.
 fn retry_wait(headers: &reqwest::header::HeaderMap) -> Duration {
     let seconds = |name: &str| {
@@ -388,6 +399,32 @@ mod tests {
             Duration::from_secs(2)
         );
         assert_eq!(retry_wait(&headers(&[("retry-after", "3600")])), Duration::from_secs(65));
+    }
+
+    #[test]
+    fn a_passing_server_error_is_tried_once_more() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/feed", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let replies = [
+                "HTTP/1.1 502 Bad Gateway\r\nRetry-After: 0\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+            ];
+            for reply in replies {
+                let (mut stream, _) = listener.accept().unwrap();
+                let _ = stream.read(&mut [0u8; 2048]);
+                stream.write_all(reply.as_bytes()).unwrap();
+            }
+        });
+        let resp = get_politely(&Client::new(), &url).unwrap();
+        assert_eq!(resp.status(), reqwest::StatusCode::OK);
+        assert_eq!(resp.text().unwrap(), "ok");
+        server.join().unwrap();
+
+        assert!(worth_one_retry(reqwest::StatusCode::SERVICE_UNAVAILABLE));
+        assert!(!worth_one_retry(reqwest::StatusCode::NOT_FOUND));
+        assert!(!worth_one_retry(reqwest::StatusCode::FORBIDDEN));
     }
 
     #[test]
