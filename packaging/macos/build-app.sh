@@ -47,9 +47,12 @@ cp "$here/Kowalski.icns" "$app/Contents/Resources/Kowalski.icns"
 
 if [ -n "${MACOS_SIGN_IDENTITY:-}" ]; then
   echo "==> signing with $MACOS_SIGN_IDENTITY"
+  # The launcher is the app's own executable: it goes last, once everything beside it is signed.
   for bin in "$app/Contents/MacOS/"*; do
+    [ "$(basename "$bin")" = kowalski-app ] && continue
     codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "$bin"
   done
+  codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "$app/Contents/MacOS/kowalski-app"
   codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "$app"
   codesign --verify --deep --strict --verbose=2 "$app"
   # The app gets its own ticket: once dragged out of the DMG it opens without asking Apple online.
