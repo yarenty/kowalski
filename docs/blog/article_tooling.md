@@ -46,10 +46,6 @@ The LLM's context window is its most precious resource. A tool that dumps a giga
 
 This is the core function of a **well-designed data tool**: it does not dump the raw CSV into the model; it returns a compact, statistical summary unless the agent explicitly needs more.
 
-**Optional: SQL-oriented paths with DataFusion**
-
-For heavier tabular work, operators can attach the optional **`tableski`** MCP server (standalone project) so the agent issues **SQL** against registered files. The pattern is the same: **small structured results** back into **`TemplateAgent`**, not whole files into the prompt.
-
 **Example flow (illustrative):**
 1.  **Agent:** needs the average salary for Engineering.
 2.  **Tool call:** run an aggregate over the dataset (via your CSV tool or MCP SQL tool).
