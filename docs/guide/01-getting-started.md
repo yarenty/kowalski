@@ -12,8 +12,9 @@ workbook, a one-page brief, a note.
 - **Mac, with Homebrew:** `brew install yarenty/tap/kowalski`, then `kowalski`.
 - **Mac or Linux, from a terminal:**
   `curl -fsSL https://raw.githubusercontent.com/yarenty/kowalski/main/install.sh | bash`, then
-  `kowalski`. The installer puts `kowalski` and `kowalski-cli` in `~/.local/bin` and adds that
-  folder to your PATH for new terminals.
+  `kowalski`. The installer puts `kowalski`, `kowalski-cli` and the emperor servers that Setup
+  switches on (PDFs, a folder, mail) in `~/.local/bin` and adds that folder to your PATH for new
+  terminals.
 
 ## First start
 

@@ -1,5 +1,6 @@
 # Pre-built binaries on every version tag: `kowalski` (server with the UI and built-in hordes
-# inside) plus `kowalski-cli` (which the server runs for isolated steps), per platform.
+# inside) plus `kowalski-cli` (which the server runs for isolated steps), per platform, and the
+# emperor servers pinned in packaging/servers.lock, which Setup switches on.
 # Asset names carry no version so `releases/latest/download/<asset>` is a stable link for install.sh.
 
 name: Release
@@ -63,6 +64,7 @@ jobs:
           mkdir "$out"
           cp target/${{ matrix.target }}/release/kowalski target/${{ matrix.target }}/release/kowalski-cli "$out/"
           cp README.md LICENSE* config.example.toml "$out/" 2>/dev/null || true
+          packaging/fetch-servers.sh "${{ matrix.target }}" "$out"
           tar czf "$out.tar.gz" "$out"
           shasum -a 256 "$out.tar.gz" > "$out.tar.gz.sha256"
 
@@ -99,8 +101,13 @@ jobs:
         run: |
           for t in aarch64-apple-darwin x86_64-apple-darwin; do tar xzf "kowalski-$t.tar.gz"; done
           mkdir universal
-          for bin in kowalski kowalski-cli; do
-            lipo -create -output "universal/$bin" "kowalski-aarch64-apple-darwin/$bin" "kowalski-x86_64-apple-darwin/$bin"
+          for path in kowalski-aarch64-apple-darwin/kowalski* kowalski-aarch64-apple-darwin/emperor-*; do
+            bin="$(basename "$path")"
+            if [ -x "$path" ]; then
+              lipo -create -output "universal/$bin" "$path" "kowalski-x86_64-apple-darwin/$bin"
+            else
+              cp "$path" universal/
+            fi
           done
           lipo -info universal/kowalski
 
@@ -129,7 +136,7 @@ jobs:
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then version="${GITHUB_REF_NAME#v}"; else version="0.0.0-dev"; fi
-          packaging/macos/build-app.sh universal/kowalski universal/kowalski-cli "$version" dist
+          packaging/macos/build-app.sh universal/kowalski universal/kowalski-cli "$version" dist universal/emperor-*
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/')

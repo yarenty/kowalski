@@ -333,7 +333,9 @@ execute from a manifest directly — import regenerates a horde dir first.
   server catalog and the CLI so the two never drift (root Rule 8).
   `SERVERS_DIR_ENV` = `KOWALSKI_SERVERS_DIR` names the folder of the servers kowalski ships
   with (`emperor-pdf`); the setup screen (`kowalski/src/setup.rs`, `OWN_SERVERS`) looks there,
-  then beside the running `kowalski`, then on `PATH`.
+  then beside the running `kowalski`, then on `PATH`. Releases put them beside `kowalski`:
+  `packaging/servers.lock` pins each server's release and checksum, `packaging/fetch-servers.sh`
+  downloads them into the release archive and the Mac app.
 
 ### Tool execution model (three sources, one abstraction)
 
