@@ -12,8 +12,11 @@ on [emperor-mcp](https://github.com/yarenty/emperor-mcp), read-only unless you s
 
 ## Install
 
-Prebuilt binaries for macOS, Linux and Windows are on each repository's Releases page. With Rust
-installed:
+emperor-folder, emperor-pdf and emperor-mail come with kowalski: they are in the Mac app, the
+Homebrew install and the release downloads, beside `kowalski` (the Linux ARM download does not
+have them yet). Nothing to install for those three. emperor-vikunja, a source build of kowalski,
+or a newer version of a server: prebuilt binaries for macOS, Linux and Windows are on each
+repository's Releases page. With Rust installed:
 
 ```bash
 cargo install emperor-folder emperor-pdf emperor-mail emperor-vikunja
@@ -24,7 +27,7 @@ Each has a `doctor` command that checks its setup before you connect anything:
 
 ## Connect
 
-PDFs need no config file: once `emperor-pdf` is installed, **Setup** has a **Read your PDFs** card
+PDFs need no config file: **Setup** has a **Read your PDFs** card
 with a folder field and a switch (see [Setup](02-setup.md)). For the other servers, or to set
 options the card does not have (PDFium, writing), add the block yourself.
 

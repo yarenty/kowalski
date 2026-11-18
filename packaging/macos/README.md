@@ -1,7 +1,8 @@
 # Kowalski.app
 
 `build-app.sh` turns the `kowalski` and `kowalski-cli` binaries into `Kowalski.app` and
-`Kowalski.dmg`. The Release workflow runs it on every tag with universal binaries and attaches
+`Kowalski.dmg`; files named after the output folder (the emperor servers from
+`../fetch-servers.sh`) go into the app beside them. The Release workflow runs it on every tag with universal binaries and attaches
 `Kowalski.dmg` to the release.
 
 - `Launcher.swift` — the app's executable: starts `kowalski` from `~/.config/kowalski`, logs to

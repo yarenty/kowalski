@@ -3,13 +3,17 @@
 # single-arch). Signing and notarization run only when their settings are present, so a build
 # without them (a pull request, a local try) still produces an unsigned app for testing.
 #
-#   packaging/macos/build-app.sh <kowalski> <kowalski-cli> <version> <out-dir>
+#   packaging/macos/build-app.sh <kowalski> <kowalski-cli> <version> <out-dir> [<extra-file>...]
+#
+# Extra files go beside kowalski in the app: the emperor servers Setup switches on, and their
+# notices.
 #
 # Signing:       MACOS_SIGN_IDENTITY   "Developer ID Application: <name> (<team>)" in a keychain
 # Notarization:  APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD (an app-specific password)
 set -eu
-[ $# -eq 4 ] || { sed -n '5,9p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[ $# -ge 4 ] || { sed -n '5,12p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 server="$1"; cli="$2"; version="$3"; out="$4"
+shift 4
 here="$(cd "$(dirname "$0")" && pwd)"
 app="$out/Kowalski.app"
 dmg="$out/Kowalski.dmg"
@@ -35,12 +39,16 @@ rm -rf "$build"
 cp "$server" "$app/Contents/MacOS/kowalski"
 cp "$cli" "$app/Contents/MacOS/kowalski-cli"
 chmod +x "$app/Contents/MacOS/"*
+# Programs go beside kowalski, where it looks for them; anything else (a notice) is a resource.
+for extra in "$@"; do
+  if [ -x "$extra" ]; then cp "$extra" "$app/Contents/MacOS/"; else cp "$extra" "$app/Contents/Resources/"; fi
+done
 cp "$here/Kowalski.icns" "$app/Contents/Resources/Kowalski.icns"
 
 if [ -n "${MACOS_SIGN_IDENTITY:-}" ]; then
   echo "==> signing with $MACOS_SIGN_IDENTITY"
-  for bin in kowalski kowalski-cli kowalski-app; do
-    codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "$app/Contents/MacOS/$bin"
+  for bin in "$app/Contents/MacOS/"*; do
+    codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "$bin"
   done
   codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "$app"
   codesign --verify --deep --strict --verbose=2 "$app"

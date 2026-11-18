@@ -37,8 +37,8 @@ sign-in fresh and restarts so agents get its tools. See [tableski](06-tableski.m
 Type the folder that holds your PDFs and press **Switch on**: kowalski starts
 [emperor-pdf](https://github.com/yarenty/emperor-pdf) on that folder, read-only, and restarts so
 agents get its tools (`pdf_text`, `pdf_search` and others). **Switch off** removes it again. The
-card needs the `emperor-pdf` program beside `kowalski` or on your `PATH`; when it is missing, the
-card says how to get it. More in [Files, PDFs, mail and tasks](10-files-pdf-mail-tasks.md).
+`emperor-pdf` program comes with kowalski: in the Mac app, the Homebrew install and the release
+downloads (not yet in the Linux ARM download). In a source build the card says how to get it. More in [Files, PDFs, mail and tasks](10-files-pdf-mail-tasks.md).
 
 ## Always allowed
 

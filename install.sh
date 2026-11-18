@@ -152,8 +152,15 @@ install_binary() {
   tar xzf "${tmp}/${asset}" -C "$tmp"
   mkdir -p "$KOWALSKI_BIN_DIR"
   install -m 0755 "${tmp}/kowalski-${target}/kowalski" "${tmp}/kowalski-${target}/kowalski-cli" "$KOWALSKI_BIN_DIR/"
+  # The emperor servers that Setup switches on (PDFs, a folder, mail), when the release has them.
+  local server servers=""
+  for server in "${tmp}/kowalski-${target}"/emperor-*; do
+    [[ -f "$server" && -x "$server" ]] || continue
+    install -m 0755 "$server" "$KOWALSKI_BIN_DIR/"
+    servers+=", $(basename "$server")"
+  done
   rm -rf "$tmp"
-  info "installed kowalski and kowalski-cli into ${KOWALSKI_BIN_DIR}"
+  info "installed kowalski and kowalski-cli${servers} into ${KOWALSKI_BIN_DIR}"
   local run="kowalski"
   case ":${PATH}:" in
     *":${KOWALSKI_BIN_DIR}:"*) ;;
