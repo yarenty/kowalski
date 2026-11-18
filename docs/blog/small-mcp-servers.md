@@ -196,8 +196,8 @@ today is "render the page and let a vision model read it".
 
 ### emperor-mail: nothing leaves without you
 
-Four tools by default: list folders, search, read a message, read an attachment (PDF, Word and
-spreadsheet text). Reading never marks mail as read. `--writable` adds `draft`, which saves a
+Four tools by default: list folders, search, read a message, read an attachment (PDF and Word
+text). Reading never marks mail as read. `--writable` adds `draft`, which saves a
 message to your Drafts folder for you to check and send yourself. `send` appears only when you
 start the server with `--allow-send`, and then it writes only to the recipients you list; sent
 mail is copied to your Sent folder so you can see what the assistant wrote. Gmail and Microsoft 365 work through OAuth.
