@@ -5,11 +5,10 @@
 3. [The built-in hordes](03-built-in-hordes.md)
 4. [Schedules, watchers and approvals](04-schedules-and-approvals.md)
 5. [Build your own horde](05-build-a-horde.md)
-6. [tableski: your spreadsheets as SQL](06-tableski.md)
-7. [Notes vault (Obsidian)](07-notes-vault.md)
-8. [Troubleshooting](08-troubleshooting.md)
-9. [Hire a horde in Paperclip](09-paperclip.md)
-10. [Files, PDFs, mail and tasks](10-files-pdf-mail-tasks.md)
+6. [Notes vault (Obsidian)](07-notes-vault.md)
+7. [Troubleshooting](08-troubleshooting.md)
+8. [Hire a horde in Paperclip](09-paperclip.md)
+9. [Files, PDFs, mail and tasks](10-files-pdf-mail-tasks.md)
 
 The same pages are built into kowalski: Chat answers questions about kowalski from them and from
 your install's live settings.

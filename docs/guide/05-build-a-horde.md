@@ -18,8 +18,7 @@ Hordes move between machines as bundles: **Admin → Federation → Import bundl
 `.kwf.zip` first and lists anything it can't run on this machine. Imported hordes arrive with
 their triggers switched off and run their steps in a separate process.
 
-Step kinds include reading sources (`ingest`), model steps, `table_profile` / `sql_batch` /
-`xlsx_report` for spreadsheets through tableski, and `verify` / `apply` for commands and project
+Step kinds include reading sources (`ingest`), model steps, and `verify` / `apply` for commands and project
 changes (both ask first).
 
 An `ingest` step can also come later in the pipeline. There it reads the links the step before

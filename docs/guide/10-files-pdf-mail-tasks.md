@@ -31,7 +31,7 @@ PDFs need no config file: **Setup** has a **Read your PDFs** card
 with a folder field and a switch (see [Setup](02-setup.md)). For the other servers, or to set
 options the card does not have (PDFium, writing), add the block yourself.
 
-Add one block per server to `config.toml` (next to the `tableski` block, if you have one) and
+Add one block per server to `config.toml` and
 restart kowalski. With `transport = "stdio"` kowalski starts the server itself; `command` is the
 program and its arguments as a list. Write full paths: there is no shell, so `~` is not expanded.
 
@@ -83,8 +83,7 @@ command = ["emperor-vikunja", "serve", "--stdio", "--base-url", "https://vikunja
 # look, don't touch: add "--read-only"
 ```
 
-Or run the server yourself and give kowalski the address, with the token in the block like the
-tableski one:
+Or run the server yourself and give kowalski the address, with the token in the block:
 
 ```toml
 [[mcp.servers]]

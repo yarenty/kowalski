@@ -1,8 +1,8 @@
 # Getting started
 
 Kowalski is a small team of AI agents that runs on your own computer. You give it a chore; a
-**horde**, a short pipeline of agents called penguins, does it and hands you the result: a report
-workbook, a one-page brief, a note.
+**horde**, a short pipeline of agents called penguins, does it and hands you the result: a one-page
+brief, a note.
 
 ## Install
 
@@ -18,7 +18,7 @@ workbook, a one-page brief, a note.
 
 ## First start
 
-The browser opens on **Setup**: a model, a files folder, and optionally tableski, a notes vault
+The browser opens on **Setup**: a model, a files folder, and optionally a notes vault
 and web search (see [Setup](02-setup.md)). Save, and kowalski restarts with your settings.
 Everything lives beside the config file, `~/.config/kowalski/config.toml`.
 

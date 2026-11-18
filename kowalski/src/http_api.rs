@@ -3585,14 +3585,14 @@ mod api_tests {
     async fn chat_context_knows_this_kowalski_and_matches_the_guide() {
         let dir = tempfile::tempdir().unwrap();
         let app = fixture(dir.path(), None).await;
-        let (status, v) = call(&app, "GET", "/api/help/context?q=How%20do%20I%20connect%20tableski%3F", None, None).await;
+        let (status, v) = call(&app, "GET", "/api/help/context?q=How%20do%20I%20set%20up%20the%20notes%20vault%3F", None, None).await;
         assert_eq!(status, StatusCode::OK, "{v}");
         let ctx = v["context"].as_str().unwrap();
         assert!(ctx.contains(concat!("kowalski ", env!("CARGO_PKG_VERSION"))), "{ctx}");
         assert!(ctx.contains("api-horde (id api-horde)") && ctx.contains("webhook"), "hordes and their triggers: {ctx}");
         assert!(ctx.contains("tableski: not connected") && ctx.contains("recent failed runs: none"), "{ctx}");
         assert!(ctx.contains("From the kowalski guide"), "a kowalski question gets the guide: {ctx}");
-        assert!(v["guide_sections"].as_array().unwrap().iter().any(|t| t.as_str().unwrap().contains("tableski")), "{v}");
+        assert!(v["guide_sections"].as_array().unwrap().iter().any(|t| t.as_str().unwrap().to_lowercase().contains("vault")), "{v}");
 
         let (_, v) = call(&app, "GET", "/api/help/context?q=Write%20a%20haiku%20about%20the%20sea", None, None).await;
         assert!(!v["context"].as_str().unwrap().contains("From the kowalski guide"), "small talk gets no guide");

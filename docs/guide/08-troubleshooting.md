@@ -10,16 +10,6 @@ Ollama app), then `ollama pull gemma4:e2b`, and press **Check the model** again.
 A local model on a CPU takes minutes per step; that's normal. A smaller
 model (`gemma4:e2b`) or a hosted model with your key is faster.
 
-## "tool … is not available" (Spreadsheet analyst)
-
-tableski isn't connected or isn't running.
-Connect it in Setup, or start your local tableski; kowalski keeps retrying and picks it up.
-
-## The Workbooks card says the tableski runs locally
-
-A local tableski has no upload: start it
-with your file (`tableski --file your.xlsx`).
-
 ## A run says Needs you
 
 A step wants to run a command or change files. Open the run and press
