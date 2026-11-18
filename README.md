@@ -6,13 +6,12 @@
 ordinary code does the fetching, the SQL and the file writing, and the model only writes a query
 or a paragraph, so a 2B model on a laptop CPU finishes real chores. Kowalski is one binary: point
 it at Ollama (or any OpenAI-compatible endpoint with your key) and give a horde your
-spreadsheets, pages and documents. The answers come back as files you can open: a report
-workbook, a morning brief, a note with deadlines.
+pages, notes and documents. The answers come back as files you can open: a morning brief, a note
+in your vault, a note with deadlines.
 
-![Kowalski's Spreadsheet analyst: plain questions in, answers and a workbook out](docs/img/kowalski-demo.gif)
+![Asking the Knowledge Compiler a question in kowalski, then the note arriving in an Obsidian vault](docs/img/knowledge-compiler.gif)
 
-*Three questions to the Spreadsheet analyst, on a local 7B model; the minutes it spends thinking are
-cut from the recording.*
+*A question to the Knowledge Compiler, and the note it writes arriving in an Obsidian vault.*
 
 **Current release: 2.6 — Field Notes.** What changed and when: [CHANGELOG.md](CHANGELOG.md) ·
 what is next: [ROADMAP.md](ROADMAP.md).
@@ -52,18 +51,12 @@ shell's PATH for new terminals (it prints the full path to use right away); no R
 1. **A model** — Ollama if it is running (its models are listed), or an OpenAI-compatible endpoint
    and key. A Check button tests it without spending tokens.
 2. **A files folder** — the only place the agents' file tools may read and write.
-3. **tableski** (optional) — sign in and your spreadsheets become SQL tables the agents can query.
+3. **A notes vault and web search** (optional) — where finished notes are saved, and how agents search.
 
 Setup writes the config to `~/.config/kowalski/config.toml` and restarts the server. Everything
 kowalski keeps (the config, built-in hordes and their output, run history, memory) lives in that
 folder, whichever folder you start it from. The archives are also on the
 [releases page](https://github.com/yarenty/kowalski/releases).
-
-A first run, start to finish: the installer, Setup's three questions, signing in to tableski, a
-workbook dropped on the Spreadsheet analyst and its answers (the model's time is sped up; the
-tableski sign-in itself is not shown):
-
-![A first run of kowalski: install, Setup, connect tableski, drop a workbook, get answers](docs/img/kowalski-first-run.gif)
 
 <details>
 <summary>Installer options</summary>
@@ -85,11 +78,10 @@ tableski sign-in itself is not shown):
 
 ## What a horde does for you
 
-Five hordes ship inside the binary and appear in the Hordes screen on first start.
+Hordes ship inside the binary and appear in the Hordes screen on first start. Among them:
 
 | Horde | You give it | You get |
 |---|---|---|
-| **Spreadsheet analyst** | Questions in plain words, about workbooks loaded in tableski | `report.xlsx` (one sheet per question) and `HANDOFF.md` with short answers. The model writes SQL; every number comes from the query engine. |
 | **Morning brief** | The pages you check every morning | `BRIEF.md`: a top pick and the items worth your time from each page, with links. A weekday 7:00 schedule is ready to switch on. |
 | **Folder watcher** | Documents dropped into its `inbox/` | `NOTE.md`: what the document is, the key facts, and what to do by when. |
 | **URL summarizer** | A list of links | A short summary per page. |
@@ -99,52 +91,19 @@ Scheduled and watching hordes ship switched off: nothing runs, or costs, until y
 Steps that would run a command or write into a project stop and ask for your approval first;
 **Always allow** remembers it for a step you trust, until the step changes or you revoke it in Setup.
 
-Try the analyst from a terminal against a running server:
-
-```bash
-examples/spreadsheet-analyst/demo.sh "Who spent the most?" "How many customers per city?"
-```
-
 ## Is Kowalski for you?
 
 | You want… | Kowalski | Better elsewhere |
 |---|---|---|
 | Something useful to do with the model you already run in Ollama | ✓ | |
-| Answers from your own spreadsheets, pages and documents, as files you open | ✓ | |
+| Answers from your own pages and documents, as files you open | ✓ | |
 | To run on a laptop with a free local model, nothing leaving the machine | ✓ | |
-| Every number in a report traced to a SQL query | ✓ (with tableski) | |
 | One download, no Docker, no database server | ✓ (about 20 MB) | |
 | A chat assistant with wide access to your machine and apps | | a personal assistant such as [OpenClaw](https://github.com/openclaw/openclaw) |
 | To manage many paid coding agents as a team, with org charts and budgets | | an agent control plane such as [Paperclip](https://github.com/paperclipai/paperclip) |
 | Hundreds of SaaS connectors and click-built workflows | | a workflow tool (n8n, Zapier) |
 
-Penguins: no lobsters, no corporation. More in [Meet Kowalski](https://kowalski.yarenty.com/blog/meet-kowalski/).
-
-## Your spreadsheets: tableski
-
-The Spreadsheet analyst reads your workbooks through [tableski](https://tableski.io), which turns
-every sheet into a SQL table an AI can query. Use the hosted service or run it yourself:
-
-- **Hosted at tableski.io.** In Setup, **Connect tableski** signs you in once in the browser (no
-  card, no token to copy); kowalski keeps the sign-in fresh. Then drop a workbook on the
-  **Workbooks** card of the analyst's page and ask.
-- **Your own tableski.** Start the local binary with your file, `tableski --file report.xlsx`, and
-  point kowalski at it; nothing leaves your machine.
-
-Setup writes the config for you. By hand, it is one block in `config.toml`, with a token from
-[tableski.io/app/tokens](https://tableski.io/app/tokens) or, for a local tableski, the local
-address and no token:
-
-```toml
-[[mcp.servers]]
-name = "tableski"
-url = "https://mcp.tableski.io/"      # local: "http://127.0.0.1:8080/"
-transport = "http"
-headers = { Authorization = "Bearer tsk_your_token" }
-```
-
-New to tableski? Its [five-minute demo](https://github.com/yarenty/tableski/tree/main/demo)
-loads a workbook and asks the first question.
+Penguins: no lobsters, no corporation.
 
 ## Make your own
 
@@ -162,9 +121,8 @@ and travel between machines as a single `.kwf.zip` bundle.
 
 One process holds the operator UI, the HTTP API, the horde runner and the agent core. Runs are
 durable (every state change goes to SQLite, and runs survive restarts). Tools are a small built-in
-set (`web_fetch`, `web_search`, files) plus anything that speaks MCP, starting with
-[tableski](https://github.com/yarenty/tableski). Deterministic steps do the work models are bad
-at — fetching, profiling tables, running SQL, building workbooks — so a small local model only
+set (`web_fetch`, `web_search`, files) plus anything that speaks MCP. Deterministic steps do the work models are bad
+at — fetching, reading files, running SQL, writing notes — so a small local model only
 has to write a query or a paragraph from material it has been given.
 
 The full picture, with diagrams of one run and the run lifecycle:
@@ -235,7 +193,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 | Project | What it is |
 |---|---|
-| [**tableski**](https://github.com/yarenty/tableski) | Every spreadsheet is a table: Excel, CSV and Parquet as SQL over MCP. Local binary or hosted at tableski.io. |
 | [**emperor-mcp**](https://github.com/yarenty/emperor-mcp) | The MCP server framework first-party servers are built on (stateless HTTP, credential forwarding, output framing). |
 | [**emperor-folder**](https://github.com/yarenty/emperor-folder), [**-pdf**](https://github.com/yarenty/emperor-pdf), [**-mail**](https://github.com/yarenty/emperor-mail), [**-vikunja**](https://github.com/yarenty/emperor-vikunja) | A folder, PDFs, mail and Vikunja tasks as MCP tools for agents; read-only unless started otherwise ([guide](docs/guide/10-files-pdf-mail-tasks.md)). |
 | [**Paperclip**](https://github.com/paperclipai/paperclip) | Hire a horde as an employee in a Paperclip company: assign it an issue, the answers come back in the thread ([guide](docs/guide/09-paperclip.md)). |

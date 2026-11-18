@@ -62,7 +62,7 @@ text { font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans
           <rect x="262" y="290" width="250" height="110" rx="5" class="box"/>
           <text x="284" y="316" class="t-title">Step handlers</text>
           <text x="284" y="338" class="t-small">deterministic: ingest · table_profile</text>
-          <text x="284" y="356" class="t-small">sql_batch · xlsx_report · verify · apply</text>
+          <text x="284" y="356" class="t-small">sql_batch · verify · apply</text>
           <text x="284" y="374" class="t-small">model: process · deliver · compile · ask</text>
           <text x="284" y="392" class="t-mono">in-process or isolated child</text>
 
@@ -81,7 +81,7 @@ text { font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans
 
           <rect x="528" y="420" width="250" height="100" rx="5" class="box"/>
           <text x="550" y="446" class="t-title">Built-in hordes</text>
-          <text x="550" y="468" class="t-small">Spreadsheet analyst · Morning brief</text>
+          <text x="550" y="468" class="t-small">Morning brief · Knowledge compiler</text>
           <text x="550" y="486" class="t-small">Folder watcher · URL summarizer</text>
           <text x="550" y="504" class="t-small">Knowledge compiler</text>
 
@@ -92,8 +92,8 @@ text { font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans
           <text x="955" y="110" text-anchor="middle" class="t-small">OpenAI-compatible + your key</text>
 
           <rect x="850" y="160" width="210" height="96" rx="6" class="box-steel"/>
-          <text x="955" y="190" text-anchor="middle" class="t-title">tableski</text>
-          <text x="955" y="212" text-anchor="middle" class="t-small">spreadsheets as SQL tables</text>
+          <text x="955" y="190" text-anchor="middle" class="t-title">data server</text>
+          <text x="955" y="212" text-anchor="middle" class="t-small">your files as SQL tables</text>
           <text x="955" y="230" text-anchor="middle" class="t-small">MCP · local binary or hosted</text>
           <text x="955" y="246" text-anchor="middle" class="t-mono">list_tables · query_sql</text>
 
