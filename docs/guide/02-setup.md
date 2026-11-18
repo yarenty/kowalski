@@ -27,12 +27,7 @@ agent picks up the change. You can also edit the file by hand.
   paste its key (Google also needs a search engine ID). **Off** turns search off. Agents can
   always read a page you give them.
 
-## 3. tableski (optional)
-
-**Connect tableski** signs you in to tableski.io once (free plan, no card); kowalski keeps the
-sign-in fresh and restarts so agents get its tools. See [tableski](06-tableski.md).
-
-## 4. PDFs (optional)
+## 3. PDFs (optional)
 
 Type the folder that holds your PDFs and press **Switch on**: kowalski starts
 [emperor-pdf](https://github.com/yarenty/emperor-pdf) on that folder, read-only, and restarts so

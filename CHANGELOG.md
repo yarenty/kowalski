@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file, or at least
 - **Extra request headers for a hosted model.** `[llm] openai_headers = { "X-Org" = "my-team" }` sends those headers with every request to an OpenAI-compatible endpoint, for gateways that route or bill by a header. A name or value that is not a valid HTTP header stops kowalski at start with a message naming it.
 
 ### Changed
+- **Docs.** The user guide and the architecture page were trimmed and reworded; the guide has nine pages.
 - A fetch that is refused with 429 Too Many Requests waits as long as the server asks (`Retry-After`, or the seconds until its rate-limit window resets, at most 65) before its one retry. It used to wait at most ten seconds, which was too short for Reddit.
 - **No OpenSSL.** HTTPS to model endpoints and to a remote PostgreSQL now uses rustls, built into the binary, instead of the system's OpenSSL. The Linux binaries no longer need a matching OpenSSL on the machine, and building from source no longer needs its headers. Certificates for model endpoints and web pages are still checked against the system's store; a remote PostgreSQL is checked against the built-in Mozilla list.
 - **One sentence for what Kowalski is.** The README, `AGENTS.md` and the crate descriptions now say the same thing: you already have a local model, and Kowalski gives it jobs. "Is Kowalski for you?" starts with the person who runs Ollama.

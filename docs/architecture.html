@@ -187,7 +187,7 @@
     <span><b>Core</b> &nbsp;Rust · Tokio · Axum · SQLite</span>
     <span><b>UI</b> &nbsp;Vue 3 · TypeScript, compiled into the binary</span>
     <span><b>Models</b> &nbsp;Ollama or any OpenAI-compatible endpoint</span>
-    <span><b>Tools</b> &nbsp;built-in + MCP (tableski, gateways)</span>
+    <span><b>Tools</b> &nbsp;built-in + MCP (your servers, gateways)</span>
   </div>
 </header>
 
@@ -203,7 +203,7 @@
     outside are the ones you choose: a model (a local Ollama, or an endpoint with your key) and the
     tools you connect.</p>
     <p>That shape is deliberate. The people kowalski is for (a small-business owner with a folder of
-    spreadsheets, a trader with a watchlist) will not run a cluster, and should not have to trust a
+    documents, a trader with a watchlist) will not run a cluster, and should not have to trust a
     service with their files. So the default is dependency-light: no required daemons besides the
     model, SQLite on disk, and optional extras (Postgres with pgvector, graph queries) that stay off
     until asked for.</p>
@@ -247,7 +247,7 @@
           <rect x="262" y="290" width="250" height="110" rx="5" class="box"/>
           <text x="284" y="316" class="t-title">Step handlers</text>
           <text x="284" y="338" class="t-small">deterministic: ingest · table_profile</text>
-          <text x="284" y="356" class="t-small">sql_batch · xlsx_report · verify · apply</text>
+          <text x="284" y="356" class="t-small">sql_batch · verify · apply</text>
           <text x="284" y="374" class="t-small">model: process · deliver · compile · ask</text>
           <text x="284" y="392" class="t-mono">in-process or isolated child</text>
 
@@ -266,7 +266,7 @@
 
           <rect x="528" y="420" width="250" height="100" rx="5" class="box"/>
           <text x="550" y="446" class="t-title">Built-in hordes</text>
-          <text x="550" y="468" class="t-small">Spreadsheet analyst · Morning brief</text>
+          <text x="550" y="468" class="t-small">Morning brief · Knowledge compiler</text>
           <text x="550" y="486" class="t-small">Folder watcher · URL summarizer</text>
           <text x="550" y="504" class="t-small">Knowledge compiler</text>
 
@@ -277,8 +277,8 @@
           <text x="955" y="110" text-anchor="middle" class="t-small">OpenAI-compatible + your key</text>
 
           <rect x="850" y="160" width="210" height="96" rx="6" class="box-steel"/>
-          <text x="955" y="190" text-anchor="middle" class="t-title">tableski</text>
-          <text x="955" y="212" text-anchor="middle" class="t-small">spreadsheets as SQL tables</text>
+          <text x="955" y="190" text-anchor="middle" class="t-title">data server</text>
+          <text x="955" y="212" text-anchor="middle" class="t-small">your files as SQL tables</text>
           <text x="955" y="230" text-anchor="middle" class="t-small">MCP · local binary or hosted</text>
           <text x="955" y="246" text-anchor="middle" class="t-mono">list_tables · query_sql</text>
 
@@ -309,8 +309,8 @@
       </div>
       <figcaption><b>What runs, and what talks to what.</b> Everything inside the black frame is one
       process started by one command. Blue boxes are outside and chosen by you. The red path is the
-      one that matters most for business users: a horde step calling tableski, so that questions about
-      spreadsheets are answered by a SQL engine. Events (a schedule, a file landing in a folder, a
+      one that matters most for business users: a horde step calling a data server over MCP, so that
+      questions about your data are answered by a SQL engine. Events (a schedule, a file landing in a folder, a
       webhook) start runs exactly as a click in the UI does.</figcaption>
     </figure>
   </div>
@@ -339,7 +339,6 @@
           <tr><td class="k">ingest</td><td><span class="tag det">no</span></td><td>Collects the run's input: fetches the URLs (public addresses only), reads the files, keeps the text. Pages are reduced to their main content with absolute links.</td></tr>
           <tr><td class="k">table_profile</td><td><span class="tag det">no</span></td><td>Asks the data tool for every table, its columns, types and statistics, so the next step starts from exact names.</td></tr>
           <tr><td class="k">sql_batch</td><td><span class="tag det">no</span></td><td>Runs each SQL block of the previous step's plan through <code>query_sql</code> and records the results exactly as returned.</td></tr>
-          <tr><td class="k">xlsx_report</td><td><span class="tag det">no</span></td><td>Turns those results into a workbook: an index sheet and one sheet per question, numbers typed as numbers.</td></tr>
           <tr><td class="k">verify · apply</td><td><span class="tag det">no</span></td><td>Run a check command on a project, or write proposed changes into it. Both wait for the operator's approval by default.</td></tr>
           <tr><td class="k">process · deliver · compile · ask · lint</td><td><span class="tag llm">yes</span></td><td>Model steps: a prompt plus attached context (the previous artifact, other steps' outputs), optionally with tools. The output is one Markdown file.</td></tr>
         </tbody>
@@ -361,13 +360,13 @@
     <h2>What one question sets in motion</h2>
   </div>
   <div class="body">
-    <p class="lede">The Spreadsheet analyst is the clearest example of how the parts fit, because it
+    <p class="lede">A horde that answers questions about data is the clearest example of how the parts fit, because it
     uses both kinds of step and the division of labour between them is the point.</p>
 
     <figure>
       <div class="figframe">
         <svg viewBox="0 0 1080 360" role="img" aria-labelledby="f2t">
-          <title id="f2t">One Spreadsheet analyst run, step by step</title>
+          <title id="f2t">One data-question run, step by step</title>
           <defs>
             <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="arrow"/></marker>
           </defs>
@@ -399,13 +398,13 @@
             <rect x="545" y="70" width="150" height="120" rx="5" class="box"/>
             <text x="620" y="100" text-anchor="middle" class="t-title">run</text>
             <text x="620" y="122" text-anchor="middle" class="t-small">each query through</text>
-            <text x="620" y="138" text-anchor="middle" class="t-small">tableski</text>
+            <text x="620" y="138" text-anchor="middle" class="t-small">data server</text>
             <text x="620" y="176" text-anchor="middle" class="t-mono">no model</text>
           </g>
           <g>
             <rect x="720" y="70" width="150" height="120" rx="5" class="box"/>
             <text x="795" y="100" text-anchor="middle" class="t-title">report</text>
-            <text x="795" y="122" text-anchor="middle" class="t-small">report.xlsx,</text>
+            <text x="795" y="122" text-anchor="middle" class="t-small">report file,</text>
             <text x="795" y="138" text-anchor="middle" class="t-small">typed numbers</text>
             <text x="795" y="176" text-anchor="middle" class="t-mono">no model</text>
           </g>
@@ -423,19 +422,19 @@
           <path d="M870 130 H895" class="wire" marker-end="url(#ah2)"/>
 
           <rect x="195" y="230" width="500" height="90" rx="5" class="box-steel"/>
-          <text x="445" y="258" text-anchor="middle" class="t-title">tableski (MCP)</text>
+          <text x="445" y="258" text-anchor="middle" class="t-title">data server (MCP)</text>
           <text x="445" y="280" text-anchor="middle" class="t-small">list_tables · get_schema · column_statistics · query_sql</text>
-          <text x="445" y="300" text-anchor="middle" class="t-mono">every sheet of your workbook is a table</text>
+          <text x="445" y="300" text-anchor="middle" class="t-mono">every file you serve is a table</text>
           <path d="M270 190 V230" class="wire" marker-end="url(#ah2)"/>
           <path d="M620 190 V230" class="wire" marker-end="url(#ah2)"/>
           <text x="720" y="262" class="t-small">files written to the horde's output/ folder:</text>
           <text x="720" y="282" class="t-mono">debug/profile.md · debug/plan.md</text>
-          <text x="720" y="300" class="t-mono">debug/results.md + .json · report.xlsx · HANDOFF.md</text>
+          <text x="720" y="300" class="t-mono">debug/results.md + .json · report · HANDOFF.md</text>
         </svg>
       </div>
       <figcaption><b>Two model steps, four deterministic ones.</b> The model writes SQL (red) and later
       explains results it is handed (red). It never produces a figure: the profile comes from the data
-      tool, the numbers from the SQL engine, the workbook from those numbers. A question the data cannot
+      tool, the numbers from the SQL engine, the report from those numbers. A question the data cannot
       answer is reported as such, with the reason the plan gave.</figcaption>
     </figure>
 
@@ -530,12 +529,6 @@
         <p><code>web_fetch</code> reads one public page (private and cloud-metadata addresses refused,
         every redirect re-checked). <code>web_search</code> uses DuckDuckGo by default (no key), or Brave, Staan, Tavily, Google (Serper or Programmable Search) or SearXNG when configured.
         File tools stay inside the folder you chose in Setup.</p>
-      </div>
-      <div class="card">
-        <div class="name">tableski</div>
-        <div class="path">separate project · MCP</div>
-        <p>Every spreadsheet as a SQL table (Excel, CSV, Parquet), on Apache DataFusion. Local binary or
-        the hosted service; Setup signs in with OAuth, so there is no token to copy.</p>
       </div>
       <div class="card">
         <div class="name">Any MCP server</div>

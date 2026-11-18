@@ -28,7 +28,7 @@ curl -s -H 'content-type: application/json' http://localhost:3100/api/companies/
   "adapterType": "process",
   "adapterConfig": {
     "command": "/bin/bash",
-    "args": ["/path/to/kowalski/examples/paperclip/hire-a-horde.sh", "spreadsheet-analyst", "questions"],
+    "args": ["/path/to/kowalski/examples/paperclip/hire-a-horde.sh", "url-summarizer"],
     "env": { "KOWALSKI_URL": "http://127.0.0.1:3456" },
     "timeoutSec": 600
   }
@@ -36,8 +36,8 @@ curl -s -H 'content-type: application/json' http://localhost:3100/api/companies/
 ```
 
 - The first argument is the horde's id (shown in its page's address, `?horde=<id>`).
-- The second is optional: for a horde with a form, the field the issue text goes in
-  (`questions` for the Spreadsheet analyst). Without it the issue text is the horde's prompt.
+- The second is optional: for a horde with a form, the field the issue text goes in.
+  Without it the issue text is the horde's prompt.
 - `KOWALSKI_URL` is where kowalski listens (`http://127.0.0.1:3456` by default); add
   `KOWALSKI_TOKEN` when kowalski runs with `--auth`.
 
